@@ -14,6 +14,7 @@
 # limitations under the License.
 import os
 import tempfile
+import time
 import unittest
 
 import numpy as np
@@ -692,6 +693,124 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         sd_pipe.unload_lora_weights()
 
+    def test_lora_fusion(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        orig_image_slice = original_images[0, -3:, -3:, -1]
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        sd_pipe.fuse_lora()
+        lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        self.assertFalse(np.allclose(orig_image_slice, lora_image_slice, atol=1e-3))
+
+    def test_unfuse_lora(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        orig_image_slice = original_images[0, -3:, -3:, -1]
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        sd_pipe.fuse_lora()
+        lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        # Reverse LoRA fusion.
+        sd_pipe.unfuse_lora()
+        original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        orig_image_slice_two = original_images[0, -3:, -3:, -1]
+
+        assert not np.allclose(
+            orig_image_slice, lora_image_slice
+        ), "Fusion of LoRAs should lead to a different image slice."
+        assert not np.allclose(
+            orig_image_slice_two, lora_image_slice
+        ), "Fusion of LoRAs should lead to a different image slice."
+        assert np.allclose(
+            orig_image_slice, orig_image_slice_two, atol=1e-3
+        ), "Reversing LoRA fusion should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
+
+    def test_lora_fusion_is_not_affected_by_unloading(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        _ = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        sd_pipe.fuse_lora()
+        lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        # Unload LoRA parameters.
+        sd_pipe.unload_lora_weights()
+        images_with_unloaded_lora = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        images_with_unloaded_lora_slice = images_with_unloaded_lora[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            lora_image_slice, images_with_unloaded_lora_slice
+        ), "`unload_lora_weights()` should have not effect on the semantics of the results as the LoRA parameters were fused."
+
 
 @slow
 @require_torch_gpu
@@ -877,10 +996,10 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-0.9-daiton-lora"
         lora_filename = "daiton-xl-lora-test.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.enable_model_cpu_offload()
 
         images = pipe(
             "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
@@ -895,10 +1014,10 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-0.9-costumes-lora"
         lora_filename = "saijo.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.enable_model_cpu_offload()
 
         images = pipe(
             "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
@@ -913,10 +1032,10 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
-        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-0.9-kamepan-lora"
         lora_filename = "kame_sdxl_v2-000020-16rank.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.enable_model_cpu_offload()
 
         images = pipe(
             "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
@@ -931,10 +1050,10 @@ class LoraIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.enable_model_cpu_offload()
 
         images = pipe(
             "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
@@ -943,7 +1062,115 @@ class LoraIntegrationTests(unittest.TestCase):
         images = images[0, -3:, -3:, -1].flatten()
         expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-3))
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_sdxl_1_0_lora_fusion(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+        lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.fuse_lora()
+        pipe.enable_model_cpu_offload()
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        # This way we also test equivalence between LoRA fusion and the non-fusion behaviour.
+        expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+
+    def test_sdxl_1_0_lora_unfusion(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+        lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.fuse_lora()
+        pipe.enable_model_cpu_offload()
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+        images_with_fusion = images[0, -3:, -3:, -1].flatten()
+
+        pipe.unfuse_lora()
+        generator = torch.Generator().manual_seed(0)
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+        images_without_fusion = images[0, -3:, -3:, -1].flatten()
+
+        self.assertFalse(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
+
+    def test_sdxl_1_0_lora_unfusion_effectivity(self):
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator().manual_seed(0)
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+        original_image_slice = images[0, -3:, -3:, -1].flatten()
+
+        lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+        lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.fuse_lora()
+
+        generator = torch.Generator().manual_seed(0)
+        _ = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        pipe.unfuse_lora()
+        generator = torch.Generator().manual_seed(0)
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+        images_without_fusion_slice = images[0, -3:, -3:, -1].flatten()
+
+        self.assertTrue(np.allclose(original_image_slice, images_without_fusion_slice, atol=1e-3))
+
+    def test_sdxl_1_0_lora_fusion_efficiency(self):
+        generator = torch.Generator().manual_seed(0)
+        lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+        lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.enable_model_cpu_offload()
+
+        start_time = time.time()
+        for _ in range(3):
+            pipe(
+                "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+            ).images
+        end_time = time.time()
+        elapsed_time_non_fusion = end_time - start_time
+
+        del pipe
+
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.fuse_lora()
+        pipe.enable_model_cpu_offload()
+
+        start_time = time.time()
+        generator = torch.Generator().manual_seed(0)
+        for _ in range(3):
+            pipe(
+                "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+            ).images
+        end_time = time.time()
+        elapsed_time_fusion = end_time - start_time
+
+        self.assertTrue(elapsed_time_fusion < elapsed_time_non_fusion)
 
     def test_sdxl_1_0_last_ben(self):
         generator = torch.Generator().manual_seed(0)

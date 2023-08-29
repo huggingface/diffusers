@@ -14,8 +14,11 @@
 # limitations under the License.
 
 import gc
+import os
+import shutil
 import unittest
 from collections import OrderedDict
+from pathlib import Path
 
 import torch
 
@@ -24,6 +27,7 @@ from diffusers import (
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
     ControlNetModel,
+    DiffusionPipeline,
 )
 from diffusers.pipelines.auto_pipeline import (
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
@@ -80,6 +84,29 @@ class AutoPipelineFastTest(unittest.TestCase):
         pipe = AutoPipelineForImage2Image.from_pipe(pipe)
 
         assert dict(pipe.config) == original_config
+
+    def test_kwargs_local_files_only(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-torch"
+        tmpdirname = DiffusionPipeline.download(repo)
+        tmpdirname = Path(tmpdirname)
+
+        # edit commit_id to so that it's not the latest commit
+        commit_id = tmpdirname.name
+        new_commit_id = commit_id + "hug"
+
+        ref_dir = tmpdirname.parent.parent / "refs/main"
+        with open(ref_dir, "w") as f:
+            f.write(new_commit_id)
+
+        new_tmpdirname = tmpdirname.parent / new_commit_id
+        os.rename(tmpdirname, new_tmpdirname)
+
+        try:
+            AutoPipelineForText2Image.from_pretrained(repo, local_files_only=True)
+        except OSError:
+            assert False, "not able to load local files"
+
+        shutil.rmtree(tmpdirname.parent.parent)
 
 
 @slow
