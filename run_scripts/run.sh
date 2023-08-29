@@ -1,0 +1,13 @@
+accelerate launch examples/text_to_image/train_text_to_image_sdxl.py \
+    --wds_dataset_url 'pipe:aws s3 cp s3://muse-datasets/laion-aesthetic6plus-data/{00000..00001}.tar -' \
+    --pretrained_model_name_or_path stabilityai/stable-diffusion-xl-base-1.0 \
+    --pretrained_vae_model_name_or_path madebyollin/sdxl-vae-fp16-fix \
+    --dataloader_num_workers 4 \
+    --max_train_steps 30000 \
+    --min_resolution 256 \
+    --resolution 256 \
+    --report_to wandb \
+    --validation_steps 500 \
+    --train_batch_size 12 \
+    --mixed_precision fp16 \
+    --learning_rate 5e-6
