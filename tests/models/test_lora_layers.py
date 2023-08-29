@@ -16,6 +16,7 @@ import os
 import tempfile
 import time
 import unittest
+import copy
 
 import numpy as np
 import torch
@@ -99,6 +100,16 @@ def set_lora_weights(lora_attn_parameters, randn_weight=False):
             else:
                 torch.zero_(parameter)
 
+def state_dicts_almost_equal(sd1, sd2):
+    sd1 = sorted(sd1)
+    sd2 = sorted(sd2)
+
+    models_are_equal = True
+    for ten1, ten2 in zip(sd1.values(), sd2.values()):
+        if (ten1 - ten2).abs().sum() > 1e-3:
+            models_are_equal = False
+    
+    return models_are_equal
 
 class LoraLoaderMixinTests(unittest.TestCase):
     def get_dummy_components(self):
@@ -674,6 +685,41 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         sd_pipe.unload_lora_weights()
 
+    def test_text_encoder_lora_state_dict_unchanged(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+
+        text_encoder_1_sd_keys = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+        text_encoder_2_sd_keys = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=False,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+
+            text_encoder_1_sd_keys_2 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+            text_encoder_2_sd_keys_2 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+
+        sd_pipe.unload_lora_weights()
+
+        text_encoder_1_sd_keys_3 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+        text_encoder_2_sd_keys_3 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
+
+        assert text_encoder_1_sd_keys == text_encoder_1_sd_keys_2
+        assert text_encoder_1_sd_keys == text_encoder_1_sd_keys_3
+
+        assert text_encoder_2_sd_keys == text_encoder_2_sd_keys_2
+        assert text_encoder_2_sd_keys == text_encoder_2_sd_keys_3
+
     def test_load_lora_locally_safetensors(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
@@ -1187,3 +1233,22 @@ class LoraIntegrationTests(unittest.TestCase):
         expected = np.array([0.5244, 0.4347, 0.4312, 0.4246, 0.4398, 0.4409, 0.4884, 0.4938, 0.4094])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
+
+    def test_sdxl_1_0_fuse_unfuse_all(self):
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict)
+        text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict)
+        unet_sd = copy.deepcopy(pipe.unet.state_dict)
+
+        pipe.load_lora_weights("davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors")
+        pipe.fuse_lora()
+        pipe.unload_lora_weights()
+        pipe.unfuse_lora()
+
+        new_text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict)
+        new_text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict)
+        new_unet_sd = copy.deepcopy(pipe.unet.state_dict)
+
+        assert(state_dicts_almost_equal(text_encoder_1_sd, new_text_encoder_1_sd))
+        assert(state_dicts_almost_equal(text_encoder_2_sd, new_text_encoder_2_sd))
+        assert(state_dicts_almost_equal(unet_sd, new_unet_sd))
