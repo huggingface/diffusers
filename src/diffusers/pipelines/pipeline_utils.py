@@ -22,6 +22,7 @@ import re
 import sys
 import warnings
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -57,6 +58,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
+from ..workflow_utils import WORKFLOW_NAME
 
 
 if is_transformers_available():
@@ -1746,3 +1748,25 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
+
+    def load_workflow(self, workflow_id, workflow_filename=None):
+        workflow_filename = workflow_filename or WORKFLOW_NAME
+
+        if os.path.isdir(workflow_id):
+            workflow_filepath = os.path.join(workflow_id, workflow_filename)
+        else:
+            workflow_filepath = hf_hub_download(repo_id=workflow_id, filename=workflow_filename)
+        workflow = self._dict_from_json_file(workflow_filepath)
+
+        pipeline_call_args = dict(workflow)["call"]
+        seed = pipeline_call_args.pop("seed")
+        if seed is not None:
+            generator = torch.manual_seed(seed)
+        else:
+            generator = None
+
+        pipeline_call_args.update({"generator": generator})
+        self._update_call(**pipeline_call_args)
+
+    def _update_call(self, **kwargs):
+        self.__call__ = partial(self.__call__, **kwargs)
