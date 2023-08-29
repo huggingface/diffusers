@@ -101,8 +101,8 @@ def set_lora_weights(lora_attn_parameters, randn_weight=False):
                 torch.zero_(parameter)
 
 def state_dicts_almost_equal(sd1, sd2):
-    sd1 = sorted(sd1)
-    sd2 = sorted(sd2)
+    sd1 = dict(sorted(sd1.items()))
+    sd2 = dict(sorted(sd2.items()))
 
     models_are_equal = True
     for ten1, ten2 in zip(sd1.values(), sd2.values()):
@@ -710,7 +710,6 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             text_encoder_2_sd_keys_2 = sorted(list(sd_pipe.text_encoder_2.state_dict().keys()))
 
         sd_pipe.unload_lora_weights()
-        print("suh du")
 
         text_encoder_1_sd_keys_3 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
         text_encoder_2_sd_keys_3 = sorted(list(sd_pipe.text_encoder_2.state_dict().keys()))
@@ -1241,18 +1240,18 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_sdxl_1_0_fuse_unfuse_all(self):
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict)
-        text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict)
-        unet_sd = copy.deepcopy(pipe.unet.state_dict)
+        text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict())
+        text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
+        unet_sd = copy.deepcopy(pipe.unet.state_dict())
 
         pipe.load_lora_weights("davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors")
         pipe.fuse_lora()
         pipe.unload_lora_weights()
         pipe.unfuse_lora()
 
-        new_text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict)
-        new_text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict)
-        new_unet_sd = copy.deepcopy(pipe.unet.state_dict)
+        new_text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict())
+        new_text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
+        new_unet_sd = copy.deepcopy(pipe.unet.state_dict())
 
         assert(state_dicts_almost_equal(text_encoder_1_sd, new_text_encoder_1_sd))
         assert(state_dicts_almost_equal(text_encoder_2_sd, new_text_encoder_2_sd))
