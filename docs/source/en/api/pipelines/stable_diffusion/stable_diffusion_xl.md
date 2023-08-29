@@ -23,7 +23,7 @@ The abstract from the paper is:
 - SDXL works especially well with images between 768 and 1024.
 - SDXL can pass a different prompt for each of the text encoders it was trained on as shown below. We can even pass different parts of the same prompt to the text encoders.
 - SDXL output images can be improved by making use of a refiner model in an image-to-image setting.
-
+- SDXL offers `negative_original_size`, `negative_crops_coords_top_left`, and `negative_target_size` to negatively condition the model on image resolution and cropping parameters.
 
 <Tip>
 
