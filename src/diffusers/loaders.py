@@ -87,9 +87,11 @@ class PatchedLoraProjection(nn.Module):
 
     # overwrite PyTorch's `state_dict` to be sure that only the 'regular_linear_layer' weights are saved
     # when saving the whole text encoder model and when LoRA is unloaded or fused
-    def state_dict(self, *args, destination=None, prefix='', keep_vars=False):
+    def state_dict(self, *args, destination=None, prefix="", keep_vars=False):
         if self.lora_linear_layer is None:
-            return self.regular_linear_layer.state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
+            return self.regular_linear_layer.state_dict(
+                *args, destination=destination, prefix=prefix, keep_vars=keep_vars
+            )
 
         return super().state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
 

@@ -12,11 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import os
 import tempfile
 import time
 import unittest
-import copy
 
 import numpy as np
 import torch
@@ -100,6 +100,7 @@ def set_lora_weights(lora_attn_parameters, randn_weight=False):
             else:
                 torch.zero_(parameter)
 
+
 def state_dicts_almost_equal(sd1, sd2):
     sd1 = dict(sorted(sd1.items()))
     sd2 = dict(sorted(sd2.items()))
@@ -108,8 +109,9 @@ def state_dicts_almost_equal(sd1, sd2):
     for ten1, ten2 in zip(sd1.values(), sd2.values()):
         if (ten1 - ten2).abs().sum() > 1e-3:
             models_are_equal = False
-    
+
     return models_are_equal
+
 
 class LoraLoaderMixinTests(unittest.TestCase):
     def get_dummy_components(self):
@@ -689,8 +691,8 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
 
-        text_encoder_1_sd_keys = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
-        text_encoder_2_sd_keys = sorted(list(sd_pipe.text_encoder_2.state_dict().keys()))
+        text_encoder_1_sd_keys = sorted(sd_pipe.text_encoder.state_dict().keys())
+        text_encoder_2_sd_keys = sorted(sd_pipe.text_encoder_2.state_dict().keys())
 
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -706,18 +708,18 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-            text_encoder_1_sd_keys_2 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
-            text_encoder_2_sd_keys_2 = sorted(list(sd_pipe.text_encoder_2.state_dict().keys()))
+            text_encoder_1_sd_keys_2 = sorted(sd_pipe.text_encoder.state_dict().keys())
+            text_encoder_2_sd_keys_2 = sorted(sd_pipe.text_encoder_2.state_dict().keys())
 
         sd_pipe.unload_lora_weights()
 
-        text_encoder_1_sd_keys_3 = sorted(list(sd_pipe.text_encoder.state_dict().keys()))
-        text_encoder_2_sd_keys_3 = sorted(list(sd_pipe.text_encoder_2.state_dict().keys()))
+        text_encoder_1_sd_keys_3 = sorted(sd_pipe.text_encoder.state_dict().keys())
+        text_encoder_2_sd_keys_3 = sorted(sd_pipe.text_encoder_2.state_dict().keys())
 
         # default & unloaded LoRA weights should have identical state_dicts
         assert text_encoder_1_sd_keys == text_encoder_1_sd_keys_3
         # default & loaded LoRA weights should NOT have identical state_dicts
-        assert text_encoder_1_sd_keys != text_encoder_1_sd_keys_2 # 
+        assert text_encoder_1_sd_keys != text_encoder_1_sd_keys_2  #
 
         # default & unloaded LoRA weights should have identical state_dicts
         assert text_encoder_2_sd_keys == text_encoder_2_sd_keys_3
@@ -1253,6 +1255,6 @@ class LoraIntegrationTests(unittest.TestCase):
         new_text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
         new_unet_sd = copy.deepcopy(pipe.unet.state_dict())
 
-        assert(state_dicts_almost_equal(text_encoder_1_sd, new_text_encoder_1_sd))
-        assert(state_dicts_almost_equal(text_encoder_2_sd, new_text_encoder_2_sd))
-        assert(state_dicts_almost_equal(unet_sd, new_unet_sd))
+        assert state_dicts_almost_equal(text_encoder_1_sd, new_text_encoder_1_sd)
+        assert state_dicts_almost_equal(text_encoder_2_sd, new_text_encoder_2_sd)
+        assert state_dicts_almost_equal(unet_sd, new_unet_sd)
