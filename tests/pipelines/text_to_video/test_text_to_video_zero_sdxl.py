@@ -27,7 +27,7 @@ class TextToVideoZeroSDXLPipelineFastTests(unittest.TestCase):
     def test_forward_loop(self):
         model_id = "stabilityai/stable-diffusion-xl-base-1.0"
         pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
-                model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+            model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
         )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         generator = torch.Generator().manual_seed(0)
@@ -54,12 +54,8 @@ class TextToVideoZeroSDXLPipelineFastTests(unittest.TestCase):
 
         prompt = "A panda dancing in Antarctica"
         result = pipe(
-            prompt=prompt,
-            generator=generator,
-            video_length=3,
-            num_inference_steps=5,
-            height=64, width=64,
-            t0=1, t1=3).images
+            prompt=prompt, generator=generator, video_length=3, num_inference_steps=5, height=64, width=64, t0=1, t1=3
+        ).images
 
         first_frame_slice = result[0, -3:, -3:, -1]
         last_frame_slice = result[-1, -3:, -3:, 0]
