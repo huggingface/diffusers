@@ -41,6 +41,7 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 13. [Model Editing](#model-editing)
 14. [DiffEdit](#diffedit)
 15. [T2I-Adapter](#t2i-adapter)
+16. [FABRIC](#fabric)
 
 For convenience, we provide a table to denote which methods are inference-only and which require fine-tuning/training.
 
@@ -61,7 +62,7 @@ For convenience, we provide a table to denote which methods are inference-only a
 |           [Model Editing](#model-editing)           |         ✅         |                   ❌                    |                                                                                                 |
 |                [DiffEdit](#diffedit)                |         ✅         |                   ❌                    |                                                                                                 |
 |             [T2I-Adapter](#t2i-adapter)             |         ✅         |                   ❌                    |                                                                                                 |
-
+|                [Fabric](#fabric)                    |         ✅         |                   ❌                    |                                                                                                 |
 ## Instruct Pix2Pix
 
 [Paper](https://arxiv.org/abs/2211.09800)
@@ -230,3 +231,14 @@ There are 8 canonical pre-trained adapters trained on different conditionings su
 depth maps, and semantic segmentations.
 
 See [here](../api/pipelines/stable_diffusion/adapter) for more information on how to use it.
+
+## Fabric
+
+[Paper](https://arxiv.org/abs/2307.10159)
+
+[Fabric](../api/pipelines/fabric) is a training-free
+approach applicable to a wide range of popular diffusion models, which exploits
+the self-attention layer present in the most widely used architectures to condition
+the diffusion process on a set of feedback images.
+
+To know more details, check out the [official doc](../api/pipelines/fabric).
