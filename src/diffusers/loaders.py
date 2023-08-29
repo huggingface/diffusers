@@ -1456,23 +1456,43 @@ class LoraLoaderMixin:
             else:
                 current_rank = rank
 
+            q_linear_layer = (
+                attn_module.q_proj.regular_linear_layer
+                if isinstance(attn_module.q_proj, PatchedLoraProjection)
+                else attn_module.q_proj
+            )
             attn_module.q_proj = PatchedLoraProjection(
-                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=current_rank, dtype=dtype
+                q_linear_layer, lora_scale, network_alpha=query_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.q_proj.lora_linear_layer.parameters())
 
+            k_linear_layer = (
+                attn_module.k_proj.regular_linear_layer
+                if isinstance(attn_module.k_proj, PatchedLoraProjection)
+                else attn_module.k_proj
+            )
             attn_module.k_proj = PatchedLoraProjection(
-                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=current_rank, dtype=dtype
+                k_linear_layer, lora_scale, network_alpha=key_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.k_proj.lora_linear_layer.parameters())
 
+            v_linear_layer = (
+                attn_module.v_proj.regular_linear_layer
+                if isinstance(attn_module.v_proj, PatchedLoraProjection)
+                else attn_module.v_proj
+            )
             attn_module.v_proj = PatchedLoraProjection(
-                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=current_rank, dtype=dtype
+                v_linear_layer, lora_scale, network_alpha=value_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
 
+            out_linear_layer = (
+                attn_module.out_proj.regular_linear_layer
+                if isinstance(attn_module.out_proj, PatchedLoraProjection)
+                else attn_module.out_proj
+            )
             attn_module.out_proj = PatchedLoraProjection(
-                attn_module.out_proj, lora_scale, network_alpha=out_alpha, rank=current_rank, dtype=dtype
+                out_linear_layer, lora_scale, network_alpha=out_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
@@ -1484,13 +1504,23 @@ class LoraLoaderMixin:
                 current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
                 current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
 
+                fc1_linear_layer = (
+                    mlp_module.fc1.regular_linear_layer
+                    if isinstance(mlp_module.fc1, PatchedLoraProjection)
+                    else mlp_module.fc1
+                )
                 mlp_module.fc1 = PatchedLoraProjection(
-                    mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=current_rank_fc1, dtype=dtype
+                    fc1_linear_layer, lora_scale, network_alpha=fc1_alpha, rank=current_rank_fc1, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc1.lora_linear_layer.parameters())
 
+                fc2_linear_layer = (
+                    mlp_module.fc2.regular_linear_layer
+                    if isinstance(mlp_module.fc2, PatchedLoraProjection)
+                    else mlp_module.fc2
+                )
                 mlp_module.fc2 = PatchedLoraProjection(
-                    mlp_module.fc2, lora_scale, network_alpha=fc2_alpha, rank=current_rank_fc2, dtype=dtype
+                    fc2_linear_layer, lora_scale, network_alpha=fc2_alpha, rank=current_rank_fc2, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc2.lora_linear_layer.parameters())
 
