@@ -1272,7 +1272,7 @@ class LoraLoaderMixin:
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
-            warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
+            warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
         # load loras into unet
