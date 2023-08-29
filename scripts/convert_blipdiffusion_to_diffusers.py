@@ -199,8 +199,8 @@ def save_blip_diffusion_model(model, args):
     tokenizer = CLIPTokenizer.from_pretrained(
         "runwayml/stable-diffusion-v1-5", subfolder="tokenizer"
     )
-    blipDiffusion = BlipDiffusionPipeline(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
-    blipDiffusion.save_pretrained(args.checkpoint_path)
+    blip_diffusion = BlipDiffusionPipeline(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
+    blip_diffusion.save_pretrained(args.checkpoint_path)
 
 
 

@@ -53,15 +53,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @property
     def dummy_text_encoder(self):
         torch.manual_seed(0)
-        config = CLIPTextConfig(
-            hidden_size=32,
-            intermediate_size=32,
-            projection_dim=32,
-            num_hidden_layers=1,
-            num_attention_heads=1,
-            max_position_embeddings=77,
-        )
-        text_encoder = CtxCLIPTextModel(config)
+
         return text_encoder
     
     @property
@@ -125,11 +117,65 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return unet
 
     def get_dummy_components(self):
-        text_encoder= self.dummy_text_encoder  
-        vae = self.dummy_vae
-        qformer= self.dummy_qformer
-        unet = self.dummy_unet
-        tokenizer = CLIPTokenizer.from_pretrained("ayushtues/blipdiffusion", subfolder="tokenizer", cache_dir='./cache')
+
+        text_encoder_config = CLIPTextConfig(
+            hidden_size=32,
+            intermediate_size=32,
+            projection_dim=32,
+            num_hidden_layers=1,
+            num_attention_heads=1,
+            max_position_embeddings=77,
+        )
+        text_encoder = CtxCLIPTextModel(text_encoder_config)
+
+        vae = AutoencoderKL(
+            in_channels=4,
+            out_channels=4,
+            down_block_types= ("DownEncoderBlock2D",),
+            up_block_types= ("UpDecoderBlock2D",),
+            block_out_channels = (64,),
+            layers_per_block = 1,
+            act_fn="silu",
+            latent_channels= 4,
+            norm_num_groups= 32,
+            sample_size= 32,
+            )
+        
+        blip_vision_config =  {  
+                "hidden_size" : 32,
+                "intermediate_size" : 32,
+                "num_hidden_layers": 1,
+                "num_attention_heads" : 1,
+                "image_size" : 224,
+                "patch_size": 14,
+                "hidden_act" : "quick_gelu",
+        }
+
+        blip_qformer_config = {
+                "vocab_size" : 30522,
+                "hidden_size" : 32,
+                "num_hidden_layers" : 1,
+                "num_attention_heads" : 1,
+                "intermediate_size" : 32,
+                "max_position_embeddings" : 512,
+                "cross_attention_frequency" : 1,
+                "encoder_hidden_size" : 32,
+        }
+        qformer_config = Blip2Config(vision_config=blip_vision_config, qformer_config=blip_qformer_config, num_query_tokens=16)
+        qformer = Blip2QFormerModel(qformer_config)
+
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        tokenizer = CLIPTokenizer.from_pretrained("ayushtues/blipdiffusion", subfolder="tokenizer")
+
         scheduler = PNDMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -177,6 +223,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         pipe.set_progress_bar_config(disable=None)
 
+        #TODO : Chage input processing in the test
         output = pipe(**self.get_dummy_inputs(device))
         image = output[0]
         image = np.asarray(image)
@@ -186,7 +233,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (64, 64, 4)
 
         expected_slice = np.array(
-            [0.5686274509803921, 0.5176470588235295, 0.6470588235294118, 0.44313725490196076, 0.6352941176470588, 0.4980392156862745, 0.396078431372549, 0.5529411764705883, 0.5411764705882353]
+            [0.5686, 0.5176, 0.6470, 0.4431, 0.6352, 0.4980, 0.3961, 0.5529, 0.5412]
         )
 
         assert (

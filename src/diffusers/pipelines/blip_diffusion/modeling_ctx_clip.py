@@ -1,9 +1,17 @@
-"""
- Copyright (c) 2023, salesforce.com, inc.
- All rights reserved.
- SPDX-License-Identifier: BSD-3-Clause
- For full license text, see the LICENSE file in the repo root or https://opensource.org/licenses/BSD-3-Clause
-"""
+# Copyright 2023 Salesforce.com, inc.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 from typing import Optional, Tuple, Union
 
 import torch
@@ -21,14 +29,14 @@ This is a modified version of the CLIPTextModel from transformers.models.clip.mo
 Which allows for an extra input of "context embeddings", which are the query embeddings used in Qformer
 They pass through the clip model, along with the text embeddings, and interact with them using self attention
 '''
-class CtxCLIPTextModel(CLIPPreTrainedModel):
+class ContextCLIPTextModel(CLIPPreTrainedModel):
     config_class = CLIPTextConfig
 
     _no_split_modules = ["CLIPEncoderLayer"]
 
     def __init__(self, config: CLIPTextConfig):
         super().__init__(config)
-        self.text_model = CtxCLIPTextTransformer(config)
+        self.text_model = ContextCLIPTextTransformer(config)
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -55,12 +63,12 @@ class CtxCLIPTextModel(CLIPPreTrainedModel):
         )
 
 
-class CtxCLIPTextTransformer(nn.Module):
+class ContextCLIPTextTransformer(nn.Module):
     def __init__(self, config: CLIPTextConfig):
         super().__init__()
         self.config = config
         embed_dim = config.hidden_size
-        self.embeddings = CtxCLIPTextEmbeddings(config)
+        self.embeddings = ContextCLIPTextEmbeddings(config)
         self.encoder = CLIPEncoder(config)
         self.final_layer_norm = nn.LayerNorm(embed_dim)
 
@@ -159,7 +167,7 @@ class CtxCLIPTextTransformer(nn.Module):
         return mask
 
 
-class CtxCLIPTextEmbeddings(nn.Module):
+class ContextCLIPTextEmbeddings(nn.Module):
     def __init__(self, config: CLIPTextConfig):
         super().__init__()
         embed_dim = config.hidden_size

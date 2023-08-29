@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2023 Blip Diffusion authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ from typing import List, Optional, Union
 import numpy as np
 import PIL
 from ...models import AutoencoderKL, UNet2DConditionModel
-from .modeling_ctx_clip import CtxCLIPTextModel
+from .modeling_ctx_clip import ContextCLIPTextModel
 from transformers import CLIPTokenizer
 from ...pipelines import DiffusionPipeline
 import torch
@@ -94,7 +94,7 @@ def prepare_cond_image(
 # Create a class for the Blip Diffusion pipeline
 class BlipDiffusionPipeline(DiffusionPipeline):
     
-    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: CtxCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, ctx_begin_pos: int = 2, mean: tuple = (0.48145466, 0.4578275, 0.40821073), std: tuple = (0.26862954, 0.26130258, 0.27577711)):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, ctx_begin_pos: int = 2, mean: tuple = (0.48145466, 0.4578275, 0.40821073), std: tuple = (0.26862954, 0.26130258, 0.27577711)):
         super().__init__()
 
         self.image_processor = BlipImageProcessor()
