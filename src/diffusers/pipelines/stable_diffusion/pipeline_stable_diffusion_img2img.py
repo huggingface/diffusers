@@ -700,7 +700,7 @@ class StableDiffusionImg2ImgPipeline(
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
-        negative_prompt_embeds, prompt_embeds = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,

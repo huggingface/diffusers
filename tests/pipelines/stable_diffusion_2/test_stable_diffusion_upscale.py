@@ -251,7 +251,7 @@ class StableDiffusionUpscalePipelineFastTests(unittest.TestCase):
         image = output.images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        negative_prompt_embeds, prompt_embeds = sd_pipe.encode_prompt(prompt, device, 1, False)
+        prompt_embeds, negative_prompt_embeds = sd_pipe.encode_prompt(prompt, device, 1, False)
         if negative_prompt_embeds is not None:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 

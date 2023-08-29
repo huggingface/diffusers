@@ -836,7 +836,7 @@ class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversion
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        negative_prompt_embeds, prompt_embeds = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
