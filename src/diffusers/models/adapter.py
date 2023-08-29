@@ -128,6 +128,8 @@ class T2IAdapter(ModelMixin, ConfigMixin):
 
         if adapter_type == "full_adapter":
             self.adapter = FullAdapter(in_channels, channels, num_res_blocks, downscale_factor)
+        elif adapter_type == "full_adapter_xl":
+            self.adapter = FullAdapterXL(in_channels, channels, num_res_blocks, downscale_factor)
         elif adapter_type == "light_adapter":
             self.adapter = LightAdapter(in_channels, channels, num_res_blocks, downscale_factor)
         else:
@@ -170,6 +172,48 @@ class FullAdapter(nn.Module):
         )
 
         self.total_downscale_factor = downscale_factor * 2 ** (len(channels) - 1)
+
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        x = self.unshuffle(x)
+        x = self.conv_in(x)
+
+        features = []
+
+        for block in self.body:
+            x = block(x)
+            features.append(x)
+
+        return features
+
+
+class FullAdapterXL(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 3,
+        channels: List[int] = [320, 640, 1280, 1280],
+        num_res_blocks: int = 2,
+        downscale_factor: int = 16,
+    ):
+        super().__init__()
+
+        in_channels = in_channels * downscale_factor**2
+
+        self.unshuffle = nn.PixelUnshuffle(downscale_factor)
+        self.conv_in = nn.Conv2d(in_channels, channels[0], kernel_size=3, padding=1)
+
+        self.body = []
+        # blocks to extract XL features with dimensions of [320, 64, 64], [640, 64, 64], [1280, 32, 32], [1280, 32, 32]
+        for i in range(len(channels)):
+            if i == 1:
+                self.body.append(AdapterBlock(channels[i - 1], channels[i], num_res_blocks))
+            elif i == 2:
+                self.body.append(AdapterBlock(channels[i - 1], channels[i], num_res_blocks, down=True))
+            else:
+                self.body.append(AdapterBlock(channels[i], channels[i], num_res_blocks))
+
+        self.body = nn.ModuleList(self.body)
+        # XL has one fewer downsampling
+        self.total_downscale_factor = downscale_factor * 2 ** (len(channels) - 2)
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         x = self.unshuffle(x)
