@@ -118,7 +118,7 @@ else:
         StableDiffusionXLInstructPix2PixPipeline,
         StableDiffusionXLPipeline,
     )
-    from .t2i_adapter import StableDiffusionAdapterPipeline
+    from .t2i_adapter import StableDiffusionAdapterPipeline, StableDiffusionXLAdapterPipeline
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .unidiffuser import ImageTextPipelineOutput, UniDiffuserModel, UniDiffuserPipeline, UniDiffuserTextDecoder
