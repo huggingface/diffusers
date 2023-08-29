@@ -299,7 +299,7 @@ SDXL adds two addition conditioning techniques, which are referred to as *micro-
 
 <Tip>
 
-Size and crop-conditioning parameters can be used together to generate high-resolution images that are centered on a subject. These micro-conditionings and negative micro-conditionings are available in the [`StableDiffusionXLPipeline`], [`StableDiffusionXLImageToImagePipeline`], [`StableDiffusionXLInpaintingPipeline`], and [`StableDiffusionXLControlNetPipeline`].
+Size and crop-conditioning parameters can be used together to generate high-resolution images that are centered on a subject. These micro-conditionings and negative micro-conditionings are available in the [`StableDiffusionXLPipeline`], [`StableDiffusionXLImg2ImgPipeline`], [`StableDiffusionXLInpaintPipeline`], and [`StableDiffusionXLControlNetPipeline`].
 
 </Tip>
 
