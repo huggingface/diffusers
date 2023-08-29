@@ -763,6 +763,7 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             List[PIL.Image.Image],
             List[np.ndarray],
         ] = None,
+        mask_image=None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -994,6 +995,24 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
                 guess_mode=guess_mode,
             )
             height, width = image.shape[-2:]
+
+            mask_image = self.prepare_image(
+                image=mask_image,
+                width=width,
+                height=height,
+                batch_size=batch_size * num_images_per_prompt,
+                num_images_per_prompt=num_images_per_prompt,
+                device=device,
+                dtype=controlnet.dtype,
+                do_classifier_free_guidance=do_classifier_free_guidance,
+                guess_mode=guess_mode,
+            )
+
+            mask_image = mask_image[:, 0:1, :, :]
+
+            masked_image = image * (mask_image < 0.5)
+
+            image = torch.cat([mask_image, masked_image], dim=1)
         elif isinstance(controlnet, MultiControlNetModel):
             images = []
 
