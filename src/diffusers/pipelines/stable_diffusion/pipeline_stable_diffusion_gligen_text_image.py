@@ -542,12 +542,12 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             return x
         else:
             return x @ torch.transpose(projection_matrix, 0, 1)
-        
+
     def complete_mask(self, has_mask, max_objs, device):
         mask = torch.ones(1, max_objs).type(self.text_encoder.dtype).to(device)
         if has_mask is None:
             return mask
-        
+
         if isinstance(has_mask, int):
             return mask * has_mask
         else:
@@ -574,7 +574,16 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         return feature
 
     def prepare_cross_attention_kwags(
-        self, hidden_size, gligen_phrases, gligen_images, gligen_boxes, input_phrases_mask, input_images_mask, repeat_batch, max_objs, device
+        self,
+        hidden_size,
+        gligen_phrases,
+        gligen_images,
+        gligen_boxes,
+        input_phrases_mask,
+        input_images_mask,
+        repeat_batch,
+        max_objs,
+        device,
     ):
         phrases, images = gligen_phrases, gligen_images
         images = [None] * len(phrases) if images is None else images
@@ -602,7 +611,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             if image_feature is not None:
                 image_embeddings[idx] = image_feature
                 image_masks[idx] = 1
-        
+
         input_phrases_mask = self.complete_mask(input_phrases_mask, max_objs, device)
         phrases_masks = phrases_masks.unsqueeze(0).repeat(repeat_batch, 1) * input_phrases_mask
         input_images_mask = self.complete_mask(input_images_mask, max_objs, device)
@@ -693,9 +702,9 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             gligen_images (`List[PIL.Image.Image]`):
                 The images to guide what to include in each of the regions defined by the corresponding `gligen_boxes`.
                 There should only be one image per bounding box
-            input_phrases_mask (`int` or `List[int]`): 
+            input_phrases_mask (`int` or `List[int]`):
                 pre phrases mask input defined by the correspongding `input_phrases_mask`
-            input_images_mask (`int` or `List[int]`): 
+            input_images_mask (`int` or `List[int]`):
                 pre images mask input defined by the correspongding `input_images_mask`
             gligen_boxes (`List[List[float]]`):
                 The bounding boxes that identify rectangular regions of the image that are going to be filled with the
