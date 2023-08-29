@@ -303,7 +303,7 @@ Size and crop-conditioning parameters can be used together to generate high-reso
 
 </Tip>
 
-## Size conditioning
+### Size conditioning
 
 Size conditioning takes advantage of what SDXL has learned about image features at different resolutions during training to generate higher quality images during inference. You can experiment with this by adjusting the [`original_size`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.original_size) and [`target_size`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.target_size) parameters. By default, both parameters are set to 1024 to generate better images. If your `original_size` and `target_size` don't match, then the image is either down or upsampled to match the `target_size`.
 
@@ -330,7 +330,7 @@ image = pipe(
   <figcaption class="text-center">Images negative conditioned on image resolutions of (128, 128), (256, 256), and (512, 512).</figcaption>
 </div>
 
-## Crop conditioning
+### Crop conditioning
 
 Images generated from previous Stable Diffusion models may sometimes appear to be randomly cropped due to how the model is trained. By conditioning SDXL on the cropping parameters, SDXL is able to generate images that are more centered and subjects in the images aren't randomly cut off. You can control the amount of cropping during inference with the [`crops_coords_top_left`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.crops_coords_top_left) parameter. By default, `crops_coords_top_left` is (0, 0) for a centered image.
 
