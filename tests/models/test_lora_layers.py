@@ -713,8 +713,6 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
                 unet_lora_layers=lora_components["unet_lora_layers"],
-                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
-                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
                 safe_serialization=True,
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
@@ -746,8 +744,6 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
                 unet_lora_layers=lora_components["unet_lora_layers"],
-                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
-                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
                 safe_serialization=True,
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
@@ -764,13 +760,13 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         assert not np.allclose(
             orig_image_slice, lora_image_slice
-        ), "LoRA parameters should lead to a different image slice."
+        ), "Fusion of LoRAs should lead to a different image slice."
         assert not np.allclose(
             orig_image_slice_two, lora_image_slice
-        ), "LoRA parameters should lead to a different image slice."
+        ), "Fusion of LoRAs should lead to a different image slice."
         assert np.allclose(
             orig_image_slice, orig_image_slice_two, atol=1e-3
-        ), "Unloading LoRA parameters should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
+        ), "Reversing the fusion of LoRAs should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
 
 
 @slow

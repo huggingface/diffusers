@@ -171,7 +171,6 @@ class LoRACompatibleLinear(nn.Linear):
         logger.info(f"Fusing LoRA weights for {self.__class__}")
 
         w_orig = self.weight.data.float()
-        self.weight_original = w_orig.clone()
         w_up = self.lora_layer.up.weight.data.float()
         w_down = self.lora_layer.down.weight.data.float()
 
