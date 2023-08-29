@@ -37,7 +37,7 @@ from .modeling_blip2 import Blip2QFormerModel
 import tqdm
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
-from ...image_processor import BlipImageProcessor
+from .blip_image_processing import BlipImageProcessor
 from PIL import Image
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 import re
@@ -190,7 +190,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
 
 
-        reference_image = self.image_processor.preprocess(reference_image,  mean=self.config.mean, std=self.config.std)
+        reference_image = self.image_processor.preprocess(reference_image,  image_mean=self.config.mean, image_std=self.config.std, return_tensors='pt')['pixel_values']
         reference_image = reference_image.to(self.device)
 
         prompt = self._build_prompt(
