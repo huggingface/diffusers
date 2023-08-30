@@ -29,22 +29,7 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(..., add_watermarker=False)
 
 ## Load model checkpoints
 
-Use the [`~StableDiffusionXLPipeline.from_single_file`] method to load a model checkpoint stored in a single file format (`.ckpt` or `.safetensors`) from the Hub or locally:
-
-```py
-from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
-import torch
-
-pipeline = StableDiffusionXLPipeline.from_single_file(
-    "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
-
-refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
-    "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
-).to("cuda")
-```
-
-Model weights may also be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~StableDiffusionXLPipeline.from_pretrained`] method:
+Model weights may be stored in separate subfolders on the Hub or locally, in which case, you should use the [`~StableDiffusionXLPipeline.from_pretrained`] method:
 
 ```py
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
@@ -56,6 +41,21 @@ pipeline = StableDiffusionXLPipeline.from_pretrained(
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+).to("cuda")
+```
+
+You can also use the [`~StableDiffusionXLPipeline.from_single_file`] method to load a model checkpoint stored in a single file format (`.ckpt` or `.safetensors`) from the Hub or locally:
+
+```py
+from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
+import torch
+
+pipeline = StableDiffusionXLPipeline.from_single_file(
+    "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")
+
+refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
+    "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
 ).to("cuda")
 ```
 
@@ -271,7 +271,7 @@ Generate an image from the base model, and set the model output to **latent** sp
 ```py
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
-image = base(prompt=prompt, output_type="latent" if use_refiner else "pil").images[0]
+image = base(prompt=prompt, output_type="latent").images[0]
 ```
 
 Pass the generated image to the refiner model:
@@ -295,17 +295,23 @@ For inpainting, load the refiner model in the [`StableDiffusionXLInpaintPipeline
 
 ## Micro-conditioning
 
-SDXL adds two addition conditioning techniques, which are referred to as *micro-conditioning*. The model is conditioned on image size so at inference, you can set a desired resolution for the generated image. The second conditioning is based on cropping parameters, allowing you to control how the generated image is cropped.
+SDXL training involves several additional conditioning techniques, which are referred to as *micro-conditioning*. These include original image size, target image size, and cropping parameters. The micro-conditionings can be used at inference time to create high-quality, centered images.
 
 <Tip>
 
-Size and crop-conditioning parameters can be used together to generate high-resolution images that are centered on a subject. These micro-conditionings and negative micro-conditionings are available in the [`StableDiffusionXLPipeline`], [`StableDiffusionXLImg2ImgPipeline`], [`StableDiffusionXLInpaintPipeline`], and [`StableDiffusionXLControlNetPipeline`].
+You can use both micro-conditioning and negative micro-conditioning parameters thanks to classifier-free guidance. They are available in the [`StableDiffusionXLPipeline`], [`StableDiffusionXLImg2ImgPipeline`], [`StableDiffusionXLInpaintPipeline`], and [`StableDiffusionXLControlNetPipeline`].
 
 </Tip>
 
 ### Size conditioning
 
 Size conditioning takes advantage of what SDXL has learned about image features at different resolutions during training to generate higher quality images during inference. You can experiment with this by adjusting the [`original_size`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.original_size) and [`target_size`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.target_size) parameters. By default, both parameters are set to 1024 to generate better images. If your `original_size` and `target_size` don't match, then the image is either down or upsampled to match the `target_size`.
+
+There are two types of size conditioning:
+
+- [`original_size`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.original_size) conditioning comes from upscaled images in the training batch (because it would be wasteful to discard the smaller images which make up almost 40% of the total training data). This way, SDXL learns that upscaling artifacts are not supposed to be present in high-resolution images. During inference, you can use `original_size` to indicate the original image resolution. Using the default value of `(1024, 1024)` produces higher-quality images that resemble the 1024x1024 images in the dataset. If you choose to use a lower resolution, such as `(256, 256)`, the model still generates 1024x1024 images, but they'll look like the low resolution images (simpler patterns, blurring) in the dataset.
+
+- [`target_size`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.target_size) conditioning comes from finetuning SDXL to support different image aspect ratios. During inference, if you use the default value of `(1024, 1024)`, you'll get an image that resembles the composition of square images in the dataset. We recommend using the same value for `target_size` and `original_size`, but feel free to experiment with other options!
 
 🤗 Diffusers also lets you specify negative conditions about an image's size to steer generation away from certain image resolutions:
 
@@ -332,7 +338,7 @@ image = pipe(
 
 ### Crop conditioning
 
-Images generated from previous Stable Diffusion models may sometimes appear to be randomly cropped due to how the model is trained. By conditioning SDXL on the cropping parameters, SDXL is able to generate images that are more centered and subjects in the images aren't randomly cut off. You can control the amount of cropping during inference with the [`crops_coords_top_left`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl#diffusers.StableDiffusionXLPipeline.__call__.crops_coords_top_left) parameter. By default, `crops_coords_top_left` is (0, 0) for a centered image.
+Images generated by previous Stable Diffusion models may sometimes appear to be cropped. This is because images are actually cropped during training so that all the images in a batch have the same size. By conditioning on crop coordinates, SDXL *learns* that no cropping - coordinates `(0, 0)` - usually correlates with centered subjects and complete faces (this is the default value in 🤗 Diffusers). You can experiment with different coordinates if you want to generate off-centered compositions!
 
 ```py
 from diffusers import StableDiffusionXLPipeline
@@ -372,7 +378,7 @@ image = pipe(
 
 ## Use a different prompt for each text-encoder
 
-SDXL uses two text-encoders so it is possible to pass a different prompt to each text-encoder which can [improve quality](https://github.com/huggingface/diffusers/issues/4004#issuecomment-1627764201). Pass your original prompt to `prompt` and the second prompt to `prompt_2` (use `negative_prompt` and `negative_prompt_2` if you're using a negative prompt):
+SDXL uses two text-encoders, so it is possible to pass a different prompt to each text-encoder, which can [improve quality](https://github.com/huggingface/diffusers/issues/4004#issuecomment-1627764201). Pass your original prompt to `prompt` and the second prompt to `prompt_2` (use `negative_prompt` and `negative_prompt_2` if you're using a negative prompts):
 
 ```py
 from diffusers import StableDiffusionXLPipeline
