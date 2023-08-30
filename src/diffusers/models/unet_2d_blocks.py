@@ -1126,7 +1126,7 @@ class DownBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, temb=None):
+    def forward(self, hidden_states, temb=None, scale: float = 1.0):
         output_states = ()
 
         for resnet in self.resnets:
@@ -1147,13 +1147,13 @@ class DownBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale)
 
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+                hidden_states = downsampler(hidden_states, scale)
 
             output_states = output_states + (hidden_states,)
 
@@ -1209,13 +1209,13 @@ class DownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, scale: float = 1.0):
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb=None)
+            hidden_states = resnet(hidden_states, temb=None, scale=scale)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+                hidden_states = downsampler(hidden_states, scale)
 
         return hidden_states
 
@@ -1292,14 +1292,14 @@ class AttnDownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, scale: float = 1.0):
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb=None)
+            hidden_states = resnet(hidden_states, temb=None, scale=scale)
             hidden_states = attn(hidden_states)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+                hidden_states = downsampler(hidden_states, scale)
 
         return hidden_states
 
@@ -1385,16 +1385,16 @@ class AttnSkipDownBlock2D(nn.Module):
             self.downsamplers = None
             self.skip_conv = None
 
-    def forward(self, hidden_states, temb=None, skip_sample=None):
+    def forward(self, hidden_states, temb=None, skip_sample=None, scale: float = 1.0):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb, scale=scale)
             hidden_states = attn(hidden_states)
             output_states += (hidden_states,)
 
         if self.downsamplers is not None:
-            hidden_states = self.resnet_down(hidden_states, temb)
+            hidden_states = self.resnet_down(hidden_states, temb, scale=scale)
             for downsampler in self.downsamplers:
                 skip_sample = downsampler(skip_sample)
 
@@ -1465,15 +1465,15 @@ class SkipDownBlock2D(nn.Module):
             self.downsamplers = None
             self.skip_conv = None
 
-    def forward(self, hidden_states, temb=None, skip_sample=None):
+    def forward(self, hidden_states, temb=None, skip_sample=None, scale: float = 1.0):
         output_states = ()
 
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb, scale)
             output_states += (hidden_states,)
 
         if self.downsamplers is not None:
-            hidden_states = self.resnet_down(hidden_states, temb)
+            hidden_states = self.resnet_down(hidden_states, temb, scale)
             for downsampler in self.downsamplers:
                 skip_sample = downsampler(skip_sample)
 
@@ -1548,7 +1548,7 @@ class ResnetDownsampleBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, temb=None):
+    def forward(self, hidden_states, temb=None, scale: float = 1.0):
         output_states = ()
 
         for resnet in self.resnets:
@@ -1569,13 +1569,13 @@ class ResnetDownsampleBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale)
 
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states, temb)
+                hidden_states = downsampler(hidden_states, temb, scale)
 
             output_states = output_states + (hidden_states,)
 
@@ -1720,7 +1720,10 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     **cross_attention_kwargs,
                 )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = resnet(hidden_states, temb, scale=1.0)
 
                 hidden_states = attn(
                     hidden_states,
@@ -1733,7 +1736,10 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states, temb)
+                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                    hidden_states = downsampler(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = downsampler(hidden_states, temb, scale=1.0)
 
             output_states = output_states + (hidden_states,)
 
@@ -1786,7 +1792,7 @@ class KDownBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, temb=None):
+    def forward(self, hidden_states, temb=None, scale: float = 1.0):
         output_states = ()
 
         for resnet in self.resnets:
@@ -1807,7 +1813,7 @@ class KDownBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale)
 
             output_states += (hidden_states,)
 
@@ -1922,7 +1928,10 @@ class KCrossAttnDownBlock2D(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                 )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = resnet(hidden_states, temb, scale=1.0)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2033,20 +2042,20 @@ class AttnUpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb, scale=scale)
             hidden_states = attn(hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 if self.upsample_type == "resnet":
-                    hidden_states = upsampler(hidden_states, temb=temb)
+                    hidden_states = upsampler(hidden_states, temb=temb, scale=scale)
                 else:
                     hidden_states = upsampler(hidden_states)
 
@@ -2183,7 +2192,10 @@ class CrossAttnUpBlock2D(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = resnet(hidden_states, temb, scale=1.0)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2248,7 +2260,7 @@ class UpBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -2272,7 +2284,7 @@ class UpBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale=scale)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -2325,9 +2337,9 @@ class UpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states, temb=None):
+    def forward(self, hidden_states, temb=None, scale: float = 1.0):
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb=temb)
+            hidden_states = resnet(hidden_states, temb=temb, scale=scale)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -2404,9 +2416,9 @@ class AttnUpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states, temb=None):
+    def forward(self, hidden_states, temb=None, scale: float = 1.0):
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb=temb)
+            hidden_states = resnet(hidden_states, temb=temb, scale=scale)
             hidden_states = attn(hidden_states, temb=temb)
 
         if self.upsamplers is not None:
@@ -2507,14 +2519,14 @@ class AttnSkipUpBlock2D(nn.Module):
             self.skip_norm = None
             self.act = None
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, skip_sample=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, skip_sample=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb, scale=scale)
 
         hidden_states = self.attentions[0](hidden_states)
 
@@ -2530,7 +2542,7 @@ class AttnSkipUpBlock2D(nn.Module):
 
             skip_sample = skip_sample + skip_sample_states
 
-            hidden_states = self.resnet_up(hidden_states, temb)
+            hidden_states = self.resnet_up(hidden_states, temb, scale=scale)
 
         return hidden_states, skip_sample
 
@@ -2604,14 +2616,14 @@ class SkipUpBlock2D(nn.Module):
             self.skip_norm = None
             self.act = None
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, skip_sample=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, skip_sample=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb, scale=scale)
 
         if skip_sample is not None:
             skip_sample = self.upsampler(skip_sample)
@@ -2625,7 +2637,7 @@ class SkipUpBlock2D(nn.Module):
 
             skip_sample = skip_sample + skip_sample_states
 
-            hidden_states = self.resnet_up(hidden_states, temb)
+            hidden_states = self.resnet_up(hidden_states, temb, scale=scale)
 
         return hidden_states, skip_sample
 
@@ -2697,7 +2709,7 @@ class ResnetUpsampleBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -2721,11 +2733,11 @@ class ResnetUpsampleBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale=scale)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, temb)
+                hidden_states = upsampler(hidden_states, temb, scale=scale)
 
         return hidden_states
 
@@ -2877,7 +2889,10 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     **cross_attention_kwargs,
                 )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = resnet(hidden_states, temb, scale=1.0)
 
                 hidden_states = attn(
                     hidden_states,
@@ -2888,7 +2903,10 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, temb)
+                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                    hidden_states = upsampler(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = upsampler(hidden_states, temb, scale=1.0)
 
         return hidden_states
 
@@ -2941,7 +2959,7 @@ class KUpBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
         if res_hidden_states_tuple is not None:
             hidden_states = torch.cat([hidden_states, res_hidden_states_tuple], dim=1)
@@ -2964,7 +2982,7 @@ class KUpBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale=scale)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -3100,7 +3118,10 @@ class KCrossAttnUpBlock2D(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                 )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = resnet(hidden_states, temb, scale=1.0)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,

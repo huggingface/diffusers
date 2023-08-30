@@ -137,7 +137,7 @@ class PatchedLoraProjection(nn.Module):
 
     def forward(self, input, lora_scale: float = 1.0):
         if self.lora_linear_layer is None:
-            return self.regular_linear_layer(input) 
+            return self.regular_linear_layer(input)
         print(f"lora scale from {self.__class__}: {lora_scale}")
         return self.regular_linear_layer(input) + lora_scale * self.lora_linear_layer(input)
 
