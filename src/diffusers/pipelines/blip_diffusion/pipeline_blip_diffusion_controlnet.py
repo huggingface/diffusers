@@ -38,7 +38,7 @@ from .modeling_blip2 import Blip2QFormerModel
 import tqdm
 from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
-from ...image_processor import BlipImageProcessor
+from .blip_image_processing import BlipImageProcessor
 from PIL import Image
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 import re

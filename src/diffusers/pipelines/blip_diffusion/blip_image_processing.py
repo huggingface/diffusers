@@ -31,6 +31,8 @@ from transformers.image_utils import (
     to_numpy_array,
     valid_images,
 )
+from diffusers.utils import numpy_to_pil
+from PIL import Image
 from transformers.utils import TensorType, is_vision_available, logging
 import torch
 
@@ -39,6 +41,8 @@ if is_vision_available():
 
 
 logger = logging.get_logger(__name__)
+
+
 
 # Copied from transformers.models.blip.image_processing_blip.BlipImageProcessor
 class BlipImageProcessor(BaseImageProcessor):
@@ -89,6 +93,7 @@ class BlipImageProcessor(BaseImageProcessor):
         image_mean: Optional[Union[float, List[float]]] = None,
         image_std: Optional[Union[float, List[float]]] = None,
         do_convert_rgb: bool = True,
+        do_center_crop: bool = True,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -104,6 +109,7 @@ class BlipImageProcessor(BaseImageProcessor):
         self.image_mean = image_mean if image_mean is not None else OPENAI_CLIP_MEAN
         self.image_std = image_std if image_std is not None else OPENAI_CLIP_STD
         self.do_convert_rgb = do_convert_rgb
+        self.do_center_crop = do_center_crop
 
     # Copied from transformers.models.vit.image_processing_vit.ViTImageProcessor.resize with PILImageResampling.BILINEAR->PILImageResampling.BICUBIC
     def resize(
@@ -161,6 +167,7 @@ class BlipImageProcessor(BaseImageProcessor):
         size: Optional[Dict[str, int]] = None,
         resample: PILImageResampling = None,
         do_rescale: Optional[bool] = None,
+        do_center_crop: Optional[bool] = None,
         rescale_factor: Optional[float] = None,
         do_normalize: Optional[bool] = None,
         image_mean: Optional[Union[float, List[float]]] = None,
@@ -226,6 +233,7 @@ class BlipImageProcessor(BaseImageProcessor):
         image_mean = image_mean if image_mean is not None else self.image_mean
         image_std = image_std if image_std is not None else self.image_std
         do_convert_rgb = do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
+        do_center_crop = do_center_crop if do_center_crop is not None else self.do_center_crop
 
         size = size if size is not None else self.size
         size = get_size_dict(size, default_to_square=False)
@@ -275,15 +283,13 @@ class BlipImageProcessor(BaseImageProcessor):
                 self.rescale(image=image, scale=rescale_factor, input_data_format=input_data_format)
                 for image in images
             ]
-        
-        images = [2* image - 1.0 for image in images]
-
         if do_normalize:
             images = [
                 self.normalize(image=image, mean=image_mean, std=image_std, input_data_format=input_data_format)
                 for image in images
             ]
-        images = [self.center_crop(image, size, input_data_format=input_data_format) for image in images ]
+        if do_center_crop:
+            images = [self.center_crop(image, size, input_data_format=input_data_format) for image in images ]
 
         images = [
             to_channel_dimension_format(image, data_format, input_channel_dim=input_data_format) for image in images
@@ -310,5 +316,5 @@ class BlipImageProcessor(BaseImageProcessor):
             return sample
 
         # Output_type must be 'pil'
-        sample = self.numpy_to_pil(sample)
+        sample = numpy_to_pil(sample)
         return sample

@@ -10,7 +10,7 @@ from diffusers import (
 )
 from transformers import CLIPTokenizer
 from diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
-from diffusers.pipelines.blip_diffusion.modeling_ctx_clip import CtxCLIPTextModel
+from diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config
 from diffusers.pipelines import BlipDiffusionPipeline
 import tempfile
