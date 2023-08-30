@@ -122,7 +122,7 @@ class LoRACompatibleConv(nn.Conv2d):
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
         self.w_down = w_down.cpu()
-        self.lora_scale = lora_scale
+        self._lora_scale = lora_scale
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
@@ -137,7 +137,7 @@ class LoRACompatibleConv(nn.Conv2d):
 
         fusion = torch.mm(self.w_up.flatten(start_dim=1), self.w_down.flatten(start_dim=1))
         fusion = fusion.reshape((fused_weight.shape))
-        unfused_weight = fused_weight - (self.lora_scale * fusion)
+        unfused_weight = fused_weight - (self._lora_scale * fusion)
         self.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
@@ -188,7 +188,7 @@ class LoRACompatibleLinear(nn.Linear):
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
         self.w_down = w_down.cpu()
-        self.lora_scale = lora_scale
+        self._lora_scale = lora_scale
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
@@ -200,7 +200,7 @@ class LoRACompatibleLinear(nn.Linear):
         w_up = self.w_up.to(device=device).float()
         w_down = self.w_down.to(device).float()
 
-        unfused_weight = fused_weight.float() - (self.lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
+        unfused_weight = fused_weight.float() - (self._lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
         self.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
