@@ -991,6 +991,7 @@ class AttnProcessor2_0:
         temb=None,
         scale: float = 1.0,
     ):
+        print(f"{self.__class__.__name__} yields a scale of {scale}.")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
