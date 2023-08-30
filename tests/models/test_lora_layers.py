@@ -863,7 +863,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             lora_image_slice, images_with_unloaded_lora_slice
         ), "`unload_lora_weights()` should have not effect on the semantics of the results as the LoRA parameters were fused."
 
-    def test_unfuse_lora(self):
+    def test_fuse_lora_with_different_scales(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
