@@ -261,8 +261,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # this helps to broadcast it as a bias over attention scores, which will be in one of the following shapes:
         #   [batch,  heads, query_tokens, key_tokens] (e.g. torch sdp attn)
         #   [batch * heads, query_tokens, key_tokens] (e.g. xformers or classic attn)
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            print(f"{self.__class__.__name__} scale: {cross_attention_kwargs['scale']}")
         if attention_mask is not None and attention_mask.ndim == 2:
             # assume that mask is expressed as:
             #   (1 = keep,      0 = discard)
