@@ -276,7 +276,11 @@ Note that the use of [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] is
 
 * LoRA parameters that have separate identifiers for the UNet and the text encoder such as: [`"sayakpaul/dreambooth"`](https://huggingface.co/sayakpaul/dreambooth).
 
-**Note** that it is possible to provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`]. To know about the supported inputs, refer to the respective docstrings.
+<Tip>
+
+You can also provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`].
+
+</Tip>
 
 ## Stable Diffusion XL
 
@@ -295,11 +299,11 @@ You can call [`~diffusers.loaders.LoraLoaderMixin.fuse_lora`] on a pipeline to m
 
 ## Unfusing LoRA parameters
 
-You can call [`~diffusers.loaders.LoraLoaderMixin.unfuse_lora`] on a pipeline to reverse the effects of `fuse_lora()`.
+To undo `fuse_lora`, call [`~diffusers.loaders.LoraLoaderMixin.unfuse_lora`] on a pipeline.
 
 ## Supporting different LoRA checkpoints from Diffusers
 
-LoRA trainers such as [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion) are quite popular in the community. We try to provide a seamless ability to load those checkpoints in Diffusers. In this section, we outline the details and the limitations of the current API. 
+🤗 Diffusers supports loading checkpoints from popular LoRA trainers such as [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). In this section, we outline the current API's details and limitations. 
 
 ### Kohya
 
@@ -374,7 +378,7 @@ pipeline.load_lora_weights(lora_model_id, weight_name=lora_filename)
 
 ### Kohya + Stable Diffusion XL
 
-After the release of [Stable Diffusion XL](https://huggingface.co/papers/2307.01952), the community contributed some amazing LoRA checkpoints trained on top it using the Kohya trainer.  
+After the release of [Stable Diffusion XL](https://huggingface.co/papers/2307.01952), the community contributed some amazing LoRA checkpoints trained on top of it with the Kohya trainer.  
 
 Here are some example checkpoints we tried out:
 
