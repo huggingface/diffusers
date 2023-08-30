@@ -135,10 +135,10 @@ class PatchedLoraProjection(nn.Module):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, input):
+    def forward(self, input, lora_scale: float = 1.0):
         if self.lora_linear_layer is None:
             return self.regular_linear_layer(input)
-        return self.regular_linear_layer(input) + self.lora_scale * self.lora_linear_layer(input)
+        return self.regular_linear_layer(input) + lora_scale * self.lora_linear_layer(input)
 
 
 def text_encoder_attn_modules(text_encoder):
