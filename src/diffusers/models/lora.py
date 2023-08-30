@@ -97,7 +97,7 @@ class LoRACompatibleConv(nn.Conv2d):
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self):
+    def _fuse_lora(self, lora_scale=1.0):
         if self.lora_layer is None:
             return
 
@@ -113,7 +113,7 @@ class LoRACompatibleConv(nn.Conv2d):
 
         fusion = torch.mm(w_up.flatten(start_dim=1), w_down.flatten(start_dim=1))
         fusion = fusion.reshape((w_orig.shape))
-        fused_weight = w_orig + fusion
+        fused_weight = w_orig + (lora_scale * fusion)
         self.weight.data = fused_weight.to(device=device, dtype=dtype)
 
         # we can drop the lora layer now
@@ -122,6 +122,7 @@ class LoRACompatibleConv(nn.Conv2d):
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
         self.w_down = w_down.cpu()
+        self.lora_scale = lora_scale
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
@@ -136,19 +137,21 @@ class LoRACompatibleConv(nn.Conv2d):
 
         fusion = torch.mm(self.w_up.flatten(start_dim=1), self.w_down.flatten(start_dim=1))
         fusion = fusion.reshape((fused_weight.shape))
-        unfused_weight = fused_weight - fusion
+        unfused_weight = fused_weight - (self.lora_scale * fusion)
         self.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
         self.w_down = None
 
-    def forward(self, x):
+    def forward(self, hidden_states, lora_scale=1.0):
         if self.lora_layer is None:
             # make sure to the functional Conv2D function as otherwise torch.compile's graph will break
             # see: https://github.com/huggingface/diffusers/pull/4315
-            return F.conv2d(x, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+            return F.conv2d(
+                hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
+            )
         else:
-            return super().forward(x) + self.lora_layer(x)
+            return super().forward(hidden_states) + lora_scale * self.lora_layer(hidden_states)
 
 
 class LoRACompatibleLinear(nn.Linear):
@@ -163,7 +166,7 @@ class LoRACompatibleLinear(nn.Linear):
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self):
+    def _fuse_lora(self, lora_scale=1.0):
         if self.lora_layer is None:
             return
 
@@ -176,7 +179,7 @@ class LoRACompatibleLinear(nn.Linear):
         if self.lora_layer.network_alpha is not None:
             w_up = w_up * self.lora_layer.network_alpha / self.lora_layer.rank
 
-        fused_weight = w_orig + torch.bmm(w_up[None, :], w_down[None, :])[0]
+        fused_weight = w_orig + (lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
         self.weight.data = fused_weight.to(device=device, dtype=dtype)
 
         # we can drop the lora layer now
@@ -185,6 +188,7 @@ class LoRACompatibleLinear(nn.Linear):
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
         self.w_down = w_down.cpu()
+        self.lora_scale = lora_scale
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
@@ -196,7 +200,7 @@ class LoRACompatibleLinear(nn.Linear):
         w_up = self.w_up.to(device=device).float()
         w_down = self.w_down.to(device).float()
 
-        unfused_weight = fused_weight.float() - torch.bmm(w_up[None, :], w_down[None, :])[0]
+        unfused_weight = fused_weight.float() - (self.lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
         self.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
