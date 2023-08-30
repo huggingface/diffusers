@@ -17,7 +17,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 from torch import nn
-
+import inspect
 from ..utils import logging
 
 
@@ -151,7 +151,9 @@ class LoRACompatibleConv(nn.Conv2d):
                 hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
             )
         else:
-            print(f"Parents: {[cls.__module__ for cls in self.__class__.__bases__]}")
+            caller_frame = inspect.currentframe().f_back
+            caller_class_name = caller_frame.f_locals.get('self').__class__.__name__
+            print("Caller class:", caller_class_name)
             print(f"From {self.__class__.__name__}: scale {scale}")
             return super().forward(hidden_states) + scale * self.lora_layer(hidden_states)
 
