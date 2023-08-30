@@ -1749,11 +1749,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             module.set_attention_slice(slice_size)
 
-    def load_workflow(self, workflow_id, workflow_filename=None):
+    def load_workflow(self, workflow_id_or_path, workflow_filename=None):
         workflow_filename = workflow_filename or WORKFLOW_NAME
 
         if os.path.isdir(workflow_id):
             workflow_filepath = os.path.join(workflow_id, workflow_filename)
+        elif os.path.isfile(workflow_id_or_path):
+            workflow_file_path = workflow_id_or_path
         else:
             workflow_filepath = hf_hub_download(repo_id=workflow_id, filename=workflow_filename)
         workflow = self._dict_from_json_file(workflow_filepath)

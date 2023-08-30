@@ -730,6 +730,11 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self.components)
 
         if not return_dict:
-            return (image, has_nsfw_concept, workflow)
+            outputs = (image, has_nsfw_concept)
+            
+            if workflow is not None:
+                outputs += (workflow,)
+                
+            return outputs
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept, workflow=workflow)
