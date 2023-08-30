@@ -233,13 +233,18 @@ class BasicTransformerBlock(nn.Module):
                     f"`hidden_states` dimension to be chunked: {norm_hidden_states.shape[self._chunk_dim]} has to be divisible by chunk size: {self._chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
                 )
 
+            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                scale = cross_attention_kwargs["scale"]
+            else:
+                scale = 1.0
+
             num_chunks = norm_hidden_states.shape[self._chunk_dim] // self._chunk_size
             ff_output = torch.cat(
-                [self.ff(hid_slice) for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)],
+                [self.ff(hid_slice, scale=scale) for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)],
                 dim=self._chunk_dim,
             )
         else:
-            ff_output = self.ff(norm_hidden_states)
+            ff_output = self.ff(norm_hidden_states, scale=scale)
 
         if self.use_ada_layer_norm_zero:
             ff_output = gate_mlp.unsqueeze(1) * ff_output
