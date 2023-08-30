@@ -1009,6 +1009,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             else:
                 if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
                     scale = cross_attention_kwargs["scale"]
+                    print(f"cross_attention_kwargs: {scale}")
                 else:
                     scale = 1.0
                 sample = upsample_block(
