@@ -240,7 +240,10 @@ class BasicTransformerBlock(nn.Module):
 
             num_chunks = norm_hidden_states.shape[self._chunk_dim] // self._chunk_size
             ff_output = torch.cat(
-                [self.ff(hid_slice, scale=scale) for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)],
+                [
+                    self.ff(hid_slice, scale=scale)
+                    for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)
+                ],
                 dim=self._chunk_dim,
             )
         else:

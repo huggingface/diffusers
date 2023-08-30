@@ -639,7 +639,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor: 
+    ) -> torch.FloatTensor:
         if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
             scale = cross_attention_kwargs["scale"]
         else:

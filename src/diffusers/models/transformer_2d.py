@@ -283,7 +283,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             if not self.use_linear_projection:
                 if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
                     hidden_states = self.proj_in(hidden_states, scale=cross_attention_kwargs["scale"])
-                else: 
+                else:
                     hidden_states = self.proj_in(hidden_states, scale=1.0)
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
