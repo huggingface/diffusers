@@ -244,6 +244,10 @@ class BasicTransformerBlock(nn.Module):
                 dim=self._chunk_dim,
             )
         else:
+            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                scale = cross_attention_kwargs["scale"]
+            else:
+                scale = 1.0
             ff_output = self.ff(norm_hidden_states, scale=scale)
 
         if self.use_ada_layer_norm_zero:
