@@ -598,6 +598,7 @@ class ResnetBlock2D(nn.Module):
             )
 
     def forward(self, input_tensor, temb, scale: float = 1.0):
+        print(f"{self.__class__.__name__} scale {scale}")
         hidden_states = input_tensor
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
