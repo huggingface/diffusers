@@ -85,12 +85,21 @@ class PatchedLoraProjection(nn.Module):
 
         self.lora_scale = lora_scale
 
+    # overwrite PyTorch's `state_dict` to be sure that only the 'regular_linear_layer' weights are saved
+    # when saving the whole text encoder model and when LoRA is unloaded or fused
+    def state_dict(self, *args, destination=None, prefix="", keep_vars=False):
+        if self.lora_linear_layer is None:
+            return self.regular_linear_layer.state_dict(
+                *args, destination=destination, prefix=prefix, keep_vars=keep_vars
+            )
+
+        return super().state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
+
     def _fuse_lora(self):
         if self.lora_linear_layer is None:
             return
 
         dtype, device = self.regular_linear_layer.weight.data.dtype, self.regular_linear_layer.weight.data.device
-        logger.info(f"Fusing LoRA weights for {self.__class__}")
 
         w_orig = self.regular_linear_layer.weight.data.float()
         w_up = self.lora_linear_layer.up.weight.data.float()
@@ -112,14 +121,14 @@ class PatchedLoraProjection(nn.Module):
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
             return
-        logger.info(f"Unfusing LoRA weights for {self.__class__}")
 
         fused_weight = self.regular_linear_layer.weight.data
         dtype, device = fused_weight.dtype, fused_weight.device
 
-        self.w_up = self.w_up.to(device=device, dtype=dtype)
-        self.w_down = self.w_down.to(device, dtype=dtype)
-        unfused_weight = fused_weight - torch.bmm(self.w_up[None, :], self.w_down[None, :])[0]
+        w_up = self.w_up.to(device=device).float()
+        w_down = self.w_down.to(device).float()
+
+        unfused_weight = fused_weight.float() - torch.bmm(w_up[None, :], w_down[None, :])[0]
         self.regular_linear_layer.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
@@ -1272,7 +1281,7 @@ class LoraLoaderMixin:
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
-            warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet'.{module_name}: params for module_name, params in old_state_dict.items()}`."
+            warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
         # load loras into unet
@@ -1405,15 +1414,15 @@ class LoraLoaderMixin:
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                attn_module.q_proj = attn_module.q_proj.regular_linear_layer
-                attn_module.k_proj = attn_module.k_proj.regular_linear_layer
-                attn_module.v_proj = attn_module.v_proj.regular_linear_layer
-                attn_module.out_proj = attn_module.out_proj.regular_linear_layer
+                attn_module.q_proj.lora_linear_layer = None
+                attn_module.k_proj.lora_linear_layer = None
+                attn_module.v_proj.lora_linear_layer = None
+                attn_module.out_proj.lora_linear_layer = None
 
         for _, mlp_module in text_encoder_mlp_modules(text_encoder):
             if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                mlp_module.fc1 = mlp_module.fc1.regular_linear_layer
-                mlp_module.fc2 = mlp_module.fc2.regular_linear_layer
+                mlp_module.fc1.lora_linear_layer = None
+                mlp_module.fc2.lora_linear_layer = None
 
     @classmethod
     def _modify_text_encoder(
@@ -1447,23 +1456,43 @@ class LoraLoaderMixin:
             else:
                 current_rank = rank
 
+            q_linear_layer = (
+                attn_module.q_proj.regular_linear_layer
+                if isinstance(attn_module.q_proj, PatchedLoraProjection)
+                else attn_module.q_proj
+            )
             attn_module.q_proj = PatchedLoraProjection(
-                attn_module.q_proj, lora_scale, network_alpha=query_alpha, rank=current_rank, dtype=dtype
+                q_linear_layer, lora_scale, network_alpha=query_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.q_proj.lora_linear_layer.parameters())
 
+            k_linear_layer = (
+                attn_module.k_proj.regular_linear_layer
+                if isinstance(attn_module.k_proj, PatchedLoraProjection)
+                else attn_module.k_proj
+            )
             attn_module.k_proj = PatchedLoraProjection(
-                attn_module.k_proj, lora_scale, network_alpha=key_alpha, rank=current_rank, dtype=dtype
+                k_linear_layer, lora_scale, network_alpha=key_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.k_proj.lora_linear_layer.parameters())
 
+            v_linear_layer = (
+                attn_module.v_proj.regular_linear_layer
+                if isinstance(attn_module.v_proj, PatchedLoraProjection)
+                else attn_module.v_proj
+            )
             attn_module.v_proj = PatchedLoraProjection(
-                attn_module.v_proj, lora_scale, network_alpha=value_alpha, rank=current_rank, dtype=dtype
+                v_linear_layer, lora_scale, network_alpha=value_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
 
+            out_linear_layer = (
+                attn_module.out_proj.regular_linear_layer
+                if isinstance(attn_module.out_proj, PatchedLoraProjection)
+                else attn_module.out_proj
+            )
             attn_module.out_proj = PatchedLoraProjection(
-                attn_module.out_proj, lora_scale, network_alpha=out_alpha, rank=current_rank, dtype=dtype
+                out_linear_layer, lora_scale, network_alpha=out_alpha, rank=current_rank, dtype=dtype
             )
             lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
@@ -1475,13 +1504,23 @@ class LoraLoaderMixin:
                 current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
                 current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
 
+                fc1_linear_layer = (
+                    mlp_module.fc1.regular_linear_layer
+                    if isinstance(mlp_module.fc1, PatchedLoraProjection)
+                    else mlp_module.fc1
+                )
                 mlp_module.fc1 = PatchedLoraProjection(
-                    mlp_module.fc1, lora_scale, network_alpha=fc1_alpha, rank=current_rank_fc1, dtype=dtype
+                    fc1_linear_layer, lora_scale, network_alpha=fc1_alpha, rank=current_rank_fc1, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc1.lora_linear_layer.parameters())
 
+                fc2_linear_layer = (
+                    mlp_module.fc2.regular_linear_layer
+                    if isinstance(mlp_module.fc2, PatchedLoraProjection)
+                    else mlp_module.fc2
+                )
                 mlp_module.fc2 = PatchedLoraProjection(
-                    mlp_module.fc2, lora_scale, network_alpha=fc2_alpha, rank=current_rank_fc2, dtype=dtype
+                    fc2_linear_layer, lora_scale, network_alpha=fc2_alpha, rank=current_rank_fc2, dtype=dtype
                 )
                 lora_parameters.extend(mlp_module.fc2.lora_linear_layer.parameters())
 
