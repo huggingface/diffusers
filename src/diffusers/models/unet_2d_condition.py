@@ -752,8 +752,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
         # on the fly if necessary.
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            print(f"From the UNet: {cross_attention_kwargs['scale']}")
         default_overall_up_factor = 2**self.num_upsamplers
 
         # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
@@ -984,7 +982,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
-            print(f"Upblock: {upsample_block.__class__.__name__}")
             is_final_block = i == len(self.up_blocks) - 1
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
