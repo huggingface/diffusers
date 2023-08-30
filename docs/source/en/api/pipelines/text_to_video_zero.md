@@ -162,6 +162,34 @@ To generate a video from prompt with additional pose control
     imageio.mimsave("video.mp4", result, fps=4)
     ```
 
+#### SDXL Support
+
+Since our attention processor also works with SDXL, it can be utilized to generate a video from prompt using ControlNet models powered by SDXL:
+
+```python
+import torch
+from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
+from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
+
+controlnet_model_id = 'thibaud/controlnet-openpose-sdxl-1.0'
+model_id = 'stabilityai/stable-diffusion-xl-base-1.0'
+
+controlnet = ControlNetModel.from_pretrained(controlnet_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionControlNetPipeline.from_pretrained(
+	model_id, controlnet=controlnet, torch_dtype=torch.float16
+).to('cuda')
+
+# Set the attention processor
+pipe.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
+pipe.controlnet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
+
+# fix latents for all frames
+latents = torch.randn((1, 4, 128, 128), device="cuda", dtype=torch.float16).repeat(len(pose_images), 1, 1, 1)
+
+prompt = "Darth Vader dancing in a desert"
+result = pipe(prompt=[prompt] * len(pose_images), image=pose_images, latents=latents).images
+imageio.mimsave("video.mp4", result, fps=4)
+```
 
 ### Text-To-Video with Edge Control
 
@@ -266,6 +294,11 @@ You can filter out some available DreamBooth-trained models with [this link](htt
 
 ## TextToVideoZeroPipeline
 [[autodoc]] TextToVideoZeroPipeline
+	- all
+	- __call__
+
+## TextToVideoZeroSDXLPipeline
+[[autodoc]] TextToVideoZeroSDXLPipeline
 	- all
 	- __call__
 
