@@ -143,7 +143,7 @@ class LoRACompatibleConv(nn.Conv2d):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, hidden_states, lora_scale: float = 1.0):
+    def forward(self, hidden_states, scale: float = 1.0):
         if self.lora_layer is None:
             # make sure to the functional Conv2D function as otherwise torch.compile's graph will break
             # see: https://github.com/huggingface/diffusers/pull/4315
@@ -151,7 +151,7 @@ class LoRACompatibleConv(nn.Conv2d):
                 hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
             )
         else:
-            return super().forward(hidden_states) + lora_scale * self.lora_layer(hidden_states)
+            return super().forward(hidden_states) + scale * self.lora_layer(hidden_states)
 
 
 class LoRACompatibleLinear(nn.Linear):
@@ -206,8 +206,8 @@ class LoRACompatibleLinear(nn.Linear):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, hidden_states, lora_scale: float = 1.0):
+    def forward(self, hidden_states, scale: float = 1.0):
         if self.lora_layer is None:
             return super().forward(hidden_states)
         else:
-            return super().forward(hidden_states) + lora_scale * self.lora_layer(hidden_states)
+            return super().forward(hidden_states) + scale * self.lora_layer(hidden_states)

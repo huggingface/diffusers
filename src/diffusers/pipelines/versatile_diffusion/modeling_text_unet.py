@@ -1086,9 +1086,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             gligen_args = cross_attention_kwargs.pop("gligen")
             cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
-        if cross_attention_kwargs is not None and cross_attention_kwargs.get("scale", None) is not None:
-            cross_attention_kwargs["lora_scale"] = cross_attention_kwargs.get("scale")
-
         # 3. down
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None

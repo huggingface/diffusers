@@ -295,10 +295,10 @@ class FeedForward(nn.Module):
         if final_dropout:
             self.net.append(nn.Dropout(dropout))
 
-    def forward(self, hidden_states, lora_scale: float = 1.0):
+    def forward(self, hidden_states, scale: float = 1.0):
         for module in self.net:
             if isinstance(module, LoRACompatibleLinear):
-                hidden_states = module(hidden_states, lora_scale)
+                hidden_states = module(hidden_states, scale)
             else:
                 hidden_states = module(hidden_states)
         return hidden_states
@@ -345,8 +345,8 @@ class GEGLU(nn.Module):
         # mps: gelu is not implemented for float16
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
-    def forward(self, hidden_states, lora_scale: float = 1.0):
-        hidden_states, gate = self.proj(hidden_states, lora_scale=lora_scale).chunk(2, dim=-1)
+    def forward(self, hidden_states, scale: float = 1.0):
+        hidden_states, gate = self.proj(hidden_states, scale).chunk(2, dim=-1)
         return hidden_states * self.gelu(gate)
 
 

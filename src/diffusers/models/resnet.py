@@ -135,7 +135,7 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(self, hidden_states, output_size=None, lora_scale: float = 1.0):
+    def forward(self, hidden_states, output_size=None, scale: float = 1.0):
         assert hidden_states.shape[1] == self.channels
 
         if self.use_conv_transpose:
@@ -167,12 +167,12 @@ class Upsample2D(nn.Module):
         if self.use_conv:
             if self.name == "conv":
                 if isinstance(self.conv, LoRACompatibleConv):
-                    hidden_states = self.conv(hidden_states, lora_scale)
+                    hidden_states = self.conv(hidden_states, scale)
                 else:
                     hidden_states = self.conv(hidden_states)
             else:
                 if isinstance(self.Conv2d_0, LoRACompatibleConv):
-                    hidden_states = self.Conv2d_0(hidden_states, lora_scale)
+                    hidden_states = self.Conv2d_0(hidden_states, scale)
                 else:
                     hidden_states = self.Conv2d_0(hidden_states)
 
@@ -217,7 +217,7 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(self, hidden_states, lora_scale: float = 1.0):
+    def forward(self, hidden_states, scale: float = 1.0):
         assert hidden_states.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)
@@ -225,7 +225,7 @@ class Downsample2D(nn.Module):
 
         assert hidden_states.shape[1] == self.channels
         if isinstance(self.conv, LoRACompatibleConv):
-            hidden_states = self.conv(hidden_states, lora_scale)
+            hidden_states = self.conv(hidden_states, scale)
         else:
             hidden_states = self.conv(hidden_states)
 
@@ -597,7 +597,7 @@ class ResnetBlock2D(nn.Module):
                 in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )
 
-    def forward(self, input_tensor, temb, lora_scale: float = 1.0):
+    def forward(self, input_tensor, temb, scale: float = 1.0):
         hidden_states = input_tensor
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
@@ -618,12 +618,12 @@ class ResnetBlock2D(nn.Module):
             input_tensor = self.downsample(input_tensor)
             hidden_states = self.downsample(hidden_states)
 
-        hidden_states = self.conv1(hidden_states, lora_scale)
+        hidden_states = self.conv1(hidden_states, scale)
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
                 temb = self.nonlinearity(temb)
-            temb = self.time_emb_proj(temb, lora_scale)[:, :, None, None]
+            temb = self.time_emb_proj(temb, scale)[:, :, None, None]
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
@@ -640,10 +640,10 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states, lora_scale)
+        hidden_states = self.conv2(hidden_states, scale)
 
         if self.conv_shortcut is not None:
-            input_tensor = self.conv_shortcut(input_tensor, lora_scale)
+            input_tensor = self.conv_shortcut(input_tensor, scale)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
