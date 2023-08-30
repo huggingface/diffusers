@@ -1008,6 +1008,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     scale = cross_attention_kwargs["scale"]
                 else:
                     scale = 1.0
+                print("Last block.")
                 sample = upsample_block(
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size, scale=scale
                 )
