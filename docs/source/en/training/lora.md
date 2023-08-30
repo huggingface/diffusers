@@ -291,7 +291,11 @@ You can call [`~diffusers.loaders.LoraLoaderMixin.unload_lora_weights`] on a pip
 
 ## Fusing LoRA parameters
 
+You can call [`~diffusers.loaders.LoraLoaderMixin.fuse_lora`] on a pipeline to merge the LoRA parameters with the original parameters of the underlying model(s). This can lead to a potential speedup in the inference latency.
+
 ## Unfusing LoRA parameters
+
+You can call [`~diffusers.loaders.LoraLoaderMixin.unfuse_lora`] on a pipeline to reverse the effects of `fuse_lora()`.
 
 ## Supporting different LoRA checkpoints from Diffusers
 
