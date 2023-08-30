@@ -18,3 +18,4 @@ else:
     from .pipeline_blip_diffusion import BlipDiffusionPipeline
     from .pipeline_blip_diffusion_controlnet import BlipDiffusionControlNetPipeline
     from .modeling_blip2 import Blip2QFormerModel
+    from .blip_image_processing import BlipImageProcessor
