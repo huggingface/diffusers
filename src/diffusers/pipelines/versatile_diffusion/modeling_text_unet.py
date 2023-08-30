@@ -802,14 +802,14 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        if all(proc in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnAddedKVProcessor()
-        elif all(proc in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnProcessor()
         else:
             raise ValueError(
                 "Cannot call `set_default_attn_processor` when attention processors are of type"
-                f" {next(iter(self.attention_processor.values()))}"
+                f" {next(iter(self.attn_processors.values()))}"
             )
 
         self.set_attn_processor(processor)

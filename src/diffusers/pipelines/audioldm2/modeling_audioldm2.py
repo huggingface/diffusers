@@ -22,7 +22,13 @@ import torch.utils.checkpoint
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...models.activations import get_activation
-from ...models.attention_processor import AttentionProcessor, AttnProcessor
+from ...models.attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnProcessor,
+)
 from ...models.embeddings import (
     TimestepEmbedding,
     Timesteps,
@@ -33,11 +39,6 @@ from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_blocks import DownBlock2D, UpBlock2D
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import BaseOutput, is_torch_version, logging
-from .attention_processor import (
-    ADDED_KV_ATTENTION_PROCESSORS,
-    CROSS_ATTENTION_PROCESSORS,
-    AttnAddedKVProcessor,
-)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -576,13 +577,13 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        if all(proc in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnAddedKVProcessor()
-        elif all(proc in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnProcessor()
         else:
             raise ValueError(
-                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attention_processor.values()))}"
+                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
         self.set_attn_processor(processor)
