@@ -178,6 +178,7 @@ class BasicTransformerBlock(nn.Module):
     ):
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 1. Self-Attention
+        print(f"From {self.__class__.__name__}: {cross_attention_kwargs}")
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
         elif self.use_ada_layer_norm_zero:
