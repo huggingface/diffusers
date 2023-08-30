@@ -151,9 +151,6 @@ class LoRACompatibleConv(nn.Conv2d):
                 hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
             )
         else:
-            caller_frame = inspect.currentframe().f_back
-            caller_class_name = caller_frame.f_locals.get('self').__class__.__name__
-            print("Caller class:", caller_class_name)
             print(f"From {self.__class__.__name__}: scale {scale}")
             return super().forward(hidden_states) + scale * self.lora_layer(hidden_states)
 
