@@ -7,14 +7,14 @@ import torch
 
 from diffusers import BlipDiffusionPipeline, PNDMScheduler, UNet2DConditionModel, AutoencoderKL
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2QFormerConfig, Blip2VisionConfig
-from src.diffusers.image_processor import BlipImageProcessor
 from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from src.diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 from transformers import CLIPTokenizer
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 from transformers.models.clip.configuration_clip import CLIPTextConfig
-from src.diffusers.pipelines.blip_diffusion.modeling_ctx_clip import CtxCLIPTextModel
+from src.diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 from PIL import Image
 
 enable_full_determinism()
@@ -51,7 +51,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     ]
 
     def get_dummy_components(self):
-
+        torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
             hidden_size=32,
             intermediate_size=32,
@@ -60,7 +60,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_attention_heads=1,
             max_position_embeddings=77,
         )
-        text_encoder = CtxCLIPTextModel(text_encoder_config)
+        text_encoder = ContextCLIPTextModel(text_encoder_config)
 
         vae = AutoencoderKL(
             in_channels=4,
@@ -118,6 +118,8 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             skip_prk_steps=True,
         )
 
+        image_processor = BlipImageProcessor()
+
         components = {
             "text_encoder": text_encoder,
             "vae": vae,
@@ -125,6 +127,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "unet": unet,
             "tokenizer": tokenizer,
             "scheduler": scheduler,
+            "image_processor" : image_processor
         }
         return components
 
@@ -167,7 +170,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert image.shape == (64, 64, 4)
 
         expected_slice = np.array(
-            [0.5686, 0.5176, 0.6470, 0.4431, 0.6352, 0.4980, 0.3961, 0.5529, 0.5412]
+           [0.1137, 0.4627,  0.4862, 0.4549, 0.2627,  0.5450, 0.3568, 0.5960, 0.5215]
         )
 
         assert (
