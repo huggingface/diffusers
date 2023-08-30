@@ -10,6 +10,7 @@ from diffusers import (
 )
 from transformers import CLIPTokenizer
 from diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
 from diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config
 from diffusers.pipelines import BlipDiffusionPipeline
@@ -176,7 +177,7 @@ def save_blip_diffusion_model(model, args):
     qformer = get_qformer(model)
     qformer.eval()
 
-    text_encoder = CtxCLIPTextModel.from_pretrained(
+    text_encoder = ContextCLIPTextModel.from_pretrained(
         "runwayml/stable-diffusion-v1-5", subfolder="text_encoder"
     )
     vae = AutoencoderKL.from_pretrained(
@@ -199,14 +200,15 @@ def save_blip_diffusion_model(model, args):
     tokenizer = CLIPTokenizer.from_pretrained(
         "runwayml/stable-diffusion-v1-5", subfolder="tokenizer"
     )
-    blip_diffusion = BlipDiffusionPipeline(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer)
+    image_processor = BlipImageProcessor()
+    blip_diffusion = BlipDiffusionPipeline(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, image_processor=image_processor)
     blip_diffusion.save_pretrained(args.checkpoint_path)
 
 
 
 def main(args):
     model, _, _ = load_model_and_preprocess("blip_diffusion", "base", device="cpu", is_eval=True)
-    save_blip_diffusion_model(model, args)
+    save_blip_diffusion_model(model.state_dict(), args)
 
 
 if __name__ == "__main__":

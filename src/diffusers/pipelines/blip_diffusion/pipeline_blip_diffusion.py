@@ -42,63 +42,14 @@ from PIL import Image
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 import re
 
-def prepare_cond_image(
-        image, width, height, batch_size, device, do_classifier_free_guidance=True
-    ):
-        if not isinstance(image, torch.Tensor):
-            if isinstance(image, Image.Image):
-                image = [image]
-
-            if isinstance(image[0], Image.Image):
-                images = []
-
-                for image_ in image:
-                    image_ = image_.convert("RGB")
-                    image_ = image_.resize(
-                        (width, height), resample=PIL_INTERPOLATION["lanczos"]
-                    )
-                    image_ = np.array(image_)
-                    image_ = image_[None, :]
-                    images.append(image_)
-
-                image = images
-
-                image = np.concatenate(image, axis=0)
-                image = np.array(image).astype(np.float32) / 255.0
-                image = image.transpose(0, 3, 1, 2)
-                image = torch.from_numpy(image)
-            elif isinstance(image[0], torch.Tensor):
-                image = torch.cat(image, dim=0)
-
-        image_batch_size = image.shape[0]
-
-        if image_batch_size == 1:
-            repeat_by = batch_size
-        else:
-            # image batch size is the same as prompt batch size
-            # repeat_by = num_images_per_prompt
-            raise NotImplementedError
-
-        image = image.repeat_interleave(repeat_by, dim=0)
-
-        # image = image.to(device=self.device, dtype=dtype)
-        image = image.to(device=device)
-
-        if do_classifier_free_guidance:
-            image = torch.cat([image] * 2)
-
-        return image
-
-
 
 # Create a class for the Blip Diffusion pipeline
 class BlipDiffusionPipeline(DiffusionPipeline):
     
-    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, ctx_begin_pos: int = 2, mean: tuple = (0.48145466, 0.4578275, 0.40821073), std: tuple = (0.26862954, 0.26130258, 0.27577711)):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel,  image_processor: BlipImageProcessor, ctx_begin_pos: int = 2, mean: tuple = (0.48145466, 0.4578275, 0.40821073), std: tuple = (0.26862954, 0.26130258, 0.27577711)):
         super().__init__()
 
-        self.image_processor = BlipImageProcessor()
-        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, image_processor=self.image_processor)
+        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, image_processor=image_processor)
         self.register_to_config(ctx_begin_pos=ctx_begin_pos, mean=mean, std=std)
     
     #TODO Complete this function
