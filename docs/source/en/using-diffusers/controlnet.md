@@ -1,10 +1,10 @@
 # ControlNet
 
-ControlNet is a type of model for controlling image diffusion models by conditioning the model with an additional input image. There are many types of conditioning inputs (canny edge, user sketching, human pose, depth, and more) to control a diffusion model. This is hugely useful because it affords you greater control over image generation, making it easier to generate specific images without fiddling with text prompts or denoising values as much.
+ControlNet is a type of model for controlling image diffusion models by conditioning the model with an additional input image. There are many types of conditioning inputs (canny edge, user sketching, human pose, depth, and more) you can use to control a diffusion model. This is hugely useful because it affords you greater control over image generation, making it easier to generate specific images without experimenting with different text prompts or denoising values as much.
 
 <Tip>
 
-Check out Section 3.5 of the [ControlNet](https://huggingface.co/papers/2302.05543) paper for a list of ControlNet implementations of various conditioning inputs. You can find the official Stable Diffusion ControlNet conditioned models on [lllyasviel](https://huggingface.co/lllyasviel)'s Hub profile, and more [community-trained](https://huggingface.co/models?other=stable-diffusion&other=controlnet) ones on the Hub.
+Check out Section 3.5 of the [ControlNet](https://huggingface.co/papers/2302.05543) paper for a list of ControlNet implementations on various conditioning inputs. You can find the official Stable Diffusion ControlNet conditioned models on [lllyasviel](https://huggingface.co/lllyasviel)'s Hub profile, and more [community-trained](https://huggingface.co/models?other=stable-diffusion&other=controlnet) ones on the Hub.
 
 For Stable Diffusion XL (SDXL) ControlNet models, you can find them on the 🤗 [Diffusers](https://huggingface.co/diffusers) Hub organization, or you can browse [community-trained](https://huggingface.co/models?other=stable-diffusion-xl&other=controlnet) ones on the Hub.
 
@@ -12,8 +12,8 @@ For Stable Diffusion XL (SDXL) ControlNet models, you can find them on the 🤗 
 
 A ControlNet model has two sets of weights (or blocks) connected by a zero-convolution layer:
 
-- a *locked copy* which keeps everything a large pretrained diffusion model has learned
-- a *trainable copy* which is trained on the additional conditioning input
+- a *locked copy* keeps everything a large pretrained diffusion model has learned
+- a *trainable copy* is trained on the additional conditioning input
 
 Since the locked copy preserves the pretrained model, training and implementing a ControlNet on a new conditioning input is as fast as finetuning any other model because you aren't training the model from scratch.
 
@@ -84,13 +84,17 @@ Now pass your prompt and canny image to the pipeline:
 
 ```py
 output = pipe(
-    "spiderman wearing a sombrero", image=canny_image
+    "the mona lisa", image=canny_image
 ).images[0]
 ```
 
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-text2img.png"/>
+</div>
+
 ## Image-to-image
 
-For image-to-image, you'd typically pass an initial image and a prompt to the pipeline to generate a new image. With ControlNet, you can pass an additional conditioning input to steer the model. Let's condition the model with a depth map, an image which contains spatial information. This way, the ControlNet can use the depth map as a control to guide the model to generate an image that preserves spatial information.
+For image-to-image, you'd typically pass an initial image and a prompt to the pipeline to generate a new image. With ControlNet, you can pass an additional conditioning input to guide the model. Let's condition the model with a depth map, an image which contains spatial information. This way, the ControlNet can use the depth map as a control to guide the model to generate an image that preserves spatial information.
 
 You'll use the [`StableDiffusionControlNetImg2ImgPipeline`] for this task, which is different from the [`StableDiffusionControlNetPipeline`] because it allows you to pass an initial image as the starting point for the image generation process.
 
@@ -144,9 +148,21 @@ output = pipe(
 ).images[0]
 ```
 
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-img2img.jpg"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">original image</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-img2img-2.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
+  </div>
+</div>
+
+
 ## Inpainting
 
-For inpainting, you need an initial image, a mask image, and a prompt describing what to replace the mask with. For ControlNet models, you can add another control image to condition a model with. Let’s condition the model with a canny image, a white outline of an image on a black background. This way, the ControlNet can use the canny image as a control to guide the model to generate an image with the same outline.
+For inpainting, you need an initial image, a mask image, and a prompt describing what to replace the mask with. ControlNet models allow you to add another control image to condition a model with. Let’s condition the model with a canny image, a white outline of an image on a black background. This way, the ControlNet can use the canny image as a control to guide the model to generate an image with the same outline.
 
 Load an initial image and a mask image:
 
@@ -183,6 +199,17 @@ def make_inpaint_condition(image, image_mask):
 control_image = make_inpaint_condition(init_image, mask_image)
 ```
 
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-inpaint.jpg"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">original image</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-inpaint-mask.jpg"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">mask image</figcaption>
+  </div>
+</div>
+
 Load a ControlNet model conditioned on inpainting and pass it to the [`StableDiffusionControlNetInpaintPipeline`]. Use the faster [`UniPCMultistepScheduler`] and enable model offloading to speed up inference and reduce memory usage.
 
 ```py
@@ -202,7 +229,7 @@ Now pass your prompt, initial image, mask image, and control image to the pipeli
 
 ```py
 output = pipe(
-    "pixar corgi wearing sunglasses",
+    "corgi face with large ears, detailed, pixar, animated, disney",
     num_inference_steps=20,
     eta=1.0,
     image=init_image,
@@ -211,11 +238,15 @@ output = pipe(
 ).images[0]
 ```
 
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-inpaint-result.png"/>
+</div>
+
 ## Guess mode
 
 [Guess mode](https://github.com/lllyasviel/ControlNet/discussions/188) does not require supplying a prompt to a ControlNet at all! This forces the ControlNet encoder to do it's best to "guess" the contents of the input control map (depth map, pose estimation, canny edge, etc.).
 
-Guess mode adjusts the scale of the output residuals from a ControlNet by a fixed ratio depending on the block depth. The shallowest `DownBlock` corresponds to 0.1 and as the blocks get deeper, the scale increases exponentially such that the scale of the `MidBlock` output becomes 1.0.
+Guess mode adjusts the scale of the output residuals from a ControlNet by a fixed ratio depending on the block depth. The shallowest `DownBlock` corresponds to 0.1, and as the blocks get deeper, the scale increases exponentially such that the scale of the `MidBlock` output becomes 1.0.
 
 <Tip>
 
@@ -323,7 +354,7 @@ images = pipe(
     prompt, 
     negative_prompt=negative_prompt, 
     image=image, 
-    controlnet_conditioning_scale=controlnet_conditioning_scale
+    controlnet_conditioning_scale=0.5,
 ).images[0]
 images
 ```
@@ -331,6 +362,14 @@ images
 <div class="flex justify-center">
     <img class="rounded-xl" src="https://huggingface.co/diffusers/controlnet-canny-sdxl-1.0/resolve/main/out_hug_lab_7.png"/>
 </div>
+
+You can use [`StableDiffusionXLControlNetPipeline`] in guess mode as well by setting the parameter to `True`:
+
+```py
+image = pipe(
+    prompt, controlnet_conditioning_scale=0.5, image=canny_image, guess_mode=True,
+).images[0]
+```
 
 ### MultiControlNet
 
@@ -411,7 +450,7 @@ openpose_image = openpose(openpose_image).resize((1024, 1024))
   </div>
 </div>
 
-Load a list of ControlNet models that correspond to each conditioning, and pass them to the [`StableDiffusionXLControlNetPipeline`]. Use the faster [`UniPCMultistepScheduler`] and nable model offloading to reduce memory usage.
+Load a list of ControlNet models that correspond to each conditioning, and pass them to the [`StableDiffusionXLControlNetPipeline`]. Use the faster [`UniPCMultistepScheduler`] and enable model offloading to reduce memory usage.
 
 ```py
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL, UniPCMultistepScheduler

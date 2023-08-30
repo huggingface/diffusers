@@ -66,7 +66,15 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 	- disable_xformers_memory_efficient_attention
 	- load_textual_inversion
 
+## StableDiffusionPipelineOutput
+
+[[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
+
 ## FlaxStableDiffusionControlNetPipeline
 [[autodoc]] FlaxStableDiffusionControlNetPipeline
 	- all
 	- __call__
+
+## FlaxStableDiffusionControlNetPipelineOutput
+
+[[autodoc]] pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput
