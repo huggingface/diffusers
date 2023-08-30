@@ -51,6 +51,7 @@ from .import_utils import (
     USE_TF,
     USE_TORCH,
     DummyObject,
+    _LazyModule,
     OptionalDependencyNotAvailable,
     is_accelerate_available,
     is_accelerate_version,
