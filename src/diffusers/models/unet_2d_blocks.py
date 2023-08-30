@@ -917,9 +917,11 @@ class AttnDownBlock2D(nn.Module):
 
         for resnet, attn in zip(self.resnets, self.attentions):
             if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+                scale = cross_attention_kwargs["scale"]
             else:
-                hidden_states = resnet(hidden_states, temb, scale=1.0)
+                scale = 1.0
+                cross_attention_kwargs.update({"scale": scale})
+            hidden_states = resnet(hidden_states, temb, scale=scale)
             hidden_states = attn(hidden_states, cross_attention_kwargs=cross_attention_kwargs)
             output_states = output_states + (hidden_states,)
 
