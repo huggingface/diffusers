@@ -661,6 +661,7 @@ class StableDiffusionGLIGENPipeline(metaclass=DummyObject):
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
 
+
 class StableDiffusionGLIGENTextImagePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -674,6 +675,7 @@ class StableDiffusionGLIGENTextImagePipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "transformers"])
+
 
 class StableDiffusionImageVariationPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
