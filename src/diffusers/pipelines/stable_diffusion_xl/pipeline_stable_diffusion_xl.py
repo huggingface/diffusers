@@ -877,7 +877,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            print("Coming after VAE?")
         else:
             image = latents
             return StableDiffusionXLPipelineOutput(images=image)
