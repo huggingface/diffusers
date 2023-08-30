@@ -796,7 +796,11 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
             #         mask = attention_mask if encoder_hidden_states is None else encoder_attention_mask
             mask = attention_mask
 
-        hidden_states = self.resnets[0](hidden_states, temb)
+        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+            scale = cross_attention_kwargs["scale"]
+        else:
+            scale = 1.0
+        hidden_states = self.resnets[0](hidden_states, temb, scale=scale)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             # attn
             hidden_states = attn(
