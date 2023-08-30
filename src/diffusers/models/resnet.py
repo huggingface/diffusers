@@ -136,6 +136,7 @@ class Upsample2D(nn.Module):
             self.Conv2d_0 = conv
 
     def forward(self, hidden_states, output_size=None, scale: float = 1.0):
+        print(f"From {self.__class__.__name__} scale: {scale}")
         assert hidden_states.shape[1] == self.channels
 
         if self.use_conv_transpose:
@@ -218,6 +219,7 @@ class Downsample2D(nn.Module):
             self.conv = conv
 
     def forward(self, hidden_states, scale: float = 1.0):
+        print(f"From {self.__class__.__name__} scale: {scale}")
         assert hidden_states.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)
@@ -598,6 +600,7 @@ class ResnetBlock2D(nn.Module):
             )
 
     def forward(self, input_tensor, temb, scale: float = 1.0):
+        print(f"From {self.__class__.__name__} scale: {scale}")
         hidden_states = input_tensor
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
