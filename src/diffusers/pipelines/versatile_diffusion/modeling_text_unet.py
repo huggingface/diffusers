@@ -10,6 +10,8 @@ from ...models import ModelMixin
 from ...models.activations import get_activation
 from ...models.attention import Attention
 from ...models.attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
@@ -800,7 +802,17 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        self.set_attn_processor(AttnProcessor())
+        if all(proc in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnAddedKVProcessor()
+        elif all(proc in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnProcessor()
+        else:
+            raise ValueError(
+                "Cannot call `set_default_attn_processor` when attention processors are of type"
+                f" {next(iter(self.attention_processor.values()))}"
+            )
+
+        self.set_attn_processor(processor)
 
     def set_attention_slice(self, slice_size):
         r"""
