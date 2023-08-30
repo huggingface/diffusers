@@ -924,6 +924,7 @@ class LoraLoaderMixin:
     """
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
+    num_fused_loras = 0
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
@@ -1823,6 +1824,14 @@ class LoraLoaderMixin:
                 Whether to fuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
+        if fuse_unet or fuse_text_encoder:
+            self.num_fused_loras += 1
+            if self.num_fused_loras > 1:
+                warnings.warn(
+                    "The current API is supported for operating with a single LoRA file. You are trying to load and fuse more than one LoRA which is not well-supported.",
+                    RuntimeWarning,
+                )
+
         if fuse_unet:
             self.unet.fuse_lora()
 
