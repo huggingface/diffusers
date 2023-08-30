@@ -1009,7 +1009,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 else:
                     scale = 1.0
                 sample = upsample_block(
-                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size, scale=scale
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    upsample_size=upsample_size,
+                    scale=scale,
                 )
 
         # 6. post-process

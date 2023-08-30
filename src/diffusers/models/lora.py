@@ -210,5 +210,4 @@ class LoRACompatibleLinear(nn.Linear):
         if self.lora_layer is None:
             return super().forward(hidden_states)
         else:
-            print(f"From {self.__class__.__name__}: scale {scale}")
             return super().forward(hidden_states) + scale * self.lora_layer(hidden_states)

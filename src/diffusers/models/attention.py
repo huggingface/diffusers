@@ -310,7 +310,6 @@ class FeedForward(nn.Module):
     def forward(self, hidden_states, scale: float = 1.0):
         for module in self.net:
             if isinstance(module, (LoRACompatibleLinear, GEGLU)):
-                print(f"{self.__class__.__name__} scale: {scale}")
                 hidden_states = module(hidden_states, scale)
             else:
                 hidden_states = module(hidden_states)
@@ -359,7 +358,6 @@ class GEGLU(nn.Module):
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
     def forward(self, hidden_states, scale: float = 1.0):
-        print(f"{self.__class__.__name__} {scale}")
         hidden_states, gate = self.proj(hidden_states, scale).chunk(2, dim=-1)
         return hidden_states * self.gelu(gate)
 
