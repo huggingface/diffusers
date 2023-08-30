@@ -37,6 +37,7 @@ from ...utils import (
     is_invisible_watermark_available,
     logging,
     randn_tensor,
+    replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
@@ -47,6 +48,36 @@ if is_invisible_watermark_available():
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import StableDiffusionXLInstructPix2PixPipeline
+        >>> from diffusers.utils import load_image
+
+        >>> resolution = 768
+        >>> image = load_image(
+        ...     "https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png"
+        ... ).resize((resolution, resolution))
+        >>> edit_instruction = "Turn sky into a cloudy one"
+
+        >>> pipe = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
+        ...     "diffusers/sdxl-instructpix2pix-768", torch_dtype=torch.float16
+        ... ).to("cuda")
+
+        >>> edited_image = pipe(
+        ...     prompt=edit_instruction,
+        ...     image=image,
+        ...     height=resolution,
+        ...     width=resolution,
+        ...     guidance_scale=3.0,
+        ...     image_guidance_scale=1.5,
+        ...     num_inference_steps=30,
+        ... ).images[0]
+        >>> edited_image
+        ```
+"""
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
@@ -569,6 +600,7 @@ class StableDiffusionXLInstructPix2PixPipeline(DiffusionPipeline, FromSingleFile
             self.vae.decoder.mid_block.to(dtype)
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
