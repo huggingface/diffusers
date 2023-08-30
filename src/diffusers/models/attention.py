@@ -297,7 +297,10 @@ class FeedForward(nn.Module):
 
     def forward(self, hidden_states, lora_scale: float = 1.0):
         for module in self.net:
-            hidden_states = module(hidden_states, lora_scale)
+            if isinstance(module, LoRACompatibleLinear):
+                hidden_states = module(hidden_states, lora_scale)
+            else:
+                hidden_states = module(hidden_states)
         return hidden_states
 
 
