@@ -807,7 +807,10 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
             )
 
             # resnet
-            hidden_states = resnet(hidden_states, temb)
+            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+            else:
+                hidden_states = resnet(hidden_states, temb, scale=1.0)
 
         return hidden_states
 
@@ -904,20 +907,28 @@ class AttnDownBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states, temb=None, upsample_size=None):
+    def forward(self, hidden_states, temb=None, upsample_size=None, cross_attention_kwargs=None):
+        cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = attn(hidden_states)
+            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
+            else:
+                hidden_states = resnet(hidden_states, temb, scale=1.0)
+            hidden_states = attn(hidden_states, cross_attention_kwargs=cross_attention_kwargs)
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                if self.downsample_type == "resnet":
-                    hidden_states = downsampler(hidden_states, temb=temb)
+                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+                    scale = cross_attention_kwargs["scale"]
                 else:
-                    hidden_states = downsampler(hidden_states)
+                    scale = 1.0
+                if self.downsample_type == "resnet":
+                    hidden_states = downsampler(hidden_states, temb=temb, scale=scale)
+                else:
+                    hidden_states = downsampler(hidden_states, scale=scale)
 
             output_states += (hidden_states,)
 
