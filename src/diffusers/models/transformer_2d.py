@@ -219,7 +219,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
-        scale: float = 1.0,
         return_dict: bool = True,
     ):
         """
@@ -244,8 +243,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
                 If `ndim == 2`: will be interpreted as a mask, then converted into a bias consistent with the format
                 above. This bias will be added to the cross-attention scores.
-            scale: (`float`, *optional*, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
                 tuple.
@@ -284,13 +281,19 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             hidden_states = self.norm(hidden_states)
             if not self.use_linear_projection:
-                hidden_states = self.proj_in(hidden_states, scale)
+                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+                    hidden_states = self.proj_in(hidden_states, scale=cross_attention_kwargs["scale"])
+                else: 
+                    hidden_states = self.proj_in(hidden_states, scale=1.0)
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
             else:
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-                hidden_states = self.proj_in(hidden_states, scale)
+                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+                    hidden_states = self.proj_in(hidden_states, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = self.proj_in(hidden_states, scale=1.0)
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
@@ -325,9 +328,15 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if self.is_input_continuous:
             if not self.use_linear_projection:
                 hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-                hidden_states = self.proj_out(hidden_states, scale)
+                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+                    hidden_states = self.proj_out(hidden_states, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = self.proj_out(hidden_states, scale=1.0)
             else:
-                hidden_states = self.proj_out(hidden_states, scale)
+                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+                    hidden_states = self.proj_out(hidden_states, scale=cross_attention_kwargs["scale"])
+                else:
+                    hidden_states = self.proj_out(hidden_states, scale=1.0)
                 hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
 
             output = hidden_states + residual
