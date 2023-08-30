@@ -46,11 +46,10 @@ import re
 # Create a class for the Blip Diffusion pipeline
 class BlipDiffusionControlNetPipeline(DiffusionPipeline):
     
-    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, controlnet: ControlNetModel, ctx_begin_pos: int = 2, mean: tuple = (0.48145466, 0.4578275, 0.40821073), std: tuple = (0.26862954, 0.26130258, 0.27577711)):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, controlnet: ControlNetModel, image_processor: BlipImageProcessor, ctx_begin_pos: int = 2, mean: tuple = (0.48145466, 0.4578275, 0.40821073), std: tuple = (0.26862954, 0.26130258, 0.27577711)):
         super().__init__()
 
-        self.image_processor = BlipImageProcessor()
-        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, controlnet=controlnet, image_processor=self.image_processor)
+        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, controlnet=controlnet, image_processor=image_processor)
         self.register_to_config(ctx_begin_pos=ctx_begin_pos, mean=mean, std=std)
     
     #TODO Complete this function
@@ -142,8 +141,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         target_subject_category = [self.preprocess_caption(target_subject_category)]
 
 
-
-        reference_image = self.image_processor.preprocess(reference_image,  mean=self.config.mean, std=self.config.std)
+        reference_image = self.image_processor.preprocess(reference_image,  image_mean=self.config.mean, image_std=self.config.std, return_tensors='pt')['pixel_values']
         reference_image = reference_image.to(self.device)
 
         prompt = self._build_prompt(
@@ -199,7 +197,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             )
      
-            cond_image = self.image_processor.canny_process(condtioning_image, size={"width": width, "height": height}, do_rescale=True).to(self.device)
+            cond_image = self.image_processor.canny_preprocess(condtioning_image, size={"width": width, "height": height}, do_rescale=True).to(self.device)
             down_block_res_samples, mid_block_res_sample = self.controlnet(
                 latent_model_input,
                 t,

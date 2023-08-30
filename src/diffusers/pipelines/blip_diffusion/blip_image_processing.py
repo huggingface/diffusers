@@ -268,7 +268,6 @@ class BlipImageProcessor(BaseImageProcessor):
                 "It looks like you are trying to rescale already rescaled images. If the input"
                 " images have pixel values between 0 and 1, set `do_rescale=False` to avoid rescaling them again."
             )
-
         if input_data_format is None:
             # We assume that all images have the same channel dimension format.
             input_data_format = infer_channel_dimension_format(images[0])
@@ -297,6 +296,7 @@ class BlipImageProcessor(BaseImageProcessor):
         ]
 
         encoded_outputs = BatchFeature(data={"pixel_values": images}, tensor_type=return_tensors)
+        return encoded_outputs
 
     def canny_preprocess(
         self,
