@@ -1175,13 +1175,13 @@ class DownBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb, scale)
+                hidden_states = resnet(hidden_states, temb, scale=scale)
 
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states, scale)
+                hidden_states = downsampler(hidden_states, scale=scale)
 
             output_states = output_states + (hidden_states,)
 
@@ -2292,7 +2292,6 @@ class UpBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
-        print(f"{self.__class__.__name__} scale: {scale}")
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
