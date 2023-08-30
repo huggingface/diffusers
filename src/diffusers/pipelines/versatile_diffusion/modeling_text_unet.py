@@ -749,8 +749,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         processors = {}
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "set_processor"):
-                processors[f"{name}.processor"] = module.processor
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -1137,6 +1137,13 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_kwargs=cross_attention_kwargs,
                 encoder_attention_mask=encoder_attention_mask,
             )
+            # To support T2I-Adapter-XL
+            if (
+                is_adapter
+                and len(down_block_additional_residuals) > 0
+                and sample.shape == down_block_additional_residuals[0].shape
+            ):
+                sample += down_block_additional_residuals.pop(0)
 
         if is_controlnet:
             sample = sample + mid_block_additional_residual

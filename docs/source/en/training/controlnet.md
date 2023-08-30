@@ -265,7 +265,7 @@ distributed_type: DEEPSPEED
 
 See [documentation](https://huggingface.co/docs/accelerate/usage_guides/deepspeed) for more DeepSpeed configuration options.
 
-<Tip>
+</Tip>
 
 Changing the default Adam optimizer to DeepSpeed's Adam
 `deepspeed.ops.adam.DeepSpeedCPUAdam` gives a substantial speedup but
