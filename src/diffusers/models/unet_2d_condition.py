@@ -996,7 +996,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 upsample_size = down_block_res_samples[-1].shape[2:]
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
-                print(f"From cross_attention: {upsample_block.__class__.__name__}")
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
