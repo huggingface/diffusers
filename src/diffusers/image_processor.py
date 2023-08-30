@@ -202,14 +202,27 @@ class VaeImageProcessor(ConfigMixin):
 
     def resize(
         self,
-        image: PIL.Image.Image,
+        image: [PIL.Image.Image, np.ndarray, torch.Tensor],
         height: Optional[int] = None,
         width: Optional[int] = None,
-    ) -> PIL.Image.Image:
+    ) -> [PIL.Image.Image, np.ndarray, torch.Tensor]:
         """
-        Resize a PIL image.
+        Resize image.
         """
-        image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+        if isinstance(image, PIL.Image.Image):
+            image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+        elif isinstance(image, torch.Tensor):
+            image = torch.nn.functional.interpolate(
+                image,
+                size=(height, width),
+            )
+        elif isinstance(image, np.ndarray):
+            image = self.numpy_to_pt(image)
+            image = torch.nn.functional.interpolate(
+                image,
+                size=(height, width),
+            )
+            image = self.pt_to_numpy(image)
         return image
 
     def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
@@ -273,11 +286,8 @@ class VaeImageProcessor(ConfigMixin):
             image = self.numpy_to_pt(image)
 
             height, width = self.get_default_height_width(image, height, width)
-            if self.config.do_resize and (image.shape[2] != height or image.shape[3] != width):
-                raise ValueError(
-                    f"Currently we only support resizing for PIL image - please resize your numpy array to be {height} and {width}"
-                    f"currently the sizes are {image.shape[2]} and {image.shape[3]}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
-                )
+            if self.config.do_resize:
+                image = self.resize(image, height, width)
 
         elif isinstance(image[0], torch.Tensor):
             image = torch.cat(image, axis=0) if image[0].ndim == 4 else torch.stack(image, axis=0)
@@ -291,11 +301,8 @@ class VaeImageProcessor(ConfigMixin):
                 return image
 
             height, width = self.get_default_height_width(image, height, width)
-            if self.config.do_resize and (image.shape[2] != height or image.shape[3] != width):
-                raise ValueError(
-                    f"Currently we only support resizing for PIL image - please resize your torch tensor to be {height} and {width}"
-                    f"currently the sizes are {image.shape[2]} and {image.shape[3]}. You can also pass a PIL image instead to use resize option in VAEImageProcessor"
-                )
+            if self.config.do_resize:
+                image = self.resize(image, height, width)
 
         # expected range [0,1], normalize to [-1,1]
         do_normalize = self.config.do_normalize
