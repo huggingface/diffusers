@@ -33,7 +33,6 @@ from ...utils import (
 from ...utils.pil_utils import PIL_INTERPOLATION
 from torch import nn
 from transformers.activations import QuickGELUActivation as QuickGELU
-from transformers.models.blip.image_processing_blip import BlipImageProcessor as BlipImageProcessor_hf
 from .modeling_blip2 import Blip2QFormerModel
 import tqdm
 from torchvision import transforms
@@ -42,19 +41,6 @@ from .blip_image_processing import BlipImageProcessor
 from PIL import Image
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 import re
-
-def prepare_cond_image(
-        image, width, height, device, do_classifier_free_guidance=True
-    ):
-        image_processor = BlipImageProcessor_hf()
-        image = image_processor.preprocess(image, size={"width": width, "height": height}, do_resize=True, do_convert_rgb=True, do_rescale=True, do_normalize=False, return_tensors='pt')['pixel_values']
-        image = image.repeat_interleave(1, dim=0)
-        image = image.to(device=device)
-        if do_classifier_free_guidance:
-            image = torch.cat([image] * 2)
-
-        return image
-
 
 
 # Create a class for the Blip Diffusion pipeline
@@ -213,9 +199,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             )
      
-            cond_image = prepare_cond_image(
-                condtioning_image, width, height, device=self.device
-            )
+            cond_image = self.image_processor.canny_process(condtioning_image, size={"width": width, "height": height}, do_rescale=True).to(self.device)
             down_block_res_samples, mid_block_res_sample = self.controlnet(
                 latent_model_input,
                 t,
