@@ -1626,6 +1626,7 @@ ADDED_KV_ATTENTION_PROCESSORS = (
     SlicedAttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
     XFormersAttnAddedKVProcessor,
+    LoRAAttnAddedKVProcessor,
 )
 
 CROSS_ATTENTION_PROCESSORS = (
@@ -1633,6 +1634,9 @@ CROSS_ATTENTION_PROCESSORS = (
     AttnProcessor2_0,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
 )
 
 AttentionProcessor = Union[
