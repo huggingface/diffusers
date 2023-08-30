@@ -124,8 +124,7 @@ class DualTransformer2DModel(nn.Module):
             returning a tuple, the first element is the sample tensor.
         """
         input_states = hidden_states
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            print(f"{self.__class__.__name__} scale: {cross_attention_kwargs['scale']}")
+        
         encoded_states = []
         tokens_start = 0
         # attention_mask is not used yet

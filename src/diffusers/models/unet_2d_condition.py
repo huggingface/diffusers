@@ -921,6 +921,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
+            print(f"downsample_block: {downsample_block.__class__.__name__}")
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # For t2i-adapter CrossAttnDownBlock2D
                 additional_residuals = {}
@@ -961,6 +962,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # 4. mid
         if self.mid_block is not None:
+            print(f"mid_block: {self.mid_block.__class__.__name__}")
             sample = self.mid_block(
                 sample,
                 emb,
@@ -982,7 +984,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
-            print(f"upsample_block: {upsample_block.__class__.__name__}")
             is_final_block = i == len(self.up_blocks) - 1
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
