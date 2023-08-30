@@ -62,11 +62,11 @@ EXAMPLE_DOC_STRING = """
         >>> input_image = load_image(
         ...     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gligen/livingroom_modern.png"
         ... )
-        >>> prompt = "a birthday cake"
-        >>> boxes = [[0.2676, 0.6088, 0.4773, 0.7183]]
+        >>> prompt = "a backpack"
+        >>> boxes = [[0.2676, 0.4088, 0.4773, 0.7183]]
         >>> phrases = None
         >>> gligen_image = load_image(
-        ...     "https://www.southernliving.com/thmb/6jANEFrMvwSWlRlxCDCzulxXQZY=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/2641101_Funfetti_Cake_702-2000-a2d8f835fd8f4a928fa17222e71241c3.jpg"
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gligen/backpack.jpeg"
         ... )
 
         >>> images = pipe(
@@ -84,14 +84,16 @@ EXAMPLE_DOC_STRING = """
 
         >>> # Generate an image described by the prompt and
         >>> # insert objects described by text and image at the region defined by bounding boxes
-        >>> pipe = StableDiffusionGLIGENPipeline.from_pretrained("anhnct/Gligen_Text_Image", torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionGLIGENTextImagePipeline.from_pretrained(
+        ...     "anhnct/Gligen_Text_Image", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "a birthday cake on the table"
-        >>> boxes = [[0.1387, 0.2051, 0.4277, 0.7090]]
-        >>> phrases = ["a birtday cake"]
+        >>> prompt = "a flower sitting on the beach"
+        >>> boxes = boxes = [[0.0, 0.09, 0.53, 0.76]]
+        >>> phrases = ["flower"]
         >>> gligen_image = load_image(
-        ...     "https://www.southernliving.com/thmb/6jANEFrMvwSWlRlxCDCzulxXQZY=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/2641101_Funfetti_Cake_702-2000-a2d8f835fd8f4a928fa17222e71241c3.jpg"
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gligen/pexels-pixabay-60597.jpg"
         ... )
 
         >>> images = pipe(
