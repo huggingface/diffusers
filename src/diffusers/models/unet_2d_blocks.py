@@ -1077,7 +1077,6 @@ class CrossAttnDownBlock2D(nn.Module):
                     hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
                 else:
                     hidden_states = resnet(hidden_states, temb, scale=1.0)
-                print(f"From {self.__class__.__name__}: {cross_attention_kwargs}")
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
