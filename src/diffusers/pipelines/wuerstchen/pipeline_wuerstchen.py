@@ -295,7 +295,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             ).prev_sample
 
         # scale and decode the image latents with vq-vae
-        latents = self.vqgan.config.scaling_factor * latents
+        latents = self.vqgan.config.scale_factor * latents
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
 
         if output_type not in ["pt", "np", "pil"]:

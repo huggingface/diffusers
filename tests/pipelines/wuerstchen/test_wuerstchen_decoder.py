@@ -73,6 +73,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
+            projection_dim=self.text_embedder_hidden_size,
             hidden_size=self.text_embedder_hidden_size,
             intermediate_size=37,
             layer_norm_eps=1e-05,
@@ -88,8 +89,6 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         torch.manual_seed(0)
 
         model_kwargs = {
-            "in_channels": 3,
-            "embed_dim": 2,
             "bottleneck_blocks": 1,
             "num_vq_embeddings": 2,
         }
@@ -101,15 +100,13 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         torch.manual_seed(0)
 
         model_kwargs = {
-            "c_in": 1,
-            "c_cond": 1,
-            "c_r": 1,
-            "c_hidden": [2],
-            "effnet_embd": 1,
-            "nhead": [1],
-            "blocks": [1],
+            "c_cond": self.text_embedder_hidden_size,
+            "c_hidden": [320],
+            "nhead": [-1],
+            "blocks": [4],
             "level_config": ["CT"],
             "clip_embd": self.text_embedder_hidden_size,
+            "inject_effnet": [False],
         }
 
         model = WuerstchenDiffNeXt(**model_kwargs)
@@ -139,7 +136,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "image_embeds": torch.ones((1, 16, 21, 21), device=device),
+            "image_embeds": torch.ones((1, 16, 10, 10), device=device),
             "prompt": "horse",
             "generator": generator,
             "guidance_scale": 1.0,
@@ -159,29 +156,16 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         pipe.set_progress_bar_config(disable=None)
 
         output = pipe(**self.get_dummy_inputs(device))
-        image = output.image_embeds
+        image = output.images
 
-        image_from_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)[0]
+        image_from_tuple = pipe(**self.get_dummy_inputs(device), return_dict=False)
 
-        image_slice = image[0, 0, 0, -10:]
-        image_from_tuple_slice = image_from_tuple[0, 0, 0, -10:]
+        image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 2, 24, 24)
+        assert image.shape == (1, 424, 424, 3)
 
-        expected_slice = np.array(
-            [
-                -7172.9814,
-                -3438.9731,
-                -1093.4564,
-                388.91516,
-                -7471.7383,
-                -7998.2944,
-                -5328.388,
-                218.0543,
-                -2731.6716,
-                -8056.8545,
-            ],
-        )
+        expected_slice = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -206,3 +190,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             test_max_difference=test_max_difference,
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
+
+    @unittest.skip(reason="bf16 not supported and requires CUDA")
+    def test_float16_inference(self):
+        super().test_float16_inference()
