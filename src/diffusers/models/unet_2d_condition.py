@@ -984,6 +984,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
+            print(f"Upblock: {upsample_block.__class__.__name__}")
             is_final_block = i == len(self.up_blocks) - 1
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
