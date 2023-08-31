@@ -112,7 +112,7 @@ python -m python_coreml_stable_diffusion.pipeline --prompt "a photo of an astron
 
 ## Swift에서 Core ML 추론하기
 
-Running inference in Swift is slightly faster than in Python because the models are already compiled in the `mlmodelc` format. This is noticeable on app startup when the model is loaded but shouldn’t be noticeable if you run several generations afterward.
+Swift에서 추론을 실행하는 것은 모델이 이미 `mlmodelc` 형식으로 컴파일되어 있기 때문에 Python보다 약간 빠릅니다. 이는 앱이 시작될 때 모델이 불러와지는 것이 눈에 띄지만, 이후 여러 번 실행하면 눈에 띄지 않을 것입니다.
 
 ### 다운로드
 
@@ -158,9 +158,10 @@ Core ML 모델과 추론 코드는 🧨 Diffusers의 많은 기능, 옵션 및 �
 - Swift에 포팅된 스케줄러는 Stable Diffusion에서 사용하는 기본 스케줄러와 `diffusers` 구현에서 Swift로 포팅한 `DPMSolverMultistepScheduler` 두 개뿐입니다. 이들 중 약 절반의 스텝으로 동일한 품질을 생성하는 `DPMSolverMultistepScheduler`를 사용하는 것이 좋습니다.
 - 추론 코드에서 네거티브 프롬프트, classifier-free guidance scale 및 image-to-image 작업을 사용할 수 있습니다. depth guidance, ControlNet, latent upscalers와 같은 고급 기능은 아직 사용할 수 없습니다.
 
-Apple's [conversion and inference repo](https://github.com/apple/ml-stable-diffusion) and our own [swift-coreml-diffusers](https://github.com/huggingface/swift-coreml-diffusers) repos are intended as technology demonstrators to enable other developers to build upon. 
+Apple의 [변환 및 추론 리포지토리](https://github.com/apple/ml-stable-diffusion)와 자체 [swift-coreml-diffusers](https://github.com/huggingface/swift-coreml-diffusers) 리포지토리는 다른 개발자들이 구축할 수 있는 기술적인 데모입니다. 
 
-If you feel strongly about any missing features, please feel free to open a feature request or, better yet, a contribution PR :)
+누락된 기능이 있다고 생각되면 언제든지 기능을 요청하거나, 더 좋은 방법은 기여 PR을 열어주세요. :)
+
 
 ## 네이티브 Diffusers Swift 앱
 

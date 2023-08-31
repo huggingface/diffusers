@@ -12,7 +12,6 @@
 
 이제 컨텍스트 관리자로 [`~accelerate.PartialState.split_between_processes`] 유틸리티를 사용하여 프로세스 수에 따라 프롬프트를 자동으로 분배합니다.
 
-Translated with www.DeepL.com/Translator (free version)
 
 ```py
 from accelerate import PartialState
