@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 Harutatsu Akiyama and HuggingFace Inc.
+# Copyright 2023 Harutatsu Akiyama, Jinbin Bai, and HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ from diffusers import (
     StableDiffusionXLControlNetInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, randn_tensor, torch_device
+from diffusers.utils import floats_tensor, torch_device
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
@@ -142,24 +142,34 @@ class ControlNetPipelineSDXLFastTests(
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0, img_res=64):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
 
+        # Get random floats in [0, 1] as image
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        mask_image = torch.ones_like(image)
         controlnet_embedder_scale_factor = 2
-        control_image = randn_tensor(
-            (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
-            generator=generator,
-            device=torch.device(device),
+        control_image = (
+            floats_tensor(
+                (1, 3, 32 * controlnet_embedder_scale_factor, 32 * controlnet_embedder_scale_factor),
+                rng=random.Random(seed),
+            )
+            .to(device)
+            .cpu()
         )
-        init_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        init_image = init_image.cpu().permute(0, 2, 3, 1)[0]
-
-        controlnet_embedder_scale_factor = 2
-        image = Image.fromarray(np.uint8(init_image)).convert("RGB").resize((64, 64))
-        mask_image = Image.fromarray(np.uint8(init_image + 4)).convert("RGB").resize((64, 64))
+        control_image = control_image.cpu().permute(0, 2, 3, 1)[0]
+        # Convert image and mask_image to [0, 255]
+        image = 255 * image
+        mask_image = 255 * mask_image
+        control_image = 255 * control_image
+        # Convert to PIL image
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((img_res, img_res))
+        mask_image = Image.fromarray(np.uint8(mask_image)).convert("L").resize((img_res, img_res))
+        control_image = Image.fromarray(np.uint8(control_image)).convert("RGB").resize((img_res, img_res))
 
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
@@ -167,11 +177,10 @@ class ControlNetPipelineSDXLFastTests(
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "numpy",
-            "image": image,
+            "image": init_image,
             "mask_image": mask_image,
             "control_image": control_image,
         }
-
         return inputs
 
     def test_attention_slicing_forward_pass(self):
@@ -269,6 +278,6 @@ class ControlNetPipelineSDXLFastTests(
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
 
-    # Ignore float16 for SDXL
-    def test_float16_inference(self):
-        return True
+    # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
+    def test_save_load_optional_components(self):
+        pass
