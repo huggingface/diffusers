@@ -143,8 +143,8 @@ image
 A conjunction diffuses each prompt independently and concatenates their results by their weighted sum. Add `.and()` to the end of a list of prompts to create a conjunction:
   
 ```py
-prompt_embeds = compel_proc('("a red cat, playing with a, ball").and()')
-generator = torch.Generator(device="cuda").manual_seed(33)
+prompt_embeds = compel_proc('["a red cat", "playing with a", "ball"].and()')
+generator = torch.Generator(device="cuda").manual_seed(55)
 
 image = pipe(prompt_embeds=prompt_embeds, generator=generator, num_inference_steps=20).images[0]
 image

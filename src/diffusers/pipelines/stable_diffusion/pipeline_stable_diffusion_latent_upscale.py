@@ -21,7 +21,7 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging, randn_tensor
@@ -257,14 +257,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
+        image: PipelineImageInput = None,
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
