@@ -42,6 +42,7 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "guidance_scale",
         "negative_prompt",
         "num_inference_steps",
+        "prior_num_inference_steps",
         "return_dict",
         "guidance_scale",
         "num_images_per_prompt",
@@ -163,6 +164,7 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "guidance_scale": 4.0,
             "num_inference_steps": 2,
+            "prior_num_inference_steps": 2,
             "output_type": "np",
         }
         return inputs
@@ -187,7 +189,7 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
 
-        expected_slice = np.array([1.0, 0.6543794, 0.20357049, 0.234462, 1.0, 0.0, 0.62647814, 1.0, 0.0])
+        expected_slice = np.array([1.0, 0.35500407, 0.0, 0.0, 0.03041486, 0.0, 0.0, 0.0, 0.15140978])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
