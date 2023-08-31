@@ -23,7 +23,7 @@ from ..utils import (
 )
 
 _import_structure = {}
-
+_dummy_modules = {}
 
 try:
     if not is_torch_available():
@@ -31,7 +31,13 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils import dummy_pt_objects  # noqa F403
 
-    _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
+    modules = {}
+    for name in dir(dummy_pt_objects):
+        if (not name.endswith("Scheduler")) or name.startswith("_"):
+            continue
+        modules[name] = getattr(dummy_pt_objects, name)
+    _dummy_modules.update(modules)
+
 else:
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
@@ -86,9 +92,14 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils import dummy_torch_and_scipy_objects  # noqa F403
 
-    _import_structure["utils.dummy_torch_and_scipy_objects"] = [
-        name for name in dir(dummy_torch_and_scipy_objects) if not name.startswith("_")
-    ]
+    modules = {}
+    for name in dir(dummy_torch_and_scipy_objects):
+        if (not name.endswith("Scheduler")) or name.startswith("_"):
+            continue
+        modules[name] = getattr(dummy_torch_and_scipy_objects, name)
+
+    _dummy_modules.update(modules)
+
 else:
     _import_structure["scheduling_lms_discrete"] = ["LMSDiscreteScheduler"]
 
@@ -98,9 +109,14 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils import dummy_torch_and_torchsde_objects  # noqa F403
 
-    _import_structure["utils.dummy_torch_and_torchsde_objects"] = [
-        name for name in dir(dummy_torch_and_torchsde_objects) if not name.startswith("_")
-    ]
+    modules = {}
+    for name in dir(dummy_torch_and_torchsde_objects):
+        if (not name.endswith("Scheduler")) or name.startswith("_"):
+            continue
+        modules[name] = getattr(dummy_torch_and_torchsde_objects, name)
+
+    _dummy_modules.update(modules)
+
 
 else:
     _import_structure["scheduling_dpmsolver_sde"] = ["DPMSolverSDEScheduler"]
@@ -108,3 +124,5 @@ else:
 import sys
 
 sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
+for name, value in _dummy_modules.items():
+    setattr(sys.modules[__name__], name, value)
