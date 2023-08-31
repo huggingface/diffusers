@@ -982,18 +982,18 @@ class StableDiffusionInpaintPipeline(
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
-                if num_channels_unet == 4:
-                    init_latents_proper = image_latents[:1]
-                    init_mask = mask[:1]
+                if num_channels_unet == 4 and i < len(timesteps) - 1:
+                    # add noise for next timestep
+                    noise_timestep = timesteps[i + 1]
 
-                    if i < len(timesteps) - 1:
-                        # add noise for next timestep
-                        noise_timestep = timesteps[i + 1]
-                        init_latents_proper = self.scheduler.add_noise(
-                            init_latents_proper, noise, torch.tensor([noise_timestep])
-                        )
+                    init_latents_proper = self.scheduler.add_noise(
+                        image_latents[:1], noise, torch.tensor([noise_timestep])
+                    )
 
-                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                    latents = (1 - mask[:1]) * init_latents_proper + mask[:1] * latents
+                
+                if force_unmasked_unchanged and i == (len(timesteps) - 1):
+                    latents = (1 - mask[:1]) * image_latents[:1] + mask[:1] * latents
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1010,11 +1010,6 @@ class StableDiffusionInpaintPipeline(
                 mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
                 condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, **condition_kwargs)[0]
-            # If force_unmasked_unchanged, use the original mask in pixel space to recover the original pixels
-            if force_unmasked_unchanged:
-                # Make sure image is on CPU
-                image = image.cpu()
-                image = (1 - mask_condition[:1]) * init_image[:1] + mask_condition[:1] * image
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
