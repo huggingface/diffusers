@@ -1087,6 +1087,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
         # 3. down
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
         is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
@@ -1109,11 +1113,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     **additional_residuals,
                 )
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    scale = cross_attention_kwargs["scale"]
-                else:
-                    scale = 1.0
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=scale)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
 
                 if is_adapter and len(down_block_additional_residuals) > 0:
                     sample += down_block_additional_residuals.pop(0)
@@ -1176,16 +1176,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     encoder_attention_mask=encoder_attention_mask,
                 )
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    scale = cross_attention_kwargs["scale"]
-                else:
-                    scale = 1.0
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     upsample_size=upsample_size,
-                    scale=scale,
+                    scale=lora_scale,
                 )
 
         # 6. post-process
@@ -1503,6 +1499,11 @@ class CrossAttnDownBlockFlat(nn.Module):
     ):
         output_states = ()
 
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["lora_scale"]
+        else:
+            lora_scale = 1.0
+
         blocks = list(zip(self.resnets, self.attentions))
 
         for i, (resnet, attn) in enumerate(blocks):
@@ -1533,10 +1534,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1554,10 +1552,7 @@ class CrossAttnDownBlockFlat(nn.Module):
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = downsampler(hidden_states, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = downsampler(hidden_states, scale=1.0)
+                hidden_states = downsampler(hidden_states, scale=lora_scale)
 
             output_states = output_states + (hidden_states,)
 
@@ -1744,6 +1739,11 @@ class CrossAttnUpBlockFlat(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
+
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -1777,10 +1777,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1792,10 +1789,7 @@ class CrossAttnUpBlockFlat(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = upsampler(hidden_states, upsample_size, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = upsampler(hidden_states, upsample_size, scale=1.0)
+                hidden_states = upsampler(hidden_states, upsample_size, scale=lora_scale)
 
         return hidden_states
 
@@ -1901,10 +1895,10 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            scale = cross_attention_kwargs["scale"]
+            lora_scale = cross_attention_kwargs["scale"]
         else:
-            scale = 1.0
-        hidden_states = self.resnets[0](hidden_states, temb, scale=scale)
+            lora_scale = 1.0
+        hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.training and self.gradient_checkpointing:
 
@@ -1941,10 +1935,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states
 
@@ -2045,6 +2036,10 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
 
         if attention_mask is None:
             # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
@@ -2057,11 +2052,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
             #         mask = attention_mask if encoder_hidden_states is None else encoder_attention_mask
             mask = attention_mask
 
-        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-            scale = cross_attention_kwargs["scale"]
-        else:
-            scale = 1.0
-        hidden_states = self.resnets[0](hidden_states, temb, scale=scale)
+        hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             # attn
             hidden_states = attn(
@@ -2072,9 +2063,6 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
             )
 
             # resnet
-            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-            else:
-                hidden_states = resnet(hidden_states, temb, scale=1.0)
+            hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states

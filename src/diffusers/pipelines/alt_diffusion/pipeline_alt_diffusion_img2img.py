@@ -454,8 +454,10 @@ class AltDiffusionImg2ImgPipeline(
 
     def decode_latents(self, latents):
         warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
+            (
+                "The decode_latents method is deprecated and will be removed in a future version. Please"
+                " use VaeImageProcessor instead"
+            ),
             FutureWarning,
         )
         latents = 1 / self.vae.config.scaling_factor * latents

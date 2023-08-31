@@ -641,10 +641,10 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            scale = cross_attention_kwargs["scale"]
+            lora_scale = cross_attention_kwargs["scale"]
         else:
-            scale = 1.0
-        hidden_states = self.resnets[0](hidden_states, temb, scale=scale)
+            lora_scale = 1.0
+        hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.training and self.gradient_checkpointing:
 
@@ -681,10 +681,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states
 
@@ -784,6 +781,10 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
 
         if attention_mask is None:
             # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
@@ -796,11 +797,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
             #         mask = attention_mask if encoder_hidden_states is None else encoder_attention_mask
             mask = attention_mask
 
-        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-            scale = cross_attention_kwargs["scale"]
-        else:
-            scale = 1.0
-        hidden_states = self.resnets[0](hidden_states, temb, scale=scale)
+        hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             # attn
             hidden_states = attn(
@@ -811,10 +808,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
             )
 
             # resnet
-            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-            else:
-                hidden_states = resnet(hidden_states, temb, scale=1.0)
+            hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states
 
@@ -913,28 +907,26 @@ class AttnDownBlock2D(nn.Module):
 
     def forward(self, hidden_states, temb=None, upsample_size=None, cross_attention_kwargs=None):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+
+        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
+
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                scale = cross_attention_kwargs["scale"]
-            else:
-                scale = 1.0
-                cross_attention_kwargs.update({"scale": scale})
-            hidden_states = resnet(hidden_states, temb, scale=scale)
+            cross_attention_kwargs.update({"scale": lora_scale})
+            hidden_states = resnet(hidden_states, temb, scale=lora_scale)
             hidden_states = attn(hidden_states, cross_attention_kwargs=cross_attention_kwargs)
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                    scale = cross_attention_kwargs["scale"]
-                else:
-                    scale = 1.0
                 if self.downsample_type == "resnet":
-                    hidden_states = downsampler(hidden_states, temb=temb, scale=scale)
+                    hidden_states = downsampler(hidden_states, temb=temb, scale=lora_scale)
                 else:
-                    hidden_states = downsampler(hidden_states, scale=scale)
+                    hidden_states = downsampler(hidden_states, scale=lora_scale)
 
             output_states += (hidden_states,)
 
@@ -1043,6 +1035,11 @@ class CrossAttnDownBlock2D(nn.Module):
     ):
         output_states = ()
 
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["lora_scale"]
+        else:
+            lora_scale = 1.0
+
         blocks = list(zip(self.resnets, self.attentions))
 
         for i, (resnet, attn) in enumerate(blocks):
@@ -1073,10 +1070,7 @@ class CrossAttnDownBlock2D(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1094,10 +1088,7 @@ class CrossAttnDownBlock2D(nn.Module):
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = downsampler(hidden_states, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = downsampler(hidden_states, scale=1.0)
+                hidden_states = downsampler(hidden_states, scale=lora_scale)
 
             output_states = output_states + (hidden_states,)
 
@@ -1721,6 +1712,11 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         output_states = ()
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
 
+        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
+
         if attention_mask is None:
             # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
             mask = None if encoder_hidden_states is None else encoder_attention_mask
@@ -1752,10 +1748,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                     **cross_attention_kwargs,
                 )
             else:
-                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
                 hidden_states = attn(
                     hidden_states,
@@ -1768,10 +1761,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                    hidden_states = downsampler(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = downsampler(hidden_states, temb, scale=1.0)
+                hidden_states = downsampler(hidden_states, temb, scale=lora_scale)
 
             output_states = output_states + (hidden_states,)
 
@@ -1931,6 +1921,10 @@ class KCrossAttnDownBlock2D(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
+        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
 
         for resnet, attn in zip(self.resnets, self.attentions):
             if self.training and self.gradient_checkpointing:
@@ -1960,10 +1954,7 @@ class KCrossAttnDownBlock2D(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                 )
             else:
-                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2192,6 +2183,11 @@ class CrossAttnUpBlock2D(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
+
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -2225,10 +2221,7 @@ class CrossAttnUpBlock2D(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2240,10 +2233,7 @@ class CrossAttnUpBlock2D(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = upsampler(hidden_states, upsample_size, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = upsampler(hidden_states, upsample_size, scale=1.0)
+                hidden_states = upsampler(hidden_states, upsample_size, scale=lora_scale)
 
         return hidden_states
 
@@ -2890,6 +2880,11 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
 
+        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
+
         if attention_mask is None:
             # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
             mask = None if encoder_hidden_states is None else encoder_attention_mask
@@ -2927,10 +2922,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                     **cross_attention_kwargs,
                 )
             else:
-                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
                 hidden_states = attn(
                     hidden_states,
@@ -2941,10 +2933,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                    hidden_states = upsampler(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = upsampler(hidden_states, temb, scale=1.0)
+                hidden_states = upsampler(hidden_states, temb, scale=lora_scale)
 
         return hidden_states
 
@@ -3128,6 +3117,11 @@ class KCrossAttnUpBlock2D(nn.Module):
         if res_hidden_states_tuple is not None:
             hidden_states = torch.cat([hidden_states, res_hidden_states_tuple], dim=1)
 
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
+
         for resnet, attn in zip(self.resnets, self.attentions):
             if self.training and self.gradient_checkpointing:
 
@@ -3156,10 +3150,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                 )
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    hidden_states = resnet(hidden_states, temb, scale=cross_attention_kwargs["scale"])
-                else:
-                    hidden_states = resnet(hidden_states, temb, scale=1.0)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,

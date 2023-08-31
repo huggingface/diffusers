@@ -915,6 +915,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
         # 3. down
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
         is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
@@ -937,11 +941,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     **additional_residuals,
                 )
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    scale = cross_attention_kwargs["scale"]
-                else:
-                    scale = 1.0
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=scale)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
 
                 if is_adapter and len(down_block_additional_residuals) > 0:
                     sample += down_block_additional_residuals.pop(0)
@@ -1004,16 +1004,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     encoder_attention_mask=encoder_attention_mask,
                 )
             else:
-                if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-                    scale = cross_attention_kwargs["scale"]
-                else:
-                    scale = 1.0
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     upsample_size=upsample_size,
-                    scale=scale,
+                    scale=lora_scale,
                 )
 
         # 6. post-process

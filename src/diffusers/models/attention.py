@@ -177,7 +177,7 @@ class BasicTransformerBlock(nn.Module):
         class_labels: Optional[torch.LongTensor] = None,
     ):
         # Notice that normalization is always applied before the real computation in the following blocks.
-        # 1. Self-Attention
+        # 0. Self-Attention
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
         elif self.use_ada_layer_norm_zero:
@@ -187,7 +187,13 @@ class BasicTransformerBlock(nn.Module):
         else:
             norm_hidden_states = self.norm1(hidden_states)
 
-        # 0. Prepare GLIGEN inputs
+        # 1. Retrieve lora scale.
+        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs["scale"]
+        else:
+            lora_scale = 1.0
+
+        # 2. Prepare GLIGEN inputs
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
         gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
 
@@ -201,12 +207,12 @@ class BasicTransformerBlock(nn.Module):
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
 
-        # 1.5 GLIGEN Control
+        # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
             hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
-        # 1.5 ends
+        # 2.5 ends
 
-        # 2. Cross-Attention
+        # 3. Cross-Attention
         if self.attn2 is not None:
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
@@ -220,7 +226,7 @@ class BasicTransformerBlock(nn.Module):
             )
             hidden_states = attn_output + hidden_states
 
-        # 3. Feed-forward
+        # 4. Feed-forward
         norm_hidden_states = self.norm3(hidden_states)
 
         if self.use_ada_layer_norm_zero:
@@ -233,25 +239,16 @@ class BasicTransformerBlock(nn.Module):
                     f"`hidden_states` dimension to be chunked: {norm_hidden_states.shape[self._chunk_dim]} has to be divisible by chunk size: {self._chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
                 )
 
-            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                scale = cross_attention_kwargs["scale"]
-            else:
-                scale = 1.0
-
             num_chunks = norm_hidden_states.shape[self._chunk_dim] // self._chunk_size
             ff_output = torch.cat(
                 [
-                    self.ff(hid_slice, scale=scale)
+                    self.ff(hid_slice, scale=lora_scale)
                     for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)
                 ],
                 dim=self._chunk_dim,
             )
         else:
-            if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-                scale = cross_attention_kwargs["scale"]
-            else:
-                scale = 1.0
-            ff_output = self.ff(norm_hidden_states, scale=scale)
+            ff_output = self.ff(norm_hidden_states, scale=lora_scale)
 
         if self.use_ada_layer_norm_zero:
             ff_output = gate_mlp.unsqueeze(1) * ff_output
