@@ -22,7 +22,6 @@ if is_torch_available():
     from .autoencoder_tiny import AutoencoderTiny
     from .controlnet import ControlNetModel
     from .dual_transformer_2d import DualTransformer2DModel
-    from .embeddings import CLIPImageProjection
     from .modeling_utils import ModelMixin
     from .prior_transformer import PriorTransformer
     from .t5_film_transformer import T5FilmDecoder

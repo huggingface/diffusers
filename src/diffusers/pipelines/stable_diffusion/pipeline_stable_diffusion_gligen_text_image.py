@@ -30,7 +30,6 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import GatedSelfAttentionDense
-from ...models.embeddings import CLIPImageProjection
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
@@ -41,6 +40,7 @@ from ...utils import (
 )
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
+from .clip_image_project_model import CLIPImageProjection
 from .safety_checker import StableDiffusionSafetyChecker
 
 

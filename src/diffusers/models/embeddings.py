@@ -18,9 +18,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
 from .activations import get_activation
-from .modeling_utils import ModelMixin
 
 
 def get_timestep_embedding(
@@ -565,7 +563,7 @@ class FourierEmbedder(nn.Module):
 
 
 class PositionNet(nn.Module):
-    def __init__(self, positive_len, out_dim, feature_type, fourier_freqs=8):
+    def __init__(self, positive_len, out_dim, feature_type="text-only", fourier_freqs=8):
         super().__init__()
         self.positive_len = positive_len
         self.out_dim = out_dim
@@ -642,14 +640,3 @@ class PositionNet(nn.Module):
             objs = torch.cat([objs_text, objs_image], dim=1)
 
         return objs
-
-
-class CLIPImageProjection(ModelMixin, ConfigMixin):
-    @register_to_config
-    def __init__(self, hidden_size: int = 768):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.project = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
-
-    def forward(self, x):
-        return self.project(x)
