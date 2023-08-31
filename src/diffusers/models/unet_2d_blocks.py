@@ -1921,7 +1921,7 @@ class KCrossAttnDownBlock2D(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
-        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
             lora_scale = cross_attention_kwargs["scale"]
         else:
             lora_scale = 1.0
