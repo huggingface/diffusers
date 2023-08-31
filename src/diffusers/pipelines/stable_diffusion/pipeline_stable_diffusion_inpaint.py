@@ -585,7 +585,7 @@ class StableDiffusionInpaintPipeline(
                 "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
                 "However, either the image or the noise timestep has not been provided."
             )
-
+        
         noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
         if return_image_latents or (latents is None and not is_strength_max):
@@ -768,8 +768,9 @@ class StableDiffusionInpaintPipeline(
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             force_unmasked_unchanged (`bool`, *optional*):
                 Whether to force the unmasked areas of `image` to remain exactly the same after inpainting for a model
-                with 9 UNet channels. If the UNet has only 4 channels, then the unmasked areas will always be forced to
-                remain unchanged, and setting `force_unmasked_unchanged` to `False` in this case will raise an error.
+                with 9 UNet channels. If the UNet has only 4 channels, then the unmasked areas will always be forced
+                to remain unchanged, and setting `force_unmasked_unchanged` to `False` in this case will raise an
+                error.
 
 
         Examples:

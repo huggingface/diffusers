@@ -266,7 +266,7 @@ class StableDiffusionInpaintPipelineFastTests(
         inputs["strength"] = 0.01
         with self.assertRaises(ValueError):
             sd_pipe(**inputs).images
-
+    
     def test_stable_diffusion_inpaint_force_unmasked_unchanged(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -364,7 +364,7 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         expected_slice = np.array([0.4925, 0.4967, 0.4100, 0.5234, 0.5322, 0.4532, 0.5805, 0.5877, 0.4151])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
+    
     def test_stable_diffusion_inpaint_force_unmasked_unchanged_false(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
