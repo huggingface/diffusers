@@ -259,7 +259,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             image_embeds, text_encoder_hidden_states, do_classifier_free_guidance, device
         )
 
-        dtype = predicted_image_embeddings.dtype
+        dtype = self.generator.dtype
         latent_height = int(predicted_image_embeddings.size(2) * self.config.latent_dim_scale)
         latent_width = int(predicted_image_embeddings.size(3) * self.config.latent_dim_scale)
         latent_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
