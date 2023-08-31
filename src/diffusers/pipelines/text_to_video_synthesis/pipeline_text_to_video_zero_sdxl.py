@@ -811,23 +811,24 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
             add_time_ids=add_time_ids,
         )
 
-        if output_type == "latent":
-            return TextToVideoSDXLPipelineOutput(images=x_1k_0)
+        latents = x_1k_0
 
-        # make sure the VAE is in float32 mode, as it overflows in float16
-        vae_dtype = self.vae.dtype
-        if vae_dtype == torch.float16 and self.vae.config.force_upcast:
-            self.upcast_vae()
-            x_1k_0 = x_1k_0.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+        if not output_type == "latent":
+            # make sure the VAE is in float32 mode, as it overflows in float16
+            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
-        # manually for max memory savings
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.unet.to("cpu")
-        torch.cuda.empty_cache()
+            if needs_upcasting:
+                self.upcast_vae()
+                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-        image = self.vae.decode(x_1k_0 / self.vae.config.scaling_factor, return_dict=False)[0]
-        if self.vae.dtype != vae_dtype:
-            self.vae.to(dtype=vae_dtype)
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+
+            # cast back to fp16 if needed
+            if needs_upcasting:
+                self.vae.to(dtype=torch.float16)
+        else:
+            image = latents
+            return TextToVideoSDXLPipelineOutput(images=image)
 
         # apply watermark if available
         if self.watermark is not None:
@@ -835,9 +836,11 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
-        # Offload last model to CPU
+        # Offload last model to CPU manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.unet.to("cpu")
             self.final_offload_hook.offload()
+        torch.cuda.empty_cache()
 
         if not return_dict:
             return (image,)
