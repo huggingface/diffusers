@@ -1070,7 +1070,7 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
         else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+            raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
         for _, component in self.components.items():
