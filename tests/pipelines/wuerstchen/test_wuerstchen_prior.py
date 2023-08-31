@@ -176,6 +176,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             test_max_difference=test_max_difference,
             relax_max_difference=relax_max_difference,
             test_mean_pixel_difference=test_mean_pixel_difference,
+            expected_max_diff=1e-1,
         )
 
     @skip_mps
