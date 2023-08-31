@@ -838,9 +838,7 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
 
         # Offload last model to CPU manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.unet.to("cpu")
             self.final_offload_hook.offload()
-        torch.cuda.empty_cache()
 
         if not return_dict:
             return (image,)
