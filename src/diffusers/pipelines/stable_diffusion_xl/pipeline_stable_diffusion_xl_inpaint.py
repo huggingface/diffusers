@@ -767,9 +767,11 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
         else:
             masked_image_latents = None
 
-        if masked_image is not None and masked_image_latents is None:
-            masked_image = masked_image.to(device=device, dtype=dtype)
-            masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
+        if masked_image is not None:
+            if masked_image_latents is None:
+                masked_image = masked_image.to(device=device, dtype=dtype)
+                masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
+
             if masked_image_latents.shape[0] < batch_size:
                 if not batch_size % masked_image_latents.shape[0] == 0:
                     raise ValueError(
@@ -1156,14 +1158,14 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
         init_image = init_image.to(dtype=torch.float32)
 
         mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
-       
+
         if masked_image_latents is not None:
             masked_image = masked_image_latents
-        elif init_image.shape[1] ==4:
+        elif init_image.shape[1] == 4:
             # if images are in latent space, we can't mask it
             masked_image = None
         else:
-            masked_image = init_image * (mask_condition < 0.5)
+            masked_image = init_image * (mask < 0.5)
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
