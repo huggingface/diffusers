@@ -765,7 +765,7 @@ class TextualInversionLoaderMixin:
             )
 
         # Remove any existing hooks.
-        is_model_cpu_offload = False 
+        is_model_cpu_offload = False
         is_sequential_cpu_offload = False
         for _, component in self.components.items():
             if isinstance(component, nn.Module):
@@ -967,7 +967,7 @@ class LoraLoaderMixin:
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
         # Remove any existing hooks.
-        is_model_cpu_offload = False 
+        is_model_cpu_offload = False
         is_sequential_cpu_offload = False
         for _, component in self.components.items():
             if isinstance(component, nn.Module):
