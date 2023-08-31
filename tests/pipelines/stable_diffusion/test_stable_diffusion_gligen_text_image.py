@@ -28,6 +28,7 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKL,
+    CLIPImageProjection,
     DDIMScheduler,
     StableDiffusionGLIGENTextImagePipeline,
     UNet2DConditionModel,
@@ -112,6 +113,8 @@ class GligenTextImagePipelineFastTests(
         image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
         processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
 
+        image_project = CLIPImageProjection(hidden_size=32)
+
         components = {
             "unet": unet,
             "scheduler": scheduler,
@@ -121,6 +124,7 @@ class GligenTextImagePipelineFastTests(
             "safety_checker": None,
             "feature_extractor": None,
             "image_encoder": image_encoder,
+            "image_project": image_project,
             "processor": processor,
         }
         return components

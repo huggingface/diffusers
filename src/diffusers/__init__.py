@@ -39,6 +39,7 @@ else:
         AsymmetricAutoencoderKL,
         AutoencoderKL,
         AutoencoderTiny,
+        CLIPImageProjection,
         ControlNetModel,
         ModelMixin,
         MultiAdapter,
