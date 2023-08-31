@@ -649,6 +649,26 @@ def is_k_diffusion_version(operation: str, version: str):
     return compare_versions(parse(_k_diffusion_version), operation, version)
 
 
+def get_objects_from_module(module):
+    """
+    Args:
+    Returns a dict of object names and values in a module, while skipping private/internal objects
+        module (ModuleType):
+            Module to extract the objects from.
+
+    Returns:
+        dict: Dictionary of object names and corresponding values
+    """
+
+    objects = {}
+    for name in dir(module):
+        if name.startswith("_"):
+            continue
+        objects[name] = getattr(module, name)
+
+    return objects
+
+
 class OptionalDependencyNotAvailable(BaseException):
     """An error indicating that an optional dependency of Diffusers was not found in the environment."""
 
