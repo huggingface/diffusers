@@ -18,7 +18,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import PIL
 import torch
-from huggingface_hub import hf_hub_download
 from transformers import (
     CLIPFeatureExtractor,
     CLIPProcessor,
@@ -31,6 +30,7 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import GatedSelfAttentionDense
+from ...models.embeddings import CLIPImageProjection
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
@@ -90,7 +90,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = pipe.to("cuda")
 
         >>> prompt = "a flower sitting on the beach"
-        >>> boxes = boxes = [[0.0, 0.09, 0.53, 0.76]]
+        >>> boxes = [[0.0, 0.09, 0.53, 0.76]]
         >>> phrases = ["flower"]
         >>> gligen_image = load_image(
         ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gligen/pexels-pixabay-60597.jpg"
@@ -107,6 +107,44 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> images[0].save("./gligen-generation-text-image-box.jpg")
+
+        >>> # Generate an image described by the prompt and
+        >>> # transfer style described by image at the region defined by bounding boxes
+        >>> pipe = StableDiffusionGLIGENTextImagePipeline.from_pretrained(
+        ...     "anhnct/Gligen_Text_Image", torch_dtype=torch.float16
+        ... )
+        >>> pipe = pipe.to("cuda")
+
+        >>> prompt = "a dragon flying on the sky"
+        >>> boxes = [[0.4, 0.2, 1.0, 0.8], [0.0, 1.0, 0.0, 1.0]]  # Set `[0.0, 1.0, 0.0, 1.0]` for the style
+
+        >>> gligen_image = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/landscape.png"
+        ... )
+
+        >>> gligen_placeholder = load_image(
+        ...     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/landscape.png"
+        ... )
+
+        >>> images = pipe(
+        ...     prompt=prompt,
+        ...     gligen_phrases=[
+        ...         "dragon",
+        ...         "placeholder",
+        ...     ],  # Can use any text instead of `placeholder` token, because we will use mask here
+        ...     gligen_images=[
+        ...         gligen_placeholder,
+        ...         gligen_image,
+        ...     ],  # Can use any image in gligen_placeholder, because we will use mask here
+        ...     input_phrases_mask=[1, 0],  # Set 0 for the placeholder token
+        ...     input_images_mask=[0, 1],  # Set 0 for the placeholder image
+        ...     gligen_boxes=boxes,
+        ...     gligen_scheduled_sampling_beta=1,
+        ...     output_type="pil",
+        ...     num_inference_steps=50,
+        ... ).images
+
+        >>> images[0].save("./gligen-generation-text-image-box-style-transfer.jpg")
         ```
 """
 
@@ -129,6 +167,8 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             A `CLIPProcessor` to procces reference image.
         image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
             Frozen image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
+        image_project ([`CLIPImageProjection`]):
+            A `CLIPImageProjection` to project image embedding into phrases embedding space.
         unet ([`UNet2DConditionModel`]):
             A `UNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
@@ -150,6 +190,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         processor: CLIPProcessor,
         image_encoder: CLIPVisionModelWithProjection,
+        image_project: CLIPImageProjection,
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
@@ -180,6 +221,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             image_encoder=image_encoder,
             processor=processor,
+            image_project=image_project,
             unet=unet,
             scheduler=scheduler,
             safety_checker=safety_checker,
@@ -246,8 +288,8 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
-    def _encode_prompt(
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
+    def encode_prompt(
         self,
         prompt,
         device,
@@ -262,7 +304,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -401,12 +443,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-
-        return prompt_embeds
+        return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
@@ -511,6 +548,10 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
                 module.enabled = enabled
 
     def draw_inpaint_mask_from_boxes(self, boxes, size):
+        """
+        Create an inpainting mask based on given boxes. This function generates an inpainting mask using the provided
+        boxes to mark regions that need to be inpainted.
+        """
         inpaint_mask = torch.ones(size[0], size[1])
         for box in boxes:
             x0, x1 = box[0] * size[0], box[2] * size[0]
@@ -519,6 +560,9 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         return inpaint_mask
 
     def crop(self, im, new_width, new_height):
+        """
+        Crop the input image to the specified dimensions.
+        """
         width, height = im.size
         left = (width - new_width) / 2
         top = (height - new_height) / 2
@@ -527,25 +571,19 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         return im.crop((left, top, right, bottom))
 
     def target_size_center_crop(self, im, new_hw):
+        """
+        Crop and resize the image to the target size while keeping the center.
+        """
         width, height = im.size
         if width != height:
             im = self.crop(im, min(height, width), min(height, width))
         return im.resize((new_hw, new_hw), PIL.Image.LANCZOS)
 
-    def project(self, x, hidden_size, device):
-        """
-        x (Batch*768) should be the penultimate feature of CLIP (before projection) projection_matrix (768*768) is the
-        CLIP projection matrix, which should be weight.data of Linear layer defined in CLIP (out_dim, in_dim), thus we
-        need to apply transpose below. this function will return the CLIP feature (without normalziation)
-        """
-        projection_matrix = hf_hub_download(repo_id="anhnct/Gligen_Text_Image", filename="projection_matrix")
-        projection_matrix = torch.load(projection_matrix).type(self.image_encoder.dtype).to(device).T
-        if hidden_size != projection_matrix.shape[0]:
-            return x
-        else:
-            return x @ torch.transpose(projection_matrix, 0, 1)
-
     def complete_mask(self, has_mask, max_objs, device):
+        """
+        Based on the input mask corresponding value `0 or 1` for each phrases and image, mask the features
+        corresponding to phrases and images.
+        """
         mask = torch.ones(1, max_objs).type(self.text_encoder.dtype).to(device)
         if has_mask is None:
             return mask
@@ -557,15 +595,19 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
                 mask[0, idx] = value
             return mask
 
-    def get_clip_feature(self, input, hidden_size, device, is_image=False):
+    def get_clip_feature(self, input, normalize_constant, device, is_image=False):
+        """
+        Get image and phrases embedding by using CLIP pretrain model. The image embedding is transformed into the
+        phrases embedding space through a projection.
+        """
         if is_image:
             if input is None:
                 return None
             inputs = self.processor(images=[input], return_tensors="pt").to(device)
             outputs = self.image_encoder(**inputs)
             feature = outputs.image_embeds
-            feature = self.project(feature, hidden_size, device).squeeze(0)
-            feature = (feature / feature.norm()) * 28.7
+            feature = self.image_project(feature).squeeze(0)
+            feature = (feature / feature.norm()) * normalize_constant
             feature = feature.unsqueeze(0)
         else:
             if input is None:
@@ -575,7 +617,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             feature = outputs.pooler_output
         return feature
 
-    def prepare_cross_attention_kwags(
+    def get_cross_attention_kwargs_with_grounded(
         self,
         hidden_size,
         gligen_phrases,
@@ -584,9 +626,14 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         input_phrases_mask,
         input_images_mask,
         repeat_batch,
+        normalize_constant,
         max_objs,
         device,
     ):
+        """
+        Prepare the cross-attention kwargs containing information about the grounded input (boxes, mask, image
+        embedding, phrases embedding).
+        """
         phrases, images = gligen_phrases, gligen_images
         images = [None] * len(phrases) if images is None else images
         phrases = [None] * len(images) if phrases is None else phrases
@@ -601,8 +648,8 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         text_features = []
         image_features = []
         for phrase, image in zip(phrases, images):
-            text_features.append(self.get_clip_feature(phrase, hidden_size, device, is_image=False))
-            image_features.append(self.get_clip_feature(image, hidden_size, device, is_image=True))
+            text_features.append(self.get_clip_feature(phrase, normalize_constant, device, is_image=False))
+            image_features.append(self.get_clip_feature(image, normalize_constant, device, is_image=True))
 
         for idx, (box, text_feature, image_feature) in enumerate(zip(gligen_boxes, text_features, image_features)):
             boxes[idx] = torch.tensor(box)
@@ -634,7 +681,11 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
 
         return out
 
-    def prepare_cross_attention_kwags_none(self, hidden_size, repeat_batch, max_objs, device):
+    def get_cross_attention_kwargs_without_grounded(self, hidden_size, repeat_batch, max_objs, device):
+        """
+        Prepare the cross-attention kwargs without information about the grounded input (boxes, mask, image embedding,
+        phrases embedding) (All are zero tensor).
+        """
         boxes = torch.zeros(max_objs, 4, device=device, dtype=self.text_encoder.dtype)
         masks = torch.zeros(max_objs, device=device, dtype=self.text_encoder.dtype)
         phrases_masks = torch.zeros(max_objs, device=device, dtype=self.text_encoder.dtype)
@@ -681,6 +732,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        gligen_normalize_constant: float = 28.7,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -754,10 +806,8 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            guidance_rescale (`float`, *optional*, defaults to 0.7):
-                Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
-                Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
-                using zero terminal SNR.
+            gligen_normalize_constant (`float`, *optional*, defaults to 28.7):
+                The normalize value of the image embedding.
 
         Examples:
 
@@ -798,7 +848,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds = self._encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
@@ -807,6 +857,9 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
+
+        if do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -846,7 +899,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
 
         hidden_size = prompt_embeds.shape[2]
 
-        cross_attention_kwargs["gligen"] = self.prepare_cross_attention_kwags(
+        cross_attention_kwargs["gligen"] = self.get_cross_attention_kwargs_with_grounded(
             hidden_size=hidden_size,
             gligen_phrases=gligen_phrases,
             gligen_images=gligen_images,
@@ -854,12 +907,13 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             input_phrases_mask=input_phrases_mask,
             input_images_mask=input_images_mask,
             repeat_batch=repeat_batch,
+            normalize_constant=gligen_normalize_constant,
             max_objs=max_objs,
             device=device,
         )
 
-        cross_attention_kwargs_none = {}
-        cross_attention_kwargs_none["gligen"] = self.prepare_cross_attention_kwags_none(
+        cross_attention_kwargs_without_grounded = {}
+        cross_attention_kwargs_without_grounded["gligen"] = self.get_cross_attention_kwargs_without_grounded(
             hidden_size=hidden_size, repeat_batch=repeat_batch, max_objs=max_objs, device=device
         )
 
@@ -922,8 +976,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
                 if gligen_inpaint_image is not None:
                     latent_model_input = torch.cat((latent_model_input, gligen_inpaint_mask_addition), dim=1)
 
-                # predict the noise residual
-
+                # predict the noise residual with grounded information
                 noise_pred_with_grounding = self.unet(
                     latent_model_input,
                     t,
@@ -931,15 +984,17 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
                     cross_attention_kwargs=cross_attention_kwargs,
                 ).sample
 
+                # predict the noise residual without grounded information
                 noise_pred_without_grounding = self.unet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs_none,
+                    cross_attention_kwargs=cross_attention_kwargs_without_grounded,
                 ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
+                    # Using noise_pred_text from noise residual with grounded information and noise_pred_uncond from noise residual without grounded information
                     _, noise_pred_text = noise_pred_with_grounding.chunk(2)
                     noise_pred_uncond, _ = noise_pred_without_grounding.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
