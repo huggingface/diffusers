@@ -505,6 +505,8 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders
+            video_length (`int`, *optional*, defaults to 8):
+                The number of generated video frames.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -610,9 +612,10 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
                 [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1.
 
         Returns:
-            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.TextToVideoSDXLPipelineOutput`] or
+            `tuple`: [`~pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.TextToVideoSDXLPipelineOutput`]
+            if `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
+            generated images.
         """
         assert video_length > 0
         if frame_ids is None:
