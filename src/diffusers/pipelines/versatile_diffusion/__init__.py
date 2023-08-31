@@ -1,10 +1,11 @@
 from ...utils import (
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
     is_torch_available,
     is_transformers_available,
     is_transformers_version,
 )
+
 
 _import_structure = {}
 _dummy_objects = {}
@@ -37,6 +38,7 @@ else:
     _import_structure["pipeline_versatile_diffusion_text_to_image"] = ["VersatileDiffusionTextToImagePipeline"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

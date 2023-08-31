@@ -1,10 +1,11 @@
 from ...utils import (
+    OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
-    OptionalDependencyNotAvailable,
     is_torch_available,
     is_transformers_available,
 )
+
 
 _import_structure = {}
 _dummy_objects = {}
@@ -24,6 +25,7 @@ else:
     _import_structure["pipeline_text_to_video_zero"] = ["TextToVideoZeroPipeline"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

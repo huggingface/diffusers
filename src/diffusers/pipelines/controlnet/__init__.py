@@ -1,11 +1,12 @@
 from ...utils import (
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
+    get_objects_from_module,
     is_flax_available,
     is_torch_available,
     is_transformers_available,
-    get_objects_from_module,
 )
+
 
 _import_structure = {}
 _dummy_objects = {}
@@ -42,6 +43,7 @@ else:
     _import_structure["pipeline_flax_controlnet"] = ["FlaxStableDiffusionControlNetPipeline"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

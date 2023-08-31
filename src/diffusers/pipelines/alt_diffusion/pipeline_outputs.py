@@ -3,7 +3,6 @@ from typing import List, Optional, Union
 
 import numpy as np
 import PIL
-from PIL import Image
 
 from ...utils import (
     BaseOutput,

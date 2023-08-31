@@ -1,6 +1,7 @@
 from ...utils import (
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
+    get_objects_from_module,
     is_flax_available,
     is_k_diffusion_available,
     is_k_diffusion_version,
@@ -8,8 +9,8 @@ from ...utils import (
     is_torch_available,
     is_transformers_available,
     is_transformers_version,
-    get_objects_from_module,
 )
+
 
 _import_structure = {}
 _additional_imports = {}
@@ -128,6 +129,7 @@ if is_transformers_available() and is_flax_available():
     _import_structure["safety_checker_flax"] = ["FlaxStableDiffusionSafetyChecker"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

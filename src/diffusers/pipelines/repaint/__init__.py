@@ -1,8 +1,11 @@
 from ...utils import _LazyModule
+
+
 _import_structure = {}
 _import_structure["pipeline_repaint"] = ["RePaintPipeline"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

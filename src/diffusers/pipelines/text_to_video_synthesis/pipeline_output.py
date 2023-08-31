@@ -1,15 +1,11 @@
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Union
 
 import numpy as np
 import torch
 
 from ...utils import (
-    _LazyModule,
     BaseOutput,
-    OptionalDependencyNotAvailable,
-    is_torch_available,
-    is_transformers_available,
 )
 
 

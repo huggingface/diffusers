@@ -14,6 +14,7 @@
 
 from ..utils import _LazyModule, is_flax_available, is_torch_available
 
+
 _import_structure = {}
 
 if is_torch_available():
@@ -39,5 +40,6 @@ if is_flax_available():
     _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)

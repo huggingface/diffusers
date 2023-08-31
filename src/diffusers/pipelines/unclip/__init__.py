@@ -1,10 +1,11 @@
 from ...utils import (
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
     is_torch_available,
     is_transformers_available,
     is_transformers_version,
 )
+
 
 _import_structure = {}
 _dummy_objects = {}
@@ -25,6 +26,7 @@ else:
     _import_structure["text_proj"] = ["UnCLIPTextProjModel"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

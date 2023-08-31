@@ -51,8 +51,9 @@ from .import_utils import (
     USE_TF,
     USE_TORCH,
     DummyObject,
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
+    get_objects_from_module,
     is_accelerate_available,
     is_accelerate_version,
     is_bs4_available,
@@ -78,7 +79,6 @@ from .import_utils import (
     is_wandb_available,
     is_xformers_available,
     requires_backends,
-    get_objects_from_module,
 )
 from .logging import get_logger
 from .outputs import BaseOutput

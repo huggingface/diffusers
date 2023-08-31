@@ -19,9 +19,9 @@ import operator as op
 import os
 import sys
 from collections import OrderedDict
-from typing import Union, Any
-from types import ModuleType
 from itertools import chain
+from types import ModuleType
+from typing import Any, Union
 
 from huggingface_hub.utils import is_jinja_available  # noqa: F401
 from packaging import version

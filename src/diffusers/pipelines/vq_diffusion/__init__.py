@@ -1,9 +1,10 @@
 from ...utils import (
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
     is_torch_available,
     is_transformers_available,
 )
+
 
 _import_structure = {}
 _dummy_objects = {}
@@ -28,6 +29,7 @@ else:
     _import_structure["pipeline_vq_diffusion"] = ["LearnedClassifierFreeSamplingEmbeddings", "VQDiffusionPipeline"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

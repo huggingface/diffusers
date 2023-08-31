@@ -1,8 +1,8 @@
 __version__ = "0.21.0.dev0"
 
 from .utils import (
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
     is_flax_available,
     is_k_diffusion_available,
     is_librosa_available,
@@ -24,6 +24,11 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
+    "models": [],
+    "optimization": [],
+    "pipelines": [],
+    "schedulers": [],
+    "training_utils": [],
     "utils": [
         "OptionalDependencyNotAvailable",
         "is_flax_available",
@@ -42,11 +47,6 @@ _import_structure = {
         "is_unidecode_available",
         "logging",
     ],
-    "models": [],
-    "optimization": [],
-    "pipelines": [],
-    "schedulers": [],
-    "training_utils": [],
 }
 
 try:
@@ -401,6 +401,7 @@ else:
     _import_structure["pipelines"].extend(["MidiProcessor"])
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

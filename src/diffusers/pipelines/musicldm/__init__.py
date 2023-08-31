@@ -1,11 +1,12 @@
 from ...utils import (
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
+    get_objects_from_module,
     is_torch_available,
     is_transformers_available,
     is_transformers_version,
-    get_objects_from_module,
 )
+
 
 _import_structure = {}
 _dummy_objects = {}
@@ -22,6 +23,7 @@ else:
     _import_structure["pipeline_musicldm"] = ["MusicLDMPipeline"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

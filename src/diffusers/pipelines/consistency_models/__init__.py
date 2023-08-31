@@ -2,10 +2,12 @@ from ...utils import (
     _LazyModule,
 )
 
+
 _import_structure = {}
 _import_structure["pipeline_consistency_models"] = ["ConsistencyModelPipeline"]
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

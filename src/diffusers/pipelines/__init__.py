@@ -1,6 +1,7 @@
 from ..utils import (
-    _LazyModule,
     OptionalDependencyNotAvailable,
+    _LazyModule,
+    get_objects_from_module,
     is_flax_available,
     is_k_diffusion_available,
     is_librosa_available,
@@ -8,10 +9,13 @@ from ..utils import (
     is_onnx_available,
     is_torch_available,
     is_transformers_available,
-    get_objects_from_module,
 )
 
-_import_structure = {}
+
+_import_structure = {
+    "stable_diffusion": [],
+    "latent_diffusion": [],
+}
 _dummy_objects = {}
 
 try:
@@ -33,7 +37,7 @@ else:
     _import_structure["ddim"] = ["DDIMPipeline"]
     _import_structure["ddpm"] = ["DDPMPipeline"]
     _import_structure["dit"] = ["DiTPipeline"]
-    _import_structure["latent_diffusion"] = ["LDMSuperResolutionPipeline"]
+    _import_structure["latent_diffusion"].extend(["LDMSuperResolutionPipeline"])
     _import_structure["latent_diffusion_uncond"] = ["LDMPipeline"]
     _import_structure["pipeline_utils"] = ["AudioPipelineOutput", "DiffusionPipeline", "ImagePipelineOutput"]
     _import_structure["pndm"] = ["PNDMPipeline"]
@@ -100,34 +104,36 @@ else:
         "KandinskyV22PriorEmb2EmbPipeline",
         "KandinskyV22PriorPipeline",
     ]
-    _import_structure["latent_diffusion"] = ["LDMTextToImagePipeline"]
+    _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
-    _import_structure["stable_diffusion"] = [
-        "CycleDiffusionPipeline",
-        "StableDiffusionAttendAndExcitePipeline",
-        "StableDiffusionDepth2ImgPipeline",
-        "StableDiffusionDiffEditPipeline",
-        "StableDiffusionGLIGENPipeline",
-        "StableDiffusionImageVariationPipeline",
-        "StableDiffusionImg2ImgPipeline",
-        "StableDiffusionInpaintPipeline",
-        "StableDiffusionInpaintPipelineLegacy",
-        "StableDiffusionInstructPix2PixPipeline",
-        "StableDiffusionLatentUpscalePipeline",
-        "StableDiffusionLDM3DPipeline",
-        "StableDiffusionModelEditingPipeline",
-        "StableDiffusionPanoramaPipeline",
-        "StableDiffusionParadigmsPipeline",
-        "StableDiffusionPipeline",
-        "StableDiffusionPix2PixZeroPipeline",
-        "StableDiffusionSAGPipeline",
-        "StableDiffusionUpscalePipeline",
-        "StableUnCLIPImg2ImgPipeline",
-        "StableUnCLIPPipeline",
-    ]
+    _import_structure["stable_diffusion"].extend(
+        [
+            "CycleDiffusionPipeline",
+            "StableDiffusionAttendAndExcitePipeline",
+            "StableDiffusionDepth2ImgPipeline",
+            "StableDiffusionDiffEditPipeline",
+            "StableDiffusionGLIGENPipeline",
+            "StableDiffusionImageVariationPipeline",
+            "StableDiffusionImg2ImgPipeline",
+            "StableDiffusionInpaintPipeline",
+            "StableDiffusionInpaintPipelineLegacy",
+            "StableDiffusionInstructPix2PixPipeline",
+            "StableDiffusionLatentUpscalePipeline",
+            "StableDiffusionLDM3DPipeline",
+            "StableDiffusionModelEditingPipeline",
+            "StableDiffusionPanoramaPipeline",
+            "StableDiffusionParadigmsPipeline",
+            "StableDiffusionPipeline",
+            "StableDiffusionPix2PixZeroPipeline",
+            "StableDiffusionSAGPipeline",
+            "StableDiffusionUpscalePipeline",
+            "StableUnCLIPImg2ImgPipeline",
+            "StableUnCLIPPipeline",
+        ]
+    )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
     _import_structure["stable_diffusion_xl"] = [
         "StableDiffusionXLImg2ImgPipeline",
@@ -177,14 +183,16 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_onnx_objects))
 
 else:
-    _import_structure["stable_diffusion"] = [
-        "OnnxStableDiffusionImg2ImgPipeline",
-        "OnnxStableDiffusionInpaintPipeline",
-        "OnnxStableDiffusionInpaintPipelineLegacy",
-        "OnnxStableDiffusionPipeline",
-        "OnnxStableDiffusionUpscalePipeline",
-        "StableDiffusionOnnxPipeline",
-    ]
+    _import_structure["stable_diffusion"].extend(
+        [
+            "OnnxStableDiffusionImg2ImgPipeline",
+            "OnnxStableDiffusionInpaintPipeline",
+            "OnnxStableDiffusionInpaintPipelineLegacy",
+            "OnnxStableDiffusionPipeline",
+            "OnnxStableDiffusionUpscalePipeline",
+            "StableDiffusionOnnxPipeline",
+        ]
+    )
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
@@ -195,7 +203,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
 
 else:
-    _import_structure["stable_diffusion"] = ["StableDiffusionKDiffusionPipeline"]
+    _import_structure["stable_diffusion"].extend(["StableDiffusionKDiffusionPipeline"])
 
 try:
     if not is_flax_available():
@@ -219,11 +227,13 @@ except OptionalDependencyNotAvailable:
 
 else:
     _import_structure["controlnet"] = ["FlaxStableDiffusionControlNetPipeline"]
-    _import_structure["stable_diffusion"] = [
-        "FlaxStableDiffusionImg2ImgPipeline",
-        "FlaxStableDiffusionInpaintPipeline",
-        "FlaxStableDiffusionPipeline",
-    ]
+    _import_structure["stable_diffusion"].extend(
+        [
+            "FlaxStableDiffusionImg2ImgPipeline",
+            "FlaxStableDiffusionInpaintPipeline",
+            "FlaxStableDiffusionPipeline",
+        ]
+    )
 try:
     if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
@@ -237,6 +247,7 @@ else:
 
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,
