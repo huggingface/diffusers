@@ -115,14 +115,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
-    def _encode_prompt(
-        self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
-    ):
+    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt=None):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -215,22 +208,25 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             )
 
         if do_classifier_free_guidance:
-            assert (
-                predicted_image_embeddings.size(0) == text_encoder_hidden_states.size(0) // 2
-            ), f"'text_encoder_hidden_states' must be double the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
-        else:
-            if predicted_image_embeddings.size(0) * 2 == text_encoder_hidden_states.size(0):
-                text_encoder_hidden_states = text_encoder_hidden_states.chunk(2)[0]
-            assert predicted_image_embeddings.size(0) == text_encoder_hidden_states.size(
-                0
-            ), f"'text_encoder_hidden_states' must be the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
+            if predicted_image_embeddings.size(0) != text_encoder_hidden_states.size(0) // 2:
+                raise ValueError(
+                    f"'text_encoder_hidden_states' must be double the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
+                )
+
+            # if predicted_image_embeddings.size(0) * 2 == text_encoder_hidden_states.size(0):
+            text_encoder_hidden_states = text_encoder_hidden_states.chunk(2)[0]
+
+            if predicted_image_embeddings.size(0) != text_encoder_hidden_states.size(0):
+                raise ValueError(
+                    f"'text_encoder_hidden_states' must be the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
+                )
 
         return predicted_image_embeddings, text_encoder_hidden_states
 
     @torch.no_grad()
     def __call__(
         self,
-        image_embeds: torch.Tensor,
+        image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_inference_steps: Union[Dict[float, int], int] = 12,
@@ -243,6 +239,10 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
     ):
         device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
+
+        if isinstance(image_embeds, list):
+            image_embeds = torch.cat(image_embeds, dim=0)
+        image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         if isinstance(num_inference_steps, int):
             num_inference_steps = {0.0: num_inference_steps}
