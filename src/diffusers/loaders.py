@@ -770,7 +770,7 @@ class TextualInversionLoaderMixin:
                 if hasattr(component, "_hf_hook"):
                     is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
                     logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                        "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                     )
                     remove_hook_from_module(component)
 
