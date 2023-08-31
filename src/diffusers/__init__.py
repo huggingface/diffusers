@@ -1,11 +1,5 @@
 __version__ = "0.21.0.dev0"
 
-import importlib
-import os
-from itertools import chain
-from types import ModuleType
-from typing import Any
-
 from .utils import (
     _LazyModule,
     OptionalDependencyNotAvailable,
