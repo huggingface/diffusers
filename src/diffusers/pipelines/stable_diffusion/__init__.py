@@ -15,6 +15,10 @@ _import_structure = {}
 _additional_imports = {}
 _dummy_objects = {}
 
+_import_structure["pipeline_output"] = ["StableDiffusionPipelineOutput"]
+
+if is_transformers_available() and is_flax_available():
+    _import_structure["pipeline_output"].extend(["FlaxStableDiffusionPipelineOutput"])
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -25,7 +29,6 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 
 else:
-    _import_structure["pipeline_output"] = ["StableDiffusionPipelineOutput"]
     _import_structure["pipeline_cycle_diffusion"] = ["CycleDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion"] = ["StableDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
@@ -119,7 +122,6 @@ if is_transformers_available() and is_flax_available():
 
     _additional_imports.update({"PNDMSchedulerState": PNDMSchedulerState})
 
-    _import_structure["pipeline_output"] = ["FlaxStableDiffusionPipelineOutput"]
     _import_structure["pipeline_flax_stable_diffusion"] = ["FlaxStableDiffusionPipeline"]
     _import_structure["pipeline_flax_stable_diffusion_img2img"] = ["FlaxStableDiffusionImg2ImgPipeline"]
     _import_structure["pipeline_flax_stable_diffusion_inpaint"] = ["FlaxStableDiffusionInpaintPipeline"]
