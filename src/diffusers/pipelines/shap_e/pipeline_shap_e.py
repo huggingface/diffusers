@@ -87,10 +87,10 @@ class ShapEPipeline(DiffusionPipeline):
 
     Args:
         prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         text_encoder ([`~transformers.CLIPTextModelWithProjection`]):
             Frozen text-encoder.
-        tokenizer (`~transformers.CLIPTokenizer`):
+        tokenizer ([`~transformers.CLIPTokenizer`]):
              A `CLIPTokenizer` to tokenize text.
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with the `prior` model to generate image embedding.
@@ -241,7 +241,6 @@ class ShapEPipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-                usually at the expense of lower image quality.
             frame_size (`int`, *optional*, default to 64):
                 The width and height of each image frame of the generated 3D output.
             output_type (`str`, *optional*, defaults to `"pil"`):

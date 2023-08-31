@@ -89,7 +89,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
         image_encoder ([`~transformers.CLIPVisionModel`]):
             Frozen image-encoder.
-        image_processor (`~transformers.CLIPImageProcessor`):
+        image_processor ([`~transformers.CLIPImageProcessor`]):
              A `CLIPImageProcessor` to process images.
         scheduler ([`HeunDiscreteScheduler`]):
             A scheduler to be used in combination with the `prior` model to generate image embedding.
