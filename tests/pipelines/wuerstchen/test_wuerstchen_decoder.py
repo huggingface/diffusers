@@ -33,7 +33,7 @@ enable_full_determinism()
 class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = WuerstchenDecoderPipeline
     params = ["prompt"]
-    batch_params = ["prompt", "negative_prompt"]
+    batch_params = ["image_embeds", "prompt", "negative_prompt"]
     required_optional_params = [
         "num_images_per_prompt",
         "generator",
