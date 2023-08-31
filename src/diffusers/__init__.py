@@ -73,21 +73,21 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["models"].extend(
         [
-            "AsymmetricAutoencoderKL"
-            "AutoencoderKL"
-            "AutoencoderTiny"
-            "ControlNetModel"
-            "ModelMixin"
-            "MultiAdapter"
-            "PriorTransformer"
-            "T2IAdapter"
-            "T5FilmDecoder"
-            "Transformer2DModel"
-            "UNet1DModel"
-            "UNet2DConditionModel"
-            "UNet2DModel"
-            "UNet3DConditionModel"
-            "VQModel"
+            "AsymmetricAutoencoderKL",
+            "AutoencoderKL",
+            "AutoencoderTiny",
+            "ControlNetModel",
+            "ModelMixin",
+            "MultiAdapter",
+            "PriorTransformer",
+            "T2IAdapter",
+            "T5FilmDecoder",
+            "Transformer2DModel",
+            "UNet1DModel",
+            "UNet2DConditionModel",
+            "UNet2DModel",
+            "UNet3DConditionModel",
+            "VQModel",
         ]
     )
     _import_structure["optimization"].extend(
