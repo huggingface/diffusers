@@ -2446,7 +2446,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)
             cross_attention_kwargs = {"scale": scale}
-            hidden_states = attn(hidden_states, temb=temb, cross_attention_kwargs=cross_attention_kwargs)
+            hidden_states = attn(hidden_states, temb=temb, **cross_attention_kwargs)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
