@@ -1500,7 +1500,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         output_states = ()
 
         if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            lora_scale = cross_attention_kwargs["lora_scale"]
+            lora_scale = cross_attention_kwargs["scale"]
         else:
             lora_scale = 1.0
 
