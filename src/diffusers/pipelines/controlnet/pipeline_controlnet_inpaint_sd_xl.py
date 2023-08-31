@@ -1,4 +1,4 @@
-# Copyright 2023 Jinbin Bai, Harutatsu Akiyama, and The HuggingFace Team. All rights reserved.
+# Copyright 2023 Harutatsu Akiyama, Jinbin Bai, and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -298,6 +298,9 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        )
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
@@ -1219,10 +1222,14 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
         else:
             assert False
 
-        # 5. Preprocess mask and image
-        mask, masked_image, init_image = prepare_mask_and_masked_image(
-            image, mask_image, height, width, return_image=True
-        )
+        # 5. Preprocess mask and image - resizes image and mask w.r.t height and width
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        init_image = init_image.to(dtype=torch.float32)
+        
+        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+        
+        masked_image = init_image * (mask < 0.5)
+        _, _, height, width = init_image.shape
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
