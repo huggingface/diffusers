@@ -19,6 +19,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 
 else:
+    _import_structure["pipeline_output"] = ["SemanticStableDiffusionPipelineOutput"]
     _import_structure["pipeline_semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
 
 
