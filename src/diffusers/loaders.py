@@ -45,7 +45,7 @@ if is_transformers_available():
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
-    from accelerate.hooks import CpuOffload, remove_hook_from_module
+    from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
     from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)
@@ -765,10 +765,13 @@ class TextualInversionLoaderMixin:
             )
 
         # Remove any existing hooks.
+        is_model_cpu_offload = False 
+        is_sequential_cpu_offload = False
         for _, component in self.components.items():
             if isinstance(component, nn.Module):
                 if hasattr(component, "_hf_hook"):
                     is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
                     )
@@ -930,7 +933,7 @@ class TextualInversionLoaderMixin:
         # offload back
         if is_model_cpu_offload:
             self.enable_model_cpu_offload()
-        else:
+        elif is_sequential_cpu_offload:
             self.enable_sequential_cpu_offload()
 
 
@@ -964,10 +967,13 @@ class LoraLoaderMixin:
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
         # Remove any existing hooks.
+        is_model_cpu_offload = False 
+        is_sequential_cpu_offload = False
         for _, component in self.components.items():
             if isinstance(component, nn.Module):
                 if hasattr(component, "_hf_hook"):
                     is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                     )
@@ -985,7 +991,7 @@ class LoraLoaderMixin:
         # Offload back.
         if is_model_cpu_offload:
             self.enable_model_cpu_offload()
-        else:
+        elif is_sequential_cpu_offload:
             self.enable_sequential_cpu_offload()
 
     @classmethod
