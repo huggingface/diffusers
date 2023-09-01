@@ -11,11 +11,8 @@ from ..utils import (
     is_transformers_available,
 )
 
-
-_import_structure = {
-    "stable_diffusion": [],
-    "latent_diffusion": [],
-}
+# These modules contain pipelines from multiple libraries/frameworks
+_import_structure = {"stable_diffusion": [], "latent_diffusion": [], "controlnet": []}
 _dummy_objects = {}
 
 try:
@@ -68,13 +65,15 @@ else:
     _import_structure["alt_diffusion"] = ["AltDiffusionImg2ImgPipeline", "AltDiffusionPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = ["AudioLDM2Pipeline", "AudioLDM2ProjectionModel", "AudioLDM2UNet2DConditionModel"]
-    _import_structure["controlnet"] = [
-        "StableDiffusionControlNetImg2ImgPipeline",
-        "StableDiffusionControlNetInpaintPipeline",
-        "StableDiffusionControlNetPipeline",
-        "StableDiffusionXLControlNetImg2ImgPipeline",
-        "StableDiffusionXLControlNetPipeline",
-    ]
+    _import_structure["controlnet"].extend(
+        [
+            "StableDiffusionControlNetImg2ImgPipeline",
+            "StableDiffusionControlNetInpaintPipeline",
+            "StableDiffusionControlNetPipeline",
+            "StableDiffusionXLControlNetImg2ImgPipeline",
+            "StableDiffusionXLControlNetPipeline",
+        ]
+    )
     _import_structure["deepfloyd_if"] = [
         "IFImg2ImgPipeline",
         "IFImg2ImgSuperResolutionPipeline",
@@ -226,7 +225,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_flax_and_transformers_objects))
 
 else:
-    _import_structure["controlnet"] = ["FlaxStableDiffusionControlNetPipeline"]
+    _import_structure["controlnet"].extend(["FlaxStableDiffusionControlNetPipeline"])
     _import_structure["stable_diffusion"].extend(
         [
             "FlaxStableDiffusionImg2ImgPipeline",
@@ -247,7 +246,6 @@ else:
 
 
 import sys
-
 
 sys.modules[__name__] = _LazyModule(
     __name__,

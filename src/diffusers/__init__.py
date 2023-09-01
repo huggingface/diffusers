@@ -25,10 +25,8 @@ from .utils import (
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
     "models": [],
-    "optimization": [],
     "pipelines": [],
     "schedulers": [],
-    "training_utils": [],
     "utils": [
         "OptionalDependencyNotAvailable",
         "is_flax_available",
@@ -90,17 +88,16 @@ else:
             "VQModel",
         ]
     )
-    _import_structure["optimization"].extend(
-        [
-            "get_constant_schedule",
-            "get_constant_schedule_with_warmup",
-            "get_cosine_schedule_with_warmup",
-            "get_cosine_with_hard_restarts_schedule_with_warmup",
-            "get_linear_schedule_with_warmup",
-            "get_polynomial_decay_schedule_with_warmup",
-            "get_scheduler",
-        ]
-    )
+    _import_structure["optimization"] = [
+        "get_constant_schedule",
+        "get_constant_schedule_with_warmup",
+        "get_cosine_schedule_with_warmup",
+        "get_cosine_with_hard_restarts_schedule_with_warmup",
+        "get_linear_schedule_with_warmup",
+        "get_polynomial_decay_schedule_with_warmup",
+        "get_scheduler",
+    ]
+
     _import_structure["pipelines"].extend(
         [
             "AudioPipelineOutput",
@@ -150,7 +147,7 @@ else:
             "VQDiffusionScheduler",
         ]
     )
-    _import_structure["training_utils"].extend(["EMAModel"])
+    _import_structure["training_utils"] = ["EMAModel"]
 
 try:
     if not (is_torch_available() and is_scipy_available()):
