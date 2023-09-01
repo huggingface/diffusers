@@ -616,22 +616,35 @@ class PositionNet(nn.Module):
     ):
         masks = masks.unsqueeze(-1)
 
-        xyxy_embedding = self.fourier_embedder(boxes)
+        # embedding position (it may includes padding as placeholder)
+        xyxy_embedding = self.fourier_embedder(boxes)  # B*N*4 -> B*N*C
+
+        # learnable null embedding
         xyxy_null = self.null_position_feature.view(1, 1, -1)
+
+        # replace padding with learnable null embedding
         xyxy_embedding = xyxy_embedding * masks + (1 - masks) * xyxy_null
 
+        # positionet with text only information
         if positive_embeddings is not None:
+            # learnable null embedding
             positive_null = self.null_positive_feature.view(1, 1, -1)
+
+            # replace padding with learnable null embedding
             positive_embeddings = positive_embeddings * masks + (1 - masks) * positive_null
 
             objs = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1))
+
+        # positionet with text and image infomation
         else:
             phrases_masks = phrases_masks.unsqueeze(-1)
             image_masks = image_masks.unsqueeze(-1)
 
+            # learnable null embedding
             text_null = self.null_text_feature.view(1, 1, -1)
             image_null = self.null_image_feature.view(1, 1, -1)
 
+            # replace padding with learnable null embedding
             phrases_embeddings = phrases_embeddings * phrases_masks + (1 - phrases_masks) * text_null
             image_embeddings = image_embeddings * image_masks + (1 - image_masks) * image_null
 
