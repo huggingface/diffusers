@@ -139,6 +139,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
+            "strength": 1.0,
             "output_type": "np",
         }
         return inputs

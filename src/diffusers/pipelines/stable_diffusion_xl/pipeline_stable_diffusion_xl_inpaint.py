@@ -899,7 +899,7 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
         masked_image_latents: torch.FloatTensor = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        strength: float = 1.0,
+        strength: float = 0.9999,
         num_inference_steps: int = 50,
         denoising_start: Optional[float] = None,
         denoising_end: Optional[float] = None,
@@ -951,7 +951,7 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
-            strength (`float`, *optional*, defaults to 1.):
+            strength (`float`, *optional*, defaults to 0.9999):
                 Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
                 between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
                 `strength`. The number of denoising steps depends on the amount of noise initially added. When
@@ -1342,13 +1342,19 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # make sure the VAE is in float32 mode, as it overflows in float16
-        if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
-            self.upcast_vae()
-            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-
         if not output_type == "latent":
+            # make sure the VAE is in float32 mode, as it overflows in float16
+            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+
+            if needs_upcasting:
+                self.upcast_vae()
+                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+
+            # cast back to fp16 if needed
+            if needs_upcasting:
+                self.vae.to(dtype=torch.float16)
         else:
             return StableDiffusionXLPipelineOutput(images=latents)
 
