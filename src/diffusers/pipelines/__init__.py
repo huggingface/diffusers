@@ -94,6 +94,7 @@ else:
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,
         StableDiffusionGLIGENPipeline,
+        StableDiffusionGLIGENTextImagePipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
@@ -111,6 +112,7 @@ else:
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
+    from .stable_diffusion.clip_image_project_model import CLIPImageProjection
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .stable_diffusion_xl import (
         StableDiffusionXLImg2ImgPipeline,
