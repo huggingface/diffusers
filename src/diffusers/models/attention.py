@@ -154,7 +154,7 @@ class BasicTransformerBlock(nn.Module):
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
 
         # 4. Fuser
-        if attention_type == "gated":
+        if attention_type == "gated" or attention_type == "gated-text-image":
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
         # let chunk size default to None
