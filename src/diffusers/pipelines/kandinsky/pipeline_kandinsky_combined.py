@@ -474,7 +474,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process. Can also accpet image latents as `image`, if passing latents directly, it will not be encoded
+                process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
@@ -720,7 +720,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process. Can also accpet image latents as `image`, if passing latents directly, it will not be encoded
+                process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
             mask_image (`np.array`):
                 Tensor representing an image batch, to mask `image`. White pixels in the mask will be repainted, while

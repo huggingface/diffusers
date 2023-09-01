@@ -46,10 +46,12 @@ except OptionalDependencyNotAvailable:
 else:
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .audioldm import AudioLDMPipeline
+    from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
     from .controlnet import (
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
+        StableDiffusionXLControlNetImg2ImgPipeline,
         StableDiffusionXLControlNetPipeline,
     )
     from .deepfloyd_if import (
@@ -82,6 +84,7 @@ else:
         KandinskyV22PriorPipeline,
     )
     from .latent_diffusion import LDMTextToImagePipeline
+    from .musicldm import MusicLDMPipeline
     from .paint_by_example import PaintByExamplePipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
@@ -90,6 +93,7 @@ else:
         StableDiffusionAttendAndExcitePipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,
+        StableDiffusionGLIGENPipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
@@ -114,7 +118,7 @@ else:
         StableDiffusionXLInstructPix2PixPipeline,
         StableDiffusionXLPipeline,
     )
-    from .t2i_adapter import StableDiffusionAdapterPipeline
+    from .t2i_adapter import StableDiffusionAdapterPipeline, StableDiffusionXLAdapterPipeline
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
     from .unidiffuser import ImageTextPipelineOutput, UniDiffuserModel, UniDiffuserPipeline, UniDiffuserTextDecoder
