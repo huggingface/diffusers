@@ -183,9 +183,6 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
-        import ipdb
-
-        ipdb.set_trace()
 
         pipe.set_progress_bar_config(disable=None)
 
