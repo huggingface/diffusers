@@ -986,7 +986,6 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
 
         return timesteps, num_inference_steps - t_start
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline._get_add_time_ids
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, aesthetic_score, negative_aesthetic_score, dtype
     ):
