@@ -48,23 +48,23 @@ class WuerstchenPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        tokenizer (:class:`~transformers.CLIPTokenizer`):
+        tokenizer (`CLIPTokenizer`):
             The decoder tokenizer to be used for text inputs.
-        text_encoder (:class:`~transformers.CLIPTextModel`):
+        text_encoder (`CLIPTextModel`):
             The decoder text encoder to be used for text inputs.
-        generator (:class:`~diffusions.models.WuerstchenDiffNeXt`):
+        generator (`WuerstchenDiffNeXt`):
             The generator model to be used for decoder image generation pipeline.
-        scheduler (:class:`~diffusions.schedulers.DDPMWuerstchenScheduler`):
+        scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for decoder image generation pipeline.
-        vqgan (:class:`~diffusions.pipelines.wuerstchen.modeling_paella_vq_model.PaellaVQModel`):
+        vqgan (`PaellaVQModel`):
             The VQGAN model to be used for decoder image generation pipeline.
-        prior_tokenizer (:class:`~transformers.CLIPTokenizer`):
+        prior_tokenizer (`CLIPTokenizer`):
             The prior tokenizer to be used for text inputs.
-        prior_text_encoder (:class:`~transformers.CLIPTextModel`):
+        prior_text_encoder (`CLIPTextModel`):
             The prior text encoder to be used for text inputs.
-        prior_prior (:class:`~diffusions.pipelines.wuerstchen.wuerstchen_prior.WuerstchenPrior`):
+        prior_prior (`WuerstchenPrior`):
             The prior model to be used for prior pipeline.
-        prior_scheduler (:class:`~diffusions.schedulers.DDPMWuerstchenScheduler`):
+        prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
     """
 
