@@ -73,6 +73,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
         norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for normalization.
+        attn_norm_num_groups (`int`, *optional*, defaults to `None`):
+            If set to an integer, a group norm layer will be created in the mid block's [`Attention`] layer with the
+            given number of groups. If left as `None`, the group norm layer will only be created if
+            `resnet_time_scale_shift` is set to `default`, and if created will have `norm_num_groups` groups.
         norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for normalization.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
