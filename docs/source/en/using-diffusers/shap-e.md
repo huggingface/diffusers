@@ -4,7 +4,7 @@
 
 Shap-E is a conditional model for generating 3D assets which could be used for video game development, interior design, and architecture. It is trained on a large dataset of 3D assets, and post-processed to render more views of each object and produce 16K instead of 4K point clouds. The Shap-E model is trained in two steps:
 
-1. a encoder accepts the point clouds and rendered views of a 3D assets and outputs the latents of that 3D asset which are used to produce the asset's weights
+1. a encoder accepts the point clouds and rendered views of a 3D asset and outputs the parameters of implicit functions that represent the asset
 2. a diffusion model is trained on the latents produced by the encoder to generate either neural radiance fields (NeRFs) or a textured 3D mesh, making it easier to render and use the 3D asset in downstream applications
 
 This guide will show you how to use Shap-E to start generating your own 3D assets!
@@ -13,7 +13,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install diffusers transformers accelerate safetensors
+#!pip install diffusers transformers accelerate safetensors trimesh
 ```
 
 ## Text-to-3D
@@ -26,7 +26,7 @@ from diffusers import ShapEPipeline
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16")
+pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
 pipe = pipe.to(device)
 
 guidance_scale = 15.0
@@ -40,7 +40,7 @@ images = pipe(
 ).images
 ```
 
-Use the [`~utils.export_to_gif`] function to create a gif of the 3D object.
+Now use the [`~utils.export_to_gif`] function to turn the list of image frames into a gif of the 3D object.
 
 ```py
 from diffusers.utils import export_to_gif
@@ -119,13 +119,6 @@ gif_path = export_to_gif(images[0], "burger_3d.gif")
 
 Shap-E is a flexible model that can also generate textured mesh outputs to be rendered for downstream applications. In this example, you'll convert the output into a `glb` file because the 🤗 Datasets library supports mesh visualization of `glb` files which can be rendered by the [Dataset viewer](https://huggingface.co/docs/hub/datasets-viewer#dataset-preview).
 
-Make sure you have the [trimesh](https://trimsh.org/install.html) library installed for this example:
-
-```py
-# uncomment to install
-#!pip install trimesh
-```
-
 You can generate mesh outputs for both the [`ShapEPipeline`] and [`ShapEImg2ImgPipeline`] by specifying the `output_type` parameter as `"mesh"`:
 
 ```py
@@ -134,7 +127,7 @@ from diffusers import ShapEPipeline
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16")
+pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
 pipe = pipe.to(device)
 
 guidance_scale = 15.0
@@ -167,7 +160,7 @@ mesh = trimesh.load("3d_cake.ply")
 mesh.export("3d_cake.glb", file_type="glb")
 ```
 
-By default, the mesh output is focused from the bottom viewpoint. To change the default viewpoint by applying a rotation transform:
+By default, the mesh output is focused from the bottom viewpoint but you can change the default viewpoint by applying a rotation transform:
 
 ```py
 import trimesh
