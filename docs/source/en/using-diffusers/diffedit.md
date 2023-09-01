@@ -2,11 +2,11 @@
 
 [[open-in-colab]]
 
-Image editing typically requires providing a mask of the area to be edited. DiffEdit is able to automatically generate the mask for you based on a text query, making it easier overall to create a mask without image editing software. The DiffEdit algorithm works in three steps:
+Image editing typically requires providing a mask of the area to be edited. DiffEdit automatically generates the mask for you based on a text query, making it easier overall to create a mask without image editing software. The DiffEdit algorithm works in three steps:
 
 1. the diffusion model denoises an image conditioned on some query text and reference text which produces different noise estimates for different areas of the image; the difference is used to infer a mask to identify which area of the image needs to be changed to match the query text
 2. the input image is encoded into latent space with DDIM
-3. the latents are decoded with the diffusion model conditioned on the text query, using the mask as a guide such that pixels outside the mask remain the same as the input image
+3. the latents are decoded with the diffusion model conditioned on the text query, using the mask as a guide such that pixels outside the mask remain the same as in the input image
 
 This guide will show you how to use DiffEdit to edit images without manually creating a mask.
 
@@ -62,14 +62,13 @@ mask_image = pipeline.generate_mask(
     image=raw_image,
     source_prompt=source_prompt,
     target_prompt=target_prompt,
-    generator=generator,
 )
 ```
 
-Create the inverted latents next, and pass it a caption describing the image:
+Next, create the inverted latents and pass it a caption describing the image:
 
 ```py
-inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image, generator=generator).latents
+inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image).latents
 ```
 
 Finally, pass the image mask and inverted latents to the pipeline. The `target_prompt` becomes the `prompt` now, and the `source_prompt` is used as the `negative_prompt`:
@@ -79,7 +78,6 @@ image = pipeline(
     prompt=target_prompt,
     mask_image=mask_image,
     image_latents=inv_latents,
-    generator=generator,
     negative_prompt=source_prompt,
 ).images[0]
 image.save("edited_image.png")
@@ -98,7 +96,7 @@ image.save("edited_image.png")
 
 ## Generate source and target embeddings
 
-The source and target embeddings can be automatically generated with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model, instead of manually creating them.
+The source and target embeddings can be automatically generated with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model instead of creating them manually.
 
 Load the Flan-T5 model and tokenizer from the 🤗 Transformers library:
 
