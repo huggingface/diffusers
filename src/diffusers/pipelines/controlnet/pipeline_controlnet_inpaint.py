@@ -872,7 +872,11 @@ class StableDiffusionControlNetInpaintPipeline(
 
         if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
-            image_latents = self._encode_vae_image(image=image, generator=generator)
+
+            if image.shape[1] == 4:
+                image_latents = image
+            else:
+                image_latents = self._encode_vae_image(image=image, generator=generator)
 
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -907,7 +911,11 @@ class StableDiffusionControlNetInpaintPipeline(
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
-        masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
+
+        if masked_image.shape[1] == 4:
+            masked_image_latents = masked_image
+        else:
+            masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
