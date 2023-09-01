@@ -166,6 +166,8 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_inference_steps": 2,
             "prior_num_inference_steps": 2,
             "output_type": "np",
+            "height": 128,
+            "width": 128,
         }
         return inputs
 
@@ -187,9 +189,9 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[-3:, -3:, -1]
 
-        assert image.shape == (1, 512, 512, 3)
+        assert image.shape == (1, 128, 128, 3)
 
-        expected_slice = np.array([1.0, 0.35500407, 0.0, 0.0, 0.03041486, 0.0, 0.0, 0.0, 0.15140978])
+        expected_slice = np.array([0.7616304, 0.0, 1.0, 0.0, 1.0, 0.0, 0.05925313, 0.0, 0.951898])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -210,6 +212,11 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sd_pipe.enable_sequential_cpu_offload()
         pipes.append(sd_pipe)
 
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe.enable_model_cpu_offload()
+        pipes.append(sd_pipe)
+
         image_slices = []
         for pipe in pipes:
             inputs = self.get_dummy_inputs(torch_device)
@@ -218,6 +225,7 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+        assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
