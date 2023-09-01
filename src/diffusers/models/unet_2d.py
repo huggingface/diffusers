@@ -105,6 +105,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         act_fn: str = "silu",
         attention_head_dim: Optional[int] = 8,
         norm_num_groups: int = 32,
+        attn_norm_num_groups: Optional[int] = None,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
         add_attention: bool = True,
@@ -188,6 +189,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             resnet_time_scale_shift=resnet_time_scale_shift,
             attention_head_dim=attention_head_dim if attention_head_dim is not None else block_out_channels[-1],
             resnet_groups=norm_num_groups,
+            attn_groups=attn_norm_num_groups,
             add_attention=add_attention,
         )
 
