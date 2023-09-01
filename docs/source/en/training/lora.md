@@ -98,7 +98,7 @@ Now you can use the model for inference by loading the base model in the [`Stabl
 
 >>> model_base = "runwayml/stable-diffusion-v1-5"
 
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
+>>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 >>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 ```
 
@@ -137,7 +137,7 @@ lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 ...
 ```
 
@@ -211,7 +211,7 @@ Now you can use the model for inference by loading the base model in the [`Stabl
 
 >>> model_base = "runwayml/stable-diffusion-v1-5"
 
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16)
+>>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 ```
 
 Load the LoRA weights from your finetuned DreamBooth model *on top of the base model weights*, and then move the pipeline to a GPU for faster inference. When you merge the LoRA weights with the frozen pretrained model weights, you can optionally adjust how much of the weights to merge with the `scale` parameter:
@@ -251,7 +251,7 @@ lora_model_id = "sayakpaul/dreambooth-text-encoder-test"
 card = RepoCard.load(lora_model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
+pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
 image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
@@ -276,20 +276,40 @@ Note that the use of [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] is
 
 * LoRA parameters that have separate identifiers for the UNet and the text encoder such as: [`"sayakpaul/dreambooth"`](https://huggingface.co/sayakpaul/dreambooth).
 
-**Note** that it is possible to provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`]. To know about the supported inputs,
-refer to the respective docstrings.
+<Tip>
+
+You can also provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`].
+
+</Tip>
+
+## Stable Diffusion XL
+
+We support fine-tuning with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the following docs:
+
+* [text_to_image/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md)
+* [dreambooth/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md)
 
 ## Unloading LoRA parameters
 
 You can call [`~diffusers.loaders.LoraLoaderMixin.unload_lora_weights`] on a pipeline to unload the LoRA parameters.
 
-## Supporting A1111 themed LoRA checkpoints from Diffusers
+## Fusing LoRA parameters
 
-This support was made possible because of our amazing contributors: [@takuma104](https://github.com/takuma104) and [@isidentical](https://github.com/isidentical).
+You can call [`~diffusers.loaders.LoraLoaderMixin.fuse_lora`] on a pipeline to merge the LoRA parameters with the original parameters of the underlying model(s). This can lead to a potential speedup in the inference latency.
 
-To provide seamless interoperability with A1111 to our users, we support loading A1111 formatted
-LoRA checkpoints using [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] in a limited capacity.
-In this section, we explain how to load an A1111 formatted LoRA checkpoint from [CivitAI](https://civitai.com/)
+## Unfusing LoRA parameters
+
+To undo `fuse_lora`, call [`~diffusers.loaders.LoraLoaderMixin.unfuse_lora`] on a pipeline.
+
+## Supporting different LoRA checkpoints from Diffusers
+
+🤗 Diffusers supports loading checkpoints from popular LoRA trainers such as [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). In this section, we outline the current API's details and limitations. 
+
+### Kohya
+
+This support was made possible because of the amazing contributors: [@takuma104](https://github.com/takuma104) and [@isidentical](https://github.com/isidentical).
+
+We support loading Kohya LoRA checkpoints using [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`]. In this section, we explain how to load such a checkpoint from [CivitAI](https://civitai.com/)
 in Diffusers and perform inference with it. 
 
 First, download a checkpoint. We'll use
@@ -307,7 +327,7 @@ import torch
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = StableDiffusionPipeline.from_pretrained(
-    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None
+    "gsdf/Counterfeit-V2.5", torch_dtype=torch.float16, safety_checker=None, use_safetensors=True
 ).to("cuda")
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
     pipeline.scheduler.config, use_karras_sigmas=True
@@ -356,9 +376,9 @@ lora_filename = "light_and_shadow.safetensors"
 pipeline.load_lora_weights(lora_model_id, weight_name=lora_filename)
 ```
 
-### Supporting Stable Diffusion XL LoRAs trained using the Kohya-trainer
+### Kohya + Stable Diffusion XL
 
-With this [PR](https://github.com/huggingface/diffusers/pull/4287), there should now be better support for loading Kohya-style LoRAs trained on Stable Diffusion XL (SDXL).
+After the release of [Stable Diffusion XL](https://huggingface.co/papers/2307.01952), the community contributed some amazing LoRA checkpoints trained on top of it with the Kohya trainer.  
 
 Here are some example checkpoints we tried out:
 
@@ -399,7 +419,33 @@ If you notice carefully, the inference UX is exactly identical to what we presen
 
 Thanks to [@isidentical](https://github.com/isidentical) for helping us on integrating this feature.
 
-### Known limitations specific to the Kohya-styled LoRAs
+<Tip warning={true}>
 
-* SDXL LoRAs that have both the text encoders are currently leading to weird results. We're actively investigating the issue. 
-* When images don't looks similar to other UIs such ComfyUI, it can be beacause of multiple reasons as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736). 
+**Known limitations specific to the Kohya LoRAs**: 
+
+* When images don't looks similar to other UIs, such as ComfyUI, it can be because of multiple reasons, as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736).
+* We don't fully support [LyCORIS checkpoints](https://github.com/KohakuBlueleaf/LyCORIS). To the best of our knowledge, our current `load_lora_weights()` should support LyCORIS checkpoints that have LoRA and LoCon modules but not the other ones, such as Hada, LoKR, etc. 
+
+</Tip>
+
+### TheLastBen
+
+Here is an example:
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline_id = "Lykon/dreamshaper-xl-1-0"
+
+pipe = DiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+
+lora_model_id = "TheLastBen/Papercut_SDXL"
+lora_filename = "papercut.safetensors"
+pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+prompt = "papercut sonic"
+image = pipe(prompt=prompt, num_inference_steps=20, generator=torch.manual_seed(0)).images[0]
+image
+```

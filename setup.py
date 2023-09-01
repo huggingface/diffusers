@@ -44,6 +44,11 @@ To create the package for pypi.
    For the sources, run: "python setup.py sdist"
    You should now have a /dist directory with both .whl and .tar.gz source versions.
 
+   Long story cut short, you need to run both before you can upload the distribution to the 
+   test pypi and the actual pypi servers: 
+   
+   python setup.py bdist_wheel && python setup.py sdist
+
 8. Check that everything looks correct by uploading the package to the pypi test server:
 
    twine upload dist/* -r pypitest
@@ -54,14 +59,20 @@ To create the package for pypi.
    Check that you can install it in a virtualenv by running:
    pip install -i https://testpypi.python.org/pypi diffusers
 
+   If you are testing from a Colab Notebook, for instance, then do:
+   pip install diffusers && pip uninstall diffusers
+   pip install -i https://testpypi.python.org/pypi diffusers
+
    Check you can run the following commands:
-   python -c "from diffusers import pipeline; classifier = pipeline('text-classification'); print(classifier('What a nice release'))"
+   python -c "python -c "from diffusers import __version__; print(__version__)"
+   python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('fusing/unet-ldm-dummy-update'); pipe()"
+   python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('hf-internal-testing/tiny-stable-diffusion-pipe', safety_checker=None); pipe('ah suh du')"
    python -c "from diffusers import *"
 
 9. Upload the final version to actual pypi:
    twine upload dist/* -r pypi
 
-10. Copy the release notes from RELEASE.md to the tag in github once everything is looking hunky-dory.
+10. Prepare the release notes and publish them on github once everything is looking hunky-dory.
 
 11. Run `make post-release` (or, for a patch release, `make post-patch`). If you were on a branch for the release,
     you need to go back to main before executing this.
@@ -105,7 +116,7 @@ _deps = [
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
-    "ruff>=0.0.241",
+    "ruff==0.0.280",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
@@ -233,11 +244,11 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.20.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
-    description="Diffusers",
+    version="0.21.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    keywords="deep learning",
+    keywords="deep learning diffusion jax pytorch stable diffusion audioldm",
     license="Apache",
     author="The HuggingFace team",
     author_email="patrick@huggingface.co",

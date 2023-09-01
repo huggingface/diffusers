@@ -70,7 +70,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.20.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -492,14 +492,14 @@ class DreamBoothDataset(Dataset):
         size=512,
         center_crop=False,
         encoder_hidden_states=None,
-        instance_prompt_encoder_hidden_states=None,
+        class_prompt_encoder_hidden_states=None,
         tokenizer_max_length=None,
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.encoder_hidden_states = encoder_hidden_states
-        self.instance_prompt_encoder_hidden_states = instance_prompt_encoder_hidden_states
+        self.class_prompt_encoder_hidden_states = class_prompt_encoder_hidden_states
         self.tokenizer_max_length = tokenizer_max_length
 
         self.instance_data_root = Path(instance_data_root)
@@ -562,8 +562,8 @@ class DreamBoothDataset(Dataset):
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
 
-            if self.instance_prompt_encoder_hidden_states is not None:
-                example["class_prompt_ids"] = self.instance_prompt_encoder_hidden_states
+            if self.class_prompt_encoder_hidden_states is not None:
+                example["class_prompt_ids"] = self.class_prompt_encoder_hidden_states
             else:
                 class_text_inputs = tokenize_prompt(
                     self.tokenizer, self.class_prompt, tokenizer_max_length=self.tokenizer_max_length
@@ -839,6 +839,11 @@ def main(args):
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
+    if args.gradient_checkpointing:
+        unet.enable_gradient_checkpointing()
+        if args.train_text_encoder:
+            text_encoder.gradient_checkpointing_enable()
+
     # now we will add new LoRA weights to the attention layers
     # It's important to realize here how many attention weights will be added and of which sizes
     # The sizes of the attention layers consist only of two different variables:
@@ -993,10 +998,10 @@ def main(args):
         else:
             validation_prompt_encoder_hidden_states = None
 
-        if args.instance_prompt is not None:
-            pre_computed_instance_prompt_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
+        if args.class_prompt is not None:
+            pre_computed_class_prompt_encoder_hidden_states = compute_text_embeddings(args.class_prompt)
         else:
-            pre_computed_instance_prompt_encoder_hidden_states = None
+            pre_computed_class_prompt_encoder_hidden_states = None
 
         text_encoder = None
         tokenizer = None
@@ -1007,7 +1012,7 @@ def main(args):
         pre_computed_encoder_hidden_states = None
         validation_prompt_encoder_hidden_states = None
         validation_prompt_negative_prompt_embeds = None
-        pre_computed_instance_prompt_encoder_hidden_states = None
+        pre_computed_class_prompt_encoder_hidden_states = None
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
@@ -1020,7 +1025,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         encoder_hidden_states=pre_computed_encoder_hidden_states,
-        instance_prompt_encoder_hidden_states=pre_computed_instance_prompt_encoder_hidden_states,
+        class_prompt_encoder_hidden_states=pre_computed_class_prompt_encoder_hidden_states,
         tokenizer_max_length=args.tokenizer_max_length,
     )
 
@@ -1369,7 +1374,7 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.bin")
+        pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.safetensors")
 
         # run inference
         images = []

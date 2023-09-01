@@ -88,9 +88,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         num_embeds_ada_norm: Optional[int] = None,
         use_linear_projection: bool = False,
         only_cross_attention: bool = False,
+        double_self_attention: bool = False,
         upcast_attention: bool = False,
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
+        attention_type: str = "default",
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -180,9 +182,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
                     only_cross_attention=only_cross_attention,
+                    double_self_attention=double_self_attention,
                     upcast_attention=upcast_attention,
                     norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
+                    attention_type=attention_type,
                 )
                 for d in range(num_layers)
             ]
@@ -203,6 +207,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
             self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
             self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+
+        self.gradient_checkpointing = False
 
     def forward(
         self,
@@ -289,15 +295,28 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(
-                hidden_states,
-                attention_mask=attention_mask,
-                encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=encoder_attention_mask,
-                timestep=timestep,
-                cross_attention_kwargs=cross_attention_kwargs,
-                class_labels=class_labels,
-            )
+            if self.training and self.gradient_checkpointing:
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    block,
+                    hidden_states,
+                    attention_mask,
+                    encoder_hidden_states,
+                    encoder_attention_mask,
+                    timestep,
+                    cross_attention_kwargs,
+                    class_labels,
+                    use_reentrant=False,
+                )
+            else:
+                hidden_states = block(
+                    hidden_states,
+                    attention_mask=attention_mask,
+                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_attention_mask=encoder_attention_mask,
+                    timestep=timestep,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    class_labels=class_labels,
+                )
 
         # 3. Output
         if self.is_input_continuous:

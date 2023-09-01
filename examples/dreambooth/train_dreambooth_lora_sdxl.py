@@ -58,7 +58,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.20.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -215,7 +215,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--resolution",
         type=int,
-        default=512,
+        default=1024,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
@@ -401,6 +401,12 @@ def parse_args(input_args=None):
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
+    )
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
     )
 
     if input_args is not None:
@@ -638,7 +644,6 @@ def main(args):
             pipeline = StableDiffusionXLPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
-                safety_checker=None,
                 revision=args.revision,
             )
             pipeline.set_progress_bar_config(disable=True)
@@ -727,12 +732,11 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
-    # The VAE is in float32 to avoid NaN losses.
     unet.to(accelerator.device, dtype=weight_dtype)
-    if args.pretrained_vae_model_name_or_path is None:
-        vae.to(accelerator.device, dtype=torch.float32)
-    else:
-        vae.to(accelerator.device, dtype=weight_dtype)
+
+    # The VAE is always in float32 to avoid NaN losses.
+    vae.to(accelerator.device, dtype=torch.float32)
+
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
@@ -748,6 +752,12 @@ def main(args):
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
+
+    if args.gradient_checkpointing:
+        unet.enable_gradient_checkpointing()
+        if args.train_text_encoder:
+            text_encoder_one.gradient_checkpointing_enable()
+            text_encoder_two.gradient_checkpointing_enable()
 
     # now we will add new LoRA weights to the attention layers
     # Set correct lora layers
@@ -767,7 +777,9 @@ def main(args):
         lora_attn_processor_class = (
             LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
         )
-        module = lora_attn_processor_class(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        module = lora_attn_processor_class(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=args.rank
+        )
         unet_lora_attn_procs[name] = module
         unet_lora_parameters.extend(module.parameters())
 
@@ -777,8 +789,12 @@ def main(args):
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
         # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
-        text_lora_parameters_one = LoraLoaderMixin._modify_text_encoder(text_encoder_one, dtype=torch.float32)
-        text_lora_parameters_two = LoraLoaderMixin._modify_text_encoder(text_encoder_two, dtype=torch.float32)
+        text_lora_parameters_one = LoraLoaderMixin._modify_text_encoder(
+            text_encoder_one, dtype=torch.float32, rank=args.rank
+        )
+        text_lora_parameters_two = LoraLoaderMixin._modify_text_encoder(
+            text_encoder_two, dtype=torch.float32, rank=args.rank
+        )
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -827,11 +843,15 @@ def main(args):
 
         lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
         LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+
+        text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
         LoraLoaderMixin.load_lora_into_text_encoder(
-            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
+            text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
         )
+
+        text_encoder_2_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder_2." in k}
         LoraLoaderMixin.load_lora_into_text_encoder(
-            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_
+            text_encoder_2_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_
         )
 
     accelerator.register_save_state_pre_hook(save_model_hook)
@@ -1053,10 +1073,7 @@ def main(args):
                 continue
 
             with accelerator.accumulate(unet):
-                if args.pretrained_vae_model_name_or_path is None:
-                    pixel_values = batch["pixel_values"]
-                else:
-                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
@@ -1086,11 +1103,11 @@ def main(args):
                         "time_ids": add_time_ids.repeat(elems_to_repeat, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat, 1),
                     }
-                    prompt_embeds = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
-                        prompt_embeds,
+                        prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
@@ -1102,9 +1119,9 @@ def main(args):
                         text_input_ids_list=[tokens_one, tokens_two],
                     )
                     unet_added_conditions.update({"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat, 1)})
-                    prompt_embeds = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
                     model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
+                        noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
                     ).sample
 
                 # Get the target for loss depending on the prediction type
@@ -1298,14 +1315,13 @@ def main(args):
 
         pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
-        pipeline = pipeline.to(accelerator.device)
-
         # load attention processors
         pipeline.load_lora_weights(args.output_dir)
 
         # run inference
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
+            pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
                 pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]

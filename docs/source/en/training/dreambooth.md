@@ -303,7 +303,9 @@ unet = UNet2DConditionModel.from_pretrained("/sddata/dreambooth/daruma-v2-1/chec
 # if you have trained with `--args.train_text_encoder` make sure to also load the text encoder
 text_encoder = CLIPTextModel.from_pretrained("/sddata/dreambooth/daruma-v2-1/checkpoint-100/text_encoder")
 
-pipeline = DiffusionPipeline.from_pretrained(model_id, unet=unet, text_encoder=text_encoder, dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained(
+    model_id, unet=unet, text_encoder=text_encoder, dtype=torch.float16, use_safetensors=True
+)
 pipeline.to("cuda")
 
 # Perform inference, or save, or push to the hub
@@ -318,7 +320,7 @@ from diffusers import DiffusionPipeline
 
 # Load the pipeline with the same arguments (model, revision) that were used for training
 model_id = "CompVis/stable-diffusion-v1-4"
-pipeline = DiffusionPipeline.from_pretrained(model_id)
+pipeline = DiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 
 accelerator = Accelerator()
 
@@ -333,6 +335,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     model_id,
     unet=accelerator.unwrap_model(unet),
     text_encoder=accelerator.unwrap_model(text_encoder),
+    use_safetensors=True,
 )
 
 # Perform inference, or save, or push to the hub
@@ -488,7 +491,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 model_id = "path_to_saved_model"
-pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
 image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
@@ -510,7 +513,7 @@ must also update the pipeline's scheduler config.
 ```py
 from diffusers import DiffusionPipeline
 
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0")
+pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-XL-v1.0", use_safetensors=True)
 
 pipe.load_lora_weights("<lora weights path>")
 
@@ -704,4 +707,4 @@ accelerate launch train_dreambooth.py \
 
 ## Stable Diffusion XL
 
-We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md). 
+We support fine-tuning of the UNet and text encoders shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md). 

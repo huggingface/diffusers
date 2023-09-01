@@ -67,7 +67,7 @@ Load the model with the [`~DiffusionPipeline.from_pretrained`] method:
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+>>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
 ```
 
 The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. You'll see that the Stable Diffusion pipeline is composed of the [`UNet2DConditionModel`] and [`PNDMScheduler`] among other things:
@@ -130,7 +130,7 @@ You can also use the pipeline locally. The only difference is you need to downlo
 Then load the saved weights into the pipeline:
 
 ```python
->>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
+>>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", use_safetensors=True)
 ```
 
 Now you can run the pipeline as you would in the section above.
@@ -142,7 +142,7 @@ Different schedulers come with different denoising speeds and quality trade-offs
 ```py
 >>> from diffusers import EulerDiscreteScheduler
 
->>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+>>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 ```
 
@@ -160,7 +160,7 @@ Models are initiated with the [`~ModelMixin.from_pretrained`] method which also 
 >>> from diffusers import UNet2DModel
 
 >>> repo_id = "google/ddpm-cat-256"
->>> model = UNet2DModel.from_pretrained(repo_id)
+>>> model = UNet2DModel.from_pretrained(repo_id, use_safetensors=True)
 ```
 
 To access the model parameters, call `model.config`:

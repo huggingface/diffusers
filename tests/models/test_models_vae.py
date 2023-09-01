@@ -19,7 +19,7 @@ import unittest
 import torch
 from parameterized import parameterized
 
-from diffusers import AsymmetricAutoencoderKL, AutoencoderKL
+from diffusers import AsymmetricAutoencoderKL, AutoencoderKL, AutoencoderTiny
 from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism
@@ -221,6 +221,122 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
 
     def test_forward_with_norm_groups(self):
         pass
+
+
+class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
+    model_class = AutoencoderTiny
+    main_input_name = "sample"
+    base_precision = 1e-2
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+
+        return {"sample": image}
+
+    @property
+    def input_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (3, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "in_channels": 3,
+            "out_channels": 3,
+            "encoder_block_out_channels": (32, 32),
+            "decoder_block_out_channels": (32, 32),
+            "num_encoder_blocks": (1, 2),
+            "num_decoder_blocks": (2, 1),
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_outputs_equivalence(self):
+        pass
+
+
+@slow
+class AutoencoderTinyIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_file_format(self, seed, shape):
+        return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
+
+    def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
+        dtype = torch.float16 if fp16 else torch.float32
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        return image
+
+    def get_sd_vae_model(self, model_id="hf-internal-testing/taesd-diffusers", fp16=False):
+        torch_dtype = torch.float16 if fp16 else torch.float32
+
+        model = AutoencoderTiny.from_pretrained(model_id, torch_dtype=torch_dtype)
+        model.to(torch_device).eval()
+        return model
+
+    @parameterized.expand(
+        [
+            [(1, 4, 73, 97), (1, 3, 584, 776)],
+            [(1, 4, 97, 73), (1, 3, 776, 584)],
+            [(1, 4, 49, 65), (1, 3, 392, 520)],
+            [(1, 4, 65, 49), (1, 3, 520, 392)],
+            [(1, 4, 49, 49), (1, 3, 392, 392)],
+        ]
+    )
+    def test_tae_tiling(self, in_shape, out_shape):
+        model = self.get_sd_vae_model()
+        model.enable_tiling()
+        with torch.no_grad():
+            zeros = torch.zeros(in_shape).to(torch_device)
+            dec = model.decode(zeros).sample
+            assert dec.shape == out_shape
+
+    def test_stable_diffusion(self):
+        model = self.get_sd_vae_model()
+        image = self.get_sd_image(seed=33)
+
+        with torch.no_grad():
+            sample = model(image).sample
+
+        assert sample.shape == image.shape
+
+        output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
+        expected_output_slice = torch.tensor([0.0093, 0.6385, -0.1274, 0.1631, -0.1762, 0.5232, -0.3108, -0.0382])
+
+        assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
+
+    @parameterized.expand([(True,), (False,)])
+    def test_tae_roundtrip(self, enable_tiling):
+        # load the autoencoder
+        model = self.get_sd_vae_model()
+        if enable_tiling:
+            model.enable_tiling()
+
+        # make a black image with a white square in the middle,
+        # which is large enough to split across multiple tiles
+        image = -torch.ones(1, 3, 1024, 1024, device=torch_device)
+        image[..., 256:768, 256:768] = 1.0
+
+        # round-trip the image through the autoencoder
+        with torch.no_grad():
+            sample = model(image).sample
+
+        # the autoencoder reconstruction should match original image, sorta
+        def downscale(x):
+            return torch.nn.functional.avg_pool2d(x, model.spatial_scale_factor)
+
+        assert torch_all_close(downscale(sample), downscale(image), atol=0.125)
 
 
 @slow
