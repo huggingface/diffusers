@@ -108,6 +108,42 @@ class AutoPipelineFastTest(unittest.TestCase):
 
         shutil.rmtree(tmpdirname.parent.parent)
 
+    def test_from_pipe_controlnet_text2img(self):
+        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=controlnet)
+        assert pipe.__class__.__name__ == "StableDiffusionControlNetPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=None)
+        assert pipe.__class__.__name__ == "StableDiffusionPipeline"
+        assert "controlnet" not in pipe.components
+
+    def test_from_pipe_controlnet_img2img(self):
+        pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe, controlnet=controlnet)
+        assert pipe.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe, controlnet=None)
+        assert pipe.__class__.__name__ == "StableDiffusionImg2ImgPipeline"
+        assert "controlnet" not in pipe.components
+
+    def test_from_pipe_controlnet_inpaint(self):
+        pipe = AutoPipelineForInpainting.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=controlnet)
+        assert pipe.__class__.__name__ == "StableDiffusionControlNetInpaintPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=None)
+        assert pipe.__class__.__name__ == "StableDiffusionInpaintPipeline"
+        assert "controlnet" not in pipe.components
+
 
 @slow
 class AutoPipelineIntegrationTest(unittest.TestCase):
