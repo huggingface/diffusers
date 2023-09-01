@@ -99,7 +99,7 @@ This means in more detail:
 - Format your code
 - Do not include any external libraries except for Diffusers depending on them.
 - **Always** provide all necessary information about your environment; for this, you can run: `diffusers-cli env` in your shell and copy-paste the displayed information to the issue.
-- Explain the issue. If the reader doesn't know what the issue is and why it is an issue, she cannot solve it.
+- Explain the issue. If the readers don't know what the issue is and why it is an issue, they cannot solve it.
 - **Always** make sure the reader can reproduce your issue with as little effort as possible. If your code snippet cannot be run because of missing libraries or undefined variables, the reader cannot help you. Make sure your reproducible code snippet is as minimal as possible and can be copy-pasted into a simple Python shell.
 - If in order to reproduce your issue a model and/or dataset is required, make sure the reader has access to that model or dataset. You can always upload your model or dataset to the [Hub](https://huggingface.co) to make it easily downloadable. Try to keep your model and dataset as small as possible, to make the reproduction of your issue as effortless as possible.
 
