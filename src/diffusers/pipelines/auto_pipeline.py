@@ -366,6 +366,18 @@ class AutoPipelineForText2Image(ConfigMixin):
         # derive the pipeline class to instantiate
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, original_cls_name)
 
+        if "controlnet" in kwargs:
+            if kwargs["controlnet"]  is not None:
+                text_2_image_cls = _get_task_class(
+                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING, 
+                    text_2_image_cls.__name__.replace("Pipeline","ControlNetPipeline")
+                )
+            else:
+                text_2_image_cls = _get_task_class(
+                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING.
+                    text_2_image_cls.__name__.replace("ControlNetPipeline", "Pipeline")
+                )
+
         # define expected module and optional kwargs given the pipeline signature
         expected_modules, optional_kwargs = _get_signature_keys(text_2_image_cls)
 
