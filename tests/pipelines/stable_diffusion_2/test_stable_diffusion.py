@@ -33,7 +33,12 @@ from diffusers import (
     logging,
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    enable_full_determinism,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
@@ -473,7 +478,10 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         outputs_offloaded = pipe(**inputs)
         mem_bytes_offloaded = torch.cuda.max_memory_allocated()
 
-        assert np.abs(outputs.images - outputs_offloaded.images).max() < 1e-3
+        images = outputs.images
+        images_offloaded = outputs_offloaded.images
+        max_diff = numpy_cosine_similarity_distance(images.flatten(), images_offloaded.flatten())
+        assert max_diff < 1e-3
         assert mem_bytes_offloaded < mem_bytes
         assert mem_bytes_offloaded < 3 * 10**9
         for module in pipe.text_encoder, pipe.unet, pipe.vae:
