@@ -192,6 +192,7 @@ else:
     _import_structure["pipelines"].extend(
         [
             "AltDiffusionPipeline",
+            "AltDiffusionImg2ImgPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
@@ -222,6 +223,7 @@ else:
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
             "LDMTextToImagePipeline",
+            "MusicLDMPipeline",
             "PaintByExamplePipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
@@ -249,7 +251,9 @@ else:
             "StableDiffusionPix2PixZeroPipeline",
             "StableDiffusionSAGPipeline",
             "StableDiffusionUpscalePipeline",
+            "StableDiffusionXLAdapterPipeline",
             "StableDiffusionXLControlNetPipeline",
+            "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLImg2ImgPipeline",
             "StableDiffusionXLInpaintPipeline",
             "StableDiffusionXLInstructPix2PixPipeline",
