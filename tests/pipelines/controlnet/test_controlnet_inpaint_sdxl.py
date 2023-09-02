@@ -58,7 +58,6 @@ class ControlNetPipelineSDXLFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
-        torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -76,7 +75,6 @@ class ControlNetPipelineSDXLFastTests(
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
         )
-        torch.manual_seed(0)
         controlnet = ControlNetModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -92,7 +90,6 @@ class ControlNetPipelineSDXLFastTests(
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
         )
-        torch.manual_seed(0)
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -277,6 +274,28 @@ class ControlNetPipelineSDXLFastTests(
 
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+
+    def test_controlnet_sdxl_guess(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(device)
+
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["guess_mode"] = True
+
+        output = sd_pipe(**inputs)
+        image_slice = output.images[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.5381963, 0.4836803, 0.45821992, 0.5577731, 0.51210403, 0.4794795, 0.59282357, 0.5647199, 0.43100584]
+        )
+
+        # make sure that it's equal
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
 
     # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
     def test_save_load_optional_components(self):
