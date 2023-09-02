@@ -66,6 +66,8 @@
       title: Stable Diffusion XL
     - local: using-diffusers/controlnet
       title: ControlNet
+    - local: using-diffusers/shap-e
+      title: Shap-E
     - local: using-diffusers/diffedit
       title: DiffEdit
     - local: using-diffusers/distilled_sd
