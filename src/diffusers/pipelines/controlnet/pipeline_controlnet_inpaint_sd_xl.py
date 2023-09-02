@@ -996,7 +996,7 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        strength: float = 1.0,
+        strength: float = 0.9999,
         num_inference_steps: int = 50,
         denoising_start: Optional[float] = None,
         denoising_end: Optional[float] = None,
@@ -1049,7 +1049,7 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
-            strength (`float`, *optional*, defaults to 1.):
+            strength (`float`, *optional*, defaults to 0.9999):
                 Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
                 between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
                 `strength`. The number of denoising steps depends on the amount of noise initially added. When
@@ -1251,7 +1251,7 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
 
         # 4. set timesteps
         def denoising_value_valid(dnv):
-            return type(denoising_end) == float and 0 < dnv < 1
+            return isinstance(denoising_end, float) and 0 < dnv < 1
 
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(
@@ -1306,7 +1306,7 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
 
             control_image = control_images
         else:
-            assert False
+            raise ValueError(f"{controlnet.__class__} is not supported.")
 
         # 5.3 Prepare mask
         mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
