@@ -24,7 +24,7 @@ from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokeniz
 
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...models.attention_processor import (
@@ -55,6 +55,61 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> # !pip install transformers accelerate
+        >>> from diffusers import StableDiffusionXLControlNetInpaintPipeline, ControlNetModel, DDIMScheduler
+        >>> from diffusers.utils import load_image
+        >>> import numpy as np
+        >>> import torch
+
+        >>> init_image = load_image(
+        ...     "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy.png"
+        ... )
+        >>> init_image = init_image.resize((1024, 1024))
+
+        >>> generator = torch.Generator(device="cpu").manual_seed(1)
+
+        >>> mask_image = load_image(
+        ...     "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main/stable_diffusion_inpaint/boy_mask.png"
+        ... )
+        >>> mask_image = mask_image.resize((1024, 1024))
+
+
+        >>> def make_inpaint_condition(image, image_mask):
+        ...     image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
+        ...     image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
+
+        ...     assert image.shape[0:1] == image_mask.shape[0:1], "image and image_mask must have the same image size"
+        ...     image[image_mask < 0.5] = 0  # set as masked pixel
+        ...     image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
+        ...     image = torch.from_numpy(image)
+        ...     return image
+
+
+        >>> control_image = make_inpaint_condition(init_image, mask_image)
+
+        >>> controlnet = ControlNetModel.from_pretrained(
+        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float32
+        ... )
+        >>> pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float32
+        ... )
+
+        >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> # generate image
+        >>> image = pipe(
+        ...     "a handsome man with ray-ban sunglasses",
+        ...     num_inference_steps=20,
+        ...     generator=generator,
+        ...     eta=1.0,
+        ...     image=init_image,
+        ...     mask_image=mask_image,
+        ...     control_image=control_image,
+        ... ).images[0]
+        ```
 """
 
 
@@ -898,22 +953,11 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: PipelineImageInput = None,
+        mask_image: PipelineImageInput = None,
         control_image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
+            PipelineImageInput,
+            List[PipelineImageInput],
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -1378,9 +1422,14 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
                     control_model_input = latents
                     control_model_input = self.scheduler.scale_model_input(control_model_input, t)
                     controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                    controlnet_added_cond_kwargs = {
+                        "text_embeds": add_text_embeds.chunk(2)[1],
+                        "time_ids": add_time_ids.chunk(2)[1],
+                    }
                 else:
                     control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
+                    controlnet_added_cond_kwargs = added_cond_kwargs
 
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
@@ -1401,7 +1450,7 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
                     controlnet_cond=control_image,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
-                    added_cond_kwargs=added_cond_kwargs,
+                    added_cond_kwargs=controlnet_added_cond_kwargs,
                     return_dict=False,
                 )
 
@@ -1416,7 +1465,6 @@ class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, LoraLoaderMi
                     latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
