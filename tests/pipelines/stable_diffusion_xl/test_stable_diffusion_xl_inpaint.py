@@ -139,7 +139,8 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "strength": 1.0,
+            "output_type": "np",
         }
         return inputs
 
@@ -471,3 +472,62 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+
+    def test_stable_diffusion_xl_img2img_negative_conditions(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice_with_no_neg_conditions = image[0, -3:, -3:, -1]
+
+        image = sd_pipe(
+            **inputs,
+            negative_original_size=(512, 512),
+            negative_crops_coords_top_left=(
+                0,
+                0,
+            ),
+            negative_target_size=(1024, 1024),
+        ).images
+        image_slice_with_neg_conditions = image[0, -3:, -3:, -1]
+
+        assert (
+            np.abs(image_slice_with_no_neg_conditions.flatten() - image_slice_with_neg_conditions.flatten()).max()
+            > 1e-4
+        )
+
+    def test_stable_diffusion_xl_inpaint_mask_latents(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components).to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # normal mask + normal image
+        ##  `image`: pil, `mask_image``: pil, `masked_image_latents``: None
+        inputs = self.get_dummy_inputs(device)
+        inputs["strength"] = 0.9
+        out_0 = sd_pipe(**inputs).images
+
+        # image latents + mask latents
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe.image_processor.preprocess(inputs["image"]).to(sd_pipe.device)
+        mask = sd_pipe.mask_processor.preprocess(inputs["mask_image"]).to(sd_pipe.device)
+        masked_image = image * (mask < 0.5)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_latents = sd_pipe._encode_vae_image(image, generator=generator)
+        torch.randn((1, 4, 32, 32), generator=generator)
+        mask_latents = sd_pipe._encode_vae_image(masked_image, generator=generator)
+        inputs["image"] = image_latents
+        inputs["masked_image_latents"] = mask_latents
+        inputs["mask_image"] = mask
+        inputs["strength"] = 0.9
+        generator = torch.Generator(device=device).manual_seed(0)
+        torch.randn((1, 4, 32, 32), generator=generator)
+        inputs["generator"] = generator
+        out_1 = sd_pipe(**inputs).images
+        assert np.abs(out_0 - out_1).max() < 1e-2

@@ -55,6 +55,14 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         # running values
         self.ets = []
+        self._step_index = None
+
+    @property
+    def step_index(self):
+        """
+        The index counter for current timestep. It will increae 1 after each scheduler step.
+        """
+        return self._step_index
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -81,6 +89,25 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = timesteps.to(device)
 
         self.ets = []
+        self._step_index = None
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+
+        index_candidates = (self.timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        if len(index_candidates) > 1:
+            step_index = index_candidates[1]
+        else:
+            step_index = index_candidates[0]
+
+        self._step_index = step_index.item()
 
     def step(
         self,
@@ -112,9 +139,11 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
+        if self.step_index is None:
+            self._init_step_index(timestep)
 
-        timestep_index = (self.timesteps == timestep).nonzero().item()
-        prev_timestep_index = timestep_index + 1
+        timestep_index = self.step_index
+        prev_timestep_index = self.step_index + 1
 
         ets = sample * self.betas[timestep_index] + model_output * self.alphas[timestep_index]
         self.ets.append(ets)
@@ -129,6 +158,9 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
             ets = (1 / 24) * (55 * self.ets[-1] - 59 * self.ets[-2] + 37 * self.ets[-3] - 9 * self.ets[-4])
 
         prev_sample = self._get_prev_sample(sample, timestep_index, prev_timestep_index, ets)
+
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)

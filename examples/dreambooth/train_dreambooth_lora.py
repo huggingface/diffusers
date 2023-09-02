@@ -70,7 +70,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.20.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -999,7 +999,7 @@ def main(args):
             validation_prompt_encoder_hidden_states = None
 
         if args.class_prompt is not None:
-            pre_computed_class_prompt_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
+            pre_computed_class_prompt_encoder_hidden_states = compute_text_embeddings(args.class_prompt)
         else:
             pre_computed_class_prompt_encoder_hidden_states = None
 
@@ -1374,7 +1374,7 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.bin")
+        pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.safetensors")
 
         # run inference
         images = []

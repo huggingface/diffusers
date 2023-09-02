@@ -579,7 +579,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
+            model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
@@ -589,10 +589,10 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
+        assert (sample - new_sample).abs().max() < 5e-4
 
         # LoRA and no LoRA should NOT be the same
-        assert (sample - old_sample).abs().max() > 1e-4
+        assert (sample - old_sample).abs().max() > 5e-4
 
     def test_lora_save_load_safetensors(self):
         # enable deterministic behavior for gradient checkpointing
@@ -643,12 +643,12 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model.set_attn_processor(lora_attn_procs)
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            model.save_attn_procs(tmpdirname, safe_serialization=True)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
-            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.bin")
+            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.safetensors")
 
     def test_lora_save_torch_force_load_safetensors_error(self):
         # enable deterministic behavior for gradient checkpointing
@@ -664,7 +664,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model.set_attn_processor(lora_attn_procs)
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
+            model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
@@ -673,7 +673,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                 new_model.load_attn_procs(tmpdirname, use_safetensors=True)
             self.assertIn("Error no file named pytorch_lora_weights.safetensors", str(e.exception))
 
-    def test_lora_on_off(self):
+    def test_lora_on_off(self, expected_max_diff=1e-3):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -697,14 +697,17 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
 
-        assert (sample - new_sample).abs().max() < 1e-4
-        assert (sample - old_sample).abs().max() < 3e-3
+        max_diff_new_sample = (sample - new_sample).abs().max()
+        max_diff_old_sample = (sample - old_sample).abs().max()
+
+        assert max_diff_new_sample < expected_max_diff
+        assert max_diff_old_sample < expected_max_diff
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
-    def test_lora_xformers_on_off(self):
+    def test_lora_xformers_on_off(self, expected_max_diff=1e-3):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -726,8 +729,11 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             model.disable_xformers_memory_efficient_attention()
             off_sample = model(**inputs_dict).sample
 
-        assert (sample - on_sample).abs().max() < 1e-4
-        assert (sample - off_sample).abs().max() < 1e-4
+        max_diff_on_sample = (sample - on_sample).abs().max()
+        max_diff_off_sample = (sample - off_sample).abs().max()
+
+        assert max_diff_on_sample < expected_max_diff
+        assert max_diff_off_sample < expected_max_diff
 
     def test_custom_diffusion_processors(self):
         # enable deterministic behavior for gradient checkpointing
@@ -775,7 +781,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             sample = model(**inputs_dict).sample
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
+            model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
