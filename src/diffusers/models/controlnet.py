@@ -213,7 +213,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int]] = (16, 32, 96, 256),
         class_embeddings_concat: bool = False,
-        conditioning_channels: int = 3,
         global_pool_conditions: bool = False,
         addition_embed_type_num_heads=64,
     ):
