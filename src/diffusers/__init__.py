@@ -1,4 +1,4 @@
-__version__ = "0.20.0.dev0"
+__version__ = "0.21.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .utils import (
@@ -66,6 +66,7 @@ else:
         AutoPipelineForImage2Image,
         AutoPipelineForInpainting,
         AutoPipelineForText2Image,
+        CLIPImageProjection,
         ConsistencyModelPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
@@ -133,6 +134,9 @@ else:
     from .pipelines import (
         AltDiffusionImg2ImgPipeline,
         AltDiffusionPipeline,
+        AudioLDM2Pipeline,
+        AudioLDM2ProjectionModel,
+        AudioLDM2UNet2DConditionModel,
         AudioLDMPipeline,
         CycleDiffusionPipeline,
         IFImg2ImgPipeline,
@@ -160,6 +164,7 @@ else:
         KandinskyV22PriorEmb2EmbPipeline,
         KandinskyV22PriorPipeline,
         LDMTextToImagePipeline,
+        MusicLDMPipeline,
         PaintByExamplePipeline,
         SemanticStableDiffusionPipeline,
         ShapEImg2ImgPipeline,
@@ -171,6 +176,8 @@ else:
         StableDiffusionControlNetPipeline,
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,
+        StableDiffusionGLIGENPipeline,
+        StableDiffusionGLIGENTextImagePipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
@@ -186,6 +193,9 @@ else:
         StableDiffusionPix2PixZeroPipeline,
         StableDiffusionSAGPipeline,
         StableDiffusionUpscalePipeline,
+        StableDiffusionXLAdapterPipeline,
+        StableDiffusionXLControlNetImg2ImgPipeline,
+        StableDiffusionXLControlNetInpaintPipeline,
         StableDiffusionXLControlNetPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,

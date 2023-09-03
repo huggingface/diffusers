@@ -2,22 +2,33 @@ import contextlib
 import gc
 import inspect
 import io
+import json
+import os
 import re
 import tempfile
 import unittest
+import uuid
 from typing import Callable, Union
 
 import numpy as np
 import PIL
 import torch
+from huggingface_hub import delete_repo
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import DiffusionPipeline
+from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    require_torch,
+    torch_device,
+)
+
+from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 def to_np(tensor):
@@ -289,9 +300,13 @@ class PipelineTesterMixin:
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_save_load_local(self, expected_max_difference=1e-4):
+    def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -302,7 +317,7 @@ class PipelineTesterMixin:
         logger.setLevel(diffusers.logging.INFO)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
@@ -505,6 +520,10 @@ class PipelineTesterMixin:
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -525,11 +544,19 @@ class PipelineTesterMixin:
     def test_float16_inference(self, expected_max_diff=1e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         components = self.get_dummy_components()
         pipe_fp16 = self.pipeline_class(**components)
+        for component in pipe_fp16.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
@@ -545,7 +572,11 @@ class PipelineTesterMixin:
         for name, module in components.items():
             if hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
+
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -555,6 +586,9 @@ class PipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -567,7 +601,6 @@ class PipelineTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
-
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(
             max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
@@ -579,6 +612,9 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -590,8 +626,11 @@ class PipelineTesterMixin:
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -650,6 +689,9 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -674,6 +716,9 @@ class PipelineTesterMixin:
     def test_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -702,6 +747,9 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -719,7 +767,7 @@ class PipelineTesterMixin:
         )
 
         if test_max_difference:
-            max_diff = np.abs(output_with_offload - output_without_offload).max()
+            max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
             self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
         if test_mean_pixel_difference:
@@ -793,6 +841,126 @@ class PipelineTesterMixin:
         out_cfg = pipe(**inputs)[0]
 
         assert out_cfg.shape == out_no_cfg.shape
+
+
+@is_staging_test
+class PipelinePushToHubTester(unittest.TestCase):
+    identifier = uuid.uuid4()
+    repo_id = f"test-pipeline-{identifier}"
+    org_repo_id = f"valid_org/{repo_id}-org"
+
+    def get_pipeline_components(self):
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
+            vocab_path = os.path.join(tmpdir, "vocab.json")
+            with open(vocab_path, "w") as f:
+                json.dump(dummy_vocab, f)
+
+            merges = "Ġ t\nĠt h"
+            merges_path = os.path.join(tmpdir, "merges.txt")
+            with open(merges_path, "w") as f:
+                f.writelines(merges)
+            tokenizer = CLIPTokenizer(vocab_file=vocab_path, merges_file=merges_path)
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+        return components
+
+    def test_push_to_hub(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.repo_id, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
+        unet = components["unet"]
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
+
+        # Push to hub via save_pretrained
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipeline.save_pretrained(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)
+
+    def test_push_to_hub_in_organization(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.org_repo_id, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
+        unet = components["unet"]
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
+
+        # Push to hub via save_pretrained
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=self.org_repo_id)
+
+        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(self.org_repo_id, token=TOKEN)
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

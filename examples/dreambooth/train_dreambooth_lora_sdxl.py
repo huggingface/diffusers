@@ -58,7 +58,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.20.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -732,12 +732,11 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
-    # The VAE is in float32 to avoid NaN losses.
     unet.to(accelerator.device, dtype=weight_dtype)
-    if args.pretrained_vae_model_name_or_path is None:
-        vae.to(accelerator.device, dtype=torch.float32)
-    else:
-        vae.to(accelerator.device, dtype=weight_dtype)
+
+    # The VAE is always in float32 to avoid NaN losses.
+    vae.to(accelerator.device, dtype=torch.float32)
+
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
@@ -844,11 +843,15 @@ def main(args):
 
         lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
         LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+
+        text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
         LoraLoaderMixin.load_lora_into_text_encoder(
-            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
+            text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
         )
+
+        text_encoder_2_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder_2." in k}
         LoraLoaderMixin.load_lora_into_text_encoder(
-            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_
+            text_encoder_2_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_
         )
 
     accelerator.register_save_state_pre_hook(save_model_hook)
@@ -1070,10 +1073,7 @@ def main(args):
                 continue
 
             with accelerator.accumulate(unet):
-                if args.pretrained_vae_model_name_or_path is None:
-                    pixel_values = batch["pixel_values"]
-                else:
-                    pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
@@ -1103,11 +1103,11 @@ def main(args):
                         "time_ids": add_time_ids.repeat(elems_to_repeat, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat, 1),
                     }
-                    prompt_embeds = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
-                        prompt_embeds,
+                        prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
@@ -1119,9 +1119,9 @@ def main(args):
                         text_input_ids_list=[tokens_one, tokens_two],
                     )
                     unet_added_conditions.update({"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat, 1)})
-                    prompt_embeds = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
                     model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
+                        noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
                     ).sample
 
                 # Get the target for loss depending on the prediction type
@@ -1315,14 +1315,13 @@ def main(args):
 
         pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
-        pipeline = pipeline.to(accelerator.device)
-
         # load attention processors
         pipeline.load_lora_weights(args.output_dir)
 
         # run inference
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
+            pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
             images = [
                 pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]

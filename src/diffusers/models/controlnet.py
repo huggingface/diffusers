@@ -21,7 +21,13 @@ from torch.nn import functional as F
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalControlnetMixin
 from ..utils import BaseOutput, logging
-from .attention_processor import AttentionProcessor, AttnProcessor
+from .attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnProcessor,
+)
 from .embeddings import TextImageProjection, TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
@@ -497,8 +503,8 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         processors = {}
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "set_processor"):
-                processors[f"{name}.processor"] = module.processor
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -550,7 +556,16 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        self.set_attn_processor(AttnProcessor())
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnAddedKVProcessor()
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnProcessor()
+        else:
+            raise ValueError(
+                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
+            )
+
+        self.set_attn_processor(processor)
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
     def set_attention_slice(self, slice_size):
@@ -723,7 +738,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
-        if "addition_embed_type" in self.config:
+        if self.config.addition_embed_type is not None:
             if self.config.addition_embed_type == "text":
                 aug_emb = self.add_embedding(encoder_hidden_states)
 

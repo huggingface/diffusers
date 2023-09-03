@@ -477,7 +477,7 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
     @skip_mps
     def test_save_load_local(self):
-        return super().test_save_load_local()
+        return super().test_save_load_local(expected_max_difference=4e-3)
 
     @skip_mps
     def test_save_load_optional_components(self):

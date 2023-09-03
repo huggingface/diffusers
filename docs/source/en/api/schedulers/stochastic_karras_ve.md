@@ -10,11 +10,12 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Variance exploding, stochastic sampling from Karras et. al
+# KarrasVeScheduler
 
-## Overview
-
-Original paper can be found [here](https://arxiv.org/abs/2206.00364).
+`KarrasVeScheduler` is a stochastic sampler tailored o variance-expanding (VE) models. It is based on the [Elucidating the Design Space of Diffusion-Based Generative Models](https://huggingface.co/papers/2206.00364) and [Score-based generative modeling through stochastic differential equations](https://huggingface.co/papers/2011.13456) papers.
 
 ## KarrasVeScheduler
 [[autodoc]] KarrasVeScheduler
+
+## KarrasVeOutput
+[[autodoc]] schedulers.scheduling_karras_ve.KarrasVeOutput
