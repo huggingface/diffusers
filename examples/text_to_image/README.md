@@ -55,11 +55,11 @@ With `gradient_checkpointing` and `mixed_precision` it should be possible to fin
 <!-- accelerate_snippet_start -->
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --dataset_name=$DATASET_NAME \
   --use_ema \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
@@ -111,6 +111,21 @@ image = pipe(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
 
+Checkpoints only save the unet, so to run inference from a checkpoint, just load the unet
+```python
+from diffusers import StableDiffusionPipeline, UNet2DConditionModel
+
+model_path = "path_to_saved_model"
+
+unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet")
+
+pipe = StableDiffusionPipeline.from_pretrained("<initial model>", unet=unet, torch_dtype=torch.float16)
+pipe.to("cuda")
+
+image = pipe(prompt="yoda").images[0]
+image.save("yoda-pokemon.png")
+```
+
 #### Training with multiple GPUs
 
 `accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
@@ -118,11 +133,11 @@ for running distributed training with `accelerate`. Here is an example command:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --dataset_name=$DATASET_NAME \
   --use_ema \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
@@ -259,11 +274,11 @@ pip install -U -r requirements_flax.txt
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export dataset_name="lambdalabs/pokemon-blip-captions"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 python train_text_to_image_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
+  --dataset_name=$DATASET_NAME \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 \
   --mixed_precision="fp16" \
@@ -301,3 +316,8 @@ xFormers training is not available for Flax/JAX.
 **Note**:
 
 According to [this issue](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212), xFormers `v0.0.16` cannot be used for training in some GPUs. If you observe that problem, please install a development version as indicated in that comment.
+
+## Stable Diffusion XL
+
+* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md). 
+* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md). 

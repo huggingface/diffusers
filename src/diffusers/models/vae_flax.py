@@ -36,9 +36,9 @@ class FlaxDecoderOutput(BaseOutput):
 
     Args:
         sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
-            Decoded output sample of the model. Output of the last layer of the model.
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            Parameters `dtype`
+            The decoded output sample from the last layer of the model.
+        dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
+            The `dtype` of the parameters.
     """
 
     sample: jnp.ndarray
@@ -396,7 +396,7 @@ class FlaxUNetMidBlock2D(nn.Module):
             Number of Resnet layer block
         resnet_groups (:obj:`int`, *optional*, defaults to `32`):
             The number of groups to use for the Resnet and Attention block group norm
-        attn_num_head_channels (:obj:`int`, *optional*, defaults to `1`):
+        num_attention_heads (:obj:`int`, *optional*, defaults to `1`):
             Number of attention heads for each attention block
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
@@ -405,7 +405,7 @@ class FlaxUNetMidBlock2D(nn.Module):
     dropout: float = 0.0
     num_layers: int = 1
     resnet_groups: int = 32
-    attn_num_head_channels: int = 1
+    num_attention_heads: int = 1
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
@@ -427,7 +427,7 @@ class FlaxUNetMidBlock2D(nn.Module):
         for _ in range(self.num_layers):
             attn_block = FlaxAttentionBlock(
                 channels=self.in_channels,
-                num_head_channels=self.attn_num_head_channels,
+                num_head_channels=self.num_attention_heads,
                 num_groups=resnet_groups,
                 dtype=self.dtype,
             )
@@ -532,7 +532,7 @@ class FlaxEncoder(nn.Module):
         self.mid_block = FlaxUNetMidBlock2D(
             in_channels=block_out_channels[-1],
             resnet_groups=self.norm_num_groups,
-            attn_num_head_channels=None,
+            num_attention_heads=None,
             dtype=self.dtype,
         )
 
@@ -625,7 +625,7 @@ class FlaxDecoder(nn.Module):
         self.mid_block = FlaxUNetMidBlock2D(
             in_channels=block_out_channels[-1],
             resnet_groups=self.norm_num_groups,
-            attn_num_head_channels=None,
+            num_attention_heads=None,
             dtype=self.dtype,
         )
 
@@ -720,40 +720,43 @@ class FlaxDiagonalGaussianDistribution(object):
 @flax_register_to_config
 class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
-    Flax Implementation of Variational Autoencoder (VAE) model with KL loss from the paper Auto-Encoding Variational
-    Bayes by Diederik P. Kingma and Max Welling.
+    Flax implementation of a VAE model with KL loss for decoding latent representations.
+
+    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for it's generic methods
+    implemented for all models (such as downloading or saving).
 
     This model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
-    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    subclass. Use it as a regular Flax Linen module and refer to the Flax documentation for all matter related to its
     general usage and behavior.
 
-    Finally, this model supports inherent JAX features such as:
+    Inherent JAX features such as the following are supported:
+
     - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
     - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
     - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
     - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
 
     Parameters:
-        in_channels (:obj:`int`, *optional*, defaults to 3):
-            Input channels
-        out_channels (:obj:`int`, *optional*, defaults to 3):
-            Output channels
-        down_block_types (:obj:`Tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
-            DownEncoder block type
-        up_block_types (:obj:`Tuple[str]`, *optional*, defaults to `(UpDecoderBlock2D)`):
-            UpDecoder block type
-        block_out_channels (:obj:`Tuple[str]`, *optional*, defaults to `(64,)`):
-            Tuple containing the number of output channels for each block
-        layers_per_block (:obj:`int`, *optional*, defaults to `2`):
-            Number of Resnet layer for each block
-        act_fn (:obj:`str`, *optional*, defaults to `silu`):
-            Activation function
-        latent_channels (:obj:`int`, *optional*, defaults to `4`):
-            Latent space channels
-        norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
-            Norm num group
-        sample_size (:obj:`int`, *optional*, defaults to 32):
-            Sample input size
+        in_channels (`int`, *optional*, defaults to 3):
+            Number of channels in the input image.
+        out_channels (`int`, *optional*, defaults to 3):
+            Number of channels in the output.
+        down_block_types (`Tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
+            Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to `(UpDecoderBlock2D)`):
+            Tuple of upsample block types.
+        block_out_channels (`Tuple[str]`, *optional*, defaults to `(64,)`):
+            Tuple of block output channels.
+        layers_per_block (`int`, *optional*, defaults to `2`):
+            Number of ResNet layer for each block.
+        act_fn (`str`, *optional*, defaults to `silu`):
+            The activation function to use.
+        latent_channels (`int`, *optional*, defaults to `4`):
+            Number of channels in the latent space.
+        norm_num_groups (`int`, *optional*, defaults to `32`):
+            The number of groups for normalization.
+        sample_size (`int`, *optional*, defaults to 32):
+            Sample input size.
         scaling_factor (`float`, *optional*, defaults to 0.18215):
             The component-wise standard deviation of the trained latent space computed using the first batch of the
             training set. This is used to scale the latent space to have unit variance when training the diffusion
@@ -761,8 +764,8 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
             diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
             / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
             Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            parameters `dtype`
+        dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
+            The `dtype` of the parameters.
     """
     in_channels: int = 3
     out_channels: int = 3

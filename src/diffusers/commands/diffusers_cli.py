@@ -16,6 +16,7 @@
 from argparse import ArgumentParser
 
 from .env import EnvironmentCommand
+from .fp16_safetensors import FP16SafetensorsCommand
 
 
 def main():
@@ -24,6 +25,7 @@ def main():
 
     # Register commands
     EnvironmentCommand.register_subcommand(commands_parser)
+    FP16SafetensorsCommand.register_subcommand(commands_parser)
 
     # Let's go
     args = parser.parse_args()

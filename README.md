@@ -1,6 +1,6 @@
 <p align="center">
     <br>
-    <img src="https://github.com/huggingface/diffusers/blob/main/docs/source/en/imgs/diffusers_library.jpg" width="400"/>
+    <img src="https://raw.githubusercontent.com/huggingface/diffusers/main/docs/source/en/imgs/diffusers_library.jpg" width="400"/>
     <br>
 <p>
 <p align="center">
@@ -25,12 +25,12 @@
 
 ## Installation
 
-We recommend installing 🤗 Diffusers in a virtual environment from PyPi or Conda. For more details about installing [PyTorch](https://pytorch.org/get-started/locally/) and [Flax](https://flax.readthedocs.io/en/latest/installation.html), please refer to their official documentation.
+We recommend installing 🤗 Diffusers in a virtual environment from PyPi or Conda. For more details about installing [PyTorch](https://pytorch.org/get-started/locally/) and [Flax](https://flax.readthedocs.io/en/latest/#installation), please refer to their official documentation.
 
 ### PyTorch
 
 With `pip` (official package):
-    
+
 ```bash
 pip install --upgrade diffusers[torch]
 ```
@@ -107,7 +107,7 @@ Check out the [Quickstart](https://huggingface.co/docs/diffusers/quicktour) to l
 | [Training](https://huggingface.co/docs/diffusers/training/overview) | Guides for how to train a diffusion model for different tasks with different training techniques.                                                                                               |
 ## Contribution
 
-We ❤️  contributions from the open-source community! 
+We ❤️  contributions from the open-source community!
 If you want to contribute to this library, please check out our [Contribution guide](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md).
 You can look out for [issues](https://github.com/huggingface/diffusers/issues) you'd like to tackle to contribute to the library.
 - See [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) for general opportunities to contribute
@@ -128,7 +128,7 @@ just hang out ☕.
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Unconditional Image Generation</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/ddpm"> DDPM </a></td> 
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/ddpm"> DDPM </a></td>
     <td><a href="https://huggingface.co/google/ddpm-ema-church-256"> google/ddpm-ema-church-256 </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
@@ -143,8 +143,13 @@ just hang out ☕.
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">if</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">DeepFloyd IF</a></td>
       <td><a href="https://huggingface.co/DeepFloyd/IF-I-XL-v1.0"> DeepFloyd/IF-I-XL-v1.0 </a></td>
+  </tr>
+  <tr>
+    <td>Text-to-Image</td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/kandinsky">Kandinsky</a></td>
+      <td><a href="https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder"> kandinsky-community/kandinsky-2-2-decoder </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image-to-Image</td>
@@ -153,7 +158,7 @@ just hang out ☕.
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/pix2pix">Instruct Pix2Pix</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/pix2pix">Instruct Pix2Pix</a></td>
       <td><a href="https://huggingface.co/timbrooks/instruct-pix2pix"> timbrooks/instruct-pix2pix </a></td>
   </tr>
   <tr>
@@ -185,13 +190,13 @@ just hang out ☕.
 
 ## Popular libraries using 🧨 Diffusers
 
-- https://github.com/microsoft/TaskMatrix 
-- https://github.com/invoke-ai/InvokeAI 
-- https://github.com/apple/ml-stable-diffusion   
-- https://github.com/Sanster/lama-cleaner 
+- https://github.com/microsoft/TaskMatrix
+- https://github.com/invoke-ai/InvokeAI
+- https://github.com/apple/ml-stable-diffusion
+- https://github.com/Sanster/lama-cleaner
 - https://github.com/IDEA-Research/Grounded-Segment-Anything
-- https://github.com/ashawkey/stable-dreamfusion 
-- https://github.com/deep-floyd/IF  
+- https://github.com/ashawkey/stable-dreamfusion
+- https://github.com/deep-floyd/IF
 - https://github.com/bentoml/BentoML
 - https://github.com/bmaltais/kohya_ss
 - +3000 other amazing GitHub repositories 💪

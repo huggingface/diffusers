@@ -277,4 +277,4 @@ To save even more memory, pass the `--set_grads_to_none` argument to the script.
 More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html
 
 ## Experimental results
-You can refer to [our webpage](https://www.cs.cmu.edu/~custom-diffusion/) that discusses our experiments in detail. 
+You can refer to [our webpage](https://www.cs.cmu.edu/~custom-diffusion/) that discusses our experiments in detail. We also released a more extensive dataset of 101 concepts for evaluating model customization methods. For more details please refer to our [dataset webpage](https://www.cs.cmu.edu/~custom-diffusion/dataset.html).

@@ -33,20 +33,28 @@ from diffusers import (
     logging,
 )
 from diffusers.utils import load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    enable_full_determinism,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusion2PipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusion2PipelineFastTests(
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -207,6 +215,27 @@ class StableDiffusion2PipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_unflawed(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        components["scheduler"] = DDIMScheduler.from_config(
+            components["scheduler"].config, timestep_spacing="trailing"
+        )
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["guidance_rescale"] = 0.7
+        inputs["num_inference_steps"] = 10
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.4736, 0.5405, 0.4705, 0.4955, 0.5675, 0.4812, 0.5310, 0.4967, 0.5064])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     def test_stable_diffusion_long_prompt(self):
         components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
@@ -221,21 +250,27 @@ class StableDiffusion2PipelineFastTests(PipelineLatentTesterMixin, PipelineTeste
 
         prompt = 25 * "@"
         with CaptureLogger(logger) as cap_logger_3:
-            text_embeddings_3 = sd_pipe._encode_prompt(
+            text_embeddings_3, negeative_text_embeddings_3 = sd_pipe.encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
+            if negeative_text_embeddings_3 is not None:
+                text_embeddings_3 = torch.cat([negeative_text_embeddings_3, text_embeddings_3])
 
         prompt = 100 * "@"
         with CaptureLogger(logger) as cap_logger:
-            text_embeddings = sd_pipe._encode_prompt(
+            text_embeddings, negative_embeddings = sd_pipe.encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
+            if negative_embeddings is not None:
+                text_embeddings = torch.cat([negative_embeddings, text_embeddings])
 
         negative_prompt = "Hello"
         with CaptureLogger(logger) as cap_logger_2:
-            text_embeddings_2 = sd_pipe._encode_prompt(
+            text_embeddings_2, negative_text_embeddings_2 = sd_pipe.encode_prompt(
                 prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
             )
+            if negative_text_embeddings_2 is not None:
+                text_embeddings_2 = torch.cat([negative_text_embeddings_2, text_embeddings_2])
 
         assert text_embeddings_3.shape == text_embeddings_2.shape == text_embeddings.shape
         assert text_embeddings.shape[1] == 77
@@ -320,6 +355,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-base", torch_dtype=torch.float16
         )
+        pipe.unet.set_default_attn_processor()
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -335,6 +371,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
         # disable slicing
         pipe.disable_attention_slicing()
+        pipe.unet.set_default_attn_processor()
         inputs = self.get_inputs(torch_device, dtype=torch.float16)
         image = pipe(**inputs).images
 
@@ -441,7 +478,10 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         outputs_offloaded = pipe(**inputs)
         mem_bytes_offloaded = torch.cuda.max_memory_allocated()
 
-        assert np.abs(outputs.images - outputs_offloaded.images).max() < 1e-3
+        images = outputs.images
+        images_offloaded = outputs_offloaded.images
+        max_diff = numpy_cosine_similarity_distance(images.flatten(), images_offloaded.flatten())
+        assert max_diff < 1e-3
         assert mem_bytes_offloaded < mem_bytes
         assert mem_bytes_offloaded < 3 * 10**9
         for module in pipe.text_encoder, pipe.unet, pipe.vae:

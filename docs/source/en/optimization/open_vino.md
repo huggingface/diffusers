@@ -1,0 +1,110 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+
+# How to use OpenVINO for inference
+
+🤗 [Optimum](https://github.com/huggingface/optimum-intel) provides Stable Diffusion pipelines compatible with OpenVINO. You can now easily perform inference with OpenVINO Runtime on a variety of Intel processors ([see](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_Supported_Devices.html) the full list of supported devices).
+
+## Installation
+
+Install 🤗 Optimum Intel with the following command:
+
+```
+pip install --upgrade-strategy eager optimum["openvino"]
+```
+
+The `--upgrade-strategy eager` option is needed to ensure [`optimum-intel`](https://github.com/huggingface/optimum-intel) is upgraded to its latest version.
+
+
+## Stable Diffusion
+
+### Inference
+
+To load an OpenVINO model and run inference with OpenVINO Runtime, you need to replace `StableDiffusionPipeline` with `OVStableDiffusionPipeline`. In case you want to load a PyTorch model and convert it to the OpenVINO format on-the-fly, you can set `export=True`.
+
+```python
+from optimum.intel import OVStableDiffusionPipeline
+
+model_id = "runwayml/stable-diffusion-v1-5"
+pipeline = OVStableDiffusionPipeline.from_pretrained(model_id, export=True)
+prompt = "sailing ship in storm by Rembrandt"
+image = pipeline(prompt).images[0]
+
+# Don't forget to save the exported model
+pipeline.save_pretrained("openvino-sd-v1-5")
+```
+
+To further speed up inference, the model can be statically reshaped :
+
+```python
+# Define the shapes related to the inputs and desired outputs
+batch_size, num_images, height, width = 1, 1, 512, 512
+
+# Statically reshape the model
+pipeline.reshape(batch_size, height, width, num_images)
+# Compile the model before inference
+pipeline.compile()
+
+image = pipeline(
+    prompt,
+    height=height,
+    width=width,
+    num_images_per_prompt=num_images,
+).images[0]
+```
+
+In case you want to change any parameters such as the outputs height or width, you’ll need to statically reshape your model once again.
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/optimum/documentation-images/resolve/main/intel/openvino/stable_diffusion_v1_5_sail_boat_rembrandt.png">
+</div>
+
+
+### Supported tasks
+
+| Task                                 | Loading Class                        |
+|--------------------------------------|--------------------------------------|
+| `text-to-image`                      | `OVStableDiffusionPipeline`          |
+| `image-to-image`                     | `OVStableDiffusionImg2ImgPipeline`   |
+| `inpaint`                            | `OVStableDiffusionInpaintPipeline`   |
+
+You can find more examples in the optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion).
+
+
+## Stable Diffusion XL
+
+### Inference
+
+Here is an example of how you can load a SDXL OpenVINO model from [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and run inference with OpenVINO Runtime :
+
+```python
+from optimum.intel import OVStableDiffusionXLPipeline
+
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+pipeline = OVStableDiffusionXLPipeline.from_pretrained(model_id)
+prompt = "sailing ship in storm by Rembrandt"
+image = pipeline(prompt).images[0]
+```
+
+To further speed up inference, the model can be statically reshaped as showed above.
+You can find more examples in the optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion-xl).
+
+### Supported tasks
+
+| Task                                 | Loading Class                        |
+|--------------------------------------|--------------------------------------|
+| `text-to-image`                      | `OVStableDiffusionXLPipeline`        |
+| `image-to-image`                     | `OVStableDiffusionXLImg2ImgPipeline` |
+
+
+

@@ -26,17 +26,18 @@ from .scheduling_utils import SchedulerMixin
 
 class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
     """
-    The variance preserving stochastic differential equation (SDE) scheduler.
+    `ScoreSdeVpScheduler` is a variance preserving stochastic differential equation (SDE) scheduler.
 
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
+    methods the library implements for all schedulers such as loading and saving.
 
-    For more information, see the original paper: https://arxiv.org/abs/2011.13456
-
-    UNDER CONSTRUCTION
-
+    Args:
+        num_train_timesteps (`int`, defaults to 2000):
+            The number of diffusion steps to train the model.
+        beta_min (`int`, defaults to 0.1):
+        beta_max (`int`, defaults to 20):
+        sampling_eps (`int`, defaults to 1e-3):
+            The end value of sampling where timesteps decrease progressively from 1 to epsilon.
     """
 
     order = 1
@@ -48,9 +49,29 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = None
 
     def set_timesteps(self, num_inference_steps, device: Union[str, torch.device] = None):
+        """
+        Sets the continuous timesteps used for the diffusion chain (to be run before inference).
+
+        Args:
+            num_inference_steps (`int`):
+                The number of diffusion steps used when generating samples with a pre-trained model.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        """
         self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps, device=device)
 
     def step_pred(self, score, x, t, generator=None):
+        """
+        Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
+        process from the learned model outputs (most often the predicted noise).
+
+        Args:
+            score ():
+            x ():
+            t ():
+            generator (`torch.Generator`, *optional*):
+                A random number generator.
+        """
         if self.timesteps is None:
             raise ValueError(
                 "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
