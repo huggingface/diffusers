@@ -141,19 +141,18 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         sigma_data (`float`, *optional*, defaults to 0.5):
             The standard deviation of the data distribution. This is set to 0.5 in the EDM paper [1].
         s_churn (`float`, *optional*, defaults to 0.0):
-            The parameter controlling the overall amount of stochasticity if we add noise during sampling.
-            Defaults to 0.0; a reasonable range is [0, 100].
+            The parameter controlling the overall amount of stochasticity if we add noise during sampling. Defaults to
+            0.0; a reasonable range is [0, 100].
         s_tmin (`float`, *optional*, defaults to 0.0):
             The start value of the sigma range where we add noise. Defaults to 0.0; a reasonable range is [0, 10].
         s_tmax (`float`, *optional*, defaults to `float('int')`):
             The end value of the sigma range where we add noise. Defaults to `float('inf')`; a reasonable range is
             [0.2, float('inf')].
         s_noise (`float`, defaults to 1.0):
-            Scaling factor for noise added to the sample. This counteracts the loss of detail during sampling.
-            Defaults to 0.0; a reasonable range is [1.000, 1.011].
+            Scaling factor for noise added to the sample. This counteracts the loss of detail during sampling. Defaults
+            to 0.0; a reasonable range is [1.000, 1.011].
         rho (`float`, *optional*, defaults to 7.0):
-            The rho parameter used for calculating the Karras sigma schedule, which is set to 7.0 in the EDM
-            paper [1].
+            The rho parameter used for calculating the Karras sigma schedule, which is set to 7.0 in the EDM paper [1].
         clip_sample (`bool`, *optional*, defaults to `True`):
             Whether to clip the predicted sample for numerical stability.
         clip_sample_range (`float`, *optional*, defaults to `1.0`):
@@ -220,7 +219,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         self.use_karras_sigmas = use_karras_sigmas
 
         self._step_index = None
-    
+
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
@@ -231,18 +230,18 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
         # Initial latents are not scaled.
         return 1.0
-    
+
     @property
     def step_index(self):
         """
         The index counter for current timestep. It will increae 1 after each scheduler step.
         """
         return self._step_index
-    
+
     @property
     def state_in_first_order(self):
         return self.dt is None
-    
+
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
@@ -277,7 +276,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             pos = self._index_counter[timestep_int]
 
         return indices[pos].item()
-    
+
     def precondition_noise(self, sigma):
         if self.precondition_type == "edm":
             scaled_noise = 0.25 * np.log(sigma)
@@ -286,9 +285,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         else:
             # No noise preconditioning.
             scaled_noise = sigma
-        
+
         return scaled_noise
-    
+
     def precondition_inputs(self, sample, sigma):
         if self.precondition_type in ["edm", "cm_edm"]:
             scaled_sample = sample / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
@@ -297,7 +296,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             scaled_sample = sample
 
         return scaled_sample
-    
+
     def precondition_outputs(self, sample, model_output, sigma):
         if self.precondition_type in ["edm", "cm_edm"]:
             sigma_data = self.config.sigma_data
@@ -308,7 +307,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         else:
             # No output preconditioning
             denoised = model_output
-        
+
         return denoised
 
     def scale_model_input(
@@ -320,9 +319,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
-        
-        Preconditions the sample input to the neural network $F_\theta$, following c_in(sigma) for
-        the EDM column in Table 1.
+
+        Preconditions the sample input to the neural network $F_\theta$, following c_in(sigma) for the EDM column in
+        Table 1.
 
         Args:
             sample (`torch.FloatTensor`):
@@ -336,7 +335,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         # 1. Get sigma corresponding to timestep
         if self.step_index is None:
             self._init_step_index(timestep)
-        
+
         sigma = self.sigmas[self.step_index]
 
         # 2. Add noise via a Langevin-like "churn" step
@@ -351,9 +350,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             if gamma > 0:
                 eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
                 sample = sample + ((self.sigma_hat**2 - sigma**2) ** 0.5 * eps)
-            
+
             self.sample_hat = sample
-        
+
         # 3. Precondition the input sample and timestep.
         sample = self.precondition_inputs(self.sample_hat, self.sigma_hat)
         timestep = self.precondition_noise(self.sigma_hat)
@@ -438,7 +437,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
                 raise ValueError(
                     f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
                 )
-        
+
         # 3. Define sigmas and handle sigma interpolation
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         log_sigmas = np.log(sigmas)
@@ -452,7 +451,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
                 f"{self.config.interpolation_type} is not implemented. Please specify interpolation_type to either"
                 " 'linear' or 'log_linear'"
             )
-        
+
         # 4. Calculate the Karras sigmas, if necessary
         if self.use_karras_sigmas:
             if self.custom_timesteps:
@@ -468,7 +467,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self._convert_to_karras(ramp, sigma_min, sigma_max)
 
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
-        
+
         # 5. Finish processing sigmas and timesteps
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -504,7 +503,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
-    
+
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
         log_sigma = np.log(sigma)
@@ -555,8 +554,8 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
         Returns:
             [`~schedulers.scheduling_utils.KarrasEDMSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.KarrasEDMSchedulerOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~schedulers.scheduling_utils.KarrasEDMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
         """
         # 0. Check inputs
         if (
@@ -577,11 +576,11 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
                 "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
                 "See `StableDiffusionPipeline` for a usage example."
             )
-        
+
         # 1. Initialize step_index if necessary
         if self.step_index is None:
             self._init_step_index(timestep)
-        
+
         # 2. Get current sigmas
         # (YiYi notes: keep this for now since we are keeping the add_noise method)
         # advance index counter by 1
@@ -612,7 +611,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
-        
+
         # 4. Convert model output to denoiser output using output preconditioning scalings c_skip, c_out
         # TODO: not quite sure if this is correct, I think output preconditioning should happen after we recover the
         # original predicted sample
@@ -623,12 +622,10 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             current_sample = sample
             current_sigma = sigma_next
         denoised = self.precondition_outputs(current_sample, pred_original_sample, current_sigma)
-        
+
         if self.config.clip_sample:
-            denoised = denoised.clamp(
-                -self.config.clip_sample_range, self.config.clip_sample_range
-            )
-        
+            denoised = denoised.clamp(-self.config.clip_sample_range, self.config.clip_sample_range)
+
         # 5. Perform a first order (Euler) or second order correction (Heun) step.
         if self.state_in_first_order:
             # 5.1. 1st order / Euler's method
@@ -638,7 +635,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             # 5.1.2. Get delta timestep
             dt = sigma_next - self.sigma_hat
 
-            # 5.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper) 
+            # 5.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper)
             prev_sample = self.sample_hat + derivative * dt  # x_{i + 1}
 
             # 5.1.4. Store values for 2nd order step
@@ -665,9 +662,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample,)
 
-        return KarrasEDMSchedulerOutput(
-            prev_sample=prev_sample, pred_original_sample=pred_original_sample
-        )
+        return KarrasEDMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     # TODO: change to match noise added for EDM training???
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise

@@ -274,13 +274,11 @@ class KarrasEDMPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 # 1. Add noise (if necessary) and precondition the input sample and timestep.
                 # NOTE: diverges from the normal scheduler API since scale_model_input returns both a scaled_sample
-                # and scaled timestep 
+                # and scaled timestep
                 scaled_sample, scaled_sigma = self.scheduler.scale_model_input(sample, t, generator=generator)
 
                 # 2. Evaluate neural network at higher noise level (sample_hat, sigma_hat).
-                model_output = self.unet(
-                    scaled_sample, scaled_sigma, class_labels=class_labels, return_dict=False
-                )[0]
+                model_output = self.unet(scaled_sample, scaled_sigma, class_labels=class_labels, return_dict=False)[0]
 
                 # 3. Apply output preconditioning on model_output to get denoiser output
                 # 4. Take either a first order (Euler) step or second order (Heun) step
