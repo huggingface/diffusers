@@ -417,7 +417,6 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
         do_classifier_free_guidance=False,
         guess_mode=False,
         include_drums=True,
-        fix_len=True
     ):
 
         if isinstance(midi, PrettyMIDI):
@@ -427,14 +426,8 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
 
         for midi_ in midi:
             for instrument in midi_.instruments:
-                if instrument.is_drum and include_drums:
+                if include_drums:
                     instrument.is_drum = False
-                if fix_len:
-                    for note in instrument.notes:
-                        note.start = round(note.start, 2)
-                        note.end = round(note.end, 2)
-                        if round(note.end-note.start, 2) < 0.02:
-                            note.end = note.start + 0.02
             piano_roll_ = midi_.get_piano_roll(pedal_threshold=None, fs=200)
             piano_roll_ = piano_roll_[:,:int(audio_length_in_s*200)]
             if piano_roll_.shape[1] < int(audio_length_in_s*200):
@@ -520,7 +513,6 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         guess_mode: bool = False,
         include_drums: bool = True,
-        fix_len: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -664,7 +656,6 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
             do_classifier_free_guidance=do_classifier_free_guidance,
             guess_mode=guess_mode,
             include_drums=include_drums,
-            fix_len=fix_len,
         )
 
         # 5. Prepare timesteps
