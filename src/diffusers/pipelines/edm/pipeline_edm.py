@@ -269,58 +269,28 @@ class KarrasEDMPipeline(DiffusionPipeline):
 
         # 5. Denoising loop
         # Implements the "EDM" column in Table 1 of the EDM paper
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # 1. Get sigmas for current timestep
-                sigma = self.scheduler.sigmas[i]
-                # Note sigmas[i + 1] is smaller than sigmas[i] since sigmas should be decreasing.
-                sigma_prev = self.scheduler.sigmas[i + 1] if i < num_inference_steps - 1 else 0
+                # 1. Add noise (if necessary) and precondition the input sample and timestep.
+                # NOTE: diverges from the normal scheduler API since scale_model_input returns both a scaled_sample
+                # and scaled timestep 
+                scaled_sample, scaled_sigma = self.scheduler.scale_model_input(sample, t, generator=generator)
 
-                # 2. Temporarily increase the noise level to sigma_hat and add that noise to current sample
-                sample_hat, sigma_hat = self.scheduler.add_noise_to_input(sample, sigma, generator=generator)
-
-                # 3. Precondition the sample input to network $F_\theta$ using c_in(sigma)
-                scaled_sample_hat = self.scheduler.scale_model_input(sample_hat, sigma_hat)
-                scaled_sigma_hat = self.scheduler.precondition_noise(sigma_hat)
-
-                # 4. Evaluate neural network at higher noise level (sample_hat, sigma_hat).
+                # 2. Evaluate neural network at higher noise level (sample_hat, sigma_hat).
                 model_output = self.unet(
-                    scaled_sample_hat, scaled_sigma_hat, class_labels=class_labels, return_dict=False
+                    scaled_sample, scaled_sigma, class_labels=class_labels, return_dict=False
                 )[0]
 
-                # 5. Apply output preconditioning on model_output to get denoiser output at sigma_hat
-                # 6. Take a Euler step from higher noise level sigma_het to sigma_next
-                step_output = self.scheduler.step(model_output, sigma_hat, sample_hat, sigma_prev)
-
-                # 7. Apply 2nd-order Heun correction
-                if sigma_prev != 0:
-                    # 7.1. Apply input preconditioning to the sample from the Euler step.
-                    sample_prev = step_output.prev_sample
-                    scaled_sample_prev = self.scheduler.scale_model_input(sample_prev, sigma_prev)
-                    scaled_sigma_prev = self.scheduler.precondition_noise(sigma_prev)
-
-                    # 7.2. Evaluate neural network at (sample_prev, sigma_prev) for 2nd order correction.
-                    model_output = self.unet(
-                        scaled_sample_prev, scaled_sigma_prev, class_labels=class_labels, return_dict=False
-                    )[0]
-
-                    # 7.3. Apply output preconditioning on model_output to get denoiser output at sigma_prev
-                    # 7.4. Take a 2nd order Heun step
-                    step_output = self.scheduler.step_correct(
-                        model_output,
-                        sigma_prev,
-                        sample_prev,
-                        sigma_hat,
-                        sample_hat,
-                        step_output.derivative,
-                    )
-                
-                sample = step_output.prev_sample
+                # 3. Apply output preconditioning on model_output to get denoiser output
+                # 4. Take either a first order (Euler) step or second order (Heun) step
+                sample = self.scheduler.step(model_output, t, sample).prev_sample
 
                 # call the callback, if provided
-                progress_bar.update()
-                if callback is not None and i % callback_steps == 0:
-                    callback(i, t, sample)
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, t, latents)
 
         # 6. Post-process image sample
         image = self.postprocess_image(sample, output_type=output_type)
