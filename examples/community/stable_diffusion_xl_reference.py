@@ -16,7 +16,7 @@ from diffusers.models.unet_2d_blocks import (
 )
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
 from diffusers.utils import PIL_INTERPOLATION, logging
-from diffusers.utils.testing_utils import randn_tensor
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

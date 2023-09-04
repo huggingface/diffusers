@@ -9,7 +9,7 @@ from diffusers.models import PriorTransformer
 from diffusers.pipelines import DiffusionPipeline, StableDiffusionImageVariationPipeline
 from diffusers.schedulers import UnCLIPScheduler
 from diffusers.utils import logging
-from diffusers.utils.testing_utils import randn_tensor
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
