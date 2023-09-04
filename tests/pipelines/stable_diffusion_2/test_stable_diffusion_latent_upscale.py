@@ -63,8 +63,6 @@ class StableDiffusionLatentUpscalePipelineFastTests(
     )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
     image_latents_params = frozenset([])
 
-    test_cpu_offload = True
-
     @property
     def dummy_image(self):
         batch_size = 1

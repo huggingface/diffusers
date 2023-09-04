@@ -21,10 +21,9 @@ from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
 from ...models import PriorTransformer, UNet2DConditionModel, UNet2DModel
-from ...pipelines import DiffusionPipeline
-from ...pipelines.pipeline_utils import ImagePipelineOutput
 from ...schedulers import UnCLIPScheduler
-from ...utils import is_accelerate_available, logging, randn_tensor
+from ...utils import logging, randn_tensor
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_proj import UnCLIPTextProjModel
 
 
@@ -33,35 +32,36 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class UnCLIPPipeline(DiffusionPipeline):
     """
-    Pipeline for text-to-image generation using unCLIP
+    Pipeline for text-to-image generation using unCLIP.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
-        text_encoder ([`CLIPTextModelWithProjection`]):
+        text_encoder ([`~transformers.CLIPTextModelWithProjection`]):
             Frozen text-encoder.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
         prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         text_proj ([`UnCLIPTextProjModel`]):
             Utility class to prepare and combine the embeddings before they are passed to the decoder.
         decoder ([`UNet2DConditionModel`]):
             The decoder to invert the image embedding into an image.
         super_res_first ([`UNet2DModel`]):
-            Super resolution unet. Used in all but the last step of the super resolution diffusion process.
+            Super resolution UNet. Used in all but the last step of the super resolution diffusion process.
         super_res_last ([`UNet2DModel`]):
-            Super resolution unet. Used in the last step of the super resolution diffusion process.
+            Super resolution UNet. Used in the last step of the super resolution diffusion process.
         prior_scheduler ([`UnCLIPScheduler`]):
-            Scheduler used in the prior denoising process. Just a modified DDPMScheduler.
+            Scheduler used in the prior denoising process (a modified [`DDPMScheduler`]).
         decoder_scheduler ([`UnCLIPScheduler`]):
-            Scheduler used in the decoder denoising process. Just a modified DDPMScheduler.
+            Scheduler used in the decoder denoising process (a modified [`DDPMScheduler`]).
         super_res_scheduler ([`UnCLIPScheduler`]):
-            Scheduler used in the super resolution denoising process. Just a modified DDPMScheduler.
+            Scheduler used in the super resolution denoising process (a modified [`DDPMScheduler`]).
 
     """
+
+    _exclude_from_cpu_offload = ["prior"]
 
     prior: PriorTransformer
     decoder: UNet2DConditionModel
@@ -205,49 +205,6 @@ class UnCLIPPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        # TODO: self.prior.post_process_latents is not covered by the offload hooks, so it fails if added to the list
-        models = [
-            self.decoder,
-            self.text_proj,
-            self.text_encoder,
-            self.super_res_first,
-            self.super_res_last,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    @property
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if self.device != torch.device("meta") or not hasattr(self.decoder, "_hf_hook"):
-            return self.device
-        for module in self.decoder.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
-
     @torch.no_grad()
     def __call__(
         self,
@@ -268,12 +225,12 @@ class UnCLIPPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         """
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation. This can only be left undefined if
-                `text_model_output` and `text_attention_mask` is passed.
+                The prompt or prompts to guide image generation. This can only be left undefined if `text_model_output`
+                and `text_attention_mask` is passed.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             prior_num_inference_steps (`int`, *optional*, defaults to 25):
@@ -286,8 +243,8 @@ class UnCLIPPipeline(DiffusionPipeline):
                 The number of denoising steps for super resolution. More denoising steps usually lead to a higher
                 quality image at the expense of slower inference.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                generation deterministic.
             prior_latents (`torch.FloatTensor` of shape (batch size, embeddings dimension), *optional*):
                 Pre-generated noisy latents to be used as inputs for the prior.
             decoder_latents (`torch.FloatTensor` of shape (batch size, channels, height, width), *optional*):
@@ -295,29 +252,27 @@ class UnCLIPPipeline(DiffusionPipeline):
             super_res_latents (`torch.FloatTensor` of shape (batch size, channels, super res height, super res width), *optional*):
                 Pre-generated noisy latents to be used as inputs for the decoder.
             prior_guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             decoder_guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                A higher guidance scale value encourages the model to generate images closely linked to the text
+                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             text_model_output (`CLIPTextModelOutput`, *optional*):
-                Pre-defined CLIPTextModel outputs that can be derived from the text encoder. Pre-defined text outputs
-                can be passed for tasks like text embedding interpolations. Make sure to also pass
-                `text_attention_mask` in this case. `prompt` can the be left to `None`.
+                Pre-defined [`CLIPTextModel`] outputs that can be derived from the text encoder. Pre-defined text
+                outputs can be passed for tasks like text embedding interpolations. Make sure to also pass
+                `text_attention_mask` in this case. `prompt` can the be left `None`.
             text_attention_mask (`torch.Tensor`, *optional*):
                 Pre-defined CLIP text attention mask that can be derived from the tokenizer. Pre-defined text attention
                 masks are necessary when passing `text_model_output`.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images.
         """
         if prompt is not None:
             if isinstance(prompt, str):

@@ -131,7 +131,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         prior = self.dummy_prior
         text_encoder = self.dummy_text_encoder
         tokenizer = self.dummy_tokenizer
-        renderer = self.dummy_renderer
+        shap_e_renderer = self.dummy_renderer
 
         scheduler = HeunDiscreteScheduler(
             beta_schedule="exp",
@@ -145,7 +145,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prior": prior,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "renderer": renderer,
+            "shap_e_renderer": shap_e_renderer,
             "scheduler": scheduler,
         }
 

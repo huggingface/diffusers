@@ -13,6 +13,8 @@
     title: Overview
   - local: using-diffusers/write_own_pipeline
     title: Understanding models and schedulers
+  - local: tutorials/autopipeline
+    title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
   title: Tutorials
@@ -30,20 +32,22 @@
       title: Load safetensors
     - local: using-diffusers/other-formats
       title: Load different Stable Diffusion formats
+    - local: using-diffusers/push_to_hub
+      title: Push files to the Hub
     title: Loading & Hub
   - sections:
-    - local: using-diffusers/pipeline_overview
-      title: Overview
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
-      title: Text-to-image generation
+      title: Text-to-image
     - local: using-diffusers/img2img
-      title: Text-guided image-to-image
+      title: Image-to-image
     - local: using-diffusers/inpaint
-      title: Text-guided image-inpainting
+      title: Inpainting
     - local: using-diffusers/depth2img
-      title: Text-guided depth-to-image
+      title: Depth-to-image
+    title: Tasks
+  - sections:
     - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
     - local: training/distributed_inference
@@ -52,16 +56,28 @@
       title: Improve image quality with deterministic generation
     - local: using-diffusers/control_brightness
       title: Control image brightness
+    - local: using-diffusers/weighted_prompts
+      title: Prompt weighting
+    title: Techniques
+  - sections:
+    - local: using-diffusers/pipeline_overview
+      title: Overview
+    - local: using-diffusers/sdxl
+      title: Stable Diffusion XL
+    - local: using-diffusers/controlnet
+      title: ControlNet
+    - local: using-diffusers/shap-e
+      title: Shap-E
+    - local: using-diffusers/diffedit
+      title: DiffEdit
+    - local: using-diffusers/distilled_sd
+      title: Distilled Stable Diffusion inference
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
       title: Community pipelines
     - local: using-diffusers/contribute_pipeline
       title: How to contribute a community pipeline
-    - local: using-diffusers/stable_diffusion_jax_how_to
-      title: Stable Diffusion in JAX/Flax
-    - local: using-diffusers/weighted_prompts
-      title: Weighting Prompts
     title: Pipelines for Inference
   - sections:
     - local: training/overview
@@ -88,10 +104,6 @@
       title: Custom Diffusion
     title: Training
   - sections:
-    - local: using-diffusers/rl
-      title: Reinforcement Learning
-    - local: using-diffusers/audio
-      title: Audio
     - local: using-diffusers/other-modalities
       title: Other Modalities
     title: Taking Diffusers Beyond Images
@@ -103,6 +115,8 @@
     title: Memory and Speed
   - local: optimization/torch2.0
     title: Torch2.0 support
+  - local: using-diffusers/stable_diffusion_jax_how_to
+    title: Stable Diffusion in JAX/Flax
   - local: optimization/xformers
     title: xFormers
   - local: optimization/onnx
@@ -164,6 +178,10 @@
       title: VQModel
     - local: api/models/autoencoderkl
       title: AutoencoderKL
+    - local: api/models/asymmetricautoencoderkl
+      title: AsymmetricAutoencoderKL
+    - local: api/models/autoencoder_tiny
+      title: Tiny AutoEncoder
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal
@@ -179,15 +197,21 @@
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
     - local: api/pipelines/attend_and_excite
-      title: Attend and Excite
+      title: Attend-and-Excite
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/audioldm2
+      title: AudioLDM 2
+    - local: api/pipelines/auto_pipeline
+      title: AutoPipeline
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
       title: ControlNet
+    - local: api/pipelines/controlnet_sdxl
+      title: ControlNet with Stable Diffusion XL
     - local: api/pipelines/cycle_diffusion
       title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
@@ -196,20 +220,24 @@
       title: DDIM
     - local: api/pipelines/ddpm
       title: DDPM
+    - local: api/pipelines/deepfloyd_if
+      title: DeepFloyd IF
     - local: api/pipelines/diffedit
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
-    - local: api/pipelines/if
-      title: IF
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
       title: Kandinsky
+    - local: api/pipelines/kandinsky_v22
+      title: Kandinsky 2.2
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
-      title: MultiDiffusion Panorama
+      title: MultiDiffusion
+    - local: api/pipelines/musicldm
+      title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/paradigms
@@ -234,15 +262,15 @@
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
       - local: api/pipelines/stable_diffusion/text2img
-        title: Text-to-Image
+        title: Text-to-image
       - local: api/pipelines/stable_diffusion/img2img
-        title: Image-to-Image
+        title: Image-to-image
       - local: api/pipelines/stable_diffusion/inpaint
-        title: Inpaint
+        title: Inpainting
       - local: api/pipelines/stable_diffusion/depth2img
-        title: Depth-to-Image
+        title: Depth-to-image
       - local: api/pipelines/stable_diffusion/image_variation
-        title: Image-Variation
+        title: Image variation
       - local: api/pipelines/stable_diffusion/stable_diffusion_safe
         title: Safe Stable Diffusion
       - local: api/pipelines/stable_diffusion/stable_diffusion_2
@@ -250,28 +278,34 @@
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
         title: Stable Diffusion XL
       - local: api/pipelines/stable_diffusion/latent_upscale
-        title: Stable-Diffusion-Latent-Upscaler
+        title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
-        title: Super-Resolution
+        title: Super-resolution
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth)
+      - local: api/pipelines/stable_diffusion/adapter
+        title: Stable Diffusion T2I-adapter
+      - local: api/pipelines/stable_diffusion/gligen
+        title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP
     - local: api/pipelines/stochastic_karras_ve
       title: Stochastic Karras VE
     - local: api/pipelines/model_editing
-      title: Text-to-Image Model Editing
+      title: Text-to-image model editing
     - local: api/pipelines/text_to_video
-      title: Text-to-Video
+      title: Text-to-video
     - local: api/pipelines/text_to_video_zero
-      title: Text-to-Video Zero
+      title: Text2Video-Zero
     - local: api/pipelines/unclip
       title: UnCLIP
     - local: api/pipelines/latent_diffusion_uncond
       title: Unconditional Latent Diffusion
     - local: api/pipelines/unidiffuser
       title: UniDiffuser
+    - local: api/pipelines/value_guided_sampling
+      title: Value-guided sampling
     - local: api/pipelines/versatile_diffusion
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
@@ -281,54 +315,50 @@
     - local: api/schedulers/overview
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
-      title: Consistency Model Multistep Scheduler
-    - local: api/schedulers/ddim
-      title: DDIM
+      title: CMStochasticIterativeScheduler
     - local: api/schedulers/ddim_inverse
-      title: DDIMInverse
+      title: DDIMInverseScheduler
+    - local: api/schedulers/ddim
+      title: DDIMScheduler
     - local: api/schedulers/ddpm
-      title: DDPM
+      title: DDPMScheduler
     - local: api/schedulers/deis
-      title: DEIS
-    - local: api/schedulers/dpm_discrete
-      title: DPM Discrete Scheduler
-    - local: api/schedulers/dpm_discrete_ancestral
-      title: DPM Discrete Scheduler with ancestral sampling
+      title: DEISMultistepScheduler
+    - local: api/schedulers/multistep_dpm_solver_inverse
+      title: DPMSolverMultistepInverse
+    - local: api/schedulers/multistep_dpm_solver
+      title: DPMSolverMultistepScheduler
     - local: api/schedulers/dpm_sde
       title: DPMSolverSDEScheduler
-    - local: api/schedulers/euler_ancestral
-      title: Euler Ancestral Scheduler
-    - local: api/schedulers/euler
-      title: Euler scheduler
-    - local: api/schedulers/heun
-      title: Heun Scheduler
-    - local: api/schedulers/multistep_dpm_solver_inverse
-      title: Inverse Multistep DPM-Solver
-    - local: api/schedulers/ipndm
-      title: IPNDM
-    - local: api/schedulers/lms_discrete
-      title: Linear Multistep
-    - local: api/schedulers/multistep_dpm_solver
-      title: Multistep DPM-Solver
-    - local: api/schedulers/pndm
-      title: PNDM
-    - local: api/schedulers/repaint
-      title: RePaint Scheduler
     - local: api/schedulers/singlestep_dpm_solver
-      title: Singlestep DPM-Solver
+      title: DPMSolverSinglestepScheduler
+    - local: api/schedulers/euler_ancestral
+      title: EulerAncestralDiscreteScheduler
+    - local: api/schedulers/euler
+      title: EulerDiscreteScheduler
+    - local: api/schedulers/heun
+      title: HeunDiscreteScheduler
+    - local: api/schedulers/ipndm
+      title: IPNDMScheduler
     - local: api/schedulers/stochastic_karras_ve
-      title: Stochastic Kerras VE
+      title: KarrasVeScheduler
+    - local: api/schedulers/dpm_discrete_ancestral
+      title: KDPM2AncestralDiscreteScheduler
+    - local: api/schedulers/dpm_discrete
+      title: KDPM2DiscreteScheduler
+    - local: api/schedulers/lms_discrete
+      title: LMSDiscreteScheduler
+    - local: api/schedulers/pndm
+      title: PNDMScheduler
+    - local: api/schedulers/repaint
+      title: RePaintScheduler
+    - local: api/schedulers/score_sde_ve
+      title: ScoreSdeVeScheduler
+    - local: api/schedulers/score_sde_vp
+      title: ScoreSdeVpScheduler
     - local: api/schedulers/unipc
       title: UniPCMultistepScheduler
-    - local: api/schedulers/score_sde_ve
-      title: VE-SDE
-    - local: api/schedulers/score_sde_vp
-      title: VP-SDE
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers
-  - sections:
-    - local: api/experimental/rl
-      title: RL Planning
-    title: Experimental Features
   title: API

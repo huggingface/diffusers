@@ -57,7 +57,7 @@ def retrieve(class_prompt, class_data_dir, num_class_images):
             images = class_images[count]
             count += 1
             try:
-                img = requests.get(images["url"])
+                img = requests.get(images["url"], timeout=30)
                 if img.status_code == 200:
                     _ = Image.open(BytesIO(img.content))
                     with open(f"{class_data_dir}/images/{total}.jpg", "wb") as f:

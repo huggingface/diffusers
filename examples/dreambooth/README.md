@@ -121,7 +121,7 @@ accelerate launch train_dreambooth.py \
 
 With the help of gradient checkpointing and the 8-bit optimizer from bitsandbytes it's possible to run train dreambooth on a 16GB GPU.
 
-To install `bitandbytes` please refer to this [readme](https://github.com/TimDettmers/bitsandbytes#requirements--installation).
+To install `bitsandbytes` please refer to this [readme](https://github.com/TimDettmers/bitsandbytes#requirements--installation).
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -673,6 +673,8 @@ likely the learning rate can be increased with larger batch sizes.
 
 Using 8bit adam and a batch size of 4, the model can be trained in ~48 GB VRAM.
 
+`--validation_scheduler`: Set a particular scheduler via a string. We found that it is better to use the DDPMScheduler for validation when training DeepFloyd IF.
+
 ```sh
 export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
 
@@ -697,6 +699,7 @@ accelerate launch train_dreambooth.py \
   --use_8bit_adam \
   --set_grads_to_none \
   --skip_save_text_encoder \
+  --validation_scheduler DDPMScheduler \
   --push_to_hub
 ```
 
@@ -735,6 +738,7 @@ accelerate launch train_dreambooth.py \
   --text_encoder_use_attention_mask \
   --validation_images $VALIDATION_IMAGES \
   --class_labels_conditioning timesteps \
+  --validation_scheduler DDPMScheduler\
   --push_to_hub
 ```
 
