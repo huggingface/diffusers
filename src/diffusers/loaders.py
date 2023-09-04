@@ -95,7 +95,7 @@ class PatchedLoraProjection(nn.Module):
 
         return super().state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
 
-    def _fuse_lora(self):
+    def _fuse_lora(self, lora_scale=1.0):
         if self.lora_linear_layer is None:
             return
 
@@ -108,7 +108,7 @@ class PatchedLoraProjection(nn.Module):
         if self.lora_linear_layer.network_alpha is not None:
             w_up = w_up * self.lora_linear_layer.network_alpha / self.lora_linear_layer.rank
 
-        fused_weight = w_orig + torch.bmm(w_up[None, :], w_down[None, :])[0]
+        fused_weight = w_orig + (lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
         self.regular_linear_layer.weight.data = fused_weight.to(device=device, dtype=dtype)
 
         # we can drop the lora layer now
@@ -117,6 +117,7 @@ class PatchedLoraProjection(nn.Module):
         # offload the up and down matrices to CPU to not blow the memory
         self.w_up = w_up.cpu()
         self.w_down = w_down.cpu()
+        self.lora_scale = lora_scale
 
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
@@ -128,16 +129,19 @@ class PatchedLoraProjection(nn.Module):
         w_up = self.w_up.to(device=device).float()
         w_down = self.w_down.to(device).float()
 
-        unfused_weight = fused_weight.float() - torch.bmm(w_up[None, :], w_down[None, :])[0]
+        unfused_weight = fused_weight.float() - (self.lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
         self.regular_linear_layer.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
         self.w_down = None
 
     def forward(self, input):
+        # print(f"{self.__class__.__name__} has a lora_scale of {self.lora_scale}")
+        if self.lora_scale is None:
+            self.lora_scale = 1.0
         if self.lora_linear_layer is None:
             return self.regular_linear_layer(input)
-        return self.regular_linear_layer(input) + self.lora_scale * self.lora_linear_layer(input)
+        return self.regular_linear_layer(input) + (self.lora_scale * self.lora_linear_layer(input))
 
 
 def text_encoder_attn_modules(text_encoder):
@@ -576,12 +580,13 @@ class UNet2DConditionLoadersMixin:
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
-    def fuse_lora(self):
+    def fuse_lora(self, lora_scale=1.0):
+        self.lora_scale = lora_scale
         self.apply(self._fuse_lora_apply)
 
     def _fuse_lora_apply(self, module):
         if hasattr(module, "_fuse_lora"):
-            module._fuse_lora()
+            module._fuse_lora(self.lora_scale)
 
     def unfuse_lora(self):
         self.apply(self._unfuse_lora_apply)
@@ -924,6 +929,7 @@ class LoraLoaderMixin:
     """
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
+    num_fused_loras = 0
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
@@ -1807,7 +1813,7 @@ class LoraLoaderMixin:
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
 
-    def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True):
+    def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True, lora_scale: float = 1.0):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
@@ -1822,22 +1828,31 @@ class LoraLoaderMixin:
             fuse_text_encoder (`bool`, defaults to `True`):
                 Whether to fuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
+            lora_scale (`float`, defaults to 1.0):
+                Controls how much to influence the outputs with the LoRA parameters.
         """
+        if fuse_unet or fuse_text_encoder:
+            self.num_fused_loras += 1
+            if self.num_fused_loras > 1:
+                logger.warn(
+                    "The current API is supported for operating with a single LoRA file. You are trying to load and fuse more than one LoRA which is not well-supported.",
+                )
+
         if fuse_unet:
-            self.unet.fuse_lora()
+            self.unet.fuse_lora(lora_scale)
 
         def fuse_text_encoder_lora(text_encoder):
             for _, attn_module in text_encoder_attn_modules(text_encoder):
                 if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                    attn_module.q_proj._fuse_lora()
-                    attn_module.k_proj._fuse_lora()
-                    attn_module.v_proj._fuse_lora()
-                    attn_module.out_proj._fuse_lora()
+                    attn_module.q_proj._fuse_lora(lora_scale)
+                    attn_module.k_proj._fuse_lora(lora_scale)
+                    attn_module.v_proj._fuse_lora(lora_scale)
+                    attn_module.out_proj._fuse_lora(lora_scale)
 
             for _, mlp_module in text_encoder_mlp_modules(text_encoder):
                 if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                    mlp_module.fc1._fuse_lora()
-                    mlp_module.fc2._fuse_lora()
+                    mlp_module.fc1._fuse_lora(lora_scale)
+                    mlp_module.fc2._fuse_lora(lora_scale)
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
@@ -1883,6 +1898,8 @@ class LoraLoaderMixin:
                 unfuse_text_encoder_lora(self.text_encoder)
             if hasattr(self, "text_encoder_2"):
                 unfuse_text_encoder_lora(self.text_encoder_2)
+
+        self.num_fused_loras -= 1
 
 
 class FromSingleFileMixin:
