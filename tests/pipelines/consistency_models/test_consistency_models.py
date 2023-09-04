@@ -10,7 +10,7 @@ from diffusers import (
     ConsistencyModelPipeline,
     UNet2DModel,
 )
-from diffusers.utils import randn_tensor, slow, torch_device
+from diffusers.utils import nightly, randn_tensor, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_2, require_torch_gpu
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
@@ -161,7 +161,7 @@ class ConsistencyModelPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
-@slow
+@nightly
 @require_torch_gpu
 class ConsistencyModelPipelineSlowTests(unittest.TestCase):
     def tearDown(self):

@@ -17,7 +17,7 @@ import gc
 import unittest
 
 from diffusers import FlaxDPMSolverMultistepScheduler, FlaxStableDiffusionPipeline
-from diffusers.utils import is_flax_available, slow
+from diffusers.utils import is_flax_available, nightly, slow
 from diffusers.utils.testing_utils import require_flax
 
 
@@ -64,6 +64,15 @@ class FlaxStableDiffusion2PipelineIntegrationTests(unittest.TestCase):
         expected_slice = jnp.array([0.4238, 0.4414, 0.4395, 0.4453, 0.4629, 0.4590, 0.4531, 0.45508, 0.4512])
         print(f"output_slice: {output_slice}")
         assert jnp.abs(output_slice - expected_slice).max() < 1e-2
+
+
+@nightly
+@require_flax
+class FlaxStableDiffusion2PipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
 
     def test_stable_diffusion_dpm_flax(self):
         model_id = "stabilityai/stable-diffusion-2"
