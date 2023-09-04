@@ -116,6 +116,7 @@ class LoRACompatibleConv(nn.Conv2d):
         if self.lora_layer is None:
             return
 
+        print(f"From _fuse_lora of {self.__class__.__name__} {lora_scale}")
         dtype, device = self.weight.data.dtype, self.weight.data.device
         logger.info(f"Fusing LoRA weights for {self.__class__}")
 
@@ -147,12 +148,12 @@ class LoRACompatibleConv(nn.Conv2d):
         fused_weight = self.weight.data
         dtype, device = fused_weight.data.dtype, fused_weight.data.device
 
-        self.w_up = self.w_up.to(device=device, dtype=dtype)
-        self.w_down = self.w_down.to(device, dtype=dtype)
+        self.w_up = self.w_up.to(device=device).float()
+        self.w_down = self.w_down.to(device).float()
 
         fusion = torch.mm(self.w_up.flatten(start_dim=1), self.w_down.flatten(start_dim=1))
         fusion = fusion.reshape((fused_weight.shape))
-        unfused_weight = fused_weight - (self._lora_scale * fusion)
+        unfused_weight = fused_weight.float() - (self._lora_scale * fusion)
         self.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
         self.w_up = None
@@ -160,13 +161,16 @@ class LoRACompatibleConv(nn.Conv2d):
 
     def forward(self, hidden_states, scale: float = 1.0):
         if self.lora_layer is None:
+            if hasattr(self, "_lora_scale"):
+                print(f"{self.__class__.__name__} has a lora_scale of {self._lora_scale}")
             # make sure to the functional Conv2D function as otherwise torch.compile's graph will break
             # see: https://github.com/huggingface/diffusers/pull/4315
             return F.conv2d(
                 hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
             )
         else:
-            return super().forward(hidden_states) + scale * self.lora_layer(hidden_states)
+            print(f"{self.__class__.__name__} has a scale of {scale}")
+            return super().forward(hidden_states) + (scale * self.lora_layer(hidden_states))
 
 
 class LoRACompatibleLinear(nn.Linear):
@@ -185,6 +189,8 @@ class LoRACompatibleLinear(nn.Linear):
         if self.lora_layer is None:
             return
 
+        print(f"From _fuse_lora of {self.__class__.__name__} {lora_scale}")
+        logger.info(f"Fusing LoRA weights for {self.__class__}")
         dtype, device = self.weight.data.dtype, self.weight.data.device
 
         w_orig = self.weight.data.float()
@@ -208,6 +214,7 @@ class LoRACompatibleLinear(nn.Linear):
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
             return
+        logger.info(f"Unfusing LoRA weights for {self.__class__}")
 
         fused_weight = self.weight.data
         dtype, device = fused_weight.dtype, fused_weight.device
@@ -223,6 +230,9 @@ class LoRACompatibleLinear(nn.Linear):
 
     def forward(self, hidden_states, scale: float = 1.0):
         if self.lora_layer is None:
+            if hasattr(self, "_lora_scale"):
+                print(f"{self.__class__.__name__} has a lora_scale of {self._lora_scale}")
             return super().forward(hidden_states)
         else:
-            return super().forward(hidden_states) + scale * self.lora_layer(hidden_states)
+            print(f"{self.__class__.__name__} has a scale of {scale}")
+            return super().forward(hidden_states) + (scale * self.lora_layer(hidden_states))

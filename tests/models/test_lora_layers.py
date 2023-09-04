@@ -962,6 +962,46 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             original_imagee_slice, lora_image_slice_scale_0_0, atol=1e-03
         ), "LoRA scale of 0.0 shouldn't be different from the results without LoRA."
 
+    def test_with_different_scales_fusion_equivalence(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        print("load_lora_weights().")
+        lora_images_scale_0_5 = sd_pipe(
+            **pipeline_inputs,
+            generator=torch.manual_seed(0),  # cross_attention_kwargs={"scale": 0.5}
+        ).images
+        lora_image_slice_scale_0_5 = lora_images_scale_0_5[0, -3:, -3:, -1]
+
+        print("LoRA fusion.")
+        sd_pipe.fuse_lora()
+        lora_images_scale_0_5_fusion = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice_scale_0_5_fusion = lora_images_scale_0_5_fusion[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            lora_image_slice_scale_0_5, lora_image_slice_scale_0_5_fusion, atol=1e-03
+        ), "Fusion shouldn't affect the results when calling the pipeline with a non-default LoRA scale."
+
 
 @slow
 @require_torch_gpu
