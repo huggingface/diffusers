@@ -79,7 +79,6 @@ from setuptools import find_packages, setup
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
-    "faiss",
     "accelerate>=0.11.0",
     "compel==0.1.8",
     "black~=23.1",

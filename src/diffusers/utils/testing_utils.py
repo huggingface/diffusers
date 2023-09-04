@@ -24,7 +24,6 @@ from packaging import version
 from .import_utils import (
     BACKENDS_MAPPING,
     is_compel_available,
-    is_faiss_available,
     is_flax_available,
     is_note_seq_available,
     is_onnx_available,
@@ -213,13 +212,6 @@ def require_onnxruntime(test_case):
     Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
     """
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
-
-
-def require_faiss(test_case):
-    """
-    Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
-    """
-    return unittest.skipUnless(is_faiss_available(), "test requires onnxruntime")(test_case)
 
 
 def require_note_seq(test_case):

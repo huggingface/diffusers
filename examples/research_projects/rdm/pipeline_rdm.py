@@ -5,21 +5,22 @@ import torch
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
 
-from diffusers.utils import is_accelerate_available
-
-from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...schedulers import (
+from diffusers.utils import is_accelerate_available, randn_tensor
+from diffusers.image_processor import VaeImageProcessor
+from diffusers import (
+    DiffusionPipeline,
+    ImagePipelineOutput,
+    AutoencoderKL,
+    UNet2DConditionModel,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
+    logging,
 )
-from ...utils import logging, randn_tensor
-from .retriever import Retriever, normalize_images, preprocess_images
+from retriever import Retriever, normalize_images, preprocess_images
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

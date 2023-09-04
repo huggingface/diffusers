@@ -1,6 +1,5 @@
 from ..utils import (
     OptionalDependencyNotAvailable,
-    is_faiss_available,
     is_flax_available,
     is_k_diffusion_available,
     is_librosa_available,
@@ -151,13 +150,6 @@ else:
         StableDiffusionOnnxPipeline,
     )
 
-try:
-    if not (is_torch_available() and is_transformers_available() and is_faiss_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ..utils.dummy_torch_and_transformers_and_faiss_objects import *
-else:
-    from .rdm import Index, IndexConfig, RDMPipeline, Retriever
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()

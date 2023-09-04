@@ -3,7 +3,6 @@ __version__ = "0.20.0.dev0"
 from .configuration_utils import ConfigMixin
 from .utils import (
     OptionalDependencyNotAvailable,
-    is_faiss_available,
     is_flax_available,
     is_inflect_available,
     is_invisible_watermark_available,
@@ -207,14 +206,6 @@ else:
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
     )
-
-try:
-    if not (is_torch_available() and is_transformers_available() and is_faiss_available()):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils.dummy_torch_and_transformers_and_faiss_objects import *  # noqa F403
-else:
-    from .pipelines import Index, IndexConfig, RDMPipeline, Retriever
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):

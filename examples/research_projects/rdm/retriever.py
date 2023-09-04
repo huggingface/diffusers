@@ -8,7 +8,7 @@ from datasets import Dataset, load_dataset
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, PretrainedConfig
 
-from ...utils import logging
+from diffusers import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
