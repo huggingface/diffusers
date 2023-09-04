@@ -158,15 +158,12 @@ class LoRACompatibleConv(nn.Conv2d):
 
     def forward(self, hidden_states, scale: float = 1.0):
         if self.lora_layer is None:
-            if hasattr(self, "_lora_scale"):
-                print(f"{self.__class__.__name__} has a lora_scale of {self._lora_scale}")
             # make sure to the functional Conv2D function as otherwise torch.compile's graph will break
             # see: https://github.com/huggingface/diffusers/pull/4315
             return F.conv2d(
                 hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
             )
         else:
-            print(f"{self.__class__.__name__} has a scale of {scale}")
             return super().forward(hidden_states) + (scale * self.lora_layer(hidden_states))
 
 
