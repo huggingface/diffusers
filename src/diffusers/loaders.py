@@ -1833,9 +1833,8 @@ class LoraLoaderMixin:
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
             if self.num_fused_loras > 1:
-                warnings.warn(
+                logger.warn(
                     "The current API is supported for operating with a single LoRA file. You are trying to load and fuse more than one LoRA which is not well-supported.",
-                    RuntimeWarning,
                 )
 
         if fuse_unet:

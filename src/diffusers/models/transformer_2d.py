@@ -275,10 +275,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
         # Retrieve lora scale.
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            lora_scale = cross_attention_kwargs["scale"]
-        else:
-            lora_scale = 1.0
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         # 1. Input
         if self.is_input_continuous:

@@ -1087,10 +1087,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
         # 3. down
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            lora_scale = cross_attention_kwargs["scale"]
-        else:
-            lora_scale = 1.0
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
         is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
@@ -1499,11 +1496,7 @@ class CrossAttnDownBlockFlat(nn.Module):
     ):
         output_states = ()
 
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            lora_scale = cross_attention_kwargs["scale"]
-        else:
-            lora_scale = 1.0
-
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         blocks = list(zip(self.resnets, self.attentions))
 
         for i, (resnet, attn) in enumerate(blocks):
@@ -1739,10 +1732,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            lora_scale = cross_attention_kwargs["scale"]
-        else:
-            lora_scale = 1.0
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -1894,10 +1884,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            lora_scale = cross_attention_kwargs["scale"]
-        else:
-            lora_scale = 1.0
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.training and self.gradient_checkpointing:

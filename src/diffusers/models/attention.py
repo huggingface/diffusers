@@ -188,10 +188,7 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = self.norm1(hidden_states)
 
         # 1. Retrieve lora scale.
-        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
-            lora_scale = cross_attention_kwargs["scale"]
-        else:
-            lora_scale = 1.0
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         # 2. Prepare GLIGEN inputs
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
