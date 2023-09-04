@@ -135,7 +135,6 @@ class WuerstchenPipeline(DiffusionPipeline):
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
         self.decoder_pipe.progress_bar(iterable=iterable, total=total)
-        self.decoder_pipe.enable_model_cpu_offload()
 
     def set_progress_bar_config(self, **kwargs):
         self.prior_pipe.set_progress_bar_config(**kwargs)
@@ -185,9 +184,11 @@ class WuerstchenPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            prior_num_inference_steps (`int`, *optional*, defaults to 30):
+            prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
+                expense of slower inference. This pipeline takes an optional dictionary of the form for example
+                `{2 / 3: 20, 0.0: 10}` 20 steps for the first 1/3 of denoising and  10 steps for the last 2/3 of the
+                denoising process.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -217,6 +218,8 @@ class WuerstchenPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
+             [`~pipelines.ImagePipelineOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
         prior_outputs = self.prior_pipe(
             prompt=prompt,
