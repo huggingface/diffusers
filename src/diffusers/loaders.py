@@ -99,8 +99,6 @@ class PatchedLoraProjection(nn.Module):
         if self.lora_linear_layer is None:
             return
 
-        # print(f"From _fuse_lora of {self.__class__.__name__} {lora_scale}")
-        logger.info(f"Fusing LoRA weights for {self.__class__}")
         dtype, device = self.regular_linear_layer.weight.data.dtype, self.regular_linear_layer.weight.data.device
 
         w_orig = self.regular_linear_layer.weight.data.float()
@@ -125,7 +123,6 @@ class PatchedLoraProjection(nn.Module):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
             return
 
-        logger.info(f"Unfusing LoRA weights for {self.__class__}")
         fused_weight = self.regular_linear_layer.weight.data
         dtype, device = fused_weight.dtype, fused_weight.device
 
