@@ -471,13 +471,13 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         # 5. Finish processing sigmas and timesteps
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        # Magic to convert from [sigma_1, sigma_2, ..., sigma_n, 0.0] to
-        # [sigma_1, sigma_1, sigma_2, sigma_2, ..., sigma_n, sigma_n, 0.0]
+        # Magic to convert sigmas from [sigma_1, sigma_2, ..., sigma_n, 0.0] to
+        # [sigma_1, sigma_2, sigma_2, sigma_3, sigma_3, ..., sigma_n, sigma_n, 0.0]
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
 
         # self.timesteps = torch.from_numpy(timesteps).to(device=device)
         timesteps = torch.from_numpy(timesteps)
-        # Corresponding magic to double timesteps, analogous to what we did to the sigmas above
+        # Analogous magic to convert timesteps from [t_1, t_2, ..., t_n] to [t_1, t_2, t_2, t_3, t_3, ..., t_n, t_n]
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
         self.timesteps = timesteps.to(device=device)
 
