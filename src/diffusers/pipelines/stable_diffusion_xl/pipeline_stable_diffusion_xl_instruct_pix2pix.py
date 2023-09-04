@@ -34,9 +34,9 @@ from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_invisible_watermark_available,
-    logging,
-    randn_tensor,
+    logging
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
 

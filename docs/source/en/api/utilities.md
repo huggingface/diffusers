@@ -4,7 +4,7 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 ## randn_tensor
 
-[[autodoc]] diffusers.utils.randn_tensor
+[[autodoc]] diffusers.utils.torch_utils.randn_tensor
 
 ## numpy_to_pil
 

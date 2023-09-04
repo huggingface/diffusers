@@ -18,7 +18,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ..utils import BaseOutput, is_torch_version, randn_tensor
+from ..utils import BaseOutput, is_torch_version
+from ..utils.torch_utils import randn_tensor
 from .activations import get_activation
 from .attention_processor import SpatialNorm
 from .unet_2d_blocks import AutoencoderTinyBlock, UNetMidBlock2D, get_down_block, get_up_block

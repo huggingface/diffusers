@@ -30,9 +30,9 @@ from diffusers.schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusio
 from diffusers.utils import (
     deprecate,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from diffuser.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
