@@ -19,8 +19,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import deprecate, logging
-from ..utils.torch_utils import maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
+from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 

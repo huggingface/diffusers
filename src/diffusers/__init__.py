@@ -188,8 +188,8 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(
         [
-            "AltDiffusionPipeline",
             "AltDiffusionImg2ImgPipeline",
+            "AltDiffusionPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
@@ -249,8 +249,8 @@ else:
             "StableDiffusionSAGPipeline",
             "StableDiffusionUpscalePipeline",
             "StableDiffusionXLAdapterPipeline",
-            "StableDiffusionXLControlNetPipeline",
             "StableDiffusionXLControlNetImg2ImgPipeline",
+            "StableDiffusionXLControlNetPipeline",
             "StableDiffusionXLImg2ImgPipeline",
             "StableDiffusionXLInpaintPipeline",
             "StableDiffusionXLInstructPix2PixPipeline",

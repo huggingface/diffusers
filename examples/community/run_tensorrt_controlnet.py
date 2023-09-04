@@ -11,6 +11,7 @@ import PIL.Image
 import pycuda.driver as cuda
 import tensorrt as trt
 import torch
+from diffuser.utils.torch_utils import randn_tensor
 from PIL import Image
 from pycuda.tools import make_default_context
 from transformers import CLIPTokenizer
@@ -25,7 +26,6 @@ from diffusers.utils import (
     logging,
     replace_example_docstring,
 )
-from diffuser.utils.torch_utils import randn_tensor
 
 
 # Initialize CUDA

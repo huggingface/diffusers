@@ -11,6 +11,7 @@ from ..utils import (
     is_transformers_available,
 )
 
+
 # These modules contain pipelines from multiple libraries/frameworks
 _import_structure = {"stable_diffusion": [], "latent_diffusion": [], "controlnet": []}
 _dummy_objects = {}
@@ -246,6 +247,7 @@ else:
 
 
 import sys
+
 
 sys.modules[__name__] = _LazyModule(
     __name__,

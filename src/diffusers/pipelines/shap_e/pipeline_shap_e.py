@@ -29,8 +29,8 @@ from ...utils import (
     is_accelerate_version,
     logging,
     replace_example_docstring,
-); from ...utils.torch_utils import
-    randn_tensor
+)
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .renderer import ShapERenderer
 
