@@ -767,6 +767,7 @@ class TextualInversionLoaderMixin:
         # Remove any existing hooks.
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+        recursive = False
         for _, component in self.components.items():
             if isinstance(component, nn.Module):
                 if hasattr(component, "_hf_hook"):
@@ -775,7 +776,8 @@ class TextualInversionLoaderMixin:
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
                     )
-                    remove_hook_from_module(component)
+                    recursive = is_sequential_cpu_offload
+                    remove_hook_from_module(component, recurse=recursive)
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -979,7 +981,7 @@ class LoraLoaderMixin:
                         "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                     )
                     recurive = is_sequential_cpu_offload
-                    remove_hook_from_module(component, recursive=recurive)
+                    remove_hook_from_module(component, recurse=recurive)
 
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
