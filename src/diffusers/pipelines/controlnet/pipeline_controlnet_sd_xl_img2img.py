@@ -1177,6 +1177,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
+            height, width = control_image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
             control_images = []
 
@@ -1196,9 +1197,9 @@ class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInver
                 control_images.append(control_image_)
 
             control_image = control_images
+            height, width = control_image[0].shape[-2:]
         else:
             assert False
-        height, width = control_image.shape[-2:]
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)

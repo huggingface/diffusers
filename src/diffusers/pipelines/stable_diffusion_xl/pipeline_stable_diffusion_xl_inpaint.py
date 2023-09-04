@@ -762,10 +762,16 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
 
         mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
 
-        masked_image_latents = None
+        if masked_image is not None and masked_image.shape[1] == 4:
+            masked_image_latents = masked_image
+        else:
+            masked_image_latents = None
+
         if masked_image is not None:
-            masked_image = masked_image.to(device=device, dtype=dtype)
-            masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
+            if masked_image_latents is None:
+                masked_image = masked_image.to(device=device, dtype=dtype)
+                masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
+
             if masked_image_latents.shape[0] < batch_size:
                 if not batch_size % masked_image_latents.shape[0] == 0:
                     raise ValueError(
@@ -890,9 +896,10 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
         mask_image: PipelineImageInput = None,
+        masked_image_latents: torch.FloatTensor = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        strength: float = 1.0,
+        strength: float = 0.9999,
         num_inference_steps: int = 50,
         denoising_start: Optional[float] = None,
         denoising_end: Optional[float] = None,
@@ -944,7 +951,7 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
-            strength (`float`, *optional*, defaults to 1.):
+            strength (`float`, *optional*, defaults to 0.9999):
                 Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
                 between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
                 `strength`. The number of denoising steps depends on the amount of noise initially added. When
@@ -1152,7 +1159,9 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
 
         mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
 
-        if init_image.shape[1] == 4:
+        if masked_image_latents is not None:
+            masked_image = masked_image_latents
+        elif init_image.shape[1] == 4:
             # if images are in latent space, we can't mask it
             masked_image = None
         else:
@@ -1440,7 +1449,13 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
             return layers_state_dict
 
-        state_dict.update(pack_weights(unet_lora_layers, "unet"))
+        if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
+            raise ValueError(
+                "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers` or `text_encoder_2_lora_layers`."
+            )
+
+        if unet_lora_layers:
+            state_dict.update(pack_weights(unet_lora_layers, "unet"))
 
         if text_encoder_lora_layers and text_encoder_2_lora_layers:
             state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
