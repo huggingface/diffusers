@@ -232,7 +232,17 @@ class LoRACompatibleLinear(nn.Linear):
         if self.lora_layer is None:
             if hasattr(self, "_lora_scale"):
                 print(f"{self.__class__.__name__} has a lora_scale of {self._lora_scale}")
-            return super().forward(hidden_states)
+            out = super().forward(hidden_states)
+            # if out.ndim == 2:
+            #     print(out[0, :3])
+            # else:
+            #     print(out[0, :3, :3])
+            return out
         else:
             print(f"{self.__class__.__name__} has a scale of {scale}")
-            return super().forward(hidden_states) + (scale * self.lora_layer(hidden_states))
+            out = super().forward(hidden_states) + (scale * self.lora_layer(hidden_states))
+            # if out.ndim == 2:
+            #     print(out[0, :3])
+            # else:
+            #     print(out[0, :3, :3])
+            return out

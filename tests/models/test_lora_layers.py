@@ -979,21 +979,21 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
                 unet_lora_layers=lora_components["unet_lora_layers"],
-                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
-                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                # text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                # text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
                 safe_serialization=True,
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
-        print("load_lora_weights().")
+        print("Before fusion.")
         lora_images_scale_0_5 = sd_pipe(
             **pipeline_inputs,
             generator=torch.manual_seed(0),  # cross_attention_kwargs={"scale": 0.5}
         ).images
         lora_image_slice_scale_0_5 = lora_images_scale_0_5[0, -3:, -3:, -1]
 
-        print("LoRA fusion.")
+        print("After fusion.")
         sd_pipe.fuse_lora()
         lora_images_scale_0_5_fusion = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         lora_image_slice_scale_0_5_fusion = lora_images_scale_0_5_fusion[0, -3:, -3:, -1]
