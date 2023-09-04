@@ -192,7 +192,7 @@ class VaeImageProcessor(ConfigMixin):
             elif isinstance(image, torch.Tensor):
                 width = image.shape[3]
             else:
-                height = image.shape[2]
+                width = image.shape[2]
 
         width, height = (
             x - x % self.config.vae_scale_factor for x in (width, height)

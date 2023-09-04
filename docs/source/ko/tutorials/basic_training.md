@@ -96,7 +96,7 @@ huggingface-cli login
 >>> dataset = load_dataset(config.dataset_name, split="train")
 ```
 
-💡[HugGan Community Event](https://huggingface.co/huggan) 에서 추가의 데이터셋을 찾거나 로컬의 [`ImageFolder`](https://huggingface.co/docs/datasets/image_dataset#imagefolder)를 만듦으로써 나만의 데이터셋을 사용할 수 있습니다. HugGan Community Event 에 가져온 데이터셋의 경우 레포지토리의 id로 `config.dataset_name` 을 설정하고, 나만의 이미지를 사용하는 경우 `imagefolder` 를 설정합니다.
+💡[HugGan Community Event](https://huggingface.co/huggan) 에서 추가의 데이터셋을 찾거나 로컬의 [`ImageFolder`](https://huggingface.co/docs/datasets/image_dataset#imagefolder)를 만듦으로써 나만의 데이터셋을 사용할 수 있습니다. HugGan Community Event 에 가져온 데이터셋의 경우 리포지토리의 id로 `config.dataset_name` 을 설정하고, 나만의 이미지를 사용하는 경우 `imagefolder` 를 설정합니다.
 
 🤗 Datasets은 [`~datasets.Image`] 기능을 사용해 자동으로 이미지 데이터를 디코딩하고 [`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html)로 불러옵니다. 이를 시각화 해보면:
 
@@ -277,7 +277,7 @@ Output shape: torch.Size([1, 3, 128, 128])
 ...     image_grid.save(f"{test_dir}/{epoch:04d}.png")
 ```
 
-TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽게 수행하기 위해 🤗 Accelerate를 학습 루프에 함께 앞서 말한 모든 구성 정보들을 묶어 진행할 수 있습니다. 허브에 모델을 업로드 하기 위해 레포지토리 이름 및 정보를 가져오기 위한 함수를 작성하고 허브에 업로드할 수 있습니다.
+TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽게 수행하기 위해 🤗 Accelerate를 학습 루프에 함께 앞서 말한 모든 구성 정보들을 묶어 진행할 수 있습니다. 허브에 모델을 업로드 하기 위해 리포지토리 이름 및 정보를 가져오기 위한 함수를 작성하고 허브에 업로드할 수 있습니다.
 
 💡아래의 학습 루프는 어렵고 길어 보일 수 있지만, 나중에 한 줄의 코드로 학습을 한다면 그만한 가치가 있을 것입니다! 만약 기다리지 못하고 이미지를 생성하고 싶다면, 아래 코드를 자유롭게 붙여넣고 작동시키면 됩니다. 🤗
 
