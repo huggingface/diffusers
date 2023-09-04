@@ -969,6 +969,7 @@ class LoraLoaderMixin:
         # Remove any existing hooks.
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+        recurive = False
         for _, component in self.components.items():
             if isinstance(component, nn.Module):
                 if hasattr(component, "_hf_hook"):
@@ -977,7 +978,8 @@ class LoraLoaderMixin:
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                     )
-                    remove_hook_from_module(component)
+                    recurive = is_sequential_cpu_offload
+                    remove_hook_from_module(component, recursive=recurive)
 
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)

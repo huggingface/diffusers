@@ -1213,8 +1213,10 @@ class StableDiffusionXLControlNetPipeline(
             from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
         else:
             raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
+
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
+        recursive = False
         for _, component in self.components.items():
             if isinstance(component, torch.nn.Module):
                 if hasattr(component, "_hf_hook"):
@@ -1223,7 +1225,8 @@ class StableDiffusionXLControlNetPipeline(
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                     )
-                    remove_hook_from_module(component)
+                    recursive = is_sequential_cpu_offload
+                    remove_hook_from_module(component, recursive=recursive)
         state_dict, network_alphas = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
             unet_config=self.unet.config,
