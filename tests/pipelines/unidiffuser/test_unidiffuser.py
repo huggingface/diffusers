@@ -20,8 +20,7 @@ from diffusers import (
     UniDiffuserPipeline,
     UniDiffuserTextDecoder,
 )
-from diffusers.utils import floats_tensor, load_image, nightly, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import floats_tensor, load_image, nightly, require_torch_gpu, slow, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS

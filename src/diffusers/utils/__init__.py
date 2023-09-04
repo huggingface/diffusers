@@ -35,6 +35,7 @@ from .constants import (
 from .deprecation_utils import deprecate
 from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
+from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
 from .hub_utils import (
     HF_HUB_OFFLINE,
     PushToHubMixin,
@@ -80,30 +81,10 @@ from .import_utils import (
     is_xformers_available,
     requires_backends,
 )
+from .loading_utils import load_image
 from .logging import get_logger
 from .outputs import BaseOutput
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
-
-
-if is_torch_available():
-    from .testing_utils import (
-        floats_tensor,
-        load_hf_numpy,
-        load_image,
-        load_numpy,
-        load_pt,
-        nightly,
-        parse_flag_from_env,
-        print_tensor_test,
-        require_torch_2,
-        require_torch_gpu,
-        skip_mps,
-        slow,
-        torch_all_close,
-        torch_device,
-    )
-
-from .testing_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
 
 
 logger = get_logger(__name__)

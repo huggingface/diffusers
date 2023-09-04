@@ -51,12 +51,12 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
-    is_compiled_module,
     is_torch_version,
     is_transformers_available,
     logging,
     numpy_to_pil,
 )
+from ..utils.torch_utils import is_compiled_module
 
 
 if is_transformers_available():

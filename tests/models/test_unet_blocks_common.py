@@ -17,8 +17,7 @@ from typing import Tuple
 
 import torch
 
-from diffusers.utils import floats_tensor, torch_all_close, torch_device
-from diffusers.utils.testing_utils import require_torch
+from diffusers.utils.testing_utils import floats_tensor, require_torch, torch_all_close, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
 
