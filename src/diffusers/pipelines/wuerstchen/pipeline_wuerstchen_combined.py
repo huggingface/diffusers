@@ -52,8 +52,8 @@ class WuerstchenPipeline(DiffusionPipeline):
             The decoder tokenizer to be used for text inputs.
         text_encoder (`CLIPTextModel`):
             The decoder text encoder to be used for text inputs.
-        generator (`WuerstchenDiffNeXt`):
-            The generator model to be used for decoder image generation pipeline.
+        decoder (`WuerstchenDiffNeXt`):
+            The decoder model to be used for decoder image generation pipeline.
         scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for decoder image generation pipeline.
         vqgan (`PaellaVQModel`):
@@ -62,7 +62,7 @@ class WuerstchenPipeline(DiffusionPipeline):
             The prior tokenizer to be used for text inputs.
         prior_text_encoder (`CLIPTextModel`):
             The prior text encoder to be used for text inputs.
-        prior_prior (`WuerstchenPrior`):
+        prior (`WuerstchenPrior`):
             The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
@@ -74,12 +74,12 @@ class WuerstchenPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        generator: WuerstchenDiffNeXt,
+        decoder: WuerstchenDiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
         prior_tokenizer: CLIPTokenizer,
         prior_text_encoder: CLIPTextModel,
-        prior_prior: WuerstchenPrior,
+        prior: WuerstchenPrior,
         prior_scheduler: DDPMWuerstchenScheduler,
     ):
         super().__init__()
@@ -87,16 +87,16 @@ class WuerstchenPipeline(DiffusionPipeline):
         self.register_modules(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            generator=generator,
+            decoder=decoder,
             scheduler=scheduler,
             vqgan=vqgan,
-            prior_prior=prior_prior,
+            prior=prior,
             prior_text_encoder=prior_text_encoder,
             prior_tokenizer=prior_tokenizer,
             prior_scheduler=prior_scheduler,
         )
         self.prior_pipe = WuerstchenPriorPipeline(
-            prior=prior_prior,
+            prior=prior,
             text_encoder=prior_text_encoder,
             tokenizer=prior_tokenizer,
             scheduler=prior_scheduler,
@@ -104,7 +104,7 @@ class WuerstchenPipeline(DiffusionPipeline):
         self.decoder_pipe = WuerstchenDecoderPipeline(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            generator=generator,
+            decoder=decoder,
             scheduler=scheduler,
             vqgan=vqgan,
         )
@@ -148,7 +148,7 @@ class WuerstchenPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_inference_steps: int = 12,
-        guidance_scale: float = 4.0,
+        decoder_guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
         height: int = 512,
         width: int = 512,
@@ -169,7 +169,7 @@ class WuerstchenPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
+                if `decoder_guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             num_inference_steps (`int`, *optional*, defaults to 12):
@@ -181,17 +181,17 @@ class WuerstchenPipeline(DiffusionPipeline):
                 The width in pixels of the generated image.
             prior_guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                `prior_guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `prior_guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             prior_num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 4.0):
+            decoder_guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `decoder_guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -243,7 +243,7 @@ class WuerstchenPipeline(DiffusionPipeline):
             image_embeds=image_embeds,
             num_inference_steps=num_inference_steps,
             generator=generator,
-            guidance_scale=guidance_scale,
+            guidance_scale=decoder_guidance_scale,
             output_type=output_type,
             return_dict=return_dict,
         )

@@ -59,8 +59,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             The CLIP tokenizer.
         text_encoder (`CLIPTextModel`):
             The CLIP text encoder.
-        generator ([`WuerstchenDiffNeXt`]):
-            The WuerstchenDiffNeXt unet generator.
+        decoder ([`WuerstchenDiffNeXt`]):
+            The WuerstchenDiffNeXt unet decoder.
         vqgan ([`PaellaVQModel`]):
             The VQGAN model.
         scheduler ([`DDPMWuerstchenScheduler`]):
@@ -73,7 +73,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        generator: WuerstchenDiffNeXt,
+        decoder: WuerstchenDiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
         latent_dim_scale: float = 10.67,
@@ -82,7 +82,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         self.register_modules(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
-            generator=generator,
+            decoder=decoder,
             scheduler=scheduler,
             vqgan=vqgan,
         )
@@ -101,7 +101,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, text_encoder,
-        generator, and vqgan have their state dicts saved to CPU and then are moved to a `torch.device('meta') and
+        decoder, and vqgan have their state dicts saved to CPU and then are moved to a `torch.device('meta') and
         loaded to GPU only when their specific submodule has its `forward` method called.
         """
         if is_accelerate_available():
@@ -111,7 +111,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.text_encoder, self.generator, self.vqgan]:
+        for cpu_offloaded_model in [self.text_encoder, self.decoder, self.vqgan]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
@@ -134,7 +134,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.generator]:
+        for cpu_offloaded_model in [self.text_encoder, self.decoder]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         # We'll offload the last model manually.
@@ -271,7 +271,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
 
         if isinstance(image_embeds, list):
             image_embeds = torch.cat(image_embeds, dim=0)
-        image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        # image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         if isinstance(num_inference_steps, int):
             num_inference_steps = {0.0: num_inference_steps}
@@ -288,7 +288,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             image_embeds, text_encoder_hidden_states, do_classifier_free_guidance, device
         )
 
-        dtype = self.generator.dtype
+        dtype = self.decoder.dtype
         latent_height = int(predicted_image_embeddings.size(2) * self.config.latent_dim_scale)
         latent_width = int(predicted_image_embeddings.size(3) * self.config.latent_dim_scale)
         latent_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
@@ -297,7 +297,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents)
-
         for t in self.progress_bar(timesteps[:-1]):
             ratio = t.expand(latents.size(0)).to(dtype)
             effnet = (
@@ -305,7 +304,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 if do_classifier_free_guidance
                 else predicted_image_embeddings
             )
-            predicted_latents = self.generator(
+            predicted_latents = self.decoder(
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
                 effnet=effnet,

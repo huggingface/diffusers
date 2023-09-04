@@ -1,5 +1,7 @@
 # Würstchen
 
+<img src="https://github.com/dome272/Wuerstchen/assets/61938694/0617c863-165a-43ee-9303-2a17299a0cf9">
+
 [Würstchen: Efficient Pretraining of Text-to-Image Models](https://huggingface.co/papers/2306.00637) is by Pablo Pernias, Dominic Rampas, and Marc Aubreville.
 
 The abstract from the paper is:
@@ -14,6 +16,16 @@ After the initial paper release, we have improved numerous things in the archite
 - Faster inference
 - Multi Aspect Resolution Sampling
 - Better quality
+
+We are releasing 3 checkpoints for the text-conditional image generation model (Stage C). Those are: 
+- v2-base
+- v2-aesthetic
+- v2-interpolated (50% interpolation between v2-base and v2-aesthetic)
+
+We recommend to use v2-interpolated, as it has a nice touch of both photorealism and aesthetic. Use v2-base for finetunings as it does not have a style bias and use v2-aesthetic for very artistic generations.
+A comparison can be seen here: 
+
+<img src="https://github.com/dome272/Wuerstchen/assets/61938694/2914830f-cbd3-461c-be64-d50734f4b49d" width=500>
 
 ## Text-to-Image Generation
 
@@ -32,14 +44,15 @@ pipeline = WuerstchenPipeline.from_pretrained(
 ).to(device)
 
 caption = "A captivating artwork of a mysterious stone golem"
-negative_prompt = "bad anatomy, blurry, fuzzy, extra arms, extra fingers, poorly drawn hands, disfigured, tiling, deformed, mutated"
+negative_prompt = ""
 
 output = pipeline(
     prompt=caption,
     height=1024,
     width=1024,
     negative_prompt=negative_prompt,
-    guidance_scale=8.0,
+    prior_guidance_scale=4.0,
+    decoder_guidance_scale=0.0,
     num_images_per_prompt=num_images_per_prompt,
     output_type="pil",
 ).images
@@ -63,14 +76,14 @@ decoder_pipeline = WuerstchenDecoderPipeline.from_pretrained(
 ).to(device)
 
 caption = "A captivating artwork of a mysterious stone golem"
-negative_prompt = "bad anatomy, blurry, fuzzy, extra arms, extra fingers, poorly drawn hands, disfigured, tiling, deformed, mutated"
+negative_prompt = ""
 
 prior_output = prior_pipeline(
     prompt=caption,
     height=1024,
     width=1024,
     negative_prompt=negative_prompt,
-    guidance_scale=8.0,
+	guidance_scale=4.0,
     num_images_per_prompt=num_images_per_prompt,
 )
 decoder_output = decoder_pipeline(
@@ -81,7 +94,13 @@ decoder_output = decoder_pipeline(
     guidance_scale=0.0,
     output_type="pil",
 ).images
+```
 
+## Speed-Up Inference
+You can make use of ``torch.compile`` function and gain a speed-up of about 2-3x:
+```py
+pipeline.prior = torch.compile(pipeline.prior, mode="reduce-overhead", fullgraph=True)
+pipeline.decoder = torch.compile(pipeline.decoder, mode="reduce-overhead", fullgraph=True)
 ```
 
 The original codebase, as well as experimental ideas, can be found at [dome272/Wuerstchen](https://github.com/dome272/Wuerstchen).
