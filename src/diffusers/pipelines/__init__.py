@@ -52,6 +52,7 @@ else:
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
         StableDiffusionXLControlNetImg2ImgPipeline,
+        StableDiffusionXLControlNetInpaintPipeline,
         StableDiffusionXLControlNetPipeline,
     )
     from .deepfloyd_if import (
