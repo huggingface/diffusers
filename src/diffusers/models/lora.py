@@ -116,9 +116,7 @@ class LoRACompatibleConv(nn.Conv2d):
         if self.lora_layer is None:
             return
 
-        print(f"From _fuse_lora of {self.__class__.__name__} {lora_scale}")
         dtype, device = self.weight.data.dtype, self.weight.data.device
-        logger.info(f"Fusing LoRA weights for {self.__class__}")
 
         w_orig = self.weight.data.float()
         w_up = self.lora_layer.up.weight.data.float()
@@ -143,7 +141,6 @@ class LoRACompatibleConv(nn.Conv2d):
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
             return
-        logger.info(f"Unfusing LoRA weights for {self.__class__}")
 
         fused_weight = self.weight.data
         dtype, device = fused_weight.data.dtype, fused_weight.data.device
@@ -189,8 +186,6 @@ class LoRACompatibleLinear(nn.Linear):
         if self.lora_layer is None:
             return
 
-        print(f"From _fuse_lora of {self.__class__.__name__} {lora_scale}")
-        logger.info(f"Fusing LoRA weights for {self.__class__}")
         dtype, device = self.weight.data.dtype, self.weight.data.device
 
         w_orig = self.weight.data.float()
@@ -214,7 +209,6 @@ class LoRACompatibleLinear(nn.Linear):
     def _unfuse_lora(self):
         if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
             return
-        logger.info(f"Unfusing LoRA weights for {self.__class__}")
 
         fused_weight = self.weight.data
         dtype, device = fused_weight.dtype, fused_weight.device
@@ -230,19 +224,8 @@ class LoRACompatibleLinear(nn.Linear):
 
     def forward(self, hidden_states, scale: float = 1.0):
         if self.lora_layer is None:
-            if hasattr(self, "_lora_scale"):
-                print(f"{self.__class__.__name__} has a lora_scale of {self._lora_scale}")
             out = super().forward(hidden_states)
-            # if out.ndim == 2:
-            #     print(out[0, :3])
-            # else:
-            #     print(out[0, :3, :3])
             return out
         else:
-            print(f"{self.__class__.__name__} has a scale of {scale}")
             out = super().forward(hidden_states) + (scale * self.lora_layer(hidden_states))
-            # if out.ndim == 2:
-            #     print(out[0, :3])
-            # else:
-            #     print(out[0, :3, :3])
             return out

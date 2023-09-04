@@ -99,7 +99,7 @@ class PatchedLoraProjection(nn.Module):
         if self.lora_linear_layer is None:
             return
 
-        print(f"From _fuse_lora of {self.__class__.__name__} {lora_scale}")
+        # print(f"From _fuse_lora of {self.__class__.__name__} {lora_scale}")
         logger.info(f"Fusing LoRA weights for {self.__class__}")
         dtype, device = self.regular_linear_layer.weight.data.dtype, self.regular_linear_layer.weight.data.device
 
@@ -139,7 +139,7 @@ class PatchedLoraProjection(nn.Module):
         self.w_down = None
 
     def forward(self, input):
-        print(f"{self.__class__.__name__} has a lora_scale of {self.lora_scale}")
+        # print(f"{self.__class__.__name__} has a lora_scale of {self.lora_scale}")
         if self.lora_scale is None:
             self.lora_scale = 1.0
         if self.lora_linear_layer is None:
@@ -1901,7 +1901,7 @@ class LoraLoaderMixin:
                 unfuse_text_encoder_lora(self.text_encoder)
             if hasattr(self, "text_encoder_2"):
                 unfuse_text_encoder_lora(self.text_encoder_2)
-        
+
         self.num_fused_loras -= 1
 
 
