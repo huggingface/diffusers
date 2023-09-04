@@ -229,6 +229,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         # return (self.sigmas.max() ** 2 + 1) ** 0.5
 
         # Initial latents are not scaled.
+        # TODO: check that this is correct
         return 1.0
 
     @property
@@ -279,9 +280,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
     def precondition_noise(self, sigma):
         if self.precondition_type == "edm":
-            scaled_noise = 0.25 * np.log(sigma)
+            scaled_noise = 0.25 * torch.log(sigma)
         elif self.precondition_type == "cm_edm":
-            scaled_noise = 1000 * 0.25 * np.log(sigma + 1e-44)
+            scaled_noise = 1000 * 0.25 * torch.log(sigma + 1e-44)
         else:
             # No noise preconditioning.
             scaled_noise = sigma
@@ -332,33 +333,25 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 A scaled input sample and timestep.
         """
-        # 1. Get sigma corresponding to timestep
+        # 1. Get sigma and sigma_hat corresponding to timestep
         if self.step_index is None:
             self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
+        sigma_hat = self.sigma_hats[self.step_index]
 
-        # 2. Add noise via a Langevin-like "churn" step
-        if self.state_in_first_order:
-            # Temporarily raise the noise level (see Line 5 of Algorithm 2 in the EDM paper)
-            if self.config.s_tmin <= sigma <= self.config.s_tmax:
-                gamma = min(self.config.s_churn / self.num_inference_steps, 2**0.5 - 1)
-            else:
-                gamma = 0
-            self.sigma_hat = sigma * (gamma + 1)
-
-            if gamma > 0:
-                eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
-                sample = sample + ((self.sigma_hat**2 - sigma**2) ** 0.5 * eps)
-
+        # 2. Add noise based on noise level sigma_hat
+        if self.state_in_first_order and sigma_hat > sigma:  # equivalent to gamma > 0
+            eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
+            sample = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
+        
             self.sample_hat = sample
 
         # 3. Precondition the input sample and timestep.
-        sample = self.precondition_inputs(self.sample_hat, self.sigma_hat)
-        timestep = self.precondition_noise(self.sigma_hat)
+        sample = self.precondition_inputs(sample, sigma_hat)
 
         self.is_scale_input_called = True
-        return sample, timestep
+        return sample
 
     def set_timesteps(
         self,
@@ -460,15 +453,27 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
                 sigma_min = self.config.sigma_min
                 sigma_max = self.config.sigma_max
             else:
-                ramp = np.linspace(0, 1, num_inference_steps)
+                ramp = np.linspace(0, 1, self.num_inference_steps)
                 sigma_min: float = sigmas[-1].item()
                 sigma_max: float = sigmas[0].item()
 
             sigmas = self._convert_to_karras(ramp, sigma_min, sigma_max)
 
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+            # timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
-        # 5. Finish processing sigmas and timesteps
+        # 5. Calculate sigma_hat schedule
+        # TODO: vectorize this?
+        sigma_hats = []
+        for sigma in self.sigmas:
+            # Temporarily raise the noise level (see Line 5 of Algorithm 2 in the EDM paper)
+            if self.config.s_tmin <= sigma <= self.config.s_tmax:
+                gamma = min(self.config.s_churn / len(sigmas), 2**0.5 - 1)
+            else:
+                gamma = 0
+            sigma_hat = sigma * (gamma + 1)
+            sigma_hats.append(sigma_hat)
+
+        # 6. Finish processing sigmas and timesteps
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         # Magic to convert sigmas from [sigma_1, sigma_2, ..., sigma_n, 0.0] to
@@ -476,18 +481,27 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
 
         # self.timesteps = torch.from_numpy(timesteps).to(device=device)
-        timesteps = torch.from_numpy(timesteps)
+        # timesteps = torch.from_numpy(timesteps)
+        sigma_hats = torch.tensor(sigma_hats, dtype=self.sigmas.dtype)
+        # Apply noise preconditioning to the sigma_hats, which will be directly given to the model.
+        timesteps = self.precondition_noise(sigma_hats)
+
+        # Same schedule as self.sigmas:
+        # [sigma_hat_1, sigma_hat_2, sigma_hat_2, sigma_hat_3, sigma_hat_3, ..., sigma_hat_n, sigma_hat_n, 0.0]
+        sigma_hats = torch.cat(
+            [sigma_hats[:1], sigma_hats[1:].repeat_interleave(2), torch.zeros((1,), dtype=sigma_hats.dtype)]
+        )
+        self.sigma_hats = sigma_hats.to(device=device)
         # Analogous magic to convert timesteps from [t_1, t_2, ..., t_n] to [t_1, t_2, t_2, t_3, t_3, ..., t_n, t_n]
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
         self.timesteps = timesteps.to(device=device)
 
-        # 6. Empty dt and derivative to set the scheduler in first order mode
+        # 7. Empty dt and derivative to set the scheduler in first order mode
         self.prev_derivative = None
         self.dt = None
         self.sample_hat = None
-        self.sigma_hat = None
 
-        # 7. Reset step_index
+        # 8. Reset step_index
         self._step_index = None
 
         # (YiYi Notes: keep this for now since we are keeping add_noise function which use index_for_timestep)
@@ -590,10 +604,12 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         if self.state_in_first_order:
             # 1st order / Euler's method
             sigma = self.sigmas[self.step_index]
+            sigma_hat = self.sigma_hats[self.step_index]
             sigma_next = self.sigmas[self.step_index + 1]
         else:
             # 2nd order / Heun's method
             sigma = self.sigmas[self.step_index - 1]
+            sigma_hat = self.sigma_hats[self.step_index - 1]
             sigma_next = self.sigmas[self.step_index]
 
         # 3. Compute predicted original sample (x_0) from sigma-scaled predicted noise
@@ -602,7 +618,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         if self.config.prediction_type == "original_sample" or self.config.prediction_type == "sample":
             pred_original_sample = model_output
         elif self.config.prediction_type == "epsilon":
-            pred_original_sample = sample - self.sigma_hat * model_output
+            pred_original_sample = sample - sigma_hat * model_output
         elif self.config.prediction_type == "v_prediction":
             # sample * c_out + input * c_skip
             # TODO: how should this interact with self.precondition_outputs below?
@@ -617,7 +633,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         # original predicted sample
         if self.state_in_first_order:
             current_sample = self.sample_hat
-            current_sigma = self.sigma_hat
+            current_sigma = sigma_hat
         else:
             current_sample = sample
             current_sigma = sigma_next
@@ -630,10 +646,10 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         if self.state_in_first_order:
             # 5.1. 1st order / Euler's method
             # 5.l.1. Get Karras ODE derivative (Line 7 in Algorithm 2 in EDM paper)
-            derivative = (self.sample_hat - denoised) / self.sigma_hat  # d_i
+            derivative = (self.sample_hat - denoised) / sigma_hat  # d_i
 
             # 5.1.2. Get delta timestep
-            dt = sigma_next - self.sigma_hat
+            dt = sigma_next - sigma_hat
 
             # 5.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper)
             prev_sample = self.sample_hat + derivative * dt  # x_{i + 1}
