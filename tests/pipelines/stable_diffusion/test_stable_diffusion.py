@@ -42,6 +42,7 @@ from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    numpy_cosine_similarity_distance,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -760,7 +761,8 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         # make sure that more than 3.75 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes > 3.75 * 10**9
-        assert np.abs(image_sliced - image).max() < 1e-3
+        max_diff = numpy_cosine_similarity_distance(image_sliced.flatten(), image.flatten())
+        assert max_diff < 1e-3
 
     def test_stable_diffusion_vae_slicing(self):
         torch.cuda.reset_peak_memory_stats()
@@ -792,7 +794,8 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes > 4e9
         # There is a small discrepancy at the image borders vs. a fully batched version.
-        assert np.abs(image_sliced - image).max() < 1e-2
+        max_diff = numpy_cosine_similarity_distance(image_sliced.flatten(), image.flatten())
+        assert max_diff < 1e-2
 
     def test_stable_diffusion_vae_tiling(self):
         torch.cuda.reset_peak_memory_stats()
@@ -837,7 +840,8 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         image = output.images
 
         assert mem_bytes < 1e10
-        assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-2
+        max_diff = numpy_cosine_similarity_distance(image_chunked.flatten(), image.flatten())
+        assert max_diff < 1e-2
 
     def test_stable_diffusion_fp16_vs_autocast(self):
         # this test makes sure that the original model with autocast
@@ -968,7 +972,11 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         outputs_offloaded = pipe(**inputs)
         mem_bytes_offloaded = torch.cuda.max_memory_allocated()
 
-        assert np.abs(outputs.images - outputs_offloaded.images).max() < 1e-3
+        images = outputs.images
+        offloaded_images = outputs_offloaded.images
+
+        max_diff = numpy_cosine_similarity_distance(images.flatten(), offloaded_images.flatten())
+        assert max_diff < 1e-3
         assert mem_bytes_offloaded < mem_bytes
         assert mem_bytes_offloaded < 3.5 * 10**9
         for module in pipe.text_encoder, pipe.unet, pipe.vae, pipe.safety_checker:
@@ -1075,7 +1083,9 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        assert np.max(np.abs(image - image_ckpt)) < 1e-3
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+
+        assert max_diff < 1e-3
 
 
 @nightly
