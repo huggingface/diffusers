@@ -43,10 +43,10 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_numpy,
     nightly,
+    numpy_cosine_similarity_distance,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
-    numpy_cosine_similarity_distance,
     slow,
     torch_device,
 )

@@ -72,6 +72,7 @@ else:
             "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionControlNetPipeline",
             "StableDiffusionXLControlNetImg2ImgPipeline",
+            "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
         ]
     )
@@ -132,6 +133,8 @@ else:
             "StableDiffusionUpscalePipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
+            "StableDiffusionGLIGENTextImagePipeline",
+            "StableDiffusionGLIGENPipeline",
         ]
     )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]

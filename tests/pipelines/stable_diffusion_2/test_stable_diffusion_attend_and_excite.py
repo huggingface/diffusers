@@ -28,10 +28,10 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     skip_mps,
     slow,
-    numpy_cosine_similarity_distance,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS

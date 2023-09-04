@@ -33,8 +33,8 @@ from diffusers import (
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    numpy_cosine_similarity_distance,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
