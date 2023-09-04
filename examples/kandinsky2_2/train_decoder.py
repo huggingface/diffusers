@@ -17,6 +17,8 @@ import argparse
 import logging
 import math
 import os
+import shutil
+from pathlib import Path
 
 import accelerate
 import datasets
@@ -38,10 +40,10 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 from transformers.utils import ContextManagers
 
 import diffusers
-from diffusers import DDPMScheduler, UNet2DConditionModel, VQModel, AutoPipelineForText2Image
+from diffusers import AutoPipelineForText2Image, DDPMScheduler, UNet2DConditionModel, VQModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -53,7 +55,6 @@ if is_wandb_available():
 check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
-
 
 
 def save_model_card(
@@ -74,7 +75,7 @@ license: creativeml-openrail-m
 base_model: {args.pretrained_decoder_model_name_or_path}
 datasets:
 - {args.dataset_name}
-prior: 
+prior:
 - {args.pretrained_prior_model_name_or_path}
 tags:
 - kandinsky
@@ -334,7 +335,13 @@ def parse_args():
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay",type=float,default=0.0, required=False, help="weight decay_to_use",)
+    parser.add_argument(
+        "--adam_weight_decay",
+        type=float,
+        default=0.0,
+        required=False,
+        help="weight decay_to_use",
+    )
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
@@ -473,7 +480,9 @@ def main():
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_decoder_model_name_or_path, subfolder="scheduler")
-    image_processor = CLIPImageProcessor.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="image_processor")
+    image_processor = CLIPImageProcessor.from_pretrained(
+        args.pretrained_prior_model_name_or_path, subfolder="image_processor"
+    )
 
     def deepspeed_zero_init_disabled_context_manager():
         """
@@ -492,13 +501,12 @@ def main():
         weight_dtype = torch.bfloat16
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
         vae = VQModel.from_pretrained(
-            args.pretrained_decoder_model_name_or_path, subfolder="movq", torch_dtype=weight_dtype).eval()
+            args.pretrained_decoder_model_name_or_path, subfolder="movq", torch_dtype=weight_dtype
+        ).eval()
         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
             args.pretrained_prior_model_name_or_path, subfolder="image_encoder", torch_dtype=weight_dtype
         ).eval()
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_decoder_model_name_or_path, subfolder="unet"
-    )
+    unet = UNet2DConditionModel.from_pretrained(args.pretrained_decoder_model_name_or_path, subfolder="unet")
 
     # Freeze vae and image_encoder
     vae.requires_grad_(False)
@@ -506,8 +514,7 @@ def main():
 
     # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_decoder_model_name_or_path, subfolder="unet")
+        ema_unet = UNet2DConditionModel.from_pretrained(args.pretrained_decoder_model_name_or_path, subfolder="unet")
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
         ema_unet.to(accelerator.device)
     if args.enable_xformers_memory_efficient_attention:
@@ -639,9 +646,7 @@ def main():
 
     image_column = args.image_column
     if image_column not in column_names:
-        raise ValueError(
-            f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
-        )
+        raise ValueError(f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}")
 
     def center_crop(image):
         width, height = image.size
@@ -654,11 +659,7 @@ def main():
 
     def train_transforms(img):
         img = center_crop(img)
-        img = img.resize(
-            (args.resolution, args.resolution), 
-            resample=Image.BICUBIC, 
-            reducing_gap=1
-        )
+        img = img.resize((args.resolution, args.resolution), resample=Image.BICUBIC, reducing_gap=1)
         img = np.array(img).astype(np.float32) / 127.5 - 1
         img = torch.from_numpy(np.transpose(img, [2, 0, 1]))
         return img
@@ -666,8 +667,9 @@ def main():
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
         examples["pixel_values"] = [train_transforms(image) for image in images]
-        examples["clip_pixel_values"] = image_processor(images,return_tensors="pt").pixel_values
+        examples["clip_pixel_values"] = image_processor(images, return_tensors="pt").pixel_values
         return examples
+
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
@@ -680,6 +682,7 @@ def main():
         clip_pixel_values = torch.stack([example["clip_pixel_values"] for example in examples])
         clip_pixel_values = clip_pixel_values.to(memory_format=torch.contiguous_format).float()
         return {"pixel_values": pixel_values, "clip_pixel_values": clip_pixel_values}
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         shuffle=True,
