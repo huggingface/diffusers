@@ -896,7 +896,7 @@ def main():
             vae=vae,
             unet=unet,
         )
-        pipeline.save_pretrained(args.output_dir)
+        pipeline.decoder_pipe.save_pretrained(args.output_dir)
 
         # Run a final round of inference.
         images = []
@@ -905,6 +905,7 @@ def main():
             pipeline = pipeline.to(accelerator.device)
             pipeline.torch_dtype = weight_dtype
             pipeline.set_progress_bar_config(disable=True)
+            pipeline.enable_model_cpu_offload()
 
             if args.enable_xformers_memory_efficient_attention:
                 pipeline.enable_xformers_memory_efficient_attention()
