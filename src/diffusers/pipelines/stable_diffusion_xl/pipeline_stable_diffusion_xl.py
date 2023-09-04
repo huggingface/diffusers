@@ -23,10 +23,7 @@ from ...image_processor import VaeImageProcessor
 from ...loaders import (
     FromSingleFileMixin,
     LoraLoaderMixin,
-    PatchedLoraProjection,
     TextualInversionLoaderMixin,
-    text_encoder_attn_modules,
-    text_encoder_mlp_modules,
 )
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
@@ -35,6 +32,7 @@ from ...models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
@@ -290,6 +288,10 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -566,21 +568,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
 
-    def _adjust_lora_scale_text_encoder(
-        self, text_encoder: Union[CLIPTextModel, CLIPTextModelWithProjection], lora_scale
-    ):
-        for _, attn_module in text_encoder_attn_modules(text_encoder):
-            if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                attn_module.q_proj.lora_scale = lora_scale
-                attn_module.k_proj.lora_scale = lora_scale
-                attn_module.v_proj.lora_scale = lora_scale
-                attn_module.out_proj.lora_scale = lora_scale
-
-        for _, mlp_module in text_encoder_mlp_modules(text_encoder):
-            if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                mlp_module.fc1.lora_scale = lora_scale
-                mlp_module.fc2.lora_scale = lora_scale
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -777,9 +764,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
-        # 3.1 Dynamically adjust the LoRA scale
-        self._adjust_lora_scale_text_encoder(self.text_encoder, text_encoder_lora_scale)
-        self._adjust_lora_scale_text_encoder(self.text_encoder_2, text_encoder_lora_scale)
         (
             prompt_embeds,
             negative_prompt_embeds,
