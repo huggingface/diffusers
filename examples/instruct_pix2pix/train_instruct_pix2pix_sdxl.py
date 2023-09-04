@@ -63,9 +63,8 @@ DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("file_name", "edited_image", "edit_prompt"),
 }
 WANDB_TABLE_COL_NAMES = ["file_name", "edited_image", "edit_prompt"]
-TORCH_DTYPE_MAPPING = {
-    "fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16
-}
+TORCH_DTYPE_MAPPING = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
+
 
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
@@ -110,7 +109,7 @@ def parse_args():
         help=(
             "The vanilla SDXL 1.0 VAE can cause NaNs due to large activation values. Some custom models might already have a solution"
             " to this problem, and this flag allows you to use mixed precision to stabilize training."
-        )
+        ),
     )
     parser.add_argument(
         "--revision",
