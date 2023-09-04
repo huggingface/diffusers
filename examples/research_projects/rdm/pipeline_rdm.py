@@ -3,24 +3,24 @@ from typing import Callable, List, Optional, Union
 
 import torch
 from PIL import Image
+from retriever import Retriever, normalize_images, preprocess_images
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
 
-from diffusers.utils import is_accelerate_available, randn_tensor
-from diffusers.image_processor import VaeImageProcessor
 from diffusers import (
-    DiffusionPipeline,
-    ImagePipelineOutput,
     AutoencoderKL,
-    UNet2DConditionModel,
     DDIMScheduler,
+    DiffusionPipeline,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
+    ImagePipelineOutput,
     LMSDiscreteScheduler,
     PNDMScheduler,
+    UNet2DConditionModel,
     logging,
 )
-from retriever import Retriever, normalize_images, preprocess_images
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.utils import is_accelerate_available, randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
