@@ -1,5 +1,5 @@
-# Copyright 2023 Blip Diffusion authors and The HuggingFace Team. All rights reserved.
-#
+# Copyright 2023 Salesforce.com, inc.
+# Copyright 2023 The HuggingFace Team. All rights reserved.#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -48,8 +48,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import BlipDiffusionPipeline
         >>> from PIL import Image
 
-        >>> blipDiffusion = BlipDiffusionPipeline.from_pretrained('ayushtues/blipdiffusion')
-        >>> blipDiffusion.to('cuda')
+        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained('ayushtues/blipdiffusion')
+        >>> blip_diffusion_pipe.to('cuda')
 
         >>> cond_subject = "dog"
         >>> tgt_subject = "dog"
@@ -63,7 +63,7 @@ EXAMPLE_DOC_STRING = """
         >>> negative_prompt = "over-exposure, under-exposure, saturated, duplicate, out of frame, lowres, cropped, worst quality, low quality, jpeg artifacts, morbid, mutilated, out of frame, ugly, bad anatomy, bad proportions, deformed, blurry, duplicate"
 
         
-        >>> output = blipDiffusion(
+        >>> output = blip_diffusion_pipe(
         ...     text_prompt_input,
         ...     cond_image,
         ...     cond_subject,
@@ -79,7 +79,6 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-# Create a class for the Blip Diffusion pipeline
 class BlipDiffusionPipeline(DiffusionPipeline):
     """
     Pipeline for Zero-Shot Subject Driven Generation using Blip Diffusion.
@@ -159,45 +158,24 @@ class BlipDiffusionPipeline(DiffusionPipeline):
 
         return text_embeddings
 
-    def preprocess_caption(self, caption):
-        caption = re.sub(
-            r"([.!\"()*#:;~])",
-            " ",
-            caption.lower(),
-        )
-        caption = re.sub(
-            r"\s{2,}",
-            " ",
-            caption,
-        )
-        caption = caption.rstrip("\n")
-        caption = caption.strip(" ")
-
-        # truncate caption
-        caption_words = caption.split(" ")
-        if len(caption_words) > 50:
-            caption = " ".join(caption_words[:50])
-
-        return caption
-    
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt,
-        reference_image,
-        source_subject_category,
-        target_subject_category,
-        latents=None,
-        guidance_scale=7.5,
-        height=512,
-        width=512,
-        seed=42,
-        num_inference_steps=50,
-        neg_prompt="",
-        prompt_strength=1.0,
-        prompt_reps=20,
+        prompt : Union[str, List[str]],
+        reference_image : Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],
+        source_subject_category : Union[str, List[str]],
+        target_subject_category : Union[str, List[str]],
+        latents : Optional[torch.FloatTensor] = None,
+        guidance_scale: float =7.5,
+        height: int=512,
+        width: int=512,
+        seed: int=42,
+        num_inference_steps: int=50,
+        neg_prompt: Optional[str] = "",
+        prompt_strength: float =1.0,
+        prompt_reps: int=20,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -243,10 +221,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         Returns:
             `List[PIL.Image.Image]` : The generated images.
         """
-
-        prompt = [self.preprocess_caption(prompt)]
-        source_subject_category = [self.preprocess_caption(source_subject_category)]
-        target_subject_category = [self.preprocess_caption(target_subject_category)]
 
         reference_image = self.image_processor.preprocess(reference_image,  image_mean=self.config.mean, image_std=self.config.std, return_tensors='pt')['pixel_values']
         reference_image = reference_image.to(self.device)

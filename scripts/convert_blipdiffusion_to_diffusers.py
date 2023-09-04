@@ -1,7 +1,6 @@
-'''
-This scripts requires you to build lavis from source, since the pip version doesn't have blip diffusion
-Follow instruction https://github.com/salesforce/LAVIS/tree/main
-'''
+"""
+This script requires you to build `LAVIS` from source, since the pip version doesn't have BLIP Diffusion. Follow instructions here: https://github.com/salesforce/LAVIS/tree/main.
+"""
 
 from diffusers import (
     AutoencoderKL,

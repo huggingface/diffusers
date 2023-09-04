@@ -43,13 +43,9 @@ from transformers.models.blip_2.modeling_blip_2 import Blip2Attention, Blip2MLP,
 
 logger = logging.get_logger(__name__)
 
-""" PyTorch BLIP-2 model.
-    There is an implementation of Blip2 in Transformers : https://github.com/huggingface/transformers/blob/main/src/transformers/models/blip_2/modeling_blip_2.py
-    Which doesn't support getting multimodal embeddings for now
-    Will replace this with the Transformers version once it supports multimodal embeddings 
-"""
-
-
+# There is an implementation of Blip2 in `transformers` : https://github.com/huggingface/transformers/blob/main/src/transformers/models/blip_2/modeling_blip_2.py. 
+# But it doesn't support getting multimodal embeddings. So, this module can be
+# replaced with a future `transformers` version supports that. 
 class Blip2TextEmbeddings(nn.Module):
     """Construct the embeddings from word and position embeddings."""
 
@@ -110,7 +106,7 @@ class Blip2TextEmbeddings(nn.Module):
 
 
 
-# Copied from transformers.models.blip.modeling_blip.BlipVisionEmbeddings with Blip->Blip2
+# Copy-pasted from transformers.models.blip.modeling_blip.BlipVisionEmbeddings with Blip->Blip2
 class Blip2VisionEmbeddings(nn.Module):
     def __init__(self, config: Blip2VisionConfig):
         super().__init__()
@@ -121,7 +117,6 @@ class Blip2VisionEmbeddings(nn.Module):
 
         self.class_embedding = nn.Parameter(torch.randn(1, 1, self.embed_dim))
 
-        # TO-DO Added bias = False here, not in OG HF code
         self.patch_embedding = nn.Conv2d(
             in_channels=3, out_channels=self.embed_dim, kernel_size=self.patch_size, stride=self.patch_size, bias=False
         )
