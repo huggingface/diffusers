@@ -45,7 +45,7 @@ logger = logging.get_logger(__name__)
 
 
 
-# Copied from transformers.models.blip.image_processing_blip.BlipImageProcessor
+# Copy-pasted from transformers.models.blip.image_processing_blip.BlipImageProcessor
 class BlipImageProcessor(BaseImageProcessor):
     r"""
     Constructs a BLIP image processor.
@@ -112,7 +112,7 @@ class BlipImageProcessor(BaseImageProcessor):
         self.do_convert_rgb = do_convert_rgb
         self.do_center_crop = do_center_crop
 
-    # Copied from transformers.models.vit.image_processing_vit.ViTImageProcessor.resize with PILImageResampling.BILINEAR->PILImageResampling.BICUBIC
+    # Copy-pasted from transformers.models.vit.image_processing_vit.ViTImageProcessor.resize with PILImageResampling.BILINEAR->PILImageResampling.BICUBIC
     def resize(
         self,
         image: np.ndarray,

@@ -108,16 +108,14 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             Image Processor to preprocess and postprocess the image.
         ctx_begin_pos (int, `optional`, defaults to 2):
             Position of the context token in the text encoder.
-        mean (tuple, `optional`, defaults to (0.48145466, 0.4578275, 0.40821073)):
-            Mean of the image processor.
-        std (tuple, `optional`, defaults to (0.26862954, 0.26130258, 0.27577711)):
-            Standard deviation of the image processor.
     """
     
-    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, controlnet: ControlNetModel, image_processor: BlipImageProcessor, ctx_begin_pos: int = 2, mean: tuple = (0.48145466, 0.4578275, 0.40821073), std: tuple = (0.26862954, 0.26130258, 0.27577711)):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, controlnet: ControlNetModel, image_processor: BlipImageProcessor, ctx_begin_pos: int = 2):
         super().__init__()
 
         self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, controlnet=controlnet, image_processor=image_processor)
+        mean = (0.48145466, 0.4578275, 0.40821073)
+        std  = (0.26862954, 0.26130258, 0.27577711)
         self.register_to_config(ctx_begin_pos=ctx_begin_pos, mean=mean, std=std)
     
     #TODO Complete this function
@@ -154,7 +152,17 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
 
     def encode_prompt(self, query_embeds, prompt):
         #embeddings for prompt, with query_embeds as context
-        tokenized_prompt = self._tokenize_text(prompt).to(self.device)
+        max_len = self.text_encoder.text_model.config.max_position_embeddings
+        max_len -= self.qformer.config.num_query_tokens
+
+        tokenized_prompt = self.tokenizer(
+            prompt,
+            padding="max_length",
+            truncation=True,
+            max_length=max_len,
+            return_tensors="pt",
+        ).to(self.device)
+
         text_embeddings = self.text_encoder(
             input_ids=tokenized_prompt.input_ids,
             ctx_embeddings=query_embeds,
@@ -323,22 +331,6 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         image = self.image_processor.postprocess(image, output_type="pil")
 
         return image
-
-
-    def _tokenize_text(self, text_input, with_query=True):
-        max_len = self.text_encoder.text_model.config.max_position_embeddings
-        if with_query:
-            max_len -= self.qformer.config.num_query_tokens
-
-        tokenized_text = self.tokenizer(
-            text_input,
-            padding="max_length",
-            truncation=True,
-            max_length=max_len,
-            return_tensors="pt",
-        )
-
-        return tokenized_text
 
     def forward_ctx_embeddings(self, input_image, text_input, ratio=None):
         def compute_ctx_embeddings(input_image, text_input):
