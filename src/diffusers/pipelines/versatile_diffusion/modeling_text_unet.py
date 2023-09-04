@@ -58,6 +58,7 @@ def get_down_block(
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
+    dropout=0.0,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlockFlat":
@@ -66,6 +67,7 @@ def get_down_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
+            dropout=dropout,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -81,6 +83,7 @@ def get_down_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
+            dropout=dropout,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -117,6 +120,7 @@ def get_up_block(
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
+    dropout=0.0,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlockFlat":
@@ -126,6 +130,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -141,6 +146,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -284,6 +290,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
         downsample_padding (`int`, *optional*, defaults to 1): The padding to use for the downsampling convolution.
         mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
@@ -369,6 +376,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
+        dropout: float = 0.0,
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
@@ -660,6 +668,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                dropout=dropout,
             )
             self.down_blocks.append(down_block)
 
@@ -669,6 +678,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 transformer_layers_per_block=transformer_layers_per_block[-1],
                 in_channels=block_out_channels[-1],
                 temb_channels=blocks_time_embed_dim,
+                dropout=dropout,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
@@ -685,6 +695,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             self.mid_block = UNetMidBlockFlatSimpleCrossAttn(
                 in_channels=block_out_channels[-1],
                 temb_channels=blocks_time_embed_dim,
+                dropout=dropout,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
@@ -751,6 +762,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                dropout=dropout,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
