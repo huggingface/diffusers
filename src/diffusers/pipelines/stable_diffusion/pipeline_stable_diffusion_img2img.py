@@ -71,7 +71,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def produce_latents(encoder_output: BaseOutput, generator):
+def retrieve_latents(encoder_output: BaseOutput, generator):
     if hasattr(encoder_output, 'latent_dist'):
         return encoder_output.latent_dist.sample(generator)
     elif hasattr(encoder_output, 'latents'):
@@ -562,11 +562,11 @@ class StableDiffusionImg2ImgPipeline(
 
             elif isinstance(generator, list):
                 init_latents = [
-                    produce_latents(self.vae.encode(image[i : i + 1]), generator=generator[i]) for i in range(batch_size)
+                    retrieve_latents(self.vae.encode(image[i: i + 1]), generator=generator[i]) for i in range(batch_size)
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
             else:
-                init_latents = produce_latents(self.vae.encode(image), generator=generator)
+                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
             init_latents = self.vae.config.scaling_factor * init_latents
 

@@ -80,8 +80,8 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.produce_latents
-def produce_latents(encoder_output: BaseOutput, generator):
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(encoder_output: BaseOutput, generator):
     if hasattr(encoder_output, 'latent_dist'):
         return encoder_output.latent_dist.sample(generator)
     elif hasattr(encoder_output, 'latents'):
@@ -734,12 +734,12 @@ class StableDiffusionXLInpaintPipeline(DiffusionPipeline, LoraLoaderMixin, FromS
 
         if isinstance(generator, list):
             image_latents = [
-                produce_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                retrieve_latents(self.vae.encode(image[i: i + 1]), generator=generator[i])
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = produce_latents(self.vae.encode(image), generator=generator)
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
         if self.vae.config.force_upcast:
             self.vae.to(dtype)
