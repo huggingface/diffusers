@@ -80,23 +80,23 @@ class ShapEPipelineOutput(BaseOutput):
 
 class ShapEPipeline(DiffusionPipeline):
     """
-    Pipeline for generating latent representation of a 3D asset and rendering with NeRF method with Shap-E.
+    Pipeline for generating latent representation of a 3D asset and rendering with the NeRF method.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
         prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
-        text_encoder ([`CLIPTextModelWithProjection`]):
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
+        text_encoder ([`~transformers.CLIPTextModelWithProjection`]):
             Frozen text-encoder.
-        tokenizer (`CLIPTokenizer`):
-             A [`~transformers.CLIPTokenizer`] to tokenize text.
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+             A `CLIPTokenizer` to tokenize text.
         scheduler ([`HeunDiscreteScheduler`]):
-            A scheduler to be used in combination with `prior` to generate image embedding.
+            A scheduler to be used in combination with the `prior` model to generate image embedding.
         shap_e_renderer ([`ShapERenderer`]):
-            Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D objects
-            with the NeRF rendering method.
+            Shap-E renderer projects the generated latents into parameters of a MLP to create 3D objects with the NeRF
+            rendering method.
     """
 
     def __init__(
@@ -241,12 +241,11 @@ class ShapEPipeline(DiffusionPipeline):
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-                usually at the expense of lower image quality.
             frame_size (`int`, *optional*, default to 64):
                 The width and height of each image frame of the generated 3D output.
-            output_type (`str`, *optional*, defaults to `"pt"`):
-                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
-                (`np.array`),`"latent"` (`torch.Tensor`), mesh ([`MeshDecoderOutput`]).
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.array`), `"latent"` (`torch.Tensor`), or mesh ([`MeshDecoderOutput`]).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput`] instead of a plain
                 tuple.

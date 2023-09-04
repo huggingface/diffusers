@@ -1622,6 +1622,24 @@ LORA_ATTENTION_PROCESSORS = (
     LoRAAttnAddedKVProcessor,
 )
 
+ADDED_KV_ATTENTION_PROCESSORS = (
+    AttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    XFormersAttnAddedKVProcessor,
+    LoRAAttnAddedKVProcessor,
+)
+
+CROSS_ATTENTION_PROCESSORS = (
+    AttnProcessor,
+    AttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+)
+
 AttentionProcessor = Union[
     AttnProcessor,
     AttnProcessor2_0,

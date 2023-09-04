@@ -26,7 +26,13 @@ from diffusers import (
     StableDiffusionAttendAndExcitePipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils.testing_utils import load_numpy, require_torch_gpu, skip_mps, slow
+from diffusers.utils.testing_utils import (
+    load_numpy,
+    require_torch_gpu,
+    skip_mps,
+    slow,
+    numpy_cosine_similarity_distance,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
@@ -225,4 +231,5 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/attend-and-excite/elephant_glasses.npy"
         )
-        assert np.abs((expected_image - image).max()) < 5e-1
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
+        assert max_diff < 5e-1

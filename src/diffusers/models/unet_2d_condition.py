@@ -22,7 +22,13 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
 from .activations import get_activation
-from .attention_processor import AttentionProcessor, AttnProcessor
+from .attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnProcessor,
+)
 from .embeddings import (
     GaussianFourierProjection,
     ImageHintTimeEmbedding,
@@ -565,13 +571,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
 
-        if attention_type == "gated":
+        if attention_type in ["gated", "gated-text-image"]:
             positive_len = 768
             if isinstance(cross_attention_dim, int):
                 positive_len = cross_attention_dim
             elif isinstance(cross_attention_dim, tuple) or isinstance(cross_attention_dim, list):
                 positive_len = cross_attention_dim[0]
-            self.position_net = PositionNet(positive_len=positive_len, out_dim=cross_attention_dim)
+
+            feature_type = "text-only" if attention_type == "gated" else "text-image"
+            self.position_net = PositionNet(
+                positive_len=positive_len, out_dim=cross_attention_dim, feature_type=feature_type
+            )
 
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
@@ -635,7 +645,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        self.set_attn_processor(AttnProcessor())
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnAddedKVProcessor()
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnProcessor()
+        else:
+            raise ValueError(
+                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
+            )
+
+        self.set_attn_processor(processor)
 
     def set_attention_slice(self, slice_size):
         r"""
