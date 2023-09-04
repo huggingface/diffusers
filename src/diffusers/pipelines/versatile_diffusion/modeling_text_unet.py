@@ -1497,6 +1497,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         output_states = ()
 
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+
         blocks = list(zip(self.resnets, self.attentions))
 
         for i, (resnet, attn) in enumerate(blocks):
@@ -2023,10 +2024,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
-        if len(cross_attention_kwargs) >= 1 and "scale" in cross_attention_kwargs:
-            lora_scale = cross_attention_kwargs["scale"]
-        else:
-            lora_scale = 1.0
+        lora_scale = cross_attention_kwargs.get("scale", 1.0)
 
         if attention_mask is None:
             # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.

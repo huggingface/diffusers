@@ -1906,7 +1906,7 @@ class KCrossAttnDownBlock2D(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         output_states = ()
-        lora_scale = cross_attention_kwargs.get("scale", 1.0)
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         for resnet, attn in zip(self.resnets, self.attentions):
             if self.training and self.gradient_checkpointing:
@@ -2165,7 +2165,7 @@ class CrossAttnUpBlock2D(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
-       lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -2859,7 +2859,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
 
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        lora_scale = cross_attention_kwargs.get("scale", 1.0)
         if attention_mask is None:
             # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
             mask = None if encoder_hidden_states is None else encoder_attention_mask
