@@ -30,6 +30,7 @@ from accelerate.logging import get_logger
 from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
 from tqdm import tqdm
@@ -40,7 +41,8 @@ import diffusers
 from diffusers import DDPMScheduler, UNet2DConditionModel, VQModel, AutoPipelineForText2Image
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, deprecate, is_wandb_available
+from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
+from diffusers.utils.import_utils import is_xformers_available
 
 
 if is_wandb_available():
@@ -48,21 +50,10 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.19.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
-
-
-def make_image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 def save_model_card(
@@ -83,6 +74,8 @@ license: creativeml-openrail-m
 base_model: {args.pretrained_decoder_model_name_or_path}
 datasets:
 - {args.dataset_name}
+prior: 
+- {args.pretrained_prior_model_name_or_path}
 tags:
 - kandinsky
 - text-to-image
@@ -91,7 +84,7 @@ inference: true
 ---
     """
     model_card = f"""
-# Text-to-image finetuning - {repo_id}
+# Finetuning - {repo_id}
 
 This pipeline was finetuned from **{args.pretrained_decoder_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
 {img_str}
@@ -104,7 +97,7 @@ You can use the pipeline like so:
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("{repo_id}", torch_dtype=torch.float16)
 prompt = "{args.validation_prompts[0]}"
 image = pipeline(prompt).images[0]
 image.save("my_image.png")
@@ -145,11 +138,9 @@ def log_validation(vae, image_encoder, image_processor, unet, args, accelerator,
     pipeline = AutoPipelineForText2Image.from_pretrained(
         args.pretrained_decoder_model_name_or_path,
         vae=accelerator.unwrap_model(vae),
-        image_encoder=accelerator.unwrap_model(image_encoder),
-        image_processor=image_processor,
+        prior_image_encoder=accelerator.unwrap_model(image_encoder),
+        prior_image_processor=image_processor,
         unet=accelerator.unwrap_model(unet),
-        safety_checker=None,
-        revision=args.revision,
         torch_dtype=weight_dtype,
     )
     pipeline = pipeline.to(accelerator.device)
@@ -190,6 +181,7 @@ def log_validation(vae, image_encoder, image_processor, unet, args, accelerator,
     torch.cuda.empty_cache()
 
     return images
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of finetuning Kandinsky 2.2.")
@@ -299,7 +291,6 @@ def parse_args():
         "--learning_rate",
         type=float,
         default=1e-4,
-        required=False,
         help="learning rate",
     )
     parser.add_argument(
@@ -519,6 +510,18 @@ def main():
             args.pretrained_decoder_model_name_or_path, subfolder="unet")
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
         ema_unet.to(accelerator.device)
+    if args.enable_xformers_memory_efficient_attention:
+        if is_xformers_available():
+            import xformers
+
+            xformers_version = version.parse(xformers.__version__)
+            if xformers_version == version.parse("0.0.16"):
+                logger.warn(
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                )
+            unet.enable_xformers_memory_efficient_attention()
+        else:
+            raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     def compute_snr(timesteps):
         """
@@ -887,10 +890,8 @@ def main():
 
         pipeline = AutoPipelineForText2Image.from_pretrained(
             args.pretrained_decoder_model_name_or_path,
-            image_encoder=image_encoder,
             vae=vae,
             unet=unet,
-            revision=args.revision,
         )
         pipeline.save_pretrained(args.output_dir)
 
