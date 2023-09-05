@@ -45,6 +45,7 @@ if is_transformers_available():
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
+    from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
     from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)
@@ -768,6 +769,21 @@ class TextualInversionLoaderMixin:
                 f" `{self.load_textual_inversion.__name__}`"
             )
 
+        # Remove any existing hooks.
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        recursive = False
+        for _, component in self.components.items():
+            if isinstance(component, nn.Module):
+                if hasattr(component, "_hf_hook"):
+                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
+                    )
+                    recursive = is_sequential_cpu_offload
+                    remove_hook_from_module(component, recurse=recursive)
+
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
@@ -921,6 +937,12 @@ class TextualInversionLoaderMixin:
         for token_id, embedding in token_ids_and_embeddings:
             self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
 
+        # offload back
+        if is_model_cpu_offload:
+            self.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            self.enable_sequential_cpu_offload()
+
 
 class LoraLoaderMixin:
     r"""
@@ -952,6 +974,21 @@ class LoraLoaderMixin:
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
+        # Remove any existing hooks.
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        recurive = False
+        for _, component in self.components.items():
+            if isinstance(component, nn.Module):
+                if hasattr(component, "_hf_hook"):
+                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    recurive = is_sequential_cpu_offload
+                    remove_hook_from_module(component, recurse=recurive)
+
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
         self.load_lora_into_text_encoder(
@@ -960,6 +997,12 @@ class LoraLoaderMixin:
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
         )
+
+        # Offload back.
+        if is_model_cpu_offload:
+            self.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            self.enable_sequential_cpu_offload()
 
     @classmethod
     def lora_state_dict(
