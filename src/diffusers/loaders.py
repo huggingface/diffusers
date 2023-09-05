@@ -1200,7 +1200,8 @@ class LoraLoaderMixin:
                         raise ValueError("Checkpoint not supported")
 
         print("Input blocks:\n")
-        print({".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer})
+        ib = {".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer}
+        print(ib, len(ib))
         num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer})
         input_blocks = {
             layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
