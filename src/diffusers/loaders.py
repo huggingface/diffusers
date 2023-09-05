@@ -2546,9 +2546,11 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
             raise ValueError(
                 f"The unexpected keys must only belong to LoRA parameters at this point: {load_state_dict_results.unexpected_keys}"
             )
-        
+
         # Filter out the rest of the state_dict for handling LoRA.
-        remaining_state_dict = {k: v for k, v in converted_state_dict.items() if k in load_state_dict_results.unexpected_keys}
+        remaining_state_dict = {
+            k: v for k, v in converted_state_dict.items() if k in load_state_dict_results.unexpected_keys
+        }
 
         # Handle LoRA.
         lora_grouped_dict = defaultdict(dict)
