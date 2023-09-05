@@ -395,7 +395,7 @@ class UNet2DConditionLoadersMixin:
                 raise ValueError(
                     f"The `state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
                 )
-
+            temp = 0
             for key, value_dict in lora_grouped_dict.items():
                 attn_processor = self
                 for sub_key in key.split("."):
@@ -403,6 +403,8 @@ class UNet2DConditionLoadersMixin:
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
+                if temp == 0:
+                    print(f"Value dict: {value_dict}")
                 rank = value_dict["lora.down.weight"].shape[0]
 
                 if isinstance(attn_processor, LoRACompatibleConv):
