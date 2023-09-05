@@ -92,11 +92,11 @@ def create_text_encoder_lora_layers(text_encoder: nn.Module):
     return text_encoder_lora_layers
 
 
-def set_lora_weights(lora_attn_parameters, randn_weight=False):
+def set_lora_weights(lora_attn_parameters, randn_weight=False, var=1.0):
     with torch.no_grad():
         for parameter in lora_attn_parameters:
             if randn_weight:
-                parameter[:] = torch.randn_like(parameter)
+                parameter[:] = torch.randn_like(parameter) * var
             else:
                 torch.zero_(parameter)
 
@@ -719,7 +719,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         # default & unloaded LoRA weights should have identical state_dicts
         assert text_encoder_1_sd_keys == text_encoder_1_sd_keys_3
         # default & loaded LoRA weights should NOT have identical state_dicts
-        assert text_encoder_1_sd_keys != text_encoder_1_sd_keys_2  #
+        assert text_encoder_1_sd_keys != text_encoder_1_sd_keys_2
 
         # default & unloaded LoRA weights should have identical state_dicts
         assert text_encoder_2_sd_keys == text_encoder_2_sd_keys_3
@@ -862,6 +862,161 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         assert np.allclose(
             lora_image_slice, images_with_unloaded_lora_slice
         ), "`unload_lora_weights()` should have not effect on the semantics of the results as the LoRA parameters were fused."
+
+    def test_fuse_lora_with_different_scales(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        _ = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        sd_pipe.fuse_lora(lora_scale=1.0)
+        lora_images_scale_one = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice_scale_one = lora_images_scale_one[0, -3:, -3:, -1]
+
+        # Reverse LoRA fusion.
+        sd_pipe.unfuse_lora()
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        sd_pipe.fuse_lora(lora_scale=0.5)
+        lora_images_scale_0_5 = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice_scale_0_5 = lora_images_scale_0_5[0, -3:, -3:, -1]
+
+        assert not np.allclose(
+            lora_image_slice_scale_one, lora_image_slice_scale_0_5, atol=1e-03
+        ), "Different LoRA scales should influence the outputs accordingly."
+
+    def test_with_different_scales(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+        original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        original_imagee_slice = original_images[0, -3:, -3:, -1]
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        lora_images_scale_one = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice_scale_one = lora_images_scale_one[0, -3:, -3:, -1]
+
+        lora_images_scale_0_5 = sd_pipe(
+            **pipeline_inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
+        ).images
+        lora_image_slice_scale_0_5 = lora_images_scale_0_5[0, -3:, -3:, -1]
+
+        lora_images_scale_0_0 = sd_pipe(
+            **pipeline_inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
+        ).images
+        lora_image_slice_scale_0_0 = lora_images_scale_0_0[0, -3:, -3:, -1]
+
+        assert not np.allclose(
+            lora_image_slice_scale_one, lora_image_slice_scale_0_5, atol=1e-03
+        ), "Different LoRA scales should influence the outputs accordingly."
+
+        assert np.allclose(
+            original_imagee_slice, lora_image_slice_scale_0_0, atol=1e-03
+        ), "LoRA scale of 0.0 shouldn't be different from the results without LoRA."
+
+    def test_with_different_scales_fusion_equivalence(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        # sd_pipe.unet.set_default_attn_processor()
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        images = sd_pipe(
+            **pipeline_inputs,
+            generator=torch.manual_seed(0),
+        ).images
+        images_slice = images[0, -3:, -3:, -1]
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True, var=0.1)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True, var=0.1)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True, var=0.1)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        lora_images_scale_0_5 = sd_pipe(
+            **pipeline_inputs,
+            generator=torch.manual_seed(0),
+            cross_attention_kwargs={"scale": 0.5},
+        ).images
+        lora_image_slice_scale_0_5 = lora_images_scale_0_5[0, -3:, -3:, -1]
+
+        sd_pipe.fuse_lora(lora_scale=0.5)
+        lora_images_scale_0_5_fusion = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice_scale_0_5_fusion = lora_images_scale_0_5_fusion[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            lora_image_slice_scale_0_5, lora_image_slice_scale_0_5_fusion, atol=1e-03
+        ), "Fusion shouldn't affect the results when calling the pipeline with a non-default LoRA scale."
+
+        sd_pipe.unfuse_lora()
+        images_unfused = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        images_slice_unfused = images_unfused[0, -3:, -3:, -1]
+
+        assert np.allclose(images_slice, images_slice_unfused, atol=1e-03), "Unfused should match no LoRA"
+
+        assert not np.allclose(
+            images_slice, lora_image_slice_scale_0_5, atol=1e-03
+        ), "0.5 scale and no scale shouldn't match"
 
 
 @slow
