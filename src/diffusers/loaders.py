@@ -1007,6 +1007,7 @@ class LoraLoaderMixin:
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        controlnet=False,
         **kwargs,
     ):
         r"""
@@ -1023,6 +1024,8 @@ class LoraLoaderMixin:
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
+            controlnet (`bool`, *optional*, defaults to False):
+                If we're convert a ControlNet LoRA checkpoint.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
@@ -1134,20 +1137,21 @@ class LoraLoaderMixin:
             state_dict = pretrained_model_name_or_path_or_dict
 
         network_alphas = None
-        if all(
-            (
-                k.startswith("lora_te_")
-                or k.startswith("lora_unet_")
-                or k.startswith("lora_te1_")
-                or k.startswith("lora_te2_")
-            )
-            for k in state_dict.keys()
-        ):
-            # Map SDXL blocks correctly.
-            if unet_config is not None:
-                # use unet config to remap block numbers
-                state_dict = cls._maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
-            state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
+        if not controlnet:
+            if all(
+                (
+                    k.startswith("lora_te_")
+                    or k.startswith("lora_unet_")
+                    or k.startswith("lora_te1_")
+                    or k.startswith("lora_te2_")
+                )
+                for k in state_dict.keys()
+            ):
+                # Map SDXL blocks correctly.
+                if unet_config is not None:
+                    # use unet config to remap block numbers
+                    state_dict = cls._maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
+                state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
 
@@ -2512,4 +2516,26 @@ class FromOriginalControlnetMixin:
 
 class ControlNetLoaderMixin(LoraLoaderMixin):
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict, **kwargs):
-        pass
+        from .pipelines.stable_diffusion.convert_from_ckpt import convert_ldm_unet_checkpoint
+
+        state_dict, _ = self.lora_state_dict(pretrained_model_name_or_path_or_dict, controlnet=True, **kwargs)
+        controlnet_config = kwargs.pop("controlnet_config", None)
+        if controlnet_config is None:
+            raise ("Must provide a `controlnet_config`.")
+
+        # ControlNet LoRA has a mix of things. Some parameters correspond to LoRA and some correspond
+        # to the ones belonging to the original state_dict (initialized from the underlying UNet).
+        # So, we first map the LoRA parameters and then we load the remaining state_dict into
+        # the ControlNet.
+        converted_state_dict = convert_ldm_unet_checkpoint(
+            state_dict, controlnet=True, config=controlnet_config, skip_extract_state_dict=True, controlnet_lora=True
+        )
+
+        # Load whatever is matching.
+        load_state_dict_results = self.controlnet.load_state_dict(converted_state_dict, strict=False)
+        if not all("lora" in k for k in load_state_dict_results.unexpected_keys):
+            raise ValueError(
+                f"The unexpected keys must only belong to LoRA parameters at this point: {load_state_dict_results.unexpected_keys}"
+            )
+
+        # Handle LoRA.
