@@ -137,6 +137,7 @@ class Blip2VisionEmbeddings(nn.Module):
         embeddings = embeddings + self.position_embedding[:, : embeddings.size(1), :].to(target_dtype)
         return embeddings
 
+# The Qformer encoder, which takes the visual embeddings, and the text input, to get multimodal embeddings
 class Blip2QFormerEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -241,7 +242,7 @@ class Blip2QFormerEncoder(nn.Module):
 
 
 
-
+# The layers making up the Qformer encoder
 class Blip2QFormerLayer(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()
@@ -345,7 +346,7 @@ class Blip2QFormerLayer(nn.Module):
         return layer_output
 
 
-    
+# ProjLayer used to project the multimodal Blip2 embeddings to be used in the text encoder 
 class ProjLayer(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim, drop_p=0.1, eps=1e-12):
         super().__init__()
@@ -432,7 +433,7 @@ class Blip2VisionModel(Blip2PreTrainedModel):
     def get_input_embeddings(self):
         return self.embeddings
 
-
+# Qformer model, used to get multimodal embeddings from the text and image inputs
 class Blip2QFormerModel(Blip2PreTrainedModel):
     """
     Querying Transformer (Q-Former), used in BLIP-2.
@@ -444,8 +445,6 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         self.embeddings = Blip2TextEmbeddings(config.qformer_config)
         self.visual_encoder = Blip2VisionModel(config.vision_config)
         self.query_tokens = nn.Parameter(torch.zeros(1, config.num_query_tokens, config.qformer_config.hidden_size))
-        # self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        # self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", truncation_side="right")
         self.tokenizer.add_special_tokens({"bos_token": "[DEC]"})
         self.proj_layer =  ProjLayer(
