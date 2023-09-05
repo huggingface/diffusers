@@ -404,7 +404,7 @@ class UNet2DConditionLoadersMixin:
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
                 if temp == 0:
-                    print(f"Value dict: {value_dict}")
+                    print(f"Value dict: {value_dict.keys()}")
                 rank = value_dict["lora.down.weight"].shape[0]
 
                 if isinstance(attn_processor, LoRACompatibleConv):
