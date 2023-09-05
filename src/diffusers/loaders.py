@@ -2589,7 +2589,6 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
                     rank,
                 )
             else:
-                print(type(attn_processor), attn_processor.__class__.__name__)
                 raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
 
             value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
