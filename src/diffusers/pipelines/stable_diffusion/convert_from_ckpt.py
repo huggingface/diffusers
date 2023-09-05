@@ -444,10 +444,18 @@ def convert_ldm_unet_checkpoint(
         raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
 
     if config["addition_embed_type"] == "text_time":
-        new_checkpoint["add_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
-        new_checkpoint["add_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
-        new_checkpoint["add_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
-        new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
+        if not controlnet_lora:
+            new_checkpoint["add_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
+            new_checkpoint["add_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
+            new_checkpoint["add_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
+            new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
+        else:
+            new_checkpoint["add_embedding.linear_1.lora_down.weight"] = unet_state_dict["label_emb.0.0.down"]
+            new_checkpoint["add_embedding.linear_1.lora_up.weight"] = unet_state_dict["label_emb.0.0.up"]
+            new_checkpoint["add_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
+            new_checkpoint["add_embedding.linear_2.lora_down.weight"] = unet_state_dict["label_emb.0.2.down"]
+            new_checkpoint["add_embedding.linear_2.lora_up.weight"] = unet_state_dict["label_emb.0.2.up"]
+            new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
 
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
