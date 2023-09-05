@@ -557,7 +557,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         dtype, device = self.text_encoder.dtype, self.text_encoder.device
         self.text_encoder = self.text_encoder.__class__.from_pretrained(
-            self._name_or_path, num_hidden_layers=output_layer_idx, torch_dtype=dtype
+            self.text_encoder.config._name_or_path, num_hidden_layers=output_layer_idx, torch_dtype=dtype
         ).to(device)
         self.text_encoder_output_layer_idx = output_layer_idx
 
