@@ -2534,7 +2534,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         )
 
         # Load whatever is matching.
-        load_state_dict_results = self.controlnet.load_state_dict(converted_state_dict, strict=False)
+        load_state_dict_results = self.load_state_dict(converted_state_dict, strict=False)
         if not all("lora" in k for k in load_state_dict_results.unexpected_keys):
             raise ValueError(
                 f"The unexpected keys must only belong to LoRA parameters at this point: {load_state_dict_results.unexpected_keys}"
@@ -2598,7 +2598,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
                 target_module.set_lora_layer(lora_layer)
 
     def unload_lora_weights(self):
-        for _, module in self.controlnet.named_modules():
+        for _, module in self.named_modules():
             if hasattr(module, "set_lora_layer"):
                 module.set_lora_layer(None)
 
