@@ -348,6 +348,8 @@ class PipelineTesterMixin:
             if v.default != inspect._empty:
                 optional_parameters.add(k)
 
+        breakpoint()
+
         parameters = set(parameters.keys())
         parameters.remove("self")
         parameters.discard("kwargs")  # kwargs can be added if arguments of pipeline call function are deprecated

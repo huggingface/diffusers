@@ -90,10 +90,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         )
         self.register_to_config(latent_dim_scale=latent_dim_scale)
 
-    def prepare_latents(self, shape, dtype, device, generator, latents):
-        """
-        Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
-        """
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
+    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -101,6 +99,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
+        latents = latents * scheduler.init_noise_sigma
         return latents
 
     def enable_model_cpu_offload(self, gpu_id=0):
@@ -133,16 +132,13 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         self.final_offload_hook = hook
 
     def _encode_prompt(
-            self, 
-            prompt,
-            device, 
-            num_images_per_prompt, 
-            do_classifier_free_guidance, 
-            negative_prompt=None,
-        ):
-        """
-        Copied and adjusted from diffusers.pipelines.kandinsky.pipeline_kandinsky._encode_prompt
-        """
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
+    ):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -219,30 +215,28 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         return text_encoder_hidden_states
 
     def check_inputs(
-        self, 
-        image_embeddings, 
-        prompt, 
-        num_inference_steps, 
-        do_classifier_free_guidance, 
-        device, 
+        self,
+        image_embeddings,
+        prompt,
+        num_inference_steps,
+        do_classifier_free_guidance,
+        device,
         dtype,
     ):
         if not isinstance(prompt, list):
             if isinstance(prompt, str):
                 prompt = [prompt]
             else:
-                raise TypeError(
-                    f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}."
-                )
+                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
+        if isinstance(image_embeddings, list):
+            image_embeddings = torch.cat(image_embeddings, dim=0)
         if isinstance(image_embeddings, np.ndarray):
-            image_embeddings = torch.Tensor(image_embeddings, device=device).to(
-                dtype=dtype
-            )
+            image_embeddings = torch.Tensor(image_embeddings, device=device).to(dtype=dtype)
         if not isinstance(image_embeddings, torch.Tensor):
             raise TypeError(
                 f"'image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(image_embeddings)}."
             )
-        
+
         if isinstance(num_inference_steps, int):
             num_inference_steps = {0.0: num_inference_steps}
 
@@ -254,7 +248,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         return image_embeddings, prompt, num_inference_steps
 
     @torch.no_grad()
-    # @replace_example_docstring(EXAMPLE_DOC_STRING)
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         image_embeddings: Union[torch.FloatTensor, List[torch.FloatTensor]],
@@ -268,7 +262,17 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
-        
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+
+        Examples:
+
+        Returns:
+
+        """
+
         # 0. Define commonly used variables
         device = self._execution_device
         dtype = self.decoder.dtype
@@ -294,7 +298,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latents
-        latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents)
+        latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents, self.scheduler)
 
         # 6. Run denoising loop
         for t in self.progress_bar(timesteps[:-1]):
@@ -328,7 +332,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         # 10. Scale and decode the image latents with vq-vae
         latents = self.vqgan.config.scale_factor * latents
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
-        
+
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
 

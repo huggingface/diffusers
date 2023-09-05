@@ -111,6 +111,9 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         self.s = torch.tensor([s])
         self._init_alpha_cumprod = torch.cos(self.s / (1 + self.s) * torch.pi * 0.5) ** 2
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
     def _alpha_cumprod(self, t, device):
         if self.scaler > 1:
             t = 1 - (1 - t) ** self.scaler

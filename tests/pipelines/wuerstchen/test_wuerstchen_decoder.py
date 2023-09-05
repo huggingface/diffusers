@@ -33,10 +33,10 @@ enable_full_determinism()
 class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = WuerstchenDecoderPipeline
     params = ["prompt"]
-    batch_params = ["image_embeds", "prompt", "negative_prompt"]
+    batch_params = ["image_embeddings", "prompt", "negative_prompt"]
     required_optional_params = [
         "num_images_per_prompt",
-        "generator",
+        "decoder",
         "num_inference_steps",
         "latents",
         "negative_prompt",
@@ -96,7 +96,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         return model.eval()
 
     @property
-    def dummy_generator(self):
+    def dummy_decoder(self):
         torch.manual_seed(0)
 
         model_kwargs = {
@@ -113,7 +113,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         return model.eval()
 
     def get_dummy_components(self):
-        generator = self.dummy_generator
+        decoder = self.dummy_decoder
         text_encoder = self.dummy_text_encoder
         tokenizer = self.dummy_tokenizer
         vqgan = self.dummy_vqgan
@@ -121,7 +121,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         scheduler = DDPMWuerstchenScheduler()
 
         components = {
-            "generator": generator,
+            "decoder": decoder,
             "vqgan": vqgan,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
@@ -136,7 +136,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "image_embeds": torch.ones((1, 16, 10, 10), device=device),
+            "image_embeddings": torch.ones((1, 16, 10, 10), device=device),
             "prompt": "horse",
             "generator": generator,
             "guidance_scale": 1.0,

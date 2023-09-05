@@ -21,7 +21,14 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import BaseOutput, is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import (
+    BaseOutput,
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_wuerstchen_prior import WuerstchenPrior
 
@@ -94,7 +101,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             prior=prior,
             scheduler=scheduler,
         )
-        self.register_to_config(latent_mean=latent_mean, latent_std=latent_std, resolution_multiple=resolution_multiple)
+        self.register_to_config(
+            latent_mean=latent_mean, latent_std=latent_std, resolution_multiple=resolution_multiple
+        )
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -125,10 +134,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         self.final_offload_hook = hook
 
-    def prepare_latents(self, shape, dtype, device, generator, latents):
-        """
-        Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
-        """
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
+    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -136,6 +143,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
+        latents = latents * scheduler.init_noise_sigma
         return latents
 
     def _encode_prompt(
@@ -146,9 +154,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         do_classifier_free_guidance,
         negative_prompt=None,
     ):
-        """
-        Copied and adjusted from diffusers.pipelines.kandinsky.pipeline_kandinsky._encode_prompt
-        """
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -223,21 +228,19 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             text_encoder_hidden_states = torch.cat([text_encoder_hidden_states, uncond_text_encoder_hidden_states])
 
         return text_encoder_hidden_states
-    
+
     def check_inputs(
-        self, 
-        prompt, 
-        num_inference_steps, 
+        self,
+        prompt,
+        num_inference_steps,
         batch_size,
     ):
         if not isinstance(prompt, list):
             if isinstance(prompt, str):
                 prompt = [prompt]
             else:
-                raise TypeError(
-                    f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}."
-                )
-        
+                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
+
         if isinstance(num_inference_steps, int):
             num_inference_steps = {0.0: num_inference_steps}
 
@@ -245,13 +248,13 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             raise TypeError(
                 f"'num_inference_steps' must be of type 'int' or 'dict', but got {type(num_inference_steps)}."
             )
-        
+
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         return prompt, num_inference_steps, batch_size
 
     @torch.no_grad()
-    # @replace_example_docstring(EXAMPLE_DOC_STRING)
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -266,14 +269,24 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
     ):
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+
+        Examples:
+
+        Returns:
+
+        """
+
         # 0. Define commonly used variables
         device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
+        batch_size = len(prompt) if isinstance(prompt, list) else 1
 
-         # 1. Check inputs. Raise error if not correct
-        prompt, num_inference_steps, batch_size = self.check_inputs(
-            prompt, num_inference_steps, batch_size
-        )
+        # 1. Check inputs. Raise error if not correct
+        prompt, num_inference_steps, batch_size = self.check_inputs(prompt, num_inference_steps, batch_size)
 
         # 2. Encode caption
         text_encoder_hidden_states = self._encode_prompt(
@@ -292,7 +305,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latents
-        latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents)
+        latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents, self.scheduler)
 
         # 6. Run denoising loop
         for t in self.progress_bar(timesteps[:-1]):
