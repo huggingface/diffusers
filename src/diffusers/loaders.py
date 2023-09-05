@@ -137,7 +137,6 @@ class PatchedLoraProjection(nn.Module):
         self.w_down = None
 
     def forward(self, input):
-        # print(f"{self.__class__.__name__} has a lora_scale of {self.lora_scale}")
         if self.lora_scale is None:
             self.lora_scale = 1.0
         if self.lora_linear_layer is None:
@@ -1012,14 +1011,6 @@ class LoraLoaderMixin:
     ):
         r"""
         Return state dict for lora weights and the network alphas.
-
-        <Tip warning={true}>
-
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
-
-        </Tip>
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
@@ -2517,3 +2508,8 @@ class FromOriginalControlnetMixin:
             controlnet.to(torch_dtype=torch_dtype)
 
         return controlnet
+
+
+class ControlNetLoaderMixin(LoraLoaderMixin):
+    def load_lora_weights(self, pretrained_model_name_or_path_or_dict, **kwargs):
+        pass
