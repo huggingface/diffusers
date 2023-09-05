@@ -1286,7 +1286,7 @@ class LoraLoaderMixin:
             orig_index += 2
 
         # down blocks
-        for i in range(num_input_blocks + 1):
+        for i in input_block_ids:
             new_state_dict[f"controlnet_down_blocks.{i}.weight"] = state_dict.pop(f"zero_convs.{i}.0.weight")
             new_state_dict[f"controlnet_down_blocks.{i}.bias"] = state_dict.pop(f"zero_convs.{i}.0.bias")
 
