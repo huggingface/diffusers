@@ -1201,20 +1201,18 @@ class LoraLoaderMixin:
 
         print(input_block_ids, middle_block_ids)
         
-        num_input_blocks = len({".".join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "input_blocks" in layer and not(re.match(indirect_patterns[0], layer) and re.match(indirect_patterns[1], layer))})
         input_blocks = {
             layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
-            for layer_id in range(num_input_blocks)
+            for layer_id in input_block_ids
         }
-        num_middle_blocks = len({".".join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "middle_block" in layer})
         middle_blocks = {
             layer_id: [key for key in state_dict if f"middle_block{delimiter}{layer_id}" in key]
-            for layer_id in range(num_middle_blocks)
+            for layer_id in middle_block_ids
         }
         print(len(input_blocks), len(middle_blocks))
 
         # Rename keys accordingly
-        for i in range(1, num_input_blocks):
+        for i in input_block_ids:
             block_id = (i - 1) // (model_config.layers_per_block + 1)
             layer_in_block_id = (i - 1) % (model_config.layers_per_block + 1)
 
@@ -1238,7 +1236,7 @@ class LoraLoaderMixin:
 
                 new_state_dict[new_key] = state_dict.pop(key)
 
-        for i in range(num_middle_blocks - 1):
+        for i in middle_block_ids:
             key_part = None
             if i == 0:
                 key_part = [inner_block_map[0], "0"]
