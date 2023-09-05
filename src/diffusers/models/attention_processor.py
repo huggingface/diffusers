@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from importlib import import_module
 from typing import Callable, Optional, Union
 
 import torch
@@ -19,7 +20,7 @@ from torch import nn
 
 from ..utils import deprecate, logging, maybe_allow_in_graph
 from ..utils.import_utils import is_xformers_available
-from .lora import LoRALinearLayer
+from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -73,8 +74,8 @@ class Attention(nn.Module):
         processor: Optional["AttnProcessor"] = None,
     ):
         super().__init__()
-        inner_dim = dim_head * heads
-        cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
+        self.inner_dim = dim_head * heads
+        self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
         self.rescale_output_factor = rescale_output_factor
@@ -115,7 +116,7 @@ class Attention(nn.Module):
         if cross_attention_norm is None:
             self.norm_cross = None
         elif cross_attention_norm == "layer_norm":
-            self.norm_cross = nn.LayerNorm(cross_attention_dim)
+            self.norm_cross = nn.LayerNorm(self.cross_attention_dim)
         elif cross_attention_norm == "group_norm":
             if self.added_kv_proj_dim is not None:
                 # The given `encoder_hidden_states` are initially of shape
@@ -125,7 +126,7 @@ class Attention(nn.Module):
                 # the number of channels for the group norm.
                 norm_cross_num_channels = added_kv_proj_dim
             else:
-                norm_cross_num_channels = cross_attention_dim
+                norm_cross_num_channels = self.cross_attention_dim
 
             self.norm_cross = nn.GroupNorm(
                 num_channels=norm_cross_num_channels, num_groups=cross_attention_norm_num_groups, eps=1e-5, affine=True
@@ -135,22 +136,22 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
+        self.to_q = LoRACompatibleLinear(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
-            self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+            self.to_k = LoRACompatibleLinear(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_v = LoRACompatibleLinear(self.cross_attention_dim, self.inner_dim, bias=bias)
         else:
             self.to_k = None
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = nn.Linear(added_kv_proj_dim, inner_dim)
-            self.add_v_proj = nn.Linear(added_kv_proj_dim, inner_dim)
+            self.add_k_proj = LoRACompatibleLinear(added_kv_proj_dim, self.inner_dim)
+            self.add_v_proj = LoRACompatibleLinear(added_kv_proj_dim, self.inner_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(inner_dim, query_dim, bias=out_bias))
+        self.to_out.append(LoRACompatibleLinear(self.inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -303,6 +304,22 @@ class Attention(nn.Module):
         self.set_processor(processor)
 
     def set_processor(self, processor: "AttnProcessor"):
+        if (
+            hasattr(self, "processor")
+            and not isinstance(processor, LORA_ATTENTION_PROCESSORS)
+            and self.to_q.lora_layer is not None
+        ):
+            deprecate(
+                "set_processor to offload LoRA",
+                "0.26.0",
+                "In detail, removing LoRA layers via calling `set_processor` or `set_default_attn_processor` is deprecated. Please make sure to call `pipe.unload_lora_weights()` instead.",
+            )
+            # TODO(Patrick, Sayak) - this can be deprecated once PEFT LoRA integration is complete
+            # We need to remove all LoRA layers
+            for module in self.modules():
+                if hasattr(module, "set_lora_layer"):
+                    module.set_lora_layer(None)
+
         # if current processor is in `self._modules` and if passed `processor` is not, we need to
         # pop `processor` from `self._modules`
         if (
@@ -314,6 +331,86 @@ class Attention(nn.Module):
             self._modules.pop("processor")
 
         self.processor = processor
+
+    def get_processor(self, return_deprecated_lora: bool = False) -> "AttentionProcessor":
+        if not return_deprecated_lora:
+            return self.processor
+
+        # TODO(Sayak, Patrick). The rest of the function is needed to ensure backwards compatible
+        # serialization format for LoRA Attention Processors. It should be deleted once the integration
+        # with PEFT is completed.
+        is_lora_activated = {
+            name: module.lora_layer is not None
+            for name, module in self.named_modules()
+            if hasattr(module, "lora_layer")
+        }
+
+        # 1. if no layer has a LoRA activated we can return the processor as usual
+        if not any(is_lora_activated.values()):
+            return self.processor
+
+        # If doesn't apply LoRA do `add_k_proj` or `add_v_proj`
+        is_lora_activated.pop("add_k_proj", None)
+        is_lora_activated.pop("add_v_proj", None)
+        # 2. else it is not posssible that only some layers have LoRA activated
+        if not all(is_lora_activated.values()):
+            raise ValueError(
+                f"Make sure that either all layers or no layers have LoRA activated, but have {is_lora_activated}"
+            )
+
+        # 3. And we need to merge the current LoRA layers into the corresponding LoRA attention processor
+        non_lora_processor_cls_name = self.processor.__class__.__name__
+        lora_processor_cls = getattr(import_module(__name__), "LoRA" + non_lora_processor_cls_name)
+
+        hidden_size = self.inner_dim
+
+        # now create a LoRA attention processor from the LoRA layers
+        if lora_processor_cls in [LoRAAttnProcessor, LoRAAttnProcessor2_0, LoRAXFormersAttnProcessor]:
+            kwargs = {
+                "cross_attention_dim": self.cross_attention_dim,
+                "rank": self.to_q.lora_layer.rank,
+                "network_alpha": self.to_q.lora_layer.network_alpha,
+                "q_rank": self.to_q.lora_layer.rank,
+                "q_hidden_size": self.to_q.lora_layer.out_features,
+                "k_rank": self.to_k.lora_layer.rank,
+                "k_hidden_size": self.to_k.lora_layer.out_features,
+                "v_rank": self.to_v.lora_layer.rank,
+                "v_hidden_size": self.to_v.lora_layer.out_features,
+                "out_rank": self.to_out[0].lora_layer.rank,
+                "out_hidden_size": self.to_out[0].lora_layer.out_features,
+            }
+
+            if hasattr(self.processor, "attention_op"):
+                kwargs["attention_op"] = self.prcoessor.attention_op
+
+            lora_processor = lora_processor_cls(hidden_size, **kwargs)
+            lora_processor.to_q_lora.load_state_dict(self.to_q.lora_layer.state_dict())
+            lora_processor.to_k_lora.load_state_dict(self.to_k.lora_layer.state_dict())
+            lora_processor.to_v_lora.load_state_dict(self.to_v.lora_layer.state_dict())
+            lora_processor.to_out_lora.load_state_dict(self.to_out[0].lora_layer.state_dict())
+        elif lora_processor_cls == LoRAAttnAddedKVProcessor:
+            lora_processor = lora_processor_cls(
+                hidden_size,
+                cross_attention_dim=self.add_k_proj.weight.shape[0],
+                rank=self.to_q.lora_layer.rank,
+                network_alpha=self.to_q.lora_layer.network_alpha,
+            )
+            lora_processor.to_q_lora.load_state_dict(self.to_q.lora_layer.state_dict())
+            lora_processor.to_k_lora.load_state_dict(self.to_k.lora_layer.state_dict())
+            lora_processor.to_v_lora.load_state_dict(self.to_v.lora_layer.state_dict())
+            lora_processor.to_out_lora.load_state_dict(self.to_out[0].lora_layer.state_dict())
+
+            # only save if used
+            if self.add_k_proj.lora_layer is not None:
+                lora_processor.add_k_proj_lora.load_state_dict(self.add_k_proj.lora_layer.state_dict())
+                lora_processor.add_v_proj_lora.load_state_dict(self.add_v_proj.lora_layer.state_dict())
+            else:
+                lora_processor.add_k_proj_lora = None
+                lora_processor.add_v_proj_lora = None
+        else:
+            raise ValueError(f"{lora_processor_cls} does not exist.")
+
+        return lora_processor
 
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
         # The `Attention` class can call different attention processors / attention functions
@@ -383,7 +480,7 @@ class Attention(nn.Module):
         if batch_size is None:
             deprecate(
                 "batch_size=None",
-                "0.0.15",
+                "0.22.0",
                 (
                     "Not passing the `batch_size` parameter to `prepare_attention_mask` can lead to incorrect"
                     " attention mask preparation and is deprecated behavior. Please make sure to pass `batch_size` to"
@@ -452,6 +549,7 @@ class AttnProcessor:
         encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
+        scale=1.0,
     ):
         residual = hidden_states
 
@@ -472,15 +570,15 @@ class AttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
@@ -491,105 +589,7 @@ class AttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class LoRAAttnProcessor(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism.
-
-    Args:
-        hidden_size (`int`, *optional*):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-    """
-
-    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None, **kwargs):
-        super().__init__()
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-        self.rank = rank
-
-        q_rank = kwargs.pop("q_rank", None)
-        q_hidden_size = kwargs.pop("q_hidden_size", None)
-        q_rank = q_rank if q_rank is not None else rank
-        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
-
-        v_rank = kwargs.pop("v_rank", None)
-        v_hidden_size = kwargs.pop("v_hidden_size", None)
-        v_rank = v_rank if v_rank is not None else rank
-        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
-
-        out_rank = kwargs.pop("out_rank", None)
-        out_hidden_size = kwargs.pop("out_hidden_size", None)
-        out_rank = out_rank if out_rank is not None else rank
-        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
-
-        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
-
-    def __call__(
-        self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
-    ):
-        residual = hidden_states
-
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
-        query = attn.head_to_batch_dim(query)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
-
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
-
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -708,7 +708,7 @@ class AttnAddedKVProcessor:
     encoder.
     """
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
@@ -722,17 +722,17 @@ class AttnAddedKVProcessor:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states)
+        query = attn.to_q(hidden_states, scale=scale)
         query = attn.head_to_batch_dim(query)
 
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states, scale=scale)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states, scale=scale)
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states)
-            value = attn.to_v(hidden_states)
+            key = attn.to_k(hidden_states, scale=scale)
+            value = attn.to_v(hidden_states, scale=scale)
             key = attn.head_to_batch_dim(key)
             value = attn.head_to_batch_dim(value)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
@@ -746,7 +746,7 @@ class AttnAddedKVProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -768,7 +768,7 @@ class AttnAddedKVProcessor2_0:
                 "AttnAddedKVProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
             )
 
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
@@ -782,7 +782,7 @@ class AttnAddedKVProcessor2_0:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states)
+        query = attn.to_q(hidden_states, scale=scale)
         query = attn.head_to_batch_dim(query, out_dim=4)
 
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
@@ -791,8 +791,8 @@ class AttnAddedKVProcessor2_0:
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj, out_dim=4)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states)
-            value = attn.to_v(hidden_states)
+            key = attn.to_k(hidden_states, scale=scale)
+            value = attn.to_v(hidden_states, scale=scale)
             key = attn.head_to_batch_dim(key, out_dim=4)
             value = attn.head_to_batch_dim(value, out_dim=4)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
@@ -809,88 +809,7 @@ class AttnAddedKVProcessor2_0:
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, residual.shape[1])
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
-        hidden_states = hidden_states + residual
-
-        return hidden_states
-
-
-class LoRAAttnAddedKVProcessor(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism with extra learnable key and value matrices for the text
-    encoder.
-
-    Args:
-        hidden_size (`int`, *optional*):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*, defaults to `None`):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-
-    """
-
-    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
-        super().__init__()
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-        self.rank = rank
-
-        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
-        self.add_k_proj_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.add_v_proj_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_k_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
-
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
-        residual = hidden_states
-        hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
-        batch_size, sequence_length, _ = hidden_states.shape
-
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
-        query = attn.head_to_batch_dim(query)
-
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states) + scale * self.add_k_proj_lora(
-            encoder_hidden_states
-        )
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states) + scale * self.add_v_proj_lora(
-            encoder_hidden_states
-        )
-        encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
-        encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
-
-        if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states) + scale * self.to_k_lora(hidden_states)
-            value = attn.to_v(hidden_states) + scale * self.to_v_lora(hidden_states)
-            key = attn.head_to_batch_dim(key)
-            value = attn.head_to_batch_dim(value)
-            key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
-            value = torch.cat([encoder_hidden_states_value_proj, value], dim=1)
-        else:
-            key = encoder_hidden_states_key_proj
-            value = encoder_hidden_states_value_proj
-
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -987,6 +906,7 @@ class XFormersAttnProcessor:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
+        scale: float = 1.0,
     ):
         residual = hidden_states
 
@@ -1017,15 +937,15 @@ class XFormersAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         query = attn.head_to_batch_dim(query).contiguous()
         key = attn.head_to_batch_dim(key).contiguous()
@@ -1038,7 +958,7 @@ class XFormersAttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1069,6 +989,7 @@ class AttnProcessor2_0:
         encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
+        scale: float = 1.0,
     ):
         residual = hidden_states
 
@@ -1094,15 +1015,15 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -1122,227 +1043,7 @@ class AttnProcessor2_0:
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class LoRAXFormersAttnProcessor(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism with memory efficient attention using xFormers.
-
-    Args:
-        hidden_size (`int`, *optional*):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        attention_op (`Callable`, *optional*, defaults to `None`):
-            The base
-            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
-            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
-            operator.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-
-    """
-
-    def __init__(
-        self,
-        hidden_size,
-        cross_attention_dim,
-        rank=4,
-        attention_op: Optional[Callable] = None,
-        network_alpha=None,
-        **kwargs,
-    ):
-        super().__init__()
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-        self.rank = rank
-        self.attention_op = attention_op
-
-        q_rank = kwargs.pop("q_rank", None)
-        q_hidden_size = kwargs.pop("q_hidden_size", None)
-        q_rank = q_rank if q_rank is not None else rank
-        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
-
-        v_rank = kwargs.pop("v_rank", None)
-        v_hidden_size = kwargs.pop("v_hidden_size", None)
-        v_rank = v_rank if v_rank is not None else rank
-        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
-
-        out_rank = kwargs.pop("out_rank", None)
-        out_hidden_size = kwargs.pop("out_hidden_size", None)
-        out_rank = out_rank if out_rank is not None else rank
-        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
-
-        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
-
-    def __call__(
-        self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0, temb=None
-    ):
-        residual = hidden_states
-
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
-        query = attn.head_to_batch_dim(query).contiguous()
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
-
-        key = attn.head_to_batch_dim(key).contiguous()
-        value = attn.head_to_batch_dim(value).contiguous()
-
-        hidden_states = xformers.ops.memory_efficient_attention(
-            query, key, value, attn_bias=attention_mask, op=self.attention_op, scale=attn.scale
-        )
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class LoRAAttnProcessor2_0(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism using PyTorch 2.0's memory-efficient scaled dot-product
-    attention.
-
-    Args:
-        hidden_size (`int`):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-    """
-
-    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None, **kwargs):
-        super().__init__()
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-        self.rank = rank
-
-        q_rank = kwargs.pop("q_rank", None)
-        q_hidden_size = kwargs.pop("q_hidden_size", None)
-        q_rank = q_rank if q_rank is not None else rank
-        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
-
-        v_rank = kwargs.pop("v_rank", None)
-        v_hidden_size = kwargs.pop("v_hidden_size", None)
-        v_rank = v_rank if v_rank is not None else rank
-        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
-
-        out_rank = kwargs.pop("out_rank", None)
-        out_hidden_size = kwargs.pop("out_hidden_size", None)
-        out_rank = out_rank if out_rank is not None else rank
-        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
-
-        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
-        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
-        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
-        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
-
-    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
-        residual = hidden_states
-
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-        inner_dim = hidden_states.shape[-1]
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states) + scale * self.to_q_lora(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states) + scale * self.to_k_lora(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states) + scale * self.to_v_lora(encoder_hidden_states)
-
-        head_dim = inner_dim // attn.heads
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states) + scale * self.to_out_lora(hidden_states)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1632,31 +1333,6 @@ class SlicedAttnAddedKVProcessor:
         return hidden_states
 
 
-AttentionProcessor = Union[
-    AttnProcessor,
-    AttnProcessor2_0,
-    XFormersAttnProcessor,
-    SlicedAttnProcessor,
-    AttnAddedKVProcessor,
-    SlicedAttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    XFormersAttnAddedKVProcessor,
-    LoRAAttnProcessor,
-    LoRAXFormersAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRAAttnAddedKVProcessor,
-    CustomDiffusionAttnProcessor,
-    CustomDiffusionXFormersAttnProcessor,
-]
-
-LORA_ATTENTION_PROCESSORS = (
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
-    LoRAAttnAddedKVProcessor,
-)
-
-
 class SpatialNorm(nn.Module):
     """
     Spatially conditioned normalization as defined in https://arxiv.org/abs/2209.09002
@@ -1678,3 +1354,305 @@ class SpatialNorm(nn.Module):
         norm_f = self.norm_layer(f)
         new_f = norm_f * self.conv_y(zq) + self.conv_b(zq)
         return new_f
+
+
+## Deprecated
+class LoRAAttnProcessor(nn.Module):
+    r"""
+    Processor for implementing the LoRA attention mechanism.
+
+    Args:
+        hidden_size (`int`, *optional*):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
+    """
+
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None, **kwargs):
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.rank = rank
+
+        q_rank = kwargs.pop("q_rank", None)
+        q_hidden_size = kwargs.pop("q_hidden_size", None)
+        q_rank = q_rank if q_rank is not None else rank
+        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
+
+        v_rank = kwargs.pop("v_rank", None)
+        v_hidden_size = kwargs.pop("v_hidden_size", None)
+        v_rank = v_rank if v_rank is not None else rank
+        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
+
+        out_rank = kwargs.pop("out_rank", None)
+        out_hidden_size = kwargs.pop("out_hidden_size", None)
+        out_rank = out_rank if out_rank is not None else rank
+        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
+
+        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
+
+    def __call__(self, attn: Attention, hidden_states, *args, **kwargs):
+        self_cls_name = self.__class__.__name__
+        deprecate(
+            self_cls_name,
+            "0.26.0",
+            (
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
+            ),
+        )
+        attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
+        attn.to_k.lora_layer = self.to_k_lora.to(hidden_states.device)
+        attn.to_v.lora_layer = self.to_v_lora.to(hidden_states.device)
+        attn.to_out[0].lora_layer = self.to_out_lora.to(hidden_states.device)
+
+        attn._modules.pop("processor")
+        attn.processor = AttnProcessor()
+        return attn.processor(attn, hidden_states, *args, **kwargs)
+
+
+class LoRAAttnProcessor2_0(nn.Module):
+    r"""
+    Processor for implementing the LoRA attention mechanism using PyTorch 2.0's memory-efficient scaled dot-product
+    attention.
+
+    Args:
+        hidden_size (`int`):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
+    """
+
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None, **kwargs):
+        super().__init__()
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.rank = rank
+
+        q_rank = kwargs.pop("q_rank", None)
+        q_hidden_size = kwargs.pop("q_hidden_size", None)
+        q_rank = q_rank if q_rank is not None else rank
+        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
+
+        v_rank = kwargs.pop("v_rank", None)
+        v_hidden_size = kwargs.pop("v_hidden_size", None)
+        v_rank = v_rank if v_rank is not None else rank
+        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
+
+        out_rank = kwargs.pop("out_rank", None)
+        out_hidden_size = kwargs.pop("out_hidden_size", None)
+        out_rank = out_rank if out_rank is not None else rank
+        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
+
+        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
+
+    def __call__(self, attn: Attention, hidden_states, *args, **kwargs):
+        self_cls_name = self.__class__.__name__
+        deprecate(
+            self_cls_name,
+            "0.26.0",
+            (
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
+            ),
+        )
+        attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
+        attn.to_k.lora_layer = self.to_k_lora.to(hidden_states.device)
+        attn.to_v.lora_layer = self.to_v_lora.to(hidden_states.device)
+        attn.to_out[0].lora_layer = self.to_out_lora.to(hidden_states.device)
+
+        attn._modules.pop("processor")
+        attn.processor = AttnProcessor2_0()
+        return attn.processor(attn, hidden_states, *args, **kwargs)
+
+
+class LoRAXFormersAttnProcessor(nn.Module):
+    r"""
+    Processor for implementing the LoRA attention mechanism with memory efficient attention using xFormers.
+
+    Args:
+        hidden_size (`int`, *optional*):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+        attention_op (`Callable`, *optional*, defaults to `None`):
+            The base
+            [operator](https://facebookresearch.github.io/xformers/components/ops.html#xformers.ops.AttentionOpBase) to
+            use as the attention operator. It is recommended to set to `None`, and allow xFormers to choose the best
+            operator.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
+
+    """
+
+    def __init__(
+        self,
+        hidden_size,
+        cross_attention_dim,
+        rank=4,
+        attention_op: Optional[Callable] = None,
+        network_alpha=None,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.rank = rank
+        self.attention_op = attention_op
+
+        q_rank = kwargs.pop("q_rank", None)
+        q_hidden_size = kwargs.pop("q_hidden_size", None)
+        q_rank = q_rank if q_rank is not None else rank
+        q_hidden_size = q_hidden_size if q_hidden_size is not None else hidden_size
+
+        v_rank = kwargs.pop("v_rank", None)
+        v_hidden_size = kwargs.pop("v_hidden_size", None)
+        v_rank = v_rank if v_rank is not None else rank
+        v_hidden_size = v_hidden_size if v_hidden_size is not None else hidden_size
+
+        out_rank = kwargs.pop("out_rank", None)
+        out_hidden_size = kwargs.pop("out_hidden_size", None)
+        out_rank = out_rank if out_rank is not None else rank
+        out_hidden_size = out_hidden_size if out_hidden_size is not None else hidden_size
+
+        self.to_q_lora = LoRALinearLayer(q_hidden_size, q_hidden_size, q_rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
+
+    def __call__(self, attn: Attention, hidden_states, *args, **kwargs):
+        self_cls_name = self.__class__.__name__
+        deprecate(
+            self_cls_name,
+            "0.26.0",
+            (
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
+            ),
+        )
+        attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
+        attn.to_k.lora_layer = self.to_k_lora.to(hidden_states.device)
+        attn.to_v.lora_layer = self.to_v_lora.to(hidden_states.device)
+        attn.to_out[0].lora_layer = self.to_out_lora.to(hidden_states.device)
+
+        attn._modules.pop("processor")
+        attn.processor = XFormersAttnProcessor()
+        return attn.processor(attn, hidden_states, *args, **kwargs)
+
+
+class LoRAAttnAddedKVProcessor(nn.Module):
+    r"""
+    Processor for implementing the LoRA attention mechanism with extra learnable key and value matrices for the text
+    encoder.
+
+    Args:
+        hidden_size (`int`, *optional*):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*, defaults to `None`):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+
+    """
+
+    def __init__(self, hidden_size, cross_attention_dim=None, rank=4, network_alpha=None):
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.rank = rank
+
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.add_k_proj_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.add_v_proj_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+
+    def __call__(self, attn: Attention, hidden_states, *args, **kwargs):
+        self_cls_name = self.__class__.__name__
+        deprecate(
+            self_cls_name,
+            "0.26.0",
+            (
+                f"Make sure use {self_cls_name[4:]} instead by setting"
+                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                " `LoraLoaderMixin.load_lora_weights`"
+            ),
+        )
+        attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
+        attn.to_k.lora_layer = self.to_k_lora.to(hidden_states.device)
+        attn.to_v.lora_layer = self.to_v_lora.to(hidden_states.device)
+        attn.to_out[0].lora_layer = self.to_out_lora.to(hidden_states.device)
+
+        attn._modules.pop("processor")
+        attn.processor = AttnAddedKVProcessor()
+        return attn.processor(attn, hidden_states, *args, **kwargs)
+
+
+LORA_ATTENTION_PROCESSORS = (
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
+)
+
+ADDED_KV_ATTENTION_PROCESSORS = (
+    AttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    XFormersAttnAddedKVProcessor,
+    LoRAAttnAddedKVProcessor,
+)
+
+CROSS_ATTENTION_PROCESSORS = (
+    AttnProcessor,
+    AttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+)
+
+AttentionProcessor = Union[
+    AttnProcessor,
+    AttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    AttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    XFormersAttnAddedKVProcessor,
+    CustomDiffusionAttnProcessor,
+    CustomDiffusionXFormersAttnProcessor,
+    # depraceted
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    LoRAAttnAddedKVProcessor,
+]

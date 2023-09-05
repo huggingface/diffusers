@@ -36,38 +36,48 @@
       title: Push files to the Hub
     title: Loading & Hub
   - sections:
-    - local: using-diffusers/pipeline_overview
-      title: Overview
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
-      title: Text-to-image generation
+      title: Text-to-image
     - local: using-diffusers/img2img
-      title: Text-guided image-to-image
+      title: Image-to-image
     - local: using-diffusers/inpaint
-      title: Text-guided image-inpainting
+      title: Inpainting
     - local: using-diffusers/depth2img
-      title: Text-guided depth-to-image
+      title: Depth-to-image
+    title: Tasks
+  - sections:
     - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
-    - local: using-diffusers/distilled_sd
-      title: Distilled Stable Diffusion inference
     - local: using-diffusers/reusing_seeds
       title: Improve image quality with deterministic generation
     - local: using-diffusers/control_brightness
       title: Control image brightness
+    - local: using-diffusers/weighted_prompts
+      title: Prompt weighting
+    title: Techniques
+  - sections:
+    - local: using-diffusers/pipeline_overview
+      title: Overview
+    - local: using-diffusers/sdxl
+      title: Stable Diffusion XL
+    - local: using-diffusers/controlnet
+      title: ControlNet
+    - local: using-diffusers/shap-e
+      title: Shap-E
+    - local: using-diffusers/diffedit
+      title: DiffEdit
+    - local: using-diffusers/distilled_sd
+      title: Distilled Stable Diffusion inference
     - local: using-diffusers/reproducibility
       title: Create reproducible pipelines
     - local: using-diffusers/custom_pipeline_examples
       title: Community pipelines
     - local: using-diffusers/contribute_pipeline
       title: How to contribute a community pipeline
-    - local: using-diffusers/stable_diffusion_jax_how_to
-      title: Stable Diffusion in JAX/Flax
-    - local: using-diffusers/weighted_prompts
-      title: Prompt weighting
     title: Pipelines for Inference
   - sections:
     - local: training/overview
@@ -105,6 +115,8 @@
     title: Memory and Speed
   - local: optimization/torch2.0
     title: Torch2.0 support
+  - local: using-diffusers/stable_diffusion_jax_how_to
+    title: Stable Diffusion in JAX/Flax
   - local: optimization/xformers
     title: xFormers
   - local: optimization/onnx
@@ -190,6 +202,8 @@
       title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
+    - local: api/pipelines/audioldm2
+      title: AudioLDM 2
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - local: api/pipelines/consistency_models
@@ -222,6 +236,8 @@
       title: Latent Diffusion
     - local: api/pipelines/panorama
       title: MultiDiffusion
+    - local: api/pipelines/musicldm
+      title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: PaintByExample
     - local: api/pipelines/paradigms
