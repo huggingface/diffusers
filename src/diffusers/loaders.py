@@ -2551,9 +2551,8 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         lora_grouped_dict = defaultdict(dict)
         lora_layers_list = []
 
-        all_keys = [k for k in converted_state_dict if "lora" in k]
         temp = 0
-        for key in all_keys:
+        for key in converted_state_dict:
             value = converted_state_dict.pop(key)
             attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
             lora_grouped_dict[attn_processor_key][sub_key] = value
