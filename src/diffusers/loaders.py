@@ -1186,34 +1186,37 @@ class LoraLoaderMixin:
         new_state_dict["conv_in.bias"] = state_dict.pop("input_blocks.0.0.bias")
         new_state_dict["conv_in.lora_up.weight"] = state_dict.pop("input_blocks.0.0.up")
 
-        # Retrieves # of down, mid and up blocks
-        input_block_ids, middle_block_ids = set(), set()
-        for layer in state_dict:
-            if not re.match(indirect_patterns[0], layer) and not re.match(indirect_patterns[1], layer):
-                if "text" not in layer:
-                    layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
-                    if "input_blocks" in layer:
-                        input_block_ids.add(layer_id)
-                    elif "middle_block" in layer:
-                        middle_block_ids.add(layer_id)
-                    else:
-                        raise ValueError("Checkpoint not supported")
+        # # Retrieves # of down, mid and up blocks
+        # input_block_ids, middle_block_ids = set(), set()
+        # for layer in state_dict:
+        #     if not re.match(indirect_patterns[0], layer) and not re.match(indirect_patterns[1], layer):
+        #         if "text" not in layer:
+        #             layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
+        #             if "input_blocks" in layer:
+        #                 input_block_ids.add(layer_id)
+        #             elif "middle_block" in layer:
+        #                 middle_block_ids.add(layer_id)
+        #             else:
+        #                 raise ValueError("Checkpoint not supported")
 
         print("Input blocks:\n")
-        ib = {".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer}
+        ib = {".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer and not(re.match(indirect_patterns[0], layer) and re.match(indirect_patterns[1], layer))}
         print(ib, len(ib))
-        num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer})
+        
+        num_input_blocks = len({".".join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "input_blocks" in layer and not(re.match(indirect_patterns[0], layer) and re.match(indirect_patterns[1], layer))})
         input_blocks = {
             layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
-            for layer_id in input_block_ids
+            for layer_id in range(num_input_blocks)
         }
+        num_middle_blocks = len({".".join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "middle_block" in layer})
         middle_blocks = {
             layer_id: [key for key in state_dict if f"middle_block{delimiter}{layer_id}" in key]
-            for layer_id in middle_block_ids
+            for layer_id in range(num_middle_blocks)
         }
+        print(len(input_blocks), len(middle_blocks))
 
         # Rename keys accordingly
-        for i in input_block_ids:
+        for i in range(1, num_input_blocks):
             block_id = (i - 1) // (model_config.layers_per_block + 1)
             layer_in_block_id = (i - 1) % (model_config.layers_per_block + 1)
 
@@ -1237,7 +1240,7 @@ class LoraLoaderMixin:
 
                 new_state_dict[new_key] = state_dict.pop(key)
 
-        for i in middle_block_ids:
+        for i in range(num_middle_blocks):
             key_part = None
             if i == 0:
                 key_part = [inner_block_map[0], "0"]
