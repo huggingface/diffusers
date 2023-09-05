@@ -648,6 +648,7 @@ def convert_ldm_unet_checkpoint(
         up_pattern = r"_up\b"
         
         for key in new_checkpoint:
+            new_key = key
             new_key = re.sub(down_pattern, ".lora_down.weight", new_key)
             new_key = re.sub(up_pattern, ".lora_up.weight", new_key) 
             modified_new_checkpoint[new_key] = new_checkpoint[key]
