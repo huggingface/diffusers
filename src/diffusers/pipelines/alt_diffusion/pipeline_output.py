@@ -10,7 +10,7 @@ from ...utils import (
 
 
 @dataclass
-# Copied from diffusers.pipelines.stable_diffusion.__init__.StableDiffusionPipelineOutput with Stable->Alt
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_output.StableDiffusionPipelineOutput with Stable->Alt
 class AltDiffusionPipelineOutput(BaseOutput):
     """
     Output class for Alt Diffusion pipelines.
