@@ -1235,6 +1235,7 @@ class LoraLoaderMixin:
                     new_key = re.sub(up_pattern, ".lora_up.weight", new_key)
 
                 new_state_dict[new_key] = state_dict.pop(key)
+        print(f"Input block key: {key}")
 
         for i in middle_block_ids:
             key_part = None
@@ -1261,6 +1262,7 @@ class LoraLoaderMixin:
                     new_key = re.sub(up_pattern, ".lora_up.weight", new_key)
 
                 new_state_dict[new_key] = state_dict.pop(key)
+        print(f"Middle block key: {key}")
 
         # conditioning embedding
         orig_index = 0
