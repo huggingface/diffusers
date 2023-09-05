@@ -1186,22 +1186,20 @@ class LoraLoaderMixin:
         new_state_dict["conv_in.bias"] = state_dict.pop("input_blocks.0.0.bias")
         new_state_dict["conv_in.lora_up.weight"] = state_dict.pop("input_blocks.0.0.up")
 
-        # # Retrieves # of down, mid and up blocks
-        # input_block_ids, middle_block_ids = set(), set()
-        # for layer in state_dict:
-        #     if not re.match(indirect_patterns[0], layer) and not re.match(indirect_patterns[1], layer):
-        #         if "text" not in layer:
-        #             layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
-        #             if "input_blocks" in layer:
-        #                 input_block_ids.add(layer_id)
-        #             elif "middle_block" in layer:
-        #                 middle_block_ids.add(layer_id)
-        #             else:
-        #                 raise ValueError("Checkpoint not supported")
+        # Retrieves # of down, mid and up blocks
+        input_block_ids, middle_block_ids = set(), set()
+        for layer in state_dict:
+            if not re.match(indirect_patterns[0], layer) and not re.match(indirect_patterns[1], layer):
+                if "text" not in layer:
+                    layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
+                    if "input_blocks" in layer:
+                        input_block_ids.add(layer_id)
+                    elif "middle_block" in layer:
+                        middle_block_ids.add(layer_id)
+                    else:
+                        raise ValueError("Checkpoint not supported")
 
-        print("Input blocks:\n")
-        ib = {".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer and not(re.match(indirect_patterns[0], layer) and re.match(indirect_patterns[1], layer))}
-        print(ib, len(ib))
+        print(input_block_ids, middle_block_ids)
         
         num_input_blocks = len({".".join(layer.split(delimiter)[:block_slice_pos]) for layer in state_dict if "input_blocks" in layer and not(re.match(indirect_patterns[0], layer) and re.match(indirect_patterns[1], layer))})
         input_blocks = {
