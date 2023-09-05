@@ -103,13 +103,13 @@ wuerstchen_pipeline = WuerstchenPipeline(
     # Decoder
     text_encoder=gen_text_encoder,
     tokenizer=gen_tokenizer,
-    generator=generator,
+    decoder=deocder,
     scheduler=scheduler,
     vqgan=vqmodel,
     # Prior
     prior_tokenizer=tokenizer,
     prior_text_encoder=text_encoder,
-    prior_prior=prior_model,
+    prior=prior_model,
     prior_scheduler=scheduler,
 )
 wuerstchen_pipeline.save_pretrained("warp-diffusion/WuerstchenPipeline")
