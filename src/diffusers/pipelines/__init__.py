@@ -52,6 +52,8 @@ else:
         StableDiffusionControlNetImg2ImgPipeline,
         StableDiffusionControlNetInpaintPipeline,
         StableDiffusionControlNetPipeline,
+        StableDiffusionXLControlNetImg2ImgPipeline,
+        StableDiffusionXLControlNetInpaintPipeline,
         StableDiffusionXLControlNetPipeline,
     )
     from .deepfloyd_if import (
@@ -94,6 +96,7 @@ else:
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,
         StableDiffusionGLIGENPipeline,
+        StableDiffusionGLIGENTextImagePipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
@@ -111,6 +114,7 @@ else:
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
+    from .stable_diffusion.clip_image_project_model import CLIPImageProjection
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .stable_diffusion_xl import (
         StableDiffusionXLImg2ImgPipeline,
@@ -118,7 +122,7 @@ else:
         StableDiffusionXLInstructPix2PixPipeline,
         StableDiffusionXLPipeline,
     )
-    from .t2i_adapter import StableDiffusionAdapterPipeline
+    from .t2i_adapter import StableDiffusionAdapterPipeline, StableDiffusionXLAdapterPipeline
     from .text_to_video_synthesis import TextToVideoSDPipeline, TextToVideoZeroPipeline, VideoToVideoSDPipeline
     from .tune_a_video import TuneAVideoPipeline
     from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
