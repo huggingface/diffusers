@@ -2555,7 +2555,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         lora_layers_list = []
 
         temp = 0
-        all_keys = remaining_state_dict.keys()
+        all_keys = list(remaining_state_dict.keys())
         for key in all_keys:
             value = remaining_state_dict.pop(key)
             attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
