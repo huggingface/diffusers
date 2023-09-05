@@ -429,6 +429,10 @@ def convert_ldm_unet_checkpoint(
 
     new_checkpoint = {}
 
+    if controlnet_lora:
+        # Safe to pop as it doesn't have anything.
+        _ = unet_state_dict.pop("lora_controlnet")
+
     if not controlnet_lora:
         new_checkpoint["time_embedding.linear_1.weight"] = unet_state_dict["time_embed.0.weight"]
         new_checkpoint["time_embedding.linear_1.bias"] = unet_state_dict["time_embed.0.bias"]
