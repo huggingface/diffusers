@@ -61,7 +61,7 @@ refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
 
 ## Text-to-image
 
-For text-to-image, pass a text prompt:
+For text-to-image, pass a text prompt. By default, SDXL generates a 1024x1024 image for the best results. You can try setting the `height` and `width` parameters to 768x768 or 512x512, but anything below 512x512 is not likely to work.
 
 ```py
 from diffusers import AutoPipelineForText2Image
