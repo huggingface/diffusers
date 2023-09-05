@@ -71,6 +71,9 @@ def read_init():
 
     # Get to the point we do the actual imports for type checking
     line_index = 0
+    while not lines[line_index].startswith("if TYPE_CHECKING"):
+        line_index += 1
+
     backend_specific_objects = {}
     # Go through the end of the file
     while line_index < len(lines):
