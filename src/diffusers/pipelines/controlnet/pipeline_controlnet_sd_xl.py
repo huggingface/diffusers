@@ -34,6 +34,7 @@ from ...models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
@@ -314,6 +315,10 @@ class StableDiffusionXLControlNetPipeline(
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -808,9 +813,13 @@ class StableDiffusionXLControlNetPipeline(
                 `init`, images must be passed as a list such that each element of the list can be correctly batched for
                 input to a single ControlNet.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
-                The height in pixels of the generated image.
+                The height in pixels of the generated image. Anything below 512 pixels won't work well for
+                [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
+                and checkpoints that are not specifically fine-tuned on low resolutions.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
-                The width in pixels of the generated image.
+                The width in pixels of the generated image. Anything below 512 pixels won't work well for
+                [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
+                and checkpoints that are not specifically fine-tuned on low resolutions.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1207,6 +1216,26 @@ class StableDiffusionXLControlNetPipeline(
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.
+
+        # Remove any existing hooks.
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
+        else:
+            raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
+
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        recursive = False
+        for _, component in self.components.items():
+            if isinstance(component, torch.nn.Module):
+                if hasattr(component, "_hf_hook"):
+                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    recursive = is_sequential_cpu_offload
+                    remove_hook_from_module(component, recurse=recursive)
         state_dict, network_alphas = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
             unet_config=self.unet.config,
@@ -1233,6 +1262,12 @@ class StableDiffusionXLControlNetPipeline(
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
             )
+
+        # Offload back.
+        if is_model_cpu_offload:
+            self.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            self.enable_sequential_cpu_offload()
 
     @classmethod
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.save_lora_weights

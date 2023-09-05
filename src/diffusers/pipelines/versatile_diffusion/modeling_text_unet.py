@@ -58,6 +58,7 @@ def get_down_block(
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
+    dropout=0.0,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlockFlat":
@@ -66,6 +67,7 @@ def get_down_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
+            dropout=dropout,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -81,6 +83,7 @@ def get_down_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
+            dropout=dropout,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -117,6 +120,7 @@ def get_up_block(
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
+    dropout=0.0,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlockFlat":
@@ -126,6 +130,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -141,6 +146,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -284,6 +290,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
         downsample_padding (`int`, *optional*, defaults to 1): The padding to use for the downsampling convolution.
         mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
@@ -369,6 +376,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
+        dropout: float = 0.0,
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
@@ -660,6 +668,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                dropout=dropout,
             )
             self.down_blocks.append(down_block)
 
@@ -669,6 +678,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 transformer_layers_per_block=transformer_layers_per_block[-1],
                 in_channels=block_out_channels[-1],
                 temb_channels=blocks_time_embed_dim,
+                dropout=dropout,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
@@ -685,6 +695,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             self.mid_block = UNetMidBlockFlatSimpleCrossAttn(
                 in_channels=block_out_channels[-1],
                 temb_channels=blocks_time_embed_dim,
+                dropout=dropout,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
@@ -751,6 +762,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                dropout=dropout,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -1143,6 +1155,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
         # 3. down
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
         is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
@@ -1165,7 +1178,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     **additional_residuals,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
 
                 if is_adapter and len(down_block_additional_residuals) > 0:
                     sample += down_block_additional_residuals.pop(0)
@@ -1229,7 +1242,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 )
             else:
                 sample = upsample_block(
-                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    upsample_size=upsample_size,
+                    scale=lora_scale,
                 )
 
         # 6. post-process
@@ -1410,7 +1427,7 @@ class DownBlockFlat(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, temb=None):
+    def forward(self, hidden_states, temb=None, scale: float = 1.0):
         output_states = ()
 
         for resnet in self.resnets:
@@ -1431,13 +1448,13 @@ class DownBlockFlat(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale=scale)
 
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+                hidden_states = downsampler(hidden_states, scale=scale)
 
             output_states = output_states + (hidden_states,)
 
@@ -1547,6 +1564,8 @@ class CrossAttnDownBlockFlat(nn.Module):
     ):
         output_states = ()
 
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+
         blocks = list(zip(self.resnets, self.attentions))
 
         for i, (resnet, attn) in enumerate(blocks):
@@ -1577,7 +1596,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1595,7 +1614,7 @@ class CrossAttnDownBlockFlat(nn.Module):
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+                hidden_states = downsampler(hidden_states, scale=lora_scale)
 
             output_states = output_states + (hidden_states,)
 
@@ -1651,7 +1670,7 @@ class UpBlockFlat(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -1675,11 +1694,11 @@ class UpBlockFlat(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale=scale)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size)
+                hidden_states = upsampler(hidden_states, upsample_size, scale=scale)
 
         return hidden_states
 
@@ -1782,6 +1801,8 @@ class CrossAttnUpBlockFlat(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -1815,7 +1836,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1827,7 +1848,7 @@ class CrossAttnUpBlockFlat(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size)
+                hidden_states = upsampler(hidden_states, upsample_size, scale=lora_scale)
 
         return hidden_states
 
@@ -1932,7 +1953,8 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
-        hidden_states = self.resnets[0](hidden_states, temb)
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.training and self.gradient_checkpointing:
 
@@ -1969,7 +1991,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states
 
@@ -2070,6 +2092,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+        lora_scale = cross_attention_kwargs.get("scale", 1.0)
 
         if attention_mask is None:
             # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
@@ -2082,7 +2105,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
             #         mask = attention_mask if encoder_hidden_states is None else encoder_attention_mask
             mask = attention_mask
 
-        hidden_states = self.resnets[0](hidden_states, temb)
+        hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             # attn
             hidden_states = attn(
@@ -2093,6 +2116,6 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
             )
 
             # resnet
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states
