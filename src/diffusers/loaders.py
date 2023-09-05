@@ -2562,6 +2562,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
 
             # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
             # or add_{k,v,q,out_proj}_proj_lora layers.
+            print(f"Value dict: {value_dict}.")
             rank = value_dict["lora.down.weight"].shape[0]
 
             if isinstance(attn_processor, LoRACompatibleConv):
