@@ -131,7 +131,9 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionXLControlNetImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin):
+class StableDiffusionXLControlNetImg2ImgPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin
+):
     r"""
     Pipeline for image-to-image generation using Stable Diffusion XL with ControlNet guidance.
 

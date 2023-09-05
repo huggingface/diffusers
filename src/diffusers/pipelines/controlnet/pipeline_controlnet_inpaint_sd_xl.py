@@ -129,7 +129,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class StableDiffusionXLControlNetInpaintPipeline(DiffusionPipeline, StableDiffusionXLLoraLoaderMixin, FromSingleFileMixin):
+class StableDiffusionXLControlNetInpaintPipeline(
+    DiffusionPipeline, StableDiffusionXLLoraLoaderMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
 
