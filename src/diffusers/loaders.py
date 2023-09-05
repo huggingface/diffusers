@@ -690,8 +690,7 @@ class TextualInversionLoaderMixin:
                 Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
                 If not specified, function will take self.tokenizer.
             tokenizer ([`~transformers.CLIPTokenizer`], *optional*):
-                A `CLIPTokenizer` to tokenize text.
-                If not specified, function will take self.tokenizer.
+                A `CLIPTokenizer` to tokenize text. If not specified, function will take self.tokenizer.
             weight_name (`str`, *optional*):
                 Name of a custom weight file. This should be used when:
 
@@ -841,7 +840,7 @@ class TextualInversionLoaderMixin:
         token_ids_and_embeddings = []
 
         for pretrained_model_name_or_path, token in zip(pretrained_model_name_or_paths, tokens):
-            if not isinstance(pretrained_model_name_or_path, dict):
+            if not isinstance(pretrained_model_name_or_path, (dict, torch.Tensor)):
                 # 1. Load textual inversion file
                 model_file = None
                 # Let's first try to load .safetensors weights
