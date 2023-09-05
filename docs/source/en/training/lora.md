@@ -303,9 +303,9 @@ To undo `fuse_lora`, call [`~diffusers.loaders.LoraLoaderMixin.unfuse_lora`] on 
 
 ## Working with different LoRA scales when using LoRA fusion
 
-If you need to use `scale` when working with `fuse_lora()` to control the influence of the LoRA parameters on the outputs, you should specify `lora_scale` within `fuse_lora()`. Passing an additional non-default `scale` via `cross_attention_kwargs` will be ineffective in this case.  
+If you need to use `scale` when working with `fuse_lora()` to control the influence of the LoRA parameters on the outputs, you should specify `lora_scale` within `fuse_lora()`. Passing the `scale` parameter to `cross_attention_kwargs` when you call the pipeline won't work.  
 
-To work with a different `lora_scale` with `fuse_lora()`, you should first call `unfuse_lora()` on the corresponding pipeline and call `fuse_lora()` again with the expected `lora_scale`. Below is a full-fledged example: 
+To use a different `lora_scale` with `fuse_lora()`, you should first call `unfuse_lora()` on the corresponding pipeline and call `fuse_lora()` again with the expected `lora_scale`.
 
 ```python
 from diffusers import DiffusionPipeline
