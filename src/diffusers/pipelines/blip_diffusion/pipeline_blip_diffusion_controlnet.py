@@ -136,7 +136,8 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             rv.append(", ".join([prompt] * int(prompt_strength * prompt_reps)))
 
         return rv
-
+    
+    # Copied from diffusers.pipelines.consistency_models.pipeline_consistency_models.ConsistencyModelPipeline._prepare_latents
     def prepare_latents(self, batch_size, num_channels, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels, height, width)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -150,6 +151,8 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device=device, dtype=dtype)
 
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
         return latents
 
     def encode_prompt(self, query_embeds, prompt):
