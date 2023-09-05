@@ -373,10 +373,13 @@ class UNet2DConditionLoadersMixin:
             mapped_network_alphas = {}
 
             all_keys = list(state_dict.keys())
+            temp = 0
             for key in all_keys:
                 value = state_dict.pop(key)
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
                 lora_grouped_dict[attn_processor_key][sub_key] = value
+                if temp == 0:
+                    print(attn_processor_key, sub_key)
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
                 if network_alphas is not None:
