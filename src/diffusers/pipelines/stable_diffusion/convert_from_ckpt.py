@@ -621,12 +621,13 @@ def convert_ldm_unet_checkpoint(
             diffusers_index += 1
             orig_index += 2
 
-        new_checkpoint["controlnet_cond_embedding.conv_out.weight"] = unet_state_dict.pop(
-            f"input_hint_block.{orig_index}.weight"
-        )
-        new_checkpoint["controlnet_cond_embedding.conv_out.bias"] = unet_state_dict.pop(
-            f"input_hint_block.{orig_index}.bias"
-        )
+        if not controlnet_lora:
+            new_checkpoint["controlnet_cond_embedding.conv_out.weight"] = unet_state_dict.pop(
+                f"input_hint_block.{orig_index}.weight"
+            )
+            new_checkpoint["controlnet_cond_embedding.conv_out.bias"] = unet_state_dict.pop(
+                f"input_hint_block.{orig_index}.bias"
+            )
 
         # down blocks
         for i in range(num_input_blocks):
