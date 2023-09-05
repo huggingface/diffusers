@@ -377,7 +377,7 @@ def create_ldm_bert_config(original_config):
 
 
 def convert_ldm_unet_checkpoint(
-    checkpoint, config, path=None, extract_ema=False, controlnet=False, skip_extract_state_dict=False
+    checkpoint, config, path=None, extract_ema=False, controlnet=False, skip_extract_state_dict=False, controlnet_lora=False
 ):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
@@ -419,10 +419,18 @@ def convert_ldm_unet_checkpoint(
 
     new_checkpoint = {}
 
-    new_checkpoint["time_embedding.linear_1.weight"] = unet_state_dict["time_embed.0.weight"]
-    new_checkpoint["time_embedding.linear_1.bias"] = unet_state_dict["time_embed.0.bias"]
-    new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
-    new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
+    if not controlnet_lora:
+        new_checkpoint["time_embedding.linear_1.weight"] = unet_state_dict["time_embed.0.weight"]
+        new_checkpoint["time_embedding.linear_1.bias"] = unet_state_dict["time_embed.0.bias"]
+        new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
+        new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
+    else:
+        new_checkpoint["time_embedding.linear_1.lora_down.weight"] = unet_state_dict["time_embed.0.down"]
+        new_checkpoint["time_embedding.linear_1.lora_up.weight"] = unet_state_dict["time_embed.0.up"]
+        new_checkpoint["time_embedding.linear_1.bias"] = unet_state_dict["time_embed.0.bias"]
+        new_checkpoint["time_embedding.linear_2.lora_down.weight"] = unet_state_dict["time_embed.2.down"]
+        new_checkpoint["time_embedding.linear_2.lora_up.weight"] = unet_state_dict["time_embed.2.up"]
+        new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
 
     if config["class_embed_type"] is None:
         # No parameters to port
