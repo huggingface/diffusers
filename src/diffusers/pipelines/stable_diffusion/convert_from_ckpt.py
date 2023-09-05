@@ -613,7 +613,7 @@ def convert_ldm_unet_checkpoint(
         orig_index += 2
 
         diffusers_index = 0
-        diffusers_index_limit = 6 if not controlnet_lora else 7
+        diffusers_index_limit = 6 
 
         while diffusers_index < diffusers_index_limit:
             new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_index}.weight"] = unet_state_dict.pop(
