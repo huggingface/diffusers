@@ -2546,23 +2546,26 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
             raise ValueError(
                 f"The unexpected keys must only belong to LoRA parameters at this point: {load_state_dict_results.unexpected_keys}"
             )
+        
+        # Filter out the rest of the state_dict for handling LoRA.
+        remaining_state_dict = {k: v for k, v in converted_state_dict.items() if k in load_state_dict_results.unexpected_keys}
 
         # Handle LoRA.
         lora_grouped_dict = defaultdict(dict)
         lora_layers_list = []
 
         temp = 0
-        for key in converted_state_dict:
-            value = converted_state_dict.pop(key)
+        for key in remaining_state_dict.keys():
+            value = remaining_state_dict.pop(key)
             attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
             lora_grouped_dict[attn_processor_key][sub_key] = value
             if temp == 0:
                 print(key, attn_processor_key, sub_key)
                 temp = 999
 
-        if len(converted_state_dict) > 0:
+        if len(remaining_state_dict) > 0:
             raise ValueError(
-                f"The `converted_state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
+                f"The `remaining_state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
             )
 
         for key, value_dict in lora_grouped_dict.items():
