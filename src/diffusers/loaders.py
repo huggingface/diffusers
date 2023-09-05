@@ -2552,10 +2552,14 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         lora_layers_list = []
 
         all_keys = [k for k in converted_state_dict if "lora" in k]
+        temp = 0
         for key in all_keys:
             value = converted_state_dict.pop(key)
             attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
             lora_grouped_dict[attn_processor_key][sub_key] = value
+            if temp == 0:
+                print(attn_processor_key, sub_key)
+                temp = 999
 
         if len(converted_state_dict) > 0:
             raise ValueError(
