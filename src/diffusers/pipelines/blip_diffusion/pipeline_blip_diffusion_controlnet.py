@@ -48,16 +48,20 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> from diffusers import BlipDiffusionControlNetPipeline
         >>> from PIL import Image
+        >>> from diffusers.utils import load_image
 
         >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained('ayushtues/blipdiffusion-controlnet')
         >>> blip_diffusion_pipe.to('cuda')
 
-        >>> style_subject = "flower" 
-        >>> tgt_subject = "teapot" 
-        >>> text_prompt = "on a marble table"
-        >>> cldm_cond_image = Image.open("kettle.jpg")
-        >>> style_image = Image.open("flower.jpg")
-
+        >>> style_subject = ["flower"]
+        >>> tgt_subject = ["teapot"]
+        >>> text_prompt = ["on a marble table"]
+        >>> cldm_cond_image = load_image(
+        ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/kettle.jpg"
+        ... )
+        >>> style_image = load_image(
+        ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/flower.jpg"
+        ... )
         >>> iter_seed = 88888
         >>> guidance_scale = 7.5
         >>> num_inference_steps = 50
@@ -110,12 +114,10 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             Position of the context token in the text encoder.
     """
     
-    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, controlnet: ControlNetModel, image_processor: BlipImageProcessor, ctx_begin_pos: int = 2):
+    def __init__(self, tokenizer: CLIPTokenizer, text_encoder: ContextCLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel, scheduler: PNDMScheduler, qformer: Blip2QFormerModel, controlnet: ControlNetModel, image_processor: BlipImageProcessor, ctx_begin_pos: int = 2, mean : List[float] = None, std : List[float] = None):
         super().__init__()
 
         self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, controlnet=controlnet, image_processor=image_processor)
-        mean = (0.48145466, 0.4578275, 0.40821073)
-        std  = (0.26862954, 0.26130258, 0.27577711)
         self.register_to_config(ctx_begin_pos=ctx_begin_pos, mean=mean, std=std)
     
     #TODO Complete this function
