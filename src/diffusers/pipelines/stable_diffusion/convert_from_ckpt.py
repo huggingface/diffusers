@@ -457,8 +457,13 @@ def convert_ldm_unet_checkpoint(
             new_checkpoint["add_embedding.linear_2.lora_up.weight"] = unet_state_dict["label_emb.0.2.up"]
             new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
 
-    new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
-    new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
+    if not controlnet_lora:
+        new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
+        new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
+    else:
+        new_checkpoint["conv_in.lora_down.weight"] = unet_state_dict["input_blocks.0.0.down"]
+        new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
+        new_checkpoint["conv_in.lora_up.weight"] = unet_state_dict["input_blocks.0.0.up"]
 
     if not controlnet:
         new_checkpoint["conv_norm_out.weight"] = unet_state_dict["out.0.weight"]
