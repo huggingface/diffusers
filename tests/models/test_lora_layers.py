@@ -1437,7 +1437,9 @@ class LoraIntegrationTests(unittest.TestCase):
         text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
         unet_sd = copy.deepcopy(pipe.unet.state_dict())
 
-        pipe.load_lora_weights("davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.float16)
+        pipe.load_lora_weights(
+            "davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.float16
+        )
         pipe.fuse_lora()
         pipe.unload_lora_weights()
         pipe.unfuse_lora()
