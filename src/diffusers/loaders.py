@@ -373,14 +373,10 @@ class UNet2DConditionLoadersMixin:
             mapped_network_alphas = {}
 
             all_keys = list(state_dict.keys())
-            temp = 0
             for key in all_keys:
                 value = state_dict.pop(key)
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
                 lora_grouped_dict[attn_processor_key][sub_key] = value
-                if temp == 0:
-                    print(key, attn_processor_key, sub_key)
-                    temp = 999
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
                 if network_alphas is not None:
@@ -399,7 +395,7 @@ class UNet2DConditionLoadersMixin:
                 raise ValueError(
                     f"The `state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
                 )
-            temp = 0
+            
             for key, value_dict in lora_grouped_dict.items():
                 attn_processor = self
                 for sub_key in key.split("."):
@@ -407,9 +403,6 @@ class UNet2DConditionLoadersMixin:
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
-                if temp == 0:
-                    print(f"Value dict: {value_dict.keys()}")
-                    temp = 999
                 rank = value_dict["lora.down.weight"].shape[0]
 
                 if isinstance(attn_processor, LoRACompatibleConv):
@@ -434,6 +427,7 @@ class UNet2DConditionLoadersMixin:
                         mapped_network_alphas.get(key),
                     )
                 else:
+                    print(type(attn_processor), attn_processor.__class__.__name__)
                     raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
 
                 value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
@@ -2556,15 +2550,11 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         lora_grouped_dict = defaultdict(dict)
         lora_layers_list = []
 
-        temp = 0
         all_keys = list(remaining_state_dict.keys())
         for key in all_keys:
             value = remaining_state_dict.pop(key)
             attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
             lora_grouped_dict[attn_processor_key][sub_key] = value
-            if temp == 0:
-                print(key, attn_processor_key, sub_key)
-                temp = 999
 
         if len(remaining_state_dict) > 0:
             raise ValueError(
@@ -2578,7 +2568,6 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
 
             # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
             # or add_{k,v,q,out_proj}_proj_lora layers.
-            print(f"Value dict: {value_dict}.")
             rank = value_dict["lora.down.weight"].shape[0]
 
             if isinstance(attn_processor, LoRACompatibleConv):
