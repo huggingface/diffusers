@@ -1240,7 +1240,7 @@ class LoraLoaderMixin:
 
                 new_state_dict[new_key] = state_dict.pop(key)
 
-        for i in range(num_middle_blocks):
+        for i in range(num_middle_blocks - 1):
             key_part = None
             if i == 0:
                 key_part = [inner_block_map[0], "0"]
