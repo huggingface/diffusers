@@ -1199,6 +1199,8 @@ class LoraLoaderMixin:
                     else:
                         raise ValueError("Checkpoint not supported")
 
+        print("Input blocks:\n")
+        print({".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer})
         num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in state_dict if "input_blocks" in layer})
         input_blocks = {
             layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
@@ -1809,6 +1811,9 @@ class LoraLoaderMixin:
 
         return new_state_dict, network_alphas
 
+    # Differs from the existing checkpoint conversion functions. To not hurt the readability,
+    # it's better to delegate the SAI ControlNet handling related conversions to a separate
+    # function.
     @classmethod
     def _convert_sai_controlnet_lora_to_diffusers(cls, state_dict):
         controlnet_lora_state_dict = {}
