@@ -21,7 +21,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import BaseOutput, is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ...utils import BaseOutput, is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_wuerstchen_prior import WuerstchenPrior
 
@@ -83,6 +83,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         prior: WuerstchenPrior,
         scheduler: DDPMWuerstchenScheduler,
+        latent_mean: float = 42.0,
+        latent_std: float = 1.0,
+        resolution_multiple: float = 42.67,
     ) -> None:
         super().__init__()
         self.register_modules(
@@ -91,24 +94,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             prior=prior,
             scheduler=scheduler,
         )
-        self.register_to_config()
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the text_encoder
-        and the prior have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to
-        GPU only when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        for cpu_offloaded_model in [self.text_encoder, self.prior]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
+        self.register_to_config(latent_mean=latent_mean, latent_std=latent_std, resolution_multiple=resolution_multiple)
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -140,6 +126,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         self.final_offload_hook = hook
 
     def prepare_latents(self, shape, dtype, device, generator, latents):
+        """
+        Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
+        """
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -157,6 +146,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         do_classifier_free_guidance,
         negative_prompt=None,
     ):
+        """
+        Copied and adjusted from diffusers.pipelines.kandinsky.pipeline_kandinsky._encode_prompt
+        """
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -231,8 +223,35 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             text_encoder_hidden_states = torch.cat([text_encoder_hidden_states, uncond_text_encoder_hidden_states])
 
         return text_encoder_hidden_states
+    
+    def check_inputs(
+        self, 
+        prompt, 
+        num_inference_steps, 
+        batch_size,
+    ):
+        if not isinstance(prompt, list):
+            if isinstance(prompt, str):
+                prompt = [prompt]
+            else:
+                raise TypeError(
+                    f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}."
+                )
+        
+        if isinstance(num_inference_steps, int):
+            num_inference_steps = {0.0: num_inference_steps}
+
+        if not isinstance(num_inference_steps, dict):
+            raise TypeError(
+                f"'num_inference_steps' must be of type 'int' or 'dict', but got {type(num_inference_steps)}."
+            )
+        
+        batch_size = len(prompt) if isinstance(prompt, list) else 1
+
+        return prompt, num_inference_steps, batch_size
 
     @torch.no_grad()
+    # @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -247,47 +266,53 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
     ):
+        # 0. Define commonly used variables
         device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if isinstance(num_inference_steps, int):
-            num_inference_steps = {0.0: num_inference_steps}
+         # 1. Check inputs. Raise error if not correct
+        prompt, num_inference_steps, batch_size = self.check_inputs(
+            prompt, num_inference_steps, batch_size
+        )
 
-        if isinstance(prompt, str):
-            prompt = [prompt]
-        elif not isinstance(prompt, list):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
-        batch_size = len(prompt) if isinstance(prompt, list) else 1
+        # 2. Encode caption
         text_encoder_hidden_states = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
+        # 3. Determine latent shape of image embeddings
         dtype = text_encoder_hidden_states.dtype
-        latent_height = ceil(height / 42.67)
-        latent_width = ceil(width / 42.67)
+        latent_height = ceil(height / self.resolution_multiple)
+        latent_width = ceil(width / self.resolution_multiple)
         num_channels = self.prior.config.c_in
         effnet_features_shape = (num_images_per_prompt * batch_size, num_channels, latent_height, latent_width)
 
+        # 4. Prepare and set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
+        # 5. Prepare latents
         latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents)
 
+        # 6. Run denoising loop
         for t in self.progress_bar(timesteps[:-1]):
             ratio = t.expand(latents.size(0)).to(dtype)
+
+            # 7. Denoise image embeddings
             predicted_image_embedding = self.prior(
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
                 c=text_encoder_hidden_states,
             )
 
+            # 8. Check for classifier free guidance and apply it
             if do_classifier_free_guidance:
                 predicted_image_embedding_text, predicted_image_embedding_uncond = predicted_image_embedding.chunk(2)
                 predicted_image_embedding = torch.lerp(
                     predicted_image_embedding_uncond, predicted_image_embedding_text, guidance_scale
                 )
 
+            # 9. Renoise latents to next timestep
             latents = self.scheduler.step(
                 model_output=predicted_image_embedding,
                 timestep=ratio,
@@ -295,8 +320,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
-        # normalize the latents
-        latents = latents * 42.0 - 1.0
+        # 10. Denormalize the latents
+        latents = latents * self.latent_mean - self.latent_std
 
         if output_type == "np":
             latents = latents.cpu().numpy()

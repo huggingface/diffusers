@@ -1,4 +1,4 @@
-# Run inside root directory of official source code
+# Run inside root directory of official source code: https://github.com/dome272/wuerstchen/
 import os
 
 import torch

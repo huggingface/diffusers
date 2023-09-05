@@ -146,13 +146,13 @@ class WuerstchenPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_inference_steps: int = 12,
         decoder_guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
         height: int = 512,
         width: int = 512,
         prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: Union[int, Dict[float, int]] = {2 / 3: 20, 0.0: 10},
+        decoder_num_inference_steps: Union[int, Dict[float, int]] = {0.0: 12},
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -171,9 +171,6 @@ class WuerstchenPipeline(DiffusionPipeline):
                 if `decoder_guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            num_inference_steps (`int`, *optional*, defaults to 12):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -186,9 +183,14 @@ class WuerstchenPipeline(DiffusionPipeline):
                 usually at the expense of lower image quality.
             prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. This pipeline takes an optional dictionary of the form for example
-                `{2 / 3: 20, 0.0: 10}` 20 steps for the first 1/3 of denoising and  10 steps for the last 2/3 of the
-                denoising process.
+                expense of slower inference. This pipeline takes an optional dictionary of the form {end_1: steps_1, end_2: steps_2, ..., end_n: steps_n}. 
+                For example `{2 / 3: 20, 0.0: 10}` means from 100% noise to 66.6% noise we use 20 denoising steps and from 66.6% 
+                to 0% we use 10 denoising steps.
+            decoder_num_inference_steps (`int`, *optional*, defaults to 12):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference. This pipeline takes an optional dictionary of the form {end_1: steps_1, end_2: steps_2, ..., end_n: steps_n}. 
+                For example `{2 / 3: 20, 0.0: 10}` means from 100% noise to 66.6% noise we use 20 denoising steps and from 66.6% 
+                to 0% we use 10 denoising steps.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -218,7 +220,7 @@ class WuerstchenPipeline(DiffusionPipeline):
 
         Returns:
             [`~pipelines.ImagePipelineOutput`] or `tuple`
-             [`~pipelines.ImagePipelineOutput`] if `return_dict` is True, otherwise a
+            [`~pipelines.ImagePipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
         prior_outputs = self.prior_pipe(
@@ -244,7 +246,7 @@ class WuerstchenPipeline(DiffusionPipeline):
         outputs = self.decoder_pipe(
             prompt=prompt,
             image_embeds=image_embeds,
-            num_inference_steps=num_inference_steps,
+            num_inference_steps=decoder_num_inference_steps,
             generator=generator,
             guidance_scale=decoder_guidance_scale,
             output_type=output_type,

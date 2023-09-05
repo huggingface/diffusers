@@ -19,7 +19,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
@@ -42,7 +42,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)
-        >>> images = gen_pipe(prior_output.image_embeds, prompt=prompt)
+        >>> images = gen_pipe(prior_output.image_embeddings, prompt=prompt)
         ```
 """
 
@@ -66,7 +66,9 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
         latent_dim_scale (float, `optional`, defaults to 10.67):
-            The scale of the latent dimension. This is used to determine the size of the latent space.
+            Multiplier to determine the VQ latent space size from the image embeddings. If the image embeddings are
+            height=24 and width=24, the VQ latent shape needs to be height=int(24*10.67)=256 and width=int(24*10.67)=256 in order
+            to match the training conditions.
     """
 
     def __init__(
@@ -89,6 +91,9 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         self.register_to_config(latent_dim_scale=latent_dim_scale)
 
     def prepare_latents(self, shape, dtype, device, generator, latents):
+        """
+        Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
+        """
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
@@ -97,23 +102,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             latents = latents.to(device)
 
         return latents
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, text_encoder,
-        decoder, and vqgan have their state dicts saved to CPU and then are moved to a `torch.device('meta') and
-        loaded to GPU only when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        for cpu_offloaded_model in [self.text_encoder, self.decoder, self.vqgan]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
 
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
@@ -144,7 +132,17 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
 
         self.final_offload_hook = hook
 
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt=None):
+    def _encode_prompt(
+            self, 
+            prompt,
+            device, 
+            num_images_per_prompt, 
+            do_classifier_free_guidance, 
+            negative_prompt=None,
+        ):
+        """
+        Copied and adjusted from diffusers.pipelines.kandinsky.pipeline_kandinsky._encode_prompt
+        """
         batch_size = len(prompt) if isinstance(prompt, list) else 1
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -221,41 +219,45 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         return text_encoder_hidden_states
 
     def check_inputs(
-        self, predicted_image_embeddings, text_encoder_hidden_states, do_classifier_free_guidance, device
+        self, 
+        image_embeddings, 
+        prompt, 
+        num_inference_steps, 
+        do_classifier_free_guidance, 
+        device, 
+        dtype,
     ):
-        if not isinstance(text_encoder_hidden_states, torch.Tensor):
-            raise TypeError(
-                f"'text_encoder_hidden_states' must be of type 'torch.Tensor', but got {type(predicted_image_embeddings)}."
-            )
-        if isinstance(predicted_image_embeddings, np.ndarray):
-            predicted_image_embeddings = torch.Tensor(predicted_image_embeddings, device=device).to(
-                dtype=text_encoder_hidden_states.dtype
-            )
-        if not isinstance(predicted_image_embeddings, torch.Tensor):
-            raise TypeError(
-                f"'predicted_image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(predicted_image_embeddings)}."
-            )
-
-        if do_classifier_free_guidance:
-            if predicted_image_embeddings.size(0) != text_encoder_hidden_states.size(0) // 2:
-                raise ValueError(
-                    f"'text_encoder_hidden_states' must be double the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
+        if not isinstance(prompt, list):
+            if isinstance(prompt, str):
+                prompt = [prompt]
+            else:
+                raise TypeError(
+                    f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}."
                 )
+        if isinstance(image_embeddings, np.ndarray):
+            image_embeddings = torch.Tensor(image_embeddings, device=device).to(
+                dtype=dtype
+            )
+        if not isinstance(image_embeddings, torch.Tensor):
+            raise TypeError(
+                f"'image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(image_embeddings)}."
+            )
+        
+        if isinstance(num_inference_steps, int):
+            num_inference_steps = {0.0: num_inference_steps}
 
-            # if predicted_image_embeddings.size(0) * 2 == text_encoder_hidden_states.size(0):
-            text_encoder_hidden_states = text_encoder_hidden_states.chunk(2)[0]
+        if not isinstance(num_inference_steps, dict):
+            raise TypeError(
+                f"'num_inference_steps' must be of type 'int' or 'dict', but got {type(num_inference_steps)}."
+            )
 
-            if predicted_image_embeddings.size(0) != text_encoder_hidden_states.size(0):
-                raise ValueError(
-                    f"'text_encoder_hidden_states' must be the size of 'predicted_image_embeddings' in the first dimension, but {predicted_image_embeddings.size(0)} != {text_encoder_hidden_states.size(0)}."
-                )
-
-        return predicted_image_embeddings, text_encoder_hidden_states
+        return image_embeddings, prompt, num_inference_steps
 
     @torch.no_grad()
+    # @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
+        image_embeddings: Union[torch.FloatTensor, List[torch.FloatTensor]],
         prompt: Union[str, List[str]] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_inference_steps: Union[Dict[float, int], int] = 12,
@@ -266,44 +268,43 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
     ):
+        
+        # 0. Define commonly used variables
         device = self._execution_device
+        dtype = self.decoder.dtype
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if isinstance(image_embeds, list):
-            image_embeds = torch.cat(image_embeds, dim=0)
-        # image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        # 1. Check inputs. Raise error if not correct
+        image_embeddings, prompt, num_inference_steps = self.check_inputs(
+            image_embeddings, prompt, num_inference_steps, do_classifier_free_guidance, device, dtype
+        )
 
-        if isinstance(num_inference_steps, int):
-            num_inference_steps = {0.0: num_inference_steps}
-
-        if isinstance(prompt, str):
-            prompt = [prompt]
-        elif not isinstance(prompt, list):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
+        # 2. Encode caption
         text_encoder_hidden_states = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
-        predicted_image_embeddings, text_encoder_hidden_states = self.check_inputs(
-            image_embeds, text_encoder_hidden_states, do_classifier_free_guidance, device
-        )
 
-        dtype = self.decoder.dtype
-        latent_height = int(predicted_image_embeddings.size(2) * self.config.latent_dim_scale)
-        latent_width = int(predicted_image_embeddings.size(3) * self.config.latent_dim_scale)
-        latent_features_shape = (predicted_image_embeddings.size(0), 4, latent_height, latent_width)
+        # 3. Determine latent shape of latents
+        latent_height = int(image_embeddings.size(2) * self.config.latent_dim_scale)
+        latent_width = int(image_embeddings.size(3) * self.config.latent_dim_scale)
+        latent_features_shape = (image_embeddings.size(0), 4, latent_height, latent_width)
 
+        # 4. Prepare and set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
+        # 5. Prepare latents
         latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents)
+
+        # 6. Run denoising loop
         for t in self.progress_bar(timesteps[:-1]):
             ratio = t.expand(latents.size(0)).to(dtype)
             effnet = (
-                torch.cat([predicted_image_embeddings, torch.zeros_like(predicted_image_embeddings)])
+                torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
                 if do_classifier_free_guidance
-                else predicted_image_embeddings
+                else image_embeddings
             )
+            # 7. Denoise latents
             predicted_latents = self.decoder(
                 torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
@@ -311,10 +312,12 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 clip=text_encoder_hidden_states,
             )
 
+            # 8. Check for classifier free guidance and apply it
             if do_classifier_free_guidance:
                 predicted_latents_text, predicted_latents_uncond = predicted_latents.chunk(2)
                 predicted_latents = torch.lerp(predicted_latents_uncond, predicted_latents_text, guidance_scale)
 
+            # 9. Renoise latents to next timestep
             latents = self.scheduler.step(
                 model_output=predicted_latents,
                 timestep=ratio,
@@ -322,10 +325,10 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
-        # scale and decode the image latents with vq-vae
+        # 10. Scale and decode the image latents with vq-vae
         latents = self.vqgan.config.scale_factor * latents
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
-
+        
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
 

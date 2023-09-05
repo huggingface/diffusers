@@ -98,10 +98,21 @@ decoder_output = decoder_pipeline(
 
 ## Speed-Up Inference
 You can make use of ``torch.compile`` function and gain a speed-up of about 2-3x:
-```py
+
+```python
 pipeline.prior = torch.compile(pipeline.prior, mode="reduce-overhead", fullgraph=True)
 pipeline.decoder = torch.compile(pipeline.decoder, mode="reduce-overhead", fullgraph=True)
 ```
+
+## Limitations
+- Due to the high compression employed by Würstchen, generations can lack a good amount
+of detail. To our human eye, this is especially noticeable in faces, hands etc.
+- **Images can only be generated in 128-pixel steps**, e.g. the next higher resolution 
+after 1024x1024 is 1152x1152
+- The model lacks the ability to render correct text in images
+- The model often does not achieve photorealism
+- Difficult compositional prompts are hard for the model
+
 
 The original codebase, as well as experimental ideas, can be found at [dome272/Wuerstchen](https://github.com/dome272/Wuerstchen).
 
