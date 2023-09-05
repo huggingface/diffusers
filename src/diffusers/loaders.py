@@ -2523,7 +2523,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         state_dict, _ = self.lora_state_dict(pretrained_model_name_or_path_or_dict, controlnet=True, **kwargs)
         controlnet_config = kwargs.pop("controlnet_config", None)
         if controlnet_config is None:
-            raise ("Must provide a `controlnet_config`.")
+            raise ValueError("Must provide a `controlnet_config`.")
 
         # ControlNet LoRA has a mix of things. Some parameters correspond to LoRA and some correspond
         # to the ones belonging to the original state_dict (initialized from the underlying UNet).
