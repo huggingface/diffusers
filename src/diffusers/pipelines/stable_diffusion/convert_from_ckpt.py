@@ -642,18 +642,18 @@ def convert_ldm_unet_checkpoint(
         new_checkpoint["controlnet_mid_block.weight"] = unet_state_dict.pop("middle_block_out.0.weight")
         new_checkpoint["controlnet_mid_block.bias"] = unet_state_dict.pop("middle_block_out.0.bias")
 
-    # if controlnet_lora:
-        # modified_new_checkpoint = {}
-        # down_pattern = r"_down\b"
-        # up_pattern = r"_up\b"
+    if controlnet_lora:
+        modified_new_checkpoint = {}
+        down_pattern = r"\.down$"
+        up_pattern = r"\.up$"
         
-        # for key in new_checkpoint:
-        #     new_key = key
-        #     new_key = re.sub(down_pattern, ".lora_down.weight", new_key)
-        #     new_key = re.sub(up_pattern, ".lora_up.weight", new_key) 
-        #     modified_new_checkpoint[new_key] = new_checkpoint[key]
+        for key in new_checkpoint:
+            new_key = key
+            new_key = re.sub(down_pattern, ".lora_down.weight", new_key)
+            new_key = re.sub(up_pattern, ".lora_up.weight", new_key) 
+            modified_new_checkpoint[new_key] = new_checkpoint[key]
         
-        # new_checkpoint = modified_new_checkpoint
+        new_checkpoint = modified_new_checkpoint
 
     return new_checkpoint
 
