@@ -380,6 +380,7 @@ class UNet2DConditionLoadersMixin:
                 lora_grouped_dict[attn_processor_key][sub_key] = value
                 if temp == 0:
                     print(attn_processor_key, sub_key)
+                    temp = 999
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
                 if network_alphas is not None:
@@ -408,6 +409,7 @@ class UNet2DConditionLoadersMixin:
                 # or add_{k,v,q,out_proj}_proj_lora layers.
                 if temp == 0:
                     print(f"Value dict: {value_dict.keys()}")
+                    temp = 999
                 rank = value_dict["lora.down.weight"].shape[0]
 
                 if isinstance(attn_processor, LoRACompatibleConv):
