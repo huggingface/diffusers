@@ -379,7 +379,7 @@ class UNet2DConditionLoadersMixin:
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
                 lora_grouped_dict[attn_processor_key][sub_key] = value
                 if temp == 0:
-                    print(attn_processor_key, sub_key)
+                    print(key, attn_processor_key, sub_key)
                     temp = 999
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
@@ -2558,7 +2558,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
             attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
             lora_grouped_dict[attn_processor_key][sub_key] = value
             if temp == 0:
-                print(attn_processor_key, sub_key)
+                print(key, attn_processor_key, sub_key)
                 temp = 999
 
         if len(converted_state_dict) > 0:
