@@ -154,7 +154,7 @@ just hang out ☕.
     <td>Text-guided Image-to-Image</td>
     <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/controlnet">Controlnet</a></td>
       <td><a href="https://huggingface.co/lllyasviel/sd-controlnet-canny"> lllyasviel/sd-controlnet-canny </a></td>
-      <td><a href="https://huggingface.co/lllyasviel/sd-controlnet-canny"> lllyasviel/sd-controlnet-canny </a></td>
+      <td><a href="https://huggingface.co/spaces/hysts/ControlNet-v1-1"> lllyasviel/sd-controlnet-canny </a></td>
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
