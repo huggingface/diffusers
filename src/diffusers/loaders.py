@@ -1314,7 +1314,7 @@ class LoraLoaderMixin:
         new_state_dict["add_embedding.linear_2.lora_up.weight"] = state_dict.pop("label_emb.0.2.up")
         new_state_dict["add_embedding.linear_2.bias"] = state_dict.pop("label_emb.0.2.bias")
 
-        assert len(state_dict) == 0, "All keys should have been popped at this point."
+        assert len(state_dict) == 0, f"All keys should have been popped at this point: {state_dict.keys()}."
 
         return new_state_dict
 
