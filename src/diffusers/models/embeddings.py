@@ -18,8 +18,8 @@ import numpy as np
 import torch
 from torch import nn
 
-from .activations import get_activation
 from ..models.lora import LoRACompatibleLinear
+from .activations import get_activation
 
 
 def get_timestep_embedding(
