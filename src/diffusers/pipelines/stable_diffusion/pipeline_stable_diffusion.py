@@ -552,7 +552,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             output_layer_idx (`int`, *optional*, defaults to 12):
                 The output layer to use for computing the prompt embeddings.
         """
-        if hasattr(self, "text_encoder"):
+        if not hasattr(self, "text_encoder"):
             raise ValueError("Cannot use `set_clip_output_layer` without a `text_encoder`.")
 
         dtype, device = self.text_encoder.dtype, self.text_encoder.device
