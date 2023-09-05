@@ -2515,7 +2515,9 @@ class FromOriginalControlnetMixin:
 
 
 class ControlNetLoaderMixin(LoraLoaderMixin):
+    # Simplify ControlNet LoRA loading.
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict, **kwargs):
+        from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
         from .pipelines.stable_diffusion.convert_from_ckpt import convert_ldm_unet_checkpoint
 
         state_dict, _ = self.lora_state_dict(pretrained_model_name_or_path_or_dict, controlnet=True, **kwargs)
@@ -2539,3 +2541,65 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
             )
 
         # Handle LoRA.
+        lora_grouped_dict = defaultdict(dict)
+        lora_layers_list = []
+
+        all_keys = list(converted_state_dict.keys())
+        for key in all_keys:
+            value = converted_state_dict.pop(key)
+            attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
+            lora_grouped_dict[attn_processor_key][sub_key] = value
+
+        if len(converted_state_dict) > 0:
+            raise ValueError(
+                f"The `converted_state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
+            )
+
+        for key, value_dict in lora_grouped_dict.items():
+            attn_processor = self
+            for sub_key in key.split("."):
+                attn_processor = getattr(attn_processor, sub_key)
+
+            # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
+            # or add_{k,v,q,out_proj}_proj_lora layers.
+            rank = value_dict["lora.down.weight"].shape[0]
+
+            if isinstance(attn_processor, LoRACompatibleConv):
+                in_features = attn_processor.in_channels
+                out_features = attn_processor.out_channels
+                kernel_size = attn_processor.kernel_size
+
+                lora = LoRAConv2dLayer(
+                    in_features=in_features,
+                    out_features=out_features,
+                    rank=rank,
+                    kernel_size=kernel_size,
+                    stride=attn_processor.stride,
+                    padding=attn_processor.padding,
+                )
+            elif isinstance(attn_processor, LoRACompatibleLinear):
+                lora = LoRALinearLayer(
+                    attn_processor.in_features,
+                    attn_processor.out_features,
+                    rank,
+                )
+            else:
+                raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
+
+            value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
+            lora.load_state_dict(value_dict)
+            lora_layers_list.append((attn_processor, lora))
+
+            # set correct dtype & device
+            lora_layers_list = [(t, l.to(device=self.device, dtype=self.dtype)) for t, l in lora_layers_list]
+
+            # set lora layers
+            for target_module, lora_layer in lora_layers_list:
+                target_module.set_lora_layer(lora_layer)
+
+    def unload_lora_weights(self):
+        for _, module in self.controlnet.named_modules():
+            if hasattr(module, "set_lora_layer"):
+                module.set_lora_layer(None)
+
+    # Implement `fuse_lora()` and `unfuse_lora()` (sayakpaul).
