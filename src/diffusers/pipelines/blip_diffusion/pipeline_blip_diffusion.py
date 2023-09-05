@@ -299,10 +299,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
                     noise_pred_text - noise_pred_uncond
                 )
 
-            # TODO - Handle ddim as well
-            # # compute the previous noisy sample x_t -> x_t-1
-            # scheduler = self.ddim_scheduler if use_inversion else self.pndm_scheduler
-
             latents = self.scheduler.step(
                 noise_pred,
                 t,
