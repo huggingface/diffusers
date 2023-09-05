@@ -56,7 +56,7 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return 32
 
     @property
-    def dummy_prior_prior(self):
+    def dummy_prior(self):
         torch.manual_seed(0)
 
         model_kwargs = {"c_in": 2, "c": 8, "depth": 2, "c_cond": 32, "c_r": 8, "nhead": 2}
@@ -130,7 +130,7 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return model.eval()
 
     def get_dummy_components(self):
-        prior_prior = self.dummy_prior_prior
+        prior = self.dummy_prior
         prior_text_encoder = self.dummy_prior_text_encoder
 
         scheduler = DDPMWuerstchenScheduler()
@@ -146,7 +146,7 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "vqgan": vqgan,
             "scheduler": scheduler,
-            "prior_prior": prior_prior,
+            "prior": prior,
             "prior_text_encoder": prior_text_encoder,
             "prior_tokenizer": tokenizer,
             "prior_scheduler": scheduler,
