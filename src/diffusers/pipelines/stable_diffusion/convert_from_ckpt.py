@@ -377,7 +377,13 @@ def create_ldm_bert_config(original_config):
 
 
 def convert_ldm_unet_checkpoint(
-    checkpoint, config, path=None, extract_ema=False, controlnet=False, skip_extract_state_dict=False, controlnet_lora=False
+    checkpoint,
+    config,
+    path=None,
+    extract_ema=False,
+    controlnet=False,
+    skip_extract_state_dict=False,
+    controlnet_lora=False,
 ):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
@@ -613,7 +619,7 @@ def convert_ldm_unet_checkpoint(
         orig_index += 2
 
         diffusers_index = 0
-        diffusers_index_limit = 6 
+        diffusers_index_limit = 6
 
         while diffusers_index < diffusers_index_limit:
             new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_index}.weight"] = unet_state_dict.pop(
@@ -646,13 +652,13 @@ def convert_ldm_unet_checkpoint(
         modified_new_checkpoint = {}
         down_pattern = r"\.down$"
         up_pattern = r"\.up$"
-        
+
         for key in new_checkpoint:
             new_key = key
             new_key = re.sub(down_pattern, ".lora_down.weight", new_key)
-            new_key = re.sub(up_pattern, ".lora_up.weight", new_key) 
+            new_key = re.sub(up_pattern, ".lora_up.weight", new_key)
             modified_new_checkpoint[new_key] = new_checkpoint[key]
-        
+
         new_checkpoint = modified_new_checkpoint
 
     return new_checkpoint
