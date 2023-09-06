@@ -131,7 +131,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
 
         self.final_offload_hook = hook
 
-    def _encode_prompt(
+    def encode_prompt(
         self,
         prompt,
         device,
@@ -210,9 +210,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_encoder_hidden_states = torch.cat([text_encoder_hidden_states, uncond_text_encoder_hidden_states])
-
-        return text_encoder_hidden_states
+            return text_encoder_hidden_states, uncond_text_encoder_hidden_states
 
     def check_inputs(
         self,
@@ -334,9 +332,10 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         )
 
         # 2. Encode caption
-        text_encoder_hidden_states = self._encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
+        text_encoder_hidden_states = torch.cat([prompt_embeds, negative_prompt_embeds])
 
         # 3. Determine latent shape of latents
         latent_height = int(image_embeddings.size(2) * self.config.latent_dim_scale)
