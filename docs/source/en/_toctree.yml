@@ -310,6 +310,8 @@
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
       title: VQ Diffusion
+    - local: api/pipelines/wuerstchen
+      title: Wuerstchen
     title: Pipelines
   - sections:
     - local: api/schedulers/overview
