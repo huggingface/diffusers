@@ -181,6 +181,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         text_encoder_hidden_states = text_encoder_output.last_hidden_state
         text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
 
+        uncond_text_encoder_hidden_states = None
         if do_classifier_free_guidance:
             uncond_tokens: List[str]
             if negative_prompt is None:
@@ -340,7 +341,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
-        text_encoder_hidden_states = torch.cat([prompt_embeds, negative_prompt_embeds])
+        text_encoder_hidden_states = (
+            torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
+        )
 
         # 3. Determine latent shape of image embeddings
         dtype = text_encoder_hidden_states.dtype
