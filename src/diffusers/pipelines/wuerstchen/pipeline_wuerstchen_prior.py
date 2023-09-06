@@ -265,7 +265,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         height: int = 1024,
         width: int = 1024,
-        num_inference_steps: int = 30,
+        num_inference_steps: int = 60,
         timesteps: List[float] = None,
         guidance_scale: float = 8.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
