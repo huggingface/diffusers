@@ -242,7 +242,6 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             timesteps=timesteps,
             generator=generator,
             guidance_scale=guidance_scale,
-            num_images_per_prompt=num_images_per_prompt,
             output_type=output_type,
             return_dict=return_dict,
         )
