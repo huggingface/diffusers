@@ -112,6 +112,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image and/or text latents. The
             original UniDiffuser paper uses the [`DPMSolverMultistepScheduler`] scheduler.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae->image_encoder->text_decoder"
 
     def __init__(
         self,
@@ -129,7 +130,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         if text_encoder.config.hidden_size != text_decoder.prefix_inner_dim:
             raise ValueError(
-                f"The text encoder hidden size and text decoder prefix inner dim must be the same, but"
+                f"The text enc->er hidden size and text decoder prefix inner dim must be the same, but"
                 f" `text_encoder.config.hidden_size`: {text_encoder.config.hidden_size} and `text_decoder.prefix_inner_dim`: {text_decoder.prefix_inner_dim}"
             )
 
@@ -161,36 +162,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         # TODO: handle safety checking?
         self.safety_checker = None
-
-    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
-    # Add self.image_encoder, self.text_decoder to cpu_offloaded_models list
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae, self.image_encoder, self.text_decoder]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
