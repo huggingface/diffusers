@@ -1262,7 +1262,7 @@ class VQDiffusionPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class WuerstchenDecoderPipeline(metaclass=DummyObject):
+class WuerstchenCombinedPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -1277,7 +1277,7 @@ class WuerstchenDecoderPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class WuerstchenCombinedPipeline(metaclass=DummyObject):
+class WuerstchenDecoderPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
