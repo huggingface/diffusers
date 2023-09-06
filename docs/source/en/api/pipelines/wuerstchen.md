@@ -33,14 +33,14 @@ For the sake of usability Würstchen can be used with a single pipeline. This pi
 
 ```python
 import torch
-from diffusers import WuerstchenCombinedPipeline
+from diffusers import AutoPipelineForText2Image
 
 device = "cuda"
 dtype = torch.float16
 num_images_per_prompt = 2
 
-pipeline = WuerstchenCombinedPipeline.from_pretrained(
-    "warp-diffusion/WuerstchenCombinedPipeline", torch_dtype=dtype
+pipeline =  AutoPipelineForText2Image.from_pretrained(
+    "warp-diffusion/wuerstchen", torch_dtype=dtype
 ).to(device)
 
 caption = "Anthropomorphic cat dressed as a fire fighter"
