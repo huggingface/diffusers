@@ -940,9 +940,6 @@ def main():
             pipeline.torch_dtype = weight_dtype
             pipeline.set_progress_bar_config(disable=True)
 
-            if args.enable_xformers_memory_efficient_attention:
-                pipeline.enable_xformers_memory_efficient_attention()
-
             if args.seed is None:
                 generator = None
             else:
