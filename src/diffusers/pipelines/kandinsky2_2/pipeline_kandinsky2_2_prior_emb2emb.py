@@ -122,6 +122,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
 
+    model_cpu_offload_seq = "text_encoder->image_encoder->prior"
     _exclude_from_cpu_offload = ["prior"]
 
     def __init__(
@@ -393,8 +394,6 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
-
-            self.final_offload_hook = hook
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)

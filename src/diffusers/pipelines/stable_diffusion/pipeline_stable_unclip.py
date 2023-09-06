@@ -92,6 +92,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
     """
 
     _exclude_from_cpu_offload = ["prior", "image_normalizer"]
+    model_cpu_offload_seq = "text_encoder->prior_text_encoder->unet->vae"
 
     # prior components
     prior_tokenizer: CLIPTokenizer
@@ -164,7 +165,9 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         """
         self.vae.disable_slicing()
 
-            self,
+    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._encode_prompt with _encode_prompt->_encode_prior_prompt, tokenizer->prior_tokenizer, text_encoder->prior_text_encoder
+    def _encode_prior_prompt(
+        self,
         prompt,
         device,
         num_images_per_prompt,
@@ -909,8 +912,9 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
-        # Offload all models
-        self.maybe_free_model_hooks()
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (image,)

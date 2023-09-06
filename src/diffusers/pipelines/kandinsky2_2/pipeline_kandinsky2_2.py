@@ -82,6 +82,8 @@ class KandinskyV22Pipeline(DiffusionPipeline):
             MoVQ Decoder to generate the image from the latents.
     """
 
+    model_cpu_offload_seq = "unet->movq"
+
     def __init__(
         self,
         unet: UNet2DConditionModel,
@@ -109,7 +111,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-        def __call__(
+    def __call__(
         self,
         image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
         negative_image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],

@@ -135,6 +135,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
     """
+    model_cpu_offload_seq = "unet->movq"
 
     def __init__(
         self,
@@ -205,7 +206,7 @@ class KandinskyV22ControlnetImg2ImgPipeline(DiffusionPipeline):
         return latents
 
     # Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.KandinskyV22Pipeline.enable_model_cpu_offload
-        def __call__(
+    def __call__(
         self,
         image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
         image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]],

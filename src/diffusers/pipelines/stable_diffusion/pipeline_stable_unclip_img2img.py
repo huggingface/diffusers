@@ -93,6 +93,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
     """
 
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
     _exclude_from_cpu_offload = ["image_normalizer"]
 
     # image encoding components
@@ -160,7 +161,9 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         """
         self.vae.disable_slicing()
 
-            self,
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
+    def _encode_prompt(
+        self,
         prompt,
         device,
         num_images_per_prompt,
@@ -801,8 +804,9 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
-        # Offload all models
-        self.maybe_free_model_hooks()
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (image,)

@@ -132,6 +132,7 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
         r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
     )  # noqa
 
+    model_cpu_offload_seq = "text_encoder->unet->safety_checker"
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
 
     def __init__(
@@ -180,21 +181,6 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.enable_model_cpu_offload
-                # the GPU.
-            self.text_encoder_offload_hook = hook
-
-        _, hook = cpu_offload_with_hook(self.unet, device, prev_module_hook=hook)
-
-        # if the safety checker isn't called, `unet_offload_hook` will have to be called to manually offload the unet
-        self.unet_offload_hook = hook
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.remove_all_hooks
     def remove_all_hooks(self):
@@ -1132,8 +1118,9 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             # 11. Run safety checker
             image, nsfw_detected, watermark_detected = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
-        # Offload all models
-        self.maybe_free_model_hooks()
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (image, nsfw_detected, watermark_detected)
