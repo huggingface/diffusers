@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
 import torch
 

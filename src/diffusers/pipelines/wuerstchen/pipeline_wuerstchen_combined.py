@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -189,10 +189,10 @@ class WuerstchenPipeline(DiffusionPipeline):
             decoder_num_inference_steps (`int`, *optional*, defaults to 12):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized `decoder_timesteps`
-          prior_timesteps (`List[float]`, *optional*): 
+          prior_timesteps (`List[float]`, *optional*):
                 Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced `prior_num_inference_steps`
                timesteps are used. Must be in descending order.
-          decoder_timesteps (`List[float]`, *optional*): 
+          decoder_timesteps (`List[float]`, *optional*):
                 Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced `decoder_num_inference_steps`
                timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 4.0):

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import torch
@@ -227,13 +227,15 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 prompt = [prompt]
             else:
                 raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
-        
+
         if do_classifier_free_guidance:
             if not isinstance(negative_prompt, list):
                 if isinstance(negative_prompt, str):
                     negative_prompt = [negative_prompt]
                 else:
-                    raise TypeError(f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}.")
+                    raise TypeError(
+                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
+                    )
 
         if isinstance(image_embeddings, list):
             image_embeddings = torch.cat(image_embeddings, dim=0)
@@ -245,8 +247,10 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             )
 
         if not isinstance(num_inference_steps, int):
-           raise TypeError(f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
-                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument.")
+            raise TypeError(
+                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
+                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
+            )
 
         return image_embeddings, prompt, negative_prompt, num_inference_steps
 
@@ -276,7 +280,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. 
+                expense of slower inference.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
@@ -311,7 +315,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated image embeddings.
         """
-
 
         # 0. Define commonly used variables
         device = self._execution_device

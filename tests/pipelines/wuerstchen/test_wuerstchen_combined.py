@@ -39,13 +39,12 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "height",
         "width",
         "latents",
-        "guidance_scale",
+        "decoder_guidance_scale",
         "negative_prompt",
-        "num_inference_steps",
-        "prior_num_inference_steps",
+        "decoder_num_inference_steps",
         "return_dict",
-        "guidance_scale",
-        "num_images_per_prompt",
+        "prior_guidance_scale",
+        "prior_num_inference_steps",
         "output_type",
         "return_dict",
     ]
@@ -113,7 +112,7 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return model.eval()
 
     @property
-    def dummy_generator(self):
+    def dummy_decoder(self):
         torch.manual_seed(0)
 
         model_kwargs = {
@@ -137,13 +136,13 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         tokenizer = self.dummy_tokenizer
 
         text_encoder = self.dummy_text_encoder
-        generator = self.dummy_generator
+        decoder = self.dummy_decoder
         vqgan = self.dummy_vqgan
 
         components = {
             "tokenizer": tokenizer,
             "text_encoder": text_encoder,
-            "generator": generator,
+            "decoder": decoder,
             "vqgan": vqgan,
             "scheduler": scheduler,
             "prior": prior,
@@ -162,8 +161,8 @@ class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = {
             "prompt": "horse",
             "generator": generator,
-            "guidance_scale": 4.0,
-            "num_inference_steps": 2,
+            "prior_guidance_scale": 4.0,
+            "decoder_num_inference_steps": 2,
             "prior_num_inference_steps": 2,
             "output_type": "np",
             "height": 128,
