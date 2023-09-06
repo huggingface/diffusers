@@ -223,7 +223,7 @@ try:
     if _torch_available:
         _torch_version = importlib_metadata.version("torch")
         if version.Version(_torch_version) < version.Version("1.12"):
-            raise ValueError("PyTorch should be >= 1.12")
+            raise ValueError("xformers is installed in your environment and requires PyTorch >= 1.12")
 
     logger.debug(f"Successfully imported xformers version {_xformers_version}")
 except importlib_metadata.PackageNotFoundError:
