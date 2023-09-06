@@ -190,7 +190,7 @@ class WuerstchenPipeline(DiffusionPipeline):
                 to 0% we use 10 denoising steps.
             decoder_num_inference_steps (`int`, *optional*, defaults to 12):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. This pipeline takes an optional dictionary of the form {end_1: steps_1, end_2: steps_2, ..., end_n: steps_n}.
+                expense of slower inference. For more specific timestep spacing, you can pass customized `decoder_timesteps`
                 For example `{2 / 3: 20, 0.0: 10}` means from 100% noise to 66.6% noise we use 20 denoising steps and from 66.6%
                 to 0% we use 10 denoising steps.
           prior_timesteps (`List[float]`, *optional*): 
