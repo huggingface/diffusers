@@ -469,7 +469,7 @@ class BasicSparseTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         dropout=0.0,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int = 1280,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         attention_bias: bool = False,
@@ -492,18 +492,15 @@ class BasicSparseTransformerBlock(nn.Module):
         self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
         # Cross-Attn
-        if cross_attention_dim is not None:
-            self.attn2 = Attention(
-                query_dim=dim,
-                cross_attention_dim=cross_attention_dim,
-                heads=num_attention_heads,
-                dim_head=attention_head_dim,
-                dropout=dropout,
-                bias=attention_bias,
-                upcast_attention=False,
-            )
-        else:
-            self.attn2 = None
+        self.attn2 = Attention(
+            query_dim=dim,
+            cross_attention_dim=cross_attention_dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=attention_bias,
+            upcast_attention=False,
+        )
 
         if cross_attention_dim is not None:
             self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
@@ -544,17 +541,15 @@ class BasicSparseTransformerBlock(nn.Module):
                 + hidden_states
             )
 
-        if self.attn2 is not None:
-            # Cross-Attention
-            norm_hidden_states = (
-                self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+        norm_hidden_states = (
+            self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+        )
+        hidden_states = (
+            self.attn2(
+                norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
             )
-            hidden_states = (
-                self.attn2(
-                    norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
-                )
-                + hidden_states
-            )
+            + hidden_states
+        )
 
         # Feed-forward
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states

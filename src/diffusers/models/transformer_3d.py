@@ -81,7 +81,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         num_layers: int = 1,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
-        cross_attention_dim: Optional[int] = None,
+        cross_attention_dim: int = 1280,
         attention_bias: bool = False,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,

@@ -939,7 +939,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         output_scale_factor=1.0,
         add_upsample=True,
         only_cross_attention=False,
-        upcast_attention=False,
     ):
         super().__init__()
         resnets = []
