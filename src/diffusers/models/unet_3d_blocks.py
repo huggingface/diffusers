@@ -102,7 +102,6 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            only_cross_attention=only_cross_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
     raise ValueError(f"{down_block_type} does not exist.")
@@ -189,7 +188,6 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            only_cross_attention=only_cross_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
 
@@ -938,7 +936,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
-        only_cross_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -974,7 +971,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    only_cross_attention=only_cross_attention
+                    # only_cross_attention=only_cross_attention
                 )
             )
 
@@ -1040,7 +1037,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
-        only_cross_attention=False
     ):
         super().__init__()
         resnets = []
@@ -1074,7 +1070,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    only_cross_attention=only_cross_attention
                 )
             )
 

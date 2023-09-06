@@ -85,7 +85,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         attention_bias: bool = False,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
-        only_cross_attention: bool = False,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -110,7 +109,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
                     activation_fn=activation_fn,
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention
                 )
                 for d in range(num_layers)
             ]
