@@ -300,9 +300,8 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")

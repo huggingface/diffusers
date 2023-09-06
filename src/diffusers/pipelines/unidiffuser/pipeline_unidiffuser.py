@@ -1329,9 +1329,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
         if output_type == "pil" and gen_image is not None:
             gen_image = self.numpy_to_pil(gen_image)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (gen_image, gen_text)

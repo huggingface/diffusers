@@ -325,9 +325,8 @@ class ShapEPipeline(DiffusionPipeline):
             if output_type == "pil":
                 images = [self.numpy_to_pil(image) for image in images]
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (images,)
