@@ -527,15 +527,10 @@ class BasicSparseTransformerBlock(nn.Module):
             self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
         )
 
-        if self.only_cross_attention:
-            hidden_states = (
-                self.attn1(norm_hidden_states, encoder_hidden_states, attention_mask=attention_mask) + hidden_states
-            )
-        else:
-            hidden_states = (
-                self.attn1(norm_hidden_states, attention_mask=attention_mask, video_length=video_length)
-                + hidden_states
-            )
+        hidden_states = (
+            self.attn1(norm_hidden_states, attention_mask=attention_mask, video_length=video_length)
+            + hidden_states
+        )
 
         norm_hidden_states = (
             self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
