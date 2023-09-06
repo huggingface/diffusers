@@ -382,6 +382,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             ).prev_sample
 
         # 10. Scale and decode the image latents with vq-vae
+        import ipdb; ipdb.set_trace()
         latents = self.vqgan.config.scale_factor * latents
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
 
