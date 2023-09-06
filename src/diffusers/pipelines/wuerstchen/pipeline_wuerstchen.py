@@ -229,7 +229,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
 
         if do_classifier_free_guidance:
-            if not isinstance(negative_prompt, list):
+            if negative_prompt is not None and not isinstance(negative_prompt, list):
                 if isinstance(negative_prompt, str):
                     negative_prompt = [negative_prompt]
                 else:

@@ -193,8 +193,7 @@ class WuerstchenPipeline(DiffusionPipeline):
                 `prior_num_inference_steps` timesteps are used. Must be in descending order.
             timesteps (`List[float]`, *optional*):
                 Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced
-                `num_inference_steps`
-               timesteps are used. Must be in descending order.
+                `decoder_num_inference_steps` timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen

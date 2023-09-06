@@ -36,7 +36,6 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     batch_params = ["image_embeddings", "prompt", "negative_prompt"]
     required_optional_params = [
         "num_images_per_prompt",
-        "decoder",
         "num_inference_steps",
         "latents",
         "negative_prompt",
