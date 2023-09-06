@@ -1088,25 +1088,9 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
 
         # 3. Encode input prompt
         (cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None)
-        # (
-        #     prompt_embeds,
-        #     negative_prompt_embeds,
-        #     pooled_prompt_embeds,
-        #     negative_pooled_prompt_embeds,
-        # ) = self.encode_prompt(
-        #     prompt=prompt,
-        #     prompt_2=prompt_2,
-        #     device=device,
-        #     num_images_per_prompt=num_images_per_prompt,
-        #     do_classifier_free_guidance=do_classifier_free_guidance,
-        #     negative_prompt=negative_prompt,
-        #     negative_prompt_2=negative_prompt_2,
-        #     prompt_embeds=prompt_embeds,
-        #     negative_prompt_embeds=negative_prompt_embeds,
-        #     pooled_prompt_embeds=pooled_prompt_embeds,
-        #     negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-        #     lora_scale=text_encoder_lora_scale,
-        # )
+
+        negative_prompt = negative_prompt if negative_prompt is not None else ""
+
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -1200,13 +1184,19 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # make sure the VAE is in float32 mode, as it overflows in float16
-        if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
-            self.upcast_vae()
-            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-
         if not output_type == "latent":
+            # make sure the VAE is in float32 mode, as it overflows in float16
+            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+
+            if needs_upcasting:
+                self.upcast_vae()
+                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+
+            # cast back to fp16 if needed
+            if needs_upcasting:
+                self.vae.to(dtype=torch.float16)
         else:
             image = latents
             return StableDiffusionXLPipelineOutput(images=image)

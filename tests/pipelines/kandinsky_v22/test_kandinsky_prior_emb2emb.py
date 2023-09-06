@@ -48,7 +48,6 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
         "strength",
         "generator",
         "num_inference_steps",
-        "latents",
         "negative_prompt",
         "guidance_scale",
         "output_type",
