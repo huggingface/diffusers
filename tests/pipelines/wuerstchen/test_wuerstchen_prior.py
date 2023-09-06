@@ -189,6 +189,6 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
 
-    @unittest.skip(reason="flakey and float16 requires CUDA")
+    @unittest.skip(reason="flaky for now")
     def test_float16_inference(self):
         super().test_float16_inference()
