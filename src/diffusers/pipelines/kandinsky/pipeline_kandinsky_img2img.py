@@ -117,6 +117,8 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
             MoVQ image encoder and decoder
     """
 
+    model_cpu_offload_seq = "text_encoder->unet->movq"
+
     def __init__(
         self,
         text_encoder: MultilingualCLIP,
@@ -263,7 +265,9 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-            self,
+    #  add_noise method to overwrite the one in schedule because it use a different beta schedule for adding noise vs sampling
+    def add_noise(
+        self,
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,

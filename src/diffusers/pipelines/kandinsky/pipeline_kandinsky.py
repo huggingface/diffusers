@@ -95,6 +95,8 @@ class KandinskyPipeline(DiffusionPipeline):
             MoVQ Decoder to generate the image from the latents.
     """
 
+    model_cpu_offload_seq = "text_encoder->unet-movq"
+
     def __init__(
         self,
         text_encoder: MultilingualCLIP,
@@ -228,7 +230,9 @@ class KandinskyPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-        def __call__(
+    @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
+    def __call__(
         self,
         prompt: Union[str, List[str]],
         image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],

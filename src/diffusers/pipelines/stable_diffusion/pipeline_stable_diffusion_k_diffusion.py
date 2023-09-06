@@ -79,8 +79,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    model_cpu_offload_seq = "text_encoder->unet->vae"
-    model_cpu_offload_seq = "text_encoder->unet->vae"
+    model_cpu_offload_seq = "text_encoder->unet->vae->safety_checker"
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
@@ -128,8 +127,6 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
         library = importlib.import_module("k_diffusion")
         sampling = getattr(library, "sampling")
         self.sampler = getattr(sampling, scheduler_type)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(

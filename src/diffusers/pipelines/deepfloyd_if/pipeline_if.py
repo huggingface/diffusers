@@ -103,6 +103,7 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
+    model_cpu_offload_seq = "text_encoder->unet->safety_checker"
 
     def __init__(
         self,
@@ -143,20 +144,6 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-                # the GPU.
-            self.text_encoder_offload_hook = hook
-
-        _, hook = cpu_offload_with_hook(self.unet, device, prev_module_hook=hook)
-
-        # if the safety checker isn't called, `unet_offload_hook` will have to be called to manually offload the unet
-        self.unet_offload_hook = hook
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     def remove_all_hooks(self):
         if is_accelerate_available():

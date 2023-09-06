@@ -119,7 +119,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
     """
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
 
-
     def __init__(
         self,
         vae: AutoencoderKL,

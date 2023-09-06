@@ -103,7 +103,9 @@ class StableDiffusionXLControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"  # leave controlnet out on purpose because it iterates with unet
+    model_cpu_offload_seq = (
+        "text_encoder->text_encoder_2->unet->vae"  # leave controlnet out on purpose because it iterates with unet
+    )
 
     def __init__(
         self,

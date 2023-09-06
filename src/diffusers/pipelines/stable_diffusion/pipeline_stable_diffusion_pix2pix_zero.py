@@ -312,6 +312,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             Whether the pipeline requires a safety checker. We recommend setting it to True if you're using the
             pipeline publicly.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae->safety_checker"
     _optional_components = [
         "safety_checker",
         "feature_extractor",
@@ -368,7 +369,10 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-            prompt,
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
+    def _encode_prompt(
+        self,
+        prompt,
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,

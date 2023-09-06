@@ -149,6 +149,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
     """
 
     _exclude_from_cpu_offload = ["prior"]
+    model_cpu_offload_seq = "text_encoder->prior"
 
     def __init__(
         self,
@@ -394,8 +395,6 @@ class KandinskyPriorPipeline(DiffusionPipeline):
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
-
-            self.final_offload_hook = hook
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)

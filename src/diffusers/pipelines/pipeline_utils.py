@@ -1185,7 +1185,9 @@ class DiffusionPipeline(ConfigMixin):
         `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
         """
         if self.model_cpu_offload_seq is None:
-            raise ValueError("Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set.")
+            raise ValueError(
+                "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set."
+            )
 
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate import cpu_offload_with_hook
@@ -1198,7 +1200,7 @@ class DiffusionPipeline(ConfigMixin):
             self.to("cpu", silence_dtype_warnings=True)
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
-        all_model_components = {k: v for k,v in self.components.items() if isinstance(v, torch.nn.Module)}
+        all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
         self._all_hooks = []
         for model_str in self.model_cpu_offload_seq.split("->"):
@@ -1207,7 +1209,6 @@ class DiffusionPipeline(ConfigMixin):
             if model is not None:
                 _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
                 self._all_hooks.append(hook)
-
 
         # now also cpu offload all models that are not in the seq chain. these models will stay on GPU until
         # some models cannot be in the seq chain because they are iteratively called, such as controlnet

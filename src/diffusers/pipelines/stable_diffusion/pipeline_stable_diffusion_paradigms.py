@@ -93,7 +93,7 @@ class StableDiffusionParadigmsPipeline(
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
-    model_cpu_offload_seq = "text_encoder->unet->vae"
+    model_cpu_offload_seq = "text_encoder->unet->vae->safety_checker"
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
@@ -173,8 +173,6 @@ class StableDiffusionParadigmsPipeline(
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
