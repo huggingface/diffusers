@@ -87,12 +87,10 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         attention_bias: bool = False,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
-        use_linear_projection: bool = False,
         only_cross_attention: bool = False,
         upcast_attention: bool = False,
     ):
         super().__init__()
-        self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
@@ -101,10 +99,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         self.in_channels = in_channels
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-        if use_linear_projection:
-            self.proj_in = nn.Linear(in_channels, inner_dim)
-        else:
-            self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
+        self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
 
         # Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -126,10 +121,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         )
 
         # 4. Define output layers
-        if use_linear_projection:
-            self.proj_out = nn.Linear(in_channels, inner_dim)
-        else:
-            self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
+        self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(
         self,
@@ -176,14 +168,9 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         residual = hidden_states
 
         hidden_states = self.norm(hidden_states)
-        if not self.use_linear_projection:
-            hidden_states = self.proj_in(hidden_states)
-            inner_dim = hidden_states.shape[1]
-            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
-        else:
-            inner_dim = hidden_states.shape[1]
-            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
-            hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.proj_in(hidden_states)
+        inner_dim = hidden_states.shape[1]
+        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
 
         # Blocks
         for block in self.transformer_blocks:
@@ -195,12 +182,8 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             )
 
         # Output
-        if not self.use_linear_projection:
-            hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2).contiguous()
-            hidden_states = self.proj_out(hidden_states)
-        else:
-            hidden_states = self.proj_out(hidden_states)
-            hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2).contiguous()
+        hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2).contiguous()
+        hidden_states = self.proj_out(hidden_states)
 
         output = hidden_states + residual
 

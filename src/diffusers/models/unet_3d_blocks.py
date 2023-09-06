@@ -102,7 +102,7 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            use_linear_projection=use_linear_projection,
+            # use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
@@ -191,7 +191,7 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            use_linear_projection=use_linear_projection,
+            # use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
@@ -240,7 +240,7 @@ def get_mid_block(
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
             resnet_groups=resnet_groups,
-            use_linear_projection=use_linear_projection,
+            # use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
@@ -944,7 +944,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
-        use_linear_projection=False,
+        # use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
     ):
@@ -982,7 +982,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
+                    # use_linear_projection=use_linear_projection,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                 )
@@ -1050,7 +1050,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
-        use_linear_projection=False,
+        # use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
     ):
@@ -1086,7 +1086,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
+                    # use_linear_projection=use_linear_projection,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                 )
@@ -1154,7 +1154,7 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         num_attention_heads=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
-        use_linear_projection=True,
+        # use_linear_projection=True,
         upcast_attention=False,
     ):
         super().__init__()
@@ -1190,7 +1190,7 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
+                    # use_linear_projection=use_linear_projection,
                     upcast_attention=upcast_attention,
                 )
             )
