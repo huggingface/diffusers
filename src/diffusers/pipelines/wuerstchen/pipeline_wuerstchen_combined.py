@@ -193,6 +193,12 @@ class WuerstchenPipeline(DiffusionPipeline):
                 expense of slower inference. This pipeline takes an optional dictionary of the form {end_1: steps_1, end_2: steps_2, ..., end_n: steps_n}.
                 For example `{2 / 3: 20, 0.0: 10}` means from 100% noise to 66.6% noise we use 20 denoising steps and from 66.6%
                 to 0% we use 10 denoising steps.
+          prior_timesteps (`List[float]`, *optional*): 
+                Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced `prior_num_inference_steps`
+               timesteps are used. Must be in descending order.
+          decoder_timesteps (`List[float]`, *optional*): 
+                Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced `decoder_num_inference_steps`
+               timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
