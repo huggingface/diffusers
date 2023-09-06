@@ -612,7 +612,7 @@ def parse_args(input_args=None):
         help="Dont apply augmentation during data augmentation when this flag is enabled.",
     )
     parser.add_argument(
-        "--no_safe_serialization",
+        "--use_safetensors",
         action="store_true",
         help="If specified save the checkpoint not in `safetensors` format, but in original PyTorch format instead.",
     )
@@ -1255,14 +1255,14 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
-        unet.save_attn_procs(args.output_dir, safe_serialization=not args.no_safe_serialization)
+        unet.save_attn_procs(args.output_dir, safe_serialization=args.use_safetensors)
         save_new_embed(
             text_encoder,
             modifier_token_id,
             accelerator,
             args,
             args.output_dir,
-            safe_serialization=not args.no_safe_serialization,
+            safe_serialization=args.use_safetensors,
         )
 
         # Final inference
@@ -1275,13 +1275,13 @@ def main(args):
 
         # load attention processors
         weight_name = (
-            "pytorch_custom_diffusion_weights.safetensors"
-            if not args.no_safe_serialization
-            else "pytorch_custom_diffusion_weights.bin"
+            "pytorch_custom_diffusion_weights.bin"
+            if not args.use_safetensors
+            else "pytorch_custom_diffusion_weights.safetensors"
         )
         pipeline.unet.load_attn_procs(args.output_dir, weight_name=weight_name)
         for token in args.modifier_token:
-            token_weight_name = f"{token}.safetensors" if not args.no_safe_serialization else f"{token}.bin"
+            token_weight_name = f"{token}.safetensors" if args.use_safetensors else f"{token}.bin"
             pipeline.load_textual_inversion(args.output_dir, weight_name=token_weight_name)
 
         # run inference
