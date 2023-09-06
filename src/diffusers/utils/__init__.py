@@ -18,7 +18,6 @@ import os
 from packaging import version
 
 from .. import __version__
-from .accelerate_utils import apply_forward_hook
 from .constants import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
