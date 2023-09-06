@@ -1,0 +1,11 @@
+-e ../
+git+https://github.com/huggingface/accelerate@v0.21.0
+torchvision>=0.11.0
+protobuf>=3.19.6,<4
+transformers>=4.25.1
+ftfy==6.1.1
+tensorboard==2.13.0
+Jinja2==3.1.2
+matplotlib==3.7.2
+opencv-python>=4.8.0
+datasets==2.14.2

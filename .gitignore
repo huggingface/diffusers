@@ -184,3 +184,4 @@ instruct-pix2pix-model/
 text-inversion-model/
 text-to-image-model/
 unconditional-image-generation-model/
+outputs/
