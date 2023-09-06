@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Unconditional 이미지 생성
 
-[[Colab에서 열기]]
+[[open-in-colab]]
 
 Unconditional 이미지 생성은 비교적 간단한 작업입니다. 모델이 텍스트나 이미지와 같은 추가 조건 없이 이미 학습된 학습 데이터와 유사한 이미지만 생성합니다.
 

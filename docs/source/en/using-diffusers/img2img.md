@@ -33,9 +33,9 @@ from io import BytesIO
 from diffusers import StableDiffusionImg2ImgPipeline
 
 device = "cuda"
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained("nitrosocke/Ghibli-Diffusion", torch_dtype=torch.float16).to(
-    device
-)
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+    "nitrosocke/Ghibli-Diffusion", torch_dtype=torch.float16, use_safetensors=True
+).to(device)
 ```
 
 Download and preprocess an initial image so you can pass it to the pipeline:

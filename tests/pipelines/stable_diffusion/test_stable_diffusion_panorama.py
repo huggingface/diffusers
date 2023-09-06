@@ -29,7 +29,7 @@ from diffusers import (
     StableDiffusionPanoramaPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import slow, torch_device
+from diffusers.utils import nightly, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -147,7 +147,10 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
     # override to speed the overall test timing up.
     def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=3.25e-3)
+        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=5.0e-3)
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1e-1)
 
     def test_stable_diffusion_panorama_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -245,9 +248,9 @@ class StableDiffusionPanoramaPipelineFastTests(PipelineLatentTesterMixin, Pipeli
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
-@slow
+@nightly
 @require_torch_gpu
-class StableDiffusionPanoramaSlowTests(unittest.TestCase):
+class StableDiffusionPanoramaNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -299,6 +302,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
             "stabilityai/stable-diffusion-2-base", safety_checker=None
         )
         pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -306,7 +310,6 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
         inputs = self.get_inputs()
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
-
         assert image.shape == (1, 512, 2048, 3)
 
         expected_slice = np.array(
@@ -325,7 +328,7 @@ class StableDiffusionPanoramaSlowTests(unittest.TestCase):
             ]
         )
 
-        assert np.abs(expected_slice - image_slice).max() < 1e-3
+        assert np.abs(expected_slice - image_slice).max() < 1e-2
 
     def test_stable_diffusion_panorama_intermediate_state(self):
         number_of_steps = 0

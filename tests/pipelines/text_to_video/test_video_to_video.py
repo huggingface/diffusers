@@ -150,6 +150,9 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=0.001)
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",

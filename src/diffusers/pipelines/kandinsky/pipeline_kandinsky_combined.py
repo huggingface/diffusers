@@ -188,6 +188,9 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
             movq=movq,
         )
 
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+        self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
+
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -197,6 +200,16 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
         """
         self.prior_pipe.enable_model_cpu_offload()
         self.decoder_pipe.enable_model_cpu_offload()
+
+    def enable_sequential_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models (`unet`, `text_encoder`, `vae`, and `safety checker` state dicts) to CPU using 🤗
+        Accelerate, significantly reducing memory usage. Models are moved to a `torch.device('meta')` and loaded on a
+        GPU only when their specific submodule's `forward` method is called. Offloading happens on a submodule basis.
+        Memory savings are higher than using `enable_model_cpu_offload`, but performance is lower.
+        """
+        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
 
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
@@ -398,6 +411,9 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
             movq=movq,
         )
 
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+        self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
+
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -407,6 +423,17 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
         """
         self.prior_pipe.enable_model_cpu_offload()
         self.decoder_pipe.enable_model_cpu_offload()
+
+    def enable_sequential_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
+        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        `enable_model_cpu_offload`, but performance is lower.
+        """
+        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
 
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
@@ -447,7 +474,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process. Can also accpet image latents as `image`, if passing latents directly, it will not be encoded
+                process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
@@ -630,6 +657,9 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
             movq=movq,
         )
 
+    def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
+        self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
+
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -639,6 +669,17 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
         """
         self.prior_pipe.enable_model_cpu_offload()
         self.decoder_pipe.enable_model_cpu_offload()
+
+    def enable_sequential_cpu_offload(self, gpu_id=0):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
+        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        `enable_model_cpu_offload`, but performance is lower.
+        """
+        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
 
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
@@ -679,7 +720,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process. Can also accpet image latents as `image`, if passing latents directly, it will not be encoded
+                process. Can also accept image latents as `image`, if passing latents directly, it will not be encoded
                 again.
             mask_image (`np.array`):
                 Tensor representing an image batch, to mask `image`. White pixels in the mask will be repainted, while
