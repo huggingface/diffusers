@@ -1,6 +1,7 @@
 __version__ = "0.21.0.dev0"
 
 from typing import TYPE_CHECKING
+
 from .utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -234,6 +235,8 @@ else:
             "StableDiffusionDepth2ImgPipeline",
             "StableDiffusionDiffEditPipeline",
             "StableDiffusionGLIGENPipeline",
+            "StableDiffusionGLIGENPipeline",
+            "StableDiffusionGLIGENTextImagePipeline",
             "StableDiffusionImageVariationPipeline",
             "StableDiffusionImg2ImgPipeline",
             "StableDiffusionInpaintPipeline",
@@ -259,8 +262,6 @@ else:
             "StableDiffusionXLPipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
-            "StableDiffusionGLIGENTextImagePipeline",
-            "StableDiffusionGLIGENPipeline",
             "TextToVideoSDPipeline",
             "TextToVideoZeroPipeline",
             "UnCLIPImageVariationPipeline",
