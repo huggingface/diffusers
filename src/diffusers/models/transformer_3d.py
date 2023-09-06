@@ -69,8 +69,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             Pass True if linear projection is to be applied on the input hidden_states. If False, uses Conv2D instead.
         only_cross_attention: ( `bool`, *optional*, defaults to False):
             Input to the attention processor.
-        upcast_attention: ( `bool`, *optional*, defaults to False),
-            Input to the attention processor.
 
     """
 
@@ -88,7 +86,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         only_cross_attention: bool = False,
-        upcast_attention: bool = False,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -113,8 +110,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
                     activation_fn=activation_fn,
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    upcast_attention=upcast_attention,
+                    only_cross_attention=only_cross_attention
                 )
                 for d in range(num_layers)
             ]

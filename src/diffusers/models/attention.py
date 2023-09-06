@@ -454,15 +454,13 @@ class BasicSparseTransformerBlock(nn.Module):
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
-        only_cross_attention (`bool`, *optional*):
-            Whether to use only cross-attention layers. In this case two cross attention layers are used.
-        double_self_attention (`bool`, *optional*):
-            Whether to use two self-attention layers. In this case no cross attention layers are used.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer3DModel`.
         attention_bias (:
             obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+        only_cross_attention (`bool`, *optional*):
+            Whether to use only cross-attention layers. In this case two cross attention layers are used.
     """
 
     def __init__(
@@ -476,7 +474,6 @@ class BasicSparseTransformerBlock(nn.Module):
         num_embeds_ada_norm: Optional[int] = None,
         attention_bias: bool = False,
         only_cross_attention: bool = False,
-        upcast_attention: bool = False,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -490,7 +487,7 @@ class BasicSparseTransformerBlock(nn.Module):
             dropout=dropout,
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
-            upcast_attention=upcast_attention,
+            upcast_attention=False,
         )
         self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
@@ -503,7 +500,7 @@ class BasicSparseTransformerBlock(nn.Module):
                 dim_head=attention_head_dim,
                 dropout=dropout,
                 bias=attention_bias,
-                upcast_attention=upcast_attention,
+                upcast_attention=False,
             )
         else:
             self.attn2 = None
@@ -524,7 +521,7 @@ class BasicSparseTransformerBlock(nn.Module):
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
-            upcast_attention=upcast_attention,
+            upcast_attention=False,
         )
         nn.init.zeros_(self.attn_temp.to_out[0].weight.data)
         self.norm_temp = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
