@@ -137,7 +137,7 @@ More information on all the CLI arguments and the environment are available on y
 
 
 def log_validation(
-    vae, image_encoder, image_processor, text_encoder, tokenizer, prior, args, accelerator, weight_dtype, epoch
+    image_encoder, image_processor, text_encoder, tokenizer, prior, args, accelerator, weight_dtype, epoch
 ):
     logger.info("Running validation... ")
 
@@ -713,10 +713,8 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    clip_mean = prior.clip_mean
-    clip_std = prior.clip_std
-    prior.clip_mean = None
-    prior.clip_std = None
+    clip_mean = prior.clip_mean.clone()
+    clip_std = prior.clip_std.clone()
 
     prior, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         prior, optimizer, train_dataloader, lr_scheduler
