@@ -502,10 +502,8 @@ class BasicSparseTransformerBlock(nn.Module):
             upcast_attention=False,
         )
 
-        if cross_attention_dim is not None:
-            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
-        else:
-            self.norm2 = None
+
+        self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
         # Feed-forward
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
