@@ -80,7 +80,6 @@ def get_down_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
-            add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
@@ -95,14 +94,12 @@ def get_down_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
-            add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            # use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
@@ -170,7 +167,6 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
-            add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
@@ -185,13 +181,11 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
-            add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            # use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
@@ -240,7 +234,6 @@ def get_mid_block(
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
             resnet_groups=resnet_groups,
-            # use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
@@ -809,7 +802,6 @@ class UpBlockInflated3D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
-        add_upsample=True,
     ):
         super().__init__()
         resnets = []
@@ -835,10 +827,7 @@ class UpBlockInflated3D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-        if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, use_conv=True, out_channels=out_channels)])
-        else:
-            self.upsamplers = None
+        self.upsamplers = nn.ModuleList([Upsample3D(out_channels, use_conv=True, out_channels=out_channels)])
 
         self.gradient_checkpointing = False
 
@@ -851,9 +840,8 @@ class UpBlockInflated3D(nn.Module):
 
             hidden_states = resnet(hidden_states, temb)
 
-        if self.upsamplers is not None:
-            for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size)
+        for upsampler in self.upsamplers:
+            hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
@@ -872,7 +860,6 @@ class DownBlockInflated3D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
-        add_downsample=True,
         downsample_padding=1,
     ):
         super().__init__()
@@ -897,16 +884,13 @@ class DownBlockInflated3D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-        if add_downsample:
-            self.downsamplers = nn.ModuleList(
-                [
-                    Downsample3D(
-                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
-                    )
-                ]
-            )
-        else:
-            self.downsamplers = None
+        self.downsamplers = nn.ModuleList(
+            [
+                Downsample3D(
+                    out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                )
+            ]
+        )
 
         self.gradient_checkpointing = False
 
@@ -917,11 +901,10 @@ class DownBlockInflated3D(nn.Module):
             hidden_states = resnet(hidden_states, temb)
             output_states += (hidden_states,)
 
-        if self.downsamplers is not None:
-            for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+        for downsampler in self.downsamplers:
+            hidden_states = downsampler(hidden_states)
 
-            output_states += (hidden_states,)
+        output_states += (hidden_states,)
 
         return hidden_states, output_states
 
@@ -943,8 +926,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
-        add_upsample=True,
-        # use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
     ):
@@ -982,7 +963,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    # use_linear_projection=use_linear_projection,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                 )
@@ -991,10 +971,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.attentions = nn.ModuleList(attentions)
 
-        if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, use_conv=True, out_channels=out_channels)])
-        else:
-            self.upsamplers = None
+        self.upsamplers = nn.ModuleList([Upsample3D(out_channels, use_conv=True, out_channels=out_channels)])
 
         self.gradient_checkpointing = False
 
@@ -1025,9 +1002,8 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                 cross_attention_kwargs=cross_attention_kwargs,
             ).sample
 
-        if self.upsamplers is not None:
-            for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size)
+        for upsampler in self.upsamplers:
+            hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
@@ -1049,8 +1025,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         downsample_padding=1,
-        add_downsample=True,
-        # use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
     ):
@@ -1086,7 +1060,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    # use_linear_projection=use_linear_projection,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                 )
@@ -1095,16 +1068,13 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.attentions = nn.ModuleList(attentions)
 
-        if add_downsample:
-            self.downsamplers = nn.ModuleList(
-                [
-                    Downsample3D(
-                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
-                    )
-                ]
-            )
-        else:
-            self.downsamplers = None
+        self.downsamplers = nn.ModuleList(
+            [
+                Downsample3D(
+                    out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                )
+            ]
+        )
 
         self.gradient_checkpointing = False
 
@@ -1130,11 +1100,10 @@ class CrossAttnDownBlockInflated3D(nn.Module):
 
             output_states += (hidden_states,)
 
-        if self.downsamplers is not None:
-            for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states)
+        for downsampler in self.downsamplers:
+            hidden_states = downsampler(hidden_states)
 
-            output_states += (hidden_states,)
+        output_states += (hidden_states,)
 
         return hidden_states, output_states
 
@@ -1154,7 +1123,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         num_attention_heads=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280,
-        # use_linear_projection=True,
         upcast_attention=False,
     ):
         super().__init__()
@@ -1190,7 +1158,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    # use_linear_projection=use_linear_projection,
                     upcast_attention=upcast_attention,
                 )
             )
