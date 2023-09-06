@@ -1,4 +1,4 @@
--e ../
+git+https://github.com/moreh-dev/diffusers.git@main
 git+https://github.com/huggingface/accelerate@v0.21.0
 torchvision>=0.11.0
 protobuf>=3.19.6,<4
