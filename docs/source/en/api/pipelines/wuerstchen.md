@@ -69,10 +69,10 @@ dtype = torch.float16
 num_images_per_prompt = 2
 
 prior_pipeline = WuerstchenPriorPipeline.from_pretrained(
-    "warp-diffusion/WuerstchenPriorPipeline", torch_dtype=dtype
+    "warp-diffusion/wuerstchen-prior", torch_dtype=dtype
 ).to(device)
 decoder_pipeline = WuerstchenDecoderPipeline.from_pretrained(
-    "warp-diffusion/WuerstchenDecoderPipeline", torch_dtype=dtype
+    "warp-diffusion/wuerstchen", torch_dtype=dtype
 ).to(device)
 
 caption = "A captivating artwork of a mysterious stone golem"

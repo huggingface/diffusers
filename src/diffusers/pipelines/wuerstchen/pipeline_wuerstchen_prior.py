@@ -42,7 +42,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "warp-diffusion/WuerstchenPriorPipeline", torch_dtype=torch.float16
+        ...     "warp-diffusion/wuerstchen-prior", torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
@@ -344,8 +344,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         # 3. Determine latent shape of image embeddings
         dtype = text_encoder_hidden_states.dtype
-        latent_height = ceil(height / self.resolution_multiple)
-        latent_width = ceil(width / self.resolution_multiple)
+        latent_height = ceil(height / self.config.resolution_multiple)
+        latent_width = ceil(width / self.config.resolution_multiple)
         num_channels = self.prior.config.c_in
         effnet_features_shape = (num_images_per_prompt * batch_size, num_channels, latent_height, latent_width)
 
@@ -388,7 +388,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             ).prev_sample
 
         # 10. Denormalize the latents
-        latents = latents * self.latent_mean - self.latent_std
+        latents = latents * self.config.latent_mean - self.config.latent_std
 
         if output_type == "np":
             latents = latents.cpu().numpy()

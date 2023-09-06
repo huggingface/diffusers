@@ -34,10 +34,10 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenDecoderPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "warp-diffusion/WuerstchenPriorPipeline", torch_dtype=torch.float16
+        ...     "warp-diffusion/wuerstchen-prior", torch_dtype=torch.float16
         ... ).to("cuda")
         >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain(
-        ...     "warp-diffusion/WuerstchenDecoderPipeline", torch_dtype=torch.float16
+        ...     "warp-diffusion/wuerstchen", torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
