@@ -19,7 +19,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from diffusers import DDPMWuerstchenScheduler, WuerstchenPipeline
+from diffusers import DDPMWuerstchenScheduler, WuerstchenCombinedPipeline
 from diffusers.pipelines.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt, WuerstchenPrior
 from diffusers.utils import torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
@@ -30,8 +30,8 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class WuerstchenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = WuerstchenPipeline
+class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = WuerstchenCombinedPipeline
     params = ["prompt"]
     batch_params = ["prompt", "negative_prompt"]
     required_optional_params = [

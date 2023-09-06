@@ -29,18 +29,18 @@ A comparison can be seen here:
 
 ## Text-to-Image Generation
 
-For the sake of usability Würstchen can be used with a single pipeline. This pipeline is called `WuerstchenPipeline` and can be used as follows:
+For the sake of usability Würstchen can be used with a single pipeline. This pipeline is called `WuerstchenCombinedPipeline` and can be used as follows:
 
 ```python
 import torch
-from diffusers import WuerstchenPipeline
+from diffusers import WuerstchenCombinedPipeline
 
 device = "cuda"
 dtype = torch.float16
 num_images_per_prompt = 2
 
-pipeline = WuerstchenPipeline.from_pretrained(
-    "warp-diffusion/WuerstchenPipeline", torch_dtype=dtype
+pipeline = WuerstchenCombinedPipeline.from_pretrained(
+    "warp-diffusion/WuerstchenCombinedPipeline", torch_dtype=dtype
 ).to(device)
 
 caption = "Anthropomorphic cat dressed as a fire fighter"
@@ -118,7 +118,7 @@ The original codebase, as well as experimental ideas, can be found at [dome272/W
 
 ## WuerschenPipeline
 
-[[autodoc]] WuerstchenPipeline
+[[autodoc]] WuerstchenCombinedPipeline
 	- all
 	- __call__
 

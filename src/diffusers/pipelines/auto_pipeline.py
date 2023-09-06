@@ -52,7 +52,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
-from .wuerstchen import WuerstchenDecoderPipeline, WuerstchenPipeline
+from .wuerstchen import WuerstchenDecoderPipeline, WuerstchenCombinedPipeline
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
@@ -64,7 +64,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22CombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
-        ("wuerstchen", WuerstchenPipeline),
+        ("wuerstchen", WuerstchenCombinedPipeline),
     ]
 )
 

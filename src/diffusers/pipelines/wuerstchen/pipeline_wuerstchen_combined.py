@@ -29,9 +29,9 @@ from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusions import WuerstchenPipeline
+        >>> from diffusions import WuerstchenCombinedPipeline
 
-        >>> pipe = WuerstchenPipeline.from_pretrained("warp-diffusion/Wuerstchen", torch_dtype=torch.float16).to(
+        >>> pipe = WuerstchenCombinedPipeline.from_pretrained("warp-diffusion/Wuerstchen", torch_dtype=torch.float16).to(
         ...     "cuda"
         ... )
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
@@ -40,7 +40,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
 """
 
 
-class WuerstchenPipeline(DiffusionPipeline):
+class WuerstchenCombinedPipeline(DiffusionPipeline):
     """
     Combined Pipeline for text-to-image generation using Wuerstchen
 

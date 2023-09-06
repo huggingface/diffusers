@@ -132,7 +132,7 @@ else:
         VersatileDiffusionTextToImagePipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
-    from .wuerstchen import WuerstchenDecoderPipeline, WuerstchenPipeline, WuerstchenPriorPipeline
+    from .wuerstchen import WuerstchenDecoderPipeline, WuerstchenCombinedPipeline, WuerstchenPriorPipeline
 
 
 try:

@@ -218,7 +218,7 @@ else:
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
         WuerstchenDecoderPipeline,
-        WuerstchenPipeline,
+        WuerstchenCombinedPipeline,
         WuerstchenPriorPipeline,
     )
 
