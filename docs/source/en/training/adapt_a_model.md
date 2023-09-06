@@ -11,7 +11,7 @@ A [`UNet2DConditionModel`] by default accepts 4 channels in the [input sample](h
 ```py
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
 pipeline.unet.config["in_channels"]
 4
 ```
@@ -21,7 +21,7 @@ Inpainting requires 9 channels in the input sample. You can check this value in 
 ```py
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
+pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", use_safetensors=True)
 pipeline.unet.config["in_channels"]
 9
 ```
@@ -35,7 +35,12 @@ from diffusers import UNet2DConditionModel
 
 model_id = "runwayml/stable-diffusion-v1-5"
 unet = UNet2DConditionModel.from_pretrained(
-    model_id, subfolder="unet", in_channels=9, low_cpu_mem_usage=False, ignore_mismatched_sizes=True
+    model_id,
+    subfolder="unet",
+    in_channels=9,
+    low_cpu_mem_usage=False,
+    ignore_mismatched_sizes=True,
+    use_safetensors=True,
 )
 ```
 

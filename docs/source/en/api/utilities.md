@@ -18,6 +18,14 @@ Utility and helper functions for working with 🤗 Diffusers.
 
 [[autodoc]] utils.testing_utils.load_image
 
+## export_to_gif
+
+[[autodoc]] utils.testing_utils.export_to_gif
+
 ## export_to_video
 
 [[autodoc]] utils.testing_utils.export_to_video
+
+## make_image_grid
+
+[[autodoc]] utils.pil_utils.make_image_grid

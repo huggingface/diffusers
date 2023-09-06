@@ -40,7 +40,7 @@ import numpy as np
 model_id = "google/ddpm-cifar10-32"
 
 # load model and scheduler
-ddim = DDIMPipeline.from_pretrained(model_id)
+ddim = DDIMPipeline.from_pretrained(model_id, use_safetensors=True)
 
 # run pipeline for just two steps and return numpy tensor
 image = ddim(num_inference_steps=2, output_type="np").images
@@ -65,7 +65,7 @@ import numpy as np
 model_id = "google/ddpm-cifar10-32"
 
 # load model and scheduler
-ddim = DDIMPipeline.from_pretrained(model_id)
+ddim = DDIMPipeline.from_pretrained(model_id, use_safetensors=True)
 
 # create a generator for reproducibility
 generator = torch.Generator(device="cpu").manual_seed(0)
@@ -100,7 +100,7 @@ import numpy as np
 model_id = "google/ddpm-cifar10-32"
 
 # load model and scheduler
-ddim = DDIMPipeline.from_pretrained(model_id)
+ddim = DDIMPipeline.from_pretrained(model_id, use_safetensors=True)
 ddim.to("cuda")
 
 # create a generator for reproducibility
@@ -125,7 +125,7 @@ import numpy as np
 model_id = "google/ddpm-cifar10-32"
 
 # load model and scheduler
-ddim = DDIMPipeline.from_pretrained(model_id)
+ddim = DDIMPipeline.from_pretrained(model_id, use_safetensors=True)
 ddim.to("cuda")
 
 # create a generator for reproducibility; notice you don't place it on the GPU!
@@ -174,7 +174,7 @@ from diffusers import DDIMScheduler, StableDiffusionPipeline
 import numpy as np
 
 model_id = "runwayml/stable-diffusion-v1-5"
-pipe = StableDiffusionPipeline.from_pretrained(model_id).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id, use_safetensors=True).to("cuda")
 pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 g = torch.Generator(device="cuda")
 

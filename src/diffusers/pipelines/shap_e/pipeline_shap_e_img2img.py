@@ -79,8 +79,7 @@ class ShapEPipelineOutput(BaseOutput):
 
 class ShapEImg2ImgPipeline(DiffusionPipeline):
     """
-    Pipeline for generating latent representation of a 3D asset and rendering with NeRF method with Shap-E from an
-    image.
+    Pipeline for generating latent representation of a 3D asset and rendering with the NeRF method from an image.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -88,15 +87,15 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
     Args:
         prior ([`PriorTransformer`]):
             The canonincal unCLIP prior to approximate the image embedding from the text embedding.
-        image_encoder ([`CLIPVisionModel`]):
+        image_encoder ([`~transformers.CLIPVisionModel`]):
             Frozen image-encoder.
-        image_processor (`CLIPImageProcessor`):
-             A [`~transformers.CLIPImageProcessor`] to process images.
+        image_processor ([`~transformers.CLIPImageProcessor`]):
+             A `CLIPImageProcessor` to process images.
         scheduler ([`HeunDiscreteScheduler`]):
-            A scheduler to be used in combination with `prior` to generate image embedding.
+            A scheduler to be used in combination with the `prior` model to generate image embedding.
         shap_e_renderer ([`ShapERenderer`]):
-            Shap-E renderer projects the generated latents into parameters of a MLP that's used to create 3D objects
-            with the NeRF rendering method.
+            Shap-E renderer projects the generated latents into parameters of a MLP to create 3D objects with the NeRF
+            rendering method.
     """
 
     def __init__(
@@ -179,10 +178,10 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
         Args:
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, or `List[np.ndarray]`):
                 `Image` or tensor representing an image batch to be used as the starting point. Can also accept image
-                latents as `image`, if passing latents directly, it will not be encoded again.
+                latents as image, but if passing latents directly it is not encoded again.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            num_inference_steps (`int`, *optional*, defaults to 100):
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -197,8 +196,9 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             frame_size (`int`, *optional*, default to 64):
                 The width and height of each image frame of the generated 3D output.
-            output_type (`str`, *optional*, defaults to `"pt"`):
-                (`np.array`),`"latent"` (`torch.Tensor`), mesh ([`MeshDecoderOutput`]).
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated image. Choose between `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.array`), `"latent"` (`torch.Tensor`), or mesh ([`MeshDecoderOutput`]).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.shap_e.pipeline_shap_e.ShapEPipelineOutput`] instead of a plain
                 tuple.
