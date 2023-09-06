@@ -125,6 +125,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "scheduler": scheduler,
+            "latent_dim_scale": 4.0,
         }
 
         return components
@@ -135,7 +136,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
-            "image_embeddings": torch.ones((1, 16, 10, 10), device=device),
+            "image_embeddings": torch.ones((1, 4, 4, 4), device=device),
             "prompt": "horse",
             "generator": generator,
             "guidance_scale": 1.0,
@@ -162,9 +163,9 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 424, 424, 3)
+        assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0])
+        expected_slice = np.array([0.0000, 0.0000, 0.0089, 1.0000, 1.0000, 0.3927, 1.0000, 1.0000, 1.0000])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
