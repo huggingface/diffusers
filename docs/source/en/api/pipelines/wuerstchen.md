@@ -43,7 +43,7 @@ pipeline = WuerstchenPipeline.from_pretrained(
     "warp-diffusion/WuerstchenPipeline", torch_dtype=dtype
 ).to(device)
 
-caption = "A captivating artwork of a mysterious stone golem"
+caption = "Anthropomorphic cat dressed as a fire fighter"
 negative_prompt = ""
 
 output = pipeline(
@@ -87,7 +87,7 @@ prior_output = prior_pipeline(
     num_images_per_prompt=num_images_per_prompt,
 )
 decoder_output = decoder_pipeline(
-    predicted_image_embeddings=prior_output.image_embeds,
+    image_embeddings=prior_output.image_embeddings,
     prompt=caption,
     negative_prompt=negative_prompt,
     num_images_per_prompt=num_images_per_prompt,

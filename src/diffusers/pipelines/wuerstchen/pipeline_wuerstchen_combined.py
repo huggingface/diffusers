@@ -151,8 +151,10 @@ class WuerstchenPipeline(DiffusionPipeline):
         height: int = 512,
         width: int = 512,
         prior_guidance_scale: float = 4.0,
-        prior_num_inference_steps: Union[int, Dict[float, int]] = {2 / 3: 20, 0.0: 10},
-        decoder_num_inference_steps: Union[int, Dict[float, int]] = {0.0: 12},
+        prior_num_inference_steps: int = 60,
+        decoder_num_inference_steps: int = 12,
+        prior_timesteps: Optional[List[float]] = None,
+        decoder_timesteps: Optional[List[float]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -230,25 +232,23 @@ class WuerstchenPipeline(DiffusionPipeline):
             height=height,
             num_images_per_prompt=num_images_per_prompt,
             num_inference_steps=prior_num_inference_steps,
+            timesteps=prior_timesteps,
             generator=generator,
             latents=latents,
             guidance_scale=prior_guidance_scale,
             output_type="pt",
             return_dict=False,
         )
-        image_embeds = prior_outputs[0]
-
-        prompt = [prompt] if not isinstance(prompt, (list, tuple)) else prompt
-
-        if len(prompt) < image_embeds.shape[0] and image_embeds.shape[0] % len(prompt) == 0:
-            prompt = (image_embeds.shape[0] // len(prompt)) * prompt
+        image_embeddings = prior_outputs[0]
 
         outputs = self.decoder_pipe(
             prompt=prompt,
-            image_embeds=image_embeds,
+            image_embeddings=image_embeddings,
             num_inference_steps=decoder_num_inference_steps,
+            timesteps=decoder_timesteps,
             generator=generator,
             guidance_scale=decoder_guidance_scale,
+            num_images_per_prompt=num_images_per_prompt,
             output_type=output_type,
             return_dict=return_dict,
         )

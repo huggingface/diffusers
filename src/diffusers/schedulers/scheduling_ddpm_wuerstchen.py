@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, List
 
 import torch
 
@@ -140,7 +140,8 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: Dict[float, int],
+        num_inference_steps: int = None,
+        timesteps: Optional[List[int]] = None,
         device: Union[str, torch.device] = None,
     ):
         """
@@ -153,16 +154,10 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
             device (`str` or `torch.device`, optional):
                 the device to which the timesteps are moved to. {2 / 3: 20, 0.0: 10}
         """
-        timesteps = None
-        t_start = 1.0
-        for t_end, steps in num_inference_steps.items():
-            steps = torch.linspace(t_start, t_end, steps + 1, device=device)
-            t_start = t_end
-            if timesteps is None:
-                timesteps = steps
-            else:
-                timesteps = torch.cat([timesteps, steps[1:]])
-
+        if timesteps is None:
+            timesteps = torch.linspace(1.0, 0.0, num_inference_steps + 1, device=device)
+        if not isinstance(timesteps, torch.Tensor):
+            timesteps = torch.Tensor(timesteps).to(device)
         self.timesteps = timesteps
 
     def step(
