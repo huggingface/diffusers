@@ -22,6 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
 from ...models.vae import DecoderOutput, VectorQuantizer
 from ...models.vq_model import VQEncoderOutput
+from ...utils import apply_forward_hook
 
 
 class MixingResidualBlock(nn.Module):
@@ -128,6 +129,7 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
             nn.PixelShuffle(up_down_scale_factor),
         )
 
+    @apply_forward_hook
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:
         h = self.in_block(x)
         h = self.down_blocks(h)
@@ -137,6 +139,7 @@ class PaellaVQModel(ModelMixin, ConfigMixin):
 
         return VQEncoderOutput(latents=h)
 
+    @apply_forward_hook
     def decode(
         self, h: torch.FloatTensor, force_not_quantize: bool = True, return_dict: bool = True
     ) -> Union[DecoderOutput, torch.FloatTensor]:
