@@ -929,7 +929,6 @@ def main():
             prior_image_encoder=image_encoder,
             prior_text_encoder=text_encoder,
             prior_prior=prior,
-            revision=args.revision,
         )
         pipeline.prior_pipe.save_pretrained(args.output_dir)
 
