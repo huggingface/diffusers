@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -79,7 +79,7 @@ class WuerstchenPipeline(DiffusionPipeline):
         vqgan: PaellaVQModel,
         prior_tokenizer: CLIPTokenizer,
         prior_text_encoder: CLIPTextModel,
-        prior: WuerstchenPrior,
+        prior_prior: WuerstchenPrior,
         prior_scheduler: DDPMWuerstchenScheduler,
     ):
         super().__init__()
@@ -90,13 +90,13 @@ class WuerstchenPipeline(DiffusionPipeline):
             decoder=decoder,
             scheduler=scheduler,
             vqgan=vqgan,
-            prior=prior,
+            prior_prior=prior_prior,
             prior_text_encoder=prior_text_encoder,
             prior_tokenizer=prior_tokenizer,
             prior_scheduler=prior_scheduler,
         )
         self.prior_pipe = WuerstchenPriorPipeline(
-            prior=prior,
+            prior=prior_prior,
             text_encoder=prior_text_encoder,
             tokenizer=prior_tokenizer,
             scheduler=prior_scheduler,
@@ -146,20 +146,18 @@ class WuerstchenPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        decoder_guidance_scale: float = 4.0,
+        guidance_scale: float = 4.0,
         num_images_per_prompt: int = 1,
         height: int = 512,
         width: int = 512,
         prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: int = 60,
-        decoder_num_inference_steps: int = 12,
+        num_inference_steps: int = 12,
         prior_timesteps: Optional[List[float]] = None,
-        decoder_timesteps: Optional[List[float]] = None,
+        timesteps: Optional[List[float]] = None,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
         return_dict: bool = True,
     ):
         """
@@ -170,7 +168,7 @@ class WuerstchenPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `decoder_guidance_scale` is less than `1`).
+                if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             height (`int`, *optional*, defaults to 512):
@@ -180,25 +178,27 @@ class WuerstchenPipeline(DiffusionPipeline):
             prior_guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `prior_guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `prior_guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
+                `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked
+                to the text `prompt`, usually at the expense of lower image quality.
             prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. For more specific timestep spacing, you can pass customized `prior_timesteps`
-            decoder_num_inference_steps (`int`, *optional*, defaults to 12):
+                expense of slower inference. For more specific timestep spacing, you can pass customized
+                `prior_timesteps`
+            num_inference_steps (`int`, *optional*, defaults to 12):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. For more specific timestep spacing, you can pass customized `decoder_timesteps`
-          prior_timesteps (`List[float]`, *optional*): 
-                Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced `prior_num_inference_steps`
-               timesteps are used. Must be in descending order.
-          decoder_timesteps (`List[float]`, *optional*): 
-                Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced `decoder_num_inference_steps`
+                expense of slower inference. For more specific timestep spacing, you can pass customized `timesteps`
+            prior_timesteps (`List[float]`, *optional*):
+                Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced
+                `prior_num_inference_steps` timesteps are used. Must be in descending order.
+            timesteps (`List[float]`, *optional*):
+                Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced
+                `num_inference_steps`
                timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `decoder_guidance_scale >
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -211,21 +211,14 @@ class WuerstchenPipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
                 (`np.array`) or `"pt"` (`torch.Tensor`).
-            callback (`Callable`, *optional*):
-                A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function is called. If not specified, the callback is called at
-                every step.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
 
         Examples:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`
-            [`~pipelines.ImagePipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
         prior_outputs = self.prior_pipe(
             prompt=prompt,
@@ -246,10 +239,10 @@ class WuerstchenPipeline(DiffusionPipeline):
         outputs = self.decoder_pipe(
             prompt=prompt,
             image_embeddings=image_embeddings,
-            num_inference_steps=decoder_num_inference_steps,
-            timesteps=decoder_timesteps,
+            num_inference_steps=num_inference_steps,
+            timesteps=timesteps,
             generator=generator,
-            guidance_scale=decoder_guidance_scale,
+            guidance_scale=guidance_scale,
             num_images_per_prompt=num_images_per_prompt,
             output_type=output_type,
             return_dict=return_dict,

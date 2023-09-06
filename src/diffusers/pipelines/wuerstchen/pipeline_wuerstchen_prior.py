@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import ceil
-from typing import Callable, Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import torch
@@ -146,7 +146,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    def _encode_prompt(
+    def encode_prompt(
         self,
         prompt,
         device,
@@ -237,17 +237,21 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 prompt = [prompt]
             else:
                 raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
-        
+
         if do_classifier_free_guidance:
-            if not isinstance(negative_prompt, list):
+            if negative_prompt is not None and not isinstance(negative_prompt, list):
                 if isinstance(negative_prompt, str):
                     negative_prompt = [negative_prompt]
                 else:
-                    raise TypeError(f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}.")
+                    raise TypeError(
+                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
+                    )
 
         if not isinstance(num_inference_steps, int):
-           raise TypeError(f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
-                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument.")
+            raise TypeError(
+                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
+                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
+            )
 
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
@@ -282,16 +286,16 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. 
+                expense of slower inference.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `decoder_guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
+                `decoder_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely
+                linked to the text `prompt`, usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `decoder_guidance_scale` is less than `1`).
@@ -313,9 +317,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.WuerstchenPriorPipelineOutput`] or `tuple`
-            [`~pipelines.WuerstchenPriorPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated image embeddings.
+            [`~pipelines.WuerstchenPriorPipelineOutput`] or `tuple` [`~pipelines.WuerstchenPriorPipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
+            generated image embeddings.
         """
 
         # 0. Define commonly used variables
@@ -324,7 +328,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         # 1. Check inputs. Raise error if not correct
-        prompt, negative_prompt, num_inference_steps, batch_size = self.check_inputs(prompt, negative_prompt, num_inference_steps, do_classifier_free_guidance, batch_size)
+        prompt, negative_prompt, num_inference_steps, batch_size = self.check_inputs(
+            prompt, negative_prompt, num_inference_steps, do_classifier_free_guidance, batch_size
+        )
 
         # 2. Encode caption
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
@@ -335,7 +341,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
         text_encoder_hidden_states = torch.cat([prompt_embeds, negative_prompt_embeds])
-
 
         # 3. Determine latent shape of image embeddings
         dtype = text_encoder_hidden_states.dtype

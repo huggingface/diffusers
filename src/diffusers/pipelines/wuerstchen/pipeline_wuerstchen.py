@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import torch
@@ -67,8 +67,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `prior` to generate image embedding.
         latent_dim_scale (float, `optional`, defaults to 10.67):
             Multiplier to determine the VQ latent space size from the image embeddings. If the image embeddings are
-            height=24 and width=24, the VQ latent shape needs to be height=int(24*10.67)=256 and width=int(24*10.67)=256 in order
-            to match the training conditions.
+            height=24 and width=24, the VQ latent shape needs to be height=int(24*10.67)=256 and
+            width=int(24*10.67)=256 in order to match the training conditions.
     """
 
     def __init__(
@@ -227,13 +227,15 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 prompt = [prompt]
             else:
                 raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
-        
+
         if do_classifier_free_guidance:
             if not isinstance(negative_prompt, list):
                 if isinstance(negative_prompt, str):
                     negative_prompt = [negative_prompt]
                 else:
-                    raise TypeError(f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}.")
+                    raise TypeError(
+                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
+                    )
 
         if isinstance(image_embeddings, list):
             image_embeddings = torch.cat(image_embeddings, dim=0)
@@ -245,8 +247,10 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             )
 
         if not isinstance(num_inference_steps, int):
-           raise TypeError(f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
-                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument.")
+            raise TypeError(
+                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
+                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
+            )
 
         return image_embeddings, prompt, negative_prompt, num_inference_steps
 
@@ -276,16 +280,16 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             num_inference_steps (`int`, *optional*, defaults to 30):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. 
+                expense of slower inference.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `decoder_guidance_scale >
-                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
+                `decoder_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely
+                linked to the text `prompt`, usually at the expense of lower image quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `decoder_guidance_scale` is less than `1`).
@@ -307,11 +311,10 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple`
-            [`~pipelines.ImagePipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated image embeddings.
+            [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is a list with the generated image
+            embeddings.
         """
-
 
         # 0. Define commonly used variables
         device = self._execution_device
