@@ -235,12 +235,12 @@ class OutConv1DBlock(nn.Module):
 
 
 class OutValueFunctionBlock(nn.Module):
-    def __init__(self, fc_dim, embed_dim):
+    def __init__(self, fc_dim, embed_dim, act_fn="mish"):
         super().__init__()
         self.final_block = nn.ModuleList(
             [
                 nn.Linear(fc_dim + embed_dim, fc_dim // 2),
-                nn.Mish(),
+                get_activation(act_fn),
                 nn.Linear(fc_dim // 2, 1),
             ]
         )
@@ -652,5 +652,5 @@ def get_out_block(*, out_block_type, num_groups_out, embed_dim, out_channels, ac
     if out_block_type == "OutConv1DBlock":
         return OutConv1DBlock(num_groups_out, out_channels, embed_dim, act_fn)
     elif out_block_type == "ValueFunction":
-        return OutValueFunctionBlock(fc_dim, embed_dim)
+        return OutValueFunctionBlock(fc_dim, embed_dim, act_fn)
     return None

@@ -20,7 +20,7 @@ from diffusers import (
     UniDiffuserPipeline,
     UniDiffuserTextDecoder,
 )
-from diffusers.utils import floats_tensor, load_image, randn_tensor, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, nightly, randn_tensor, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
@@ -618,6 +618,56 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 
         expected_text_prefix = "An astronaut"
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
+
+
+@nightly
+@require_torch_gpu
+class UniDiffuserPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, seed=0, generate_latents=False):
+        generator = torch.manual_seed(seed)
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/unidiffuser/unidiffuser_example_image.jpg"
+        )
+        inputs = {
+            "prompt": "an elephant under the sea",
+            "image": image,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "guidance_scale": 8.0,
+            "output_type": "numpy",
+        }
+        if generate_latents:
+            latents = self.get_fixed_latents(device, seed=seed)
+            for latent_name, latent_tensor in latents.items():
+                inputs[latent_name] = latent_tensor
+        return inputs
+
+    def get_fixed_latents(self, device, seed=0):
+        if type(device) == str:
+            device = torch.device(device)
+        latent_device = torch.device("cpu")
+        generator = torch.Generator(device=latent_device).manual_seed(seed)
+        # Hardcode the shapes for now.
+        prompt_latents = randn_tensor((1, 77, 768), generator=generator, device=device, dtype=torch.float32)
+        vae_latents = randn_tensor((1, 4, 64, 64), generator=generator, device=device, dtype=torch.float32)
+        clip_latents = randn_tensor((1, 1, 512), generator=generator, device=device, dtype=torch.float32)
+
+        # Move latents onto desired device.
+        prompt_latents = prompt_latents.to(device)
+        vae_latents = vae_latents.to(device)
+        clip_latents = clip_latents.to(device)
+
+        latents = {
+            "prompt_latents": prompt_latents,
+            "vae_latents": vae_latents,
+            "clip_latents": clip_latents,
+        }
+        return latents
 
     def test_unidiffuser_default_joint_v1_fp16(self):
         pipe = UniDiffuserPipeline.from_pretrained("thu-ml/unidiffuser-v1", torch_dtype=torch.float16)

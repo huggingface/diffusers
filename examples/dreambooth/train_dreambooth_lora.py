@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import copy
 import gc
 import hashlib
 import itertools
@@ -23,6 +24,7 @@ import os
 import shutil
 import warnings
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 import torch
@@ -50,7 +52,10 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
+from diffusers.loaders import (
+    LoraLoaderMixin,
+    text_encoder_lora_state_dict,
+)
 from diffusers.models.attention_processor import (
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
@@ -60,12 +65,12 @@ from diffusers.models.attention_processor import (
     SlicedAttnAddedKVProcessor,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import TEXT_ENCODER_ATTN_MODULE, check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.21.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -436,6 +441,12 @@ def parse_args(input_args=None):
         default=None,
         help="The optional `class_label` conditioning to pass to the unet, available values are `timesteps`.",
     )
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -481,14 +492,14 @@ class DreamBoothDataset(Dataset):
         size=512,
         center_crop=False,
         encoder_hidden_states=None,
-        instance_prompt_encoder_hidden_states=None,
+        class_prompt_encoder_hidden_states=None,
         tokenizer_max_length=None,
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.encoder_hidden_states = encoder_hidden_states
-        self.instance_prompt_encoder_hidden_states = instance_prompt_encoder_hidden_states
+        self.class_prompt_encoder_hidden_states = class_prompt_encoder_hidden_states
         self.tokenizer_max_length = tokenizer_max_length
 
         self.instance_data_root = Path(instance_data_root)
@@ -551,8 +562,8 @@ class DreamBoothDataset(Dataset):
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
 
-            if self.instance_prompt_encoder_hidden_states is not None:
-                example["class_prompt_ids"] = self.instance_prompt_encoder_hidden_states
+            if self.class_prompt_encoder_hidden_states is not None:
+                example["class_prompt_ids"] = self.class_prompt_encoder_hidden_states
             else:
                 class_text_inputs = tokenize_prompt(
                     self.tokenizer, self.class_prompt, tokenizer_max_length=self.tokenizer_max_length
@@ -645,6 +656,22 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
     prompt_embeds = prompt_embeds[0]
 
     return prompt_embeds
+
+
+def unet_attn_processors_state_dict(unet) -> Dict[str, torch.tensor]:
+    r"""
+    Returns:
+        a state dict containing just the attention processor parameters.
+    """
+    attn_processors = unet.attn_processors
+
+    attn_processors_state_dict = {}
+
+    for attn_processor_key, attn_processor in attn_processors.items():
+        for parameter_key, parameter in attn_processor.state_dict().items():
+            attn_processors_state_dict[f"{attn_processor_key}.{parameter_key}"] = parameter
+
+    return attn_processors_state_dict
 
 
 def main(args):
@@ -812,6 +839,11 @@ def main(args):
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
+    if args.gradient_checkpointing:
+        unet.enable_gradient_checkpointing()
+        if args.train_text_encoder:
+            text_encoder.gradient_checkpointing_enable()
+
     # now we will add new LoRA weights to the attention layers
     # It's important to realize here how many attention weights will be added and of which sizes
     # The sizes of the attention layers consist only of two different variables:
@@ -827,6 +859,7 @@ def main(args):
 
     # Set correct lora layers
     unet_lora_attn_procs = {}
+    unet_lora_parameters = []
     for name, attn_processor in unet.attn_processors.items():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
         if name.startswith("mid_block"):
@@ -844,31 +877,20 @@ def main(args):
             lora_attn_processor_class = (
                 LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
             )
-        unet_lora_attn_procs[name] = lora_attn_processor_class(
-            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+
+        module = lora_attn_processor_class(
+            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=args.rank
         )
+        unet_lora_attn_procs[name] = module
+        unet_lora_parameters.extend(module.parameters())
 
     unet.set_attn_processor(unet_lora_attn_procs)
-    unet_lora_layers = AttnProcsLayers(unet.attn_processors)
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
-    # So, instead, we monkey-patch the forward calls of its attention-blocks. For this,
-    # we first load a dummy pipeline with the text encoder and then do the monkey-patching.
-    text_encoder_lora_layers = None
+    # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
-        text_lora_attn_procs = {}
-        for name, module in text_encoder.named_modules():
-            if name.endswith(TEXT_ENCODER_ATTN_MODULE):
-                text_lora_attn_procs[name] = LoRAAttnProcessor(
-                    hidden_size=module.out_proj.out_features, cross_attention_dim=None
-                )
-        text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
-        temp_pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, text_encoder=text_encoder
-        )
-        temp_pipeline._modify_text_encoder(text_lora_attn_procs)
-        text_encoder = temp_pipeline.text_encoder
-        del temp_pipeline
+        # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
+        text_lora_parameters = LoraLoaderMixin._modify_text_encoder(text_encoder, dtype=torch.float32, rank=args.rank)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -877,23 +899,13 @@ def main(args):
         unet_lora_layers_to_save = None
         text_encoder_lora_layers_to_save = None
 
-        if args.train_text_encoder:
-            text_encoder_keys = accelerator.unwrap_model(text_encoder_lora_layers).state_dict().keys()
-        unet_keys = accelerator.unwrap_model(unet_lora_layers).state_dict().keys()
-
         for model in models:
-            state_dict = model.state_dict()
-
-            if (
-                text_encoder_lora_layers is not None
-                and text_encoder_keys is not None
-                and state_dict.keys() == text_encoder_keys
-            ):
-                # text encoder
-                text_encoder_lora_layers_to_save = state_dict
-            elif state_dict.keys() == unet_keys:
-                # unet
-                unet_lora_layers_to_save = state_dict
+            if isinstance(model, type(accelerator.unwrap_model(unet))):
+                unet_lora_layers_to_save = unet_attn_processors_state_dict(model)
+            elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
+                text_encoder_lora_layers_to_save = text_encoder_lora_state_dict(model)
+            else:
+                raise ValueError(f"unexpected save model: {model.__class__}")
 
             # make sure to pop weight so that corresponding model is not saved again
             weights.pop()
@@ -905,27 +917,24 @@ def main(args):
         )
 
     def load_model_hook(models, input_dir):
-        # Note we DON'T pass the unet and text encoder here an purpose
-        # so that the we don't accidentally override the LoRA layers of
-        # unet_lora_layers and text_encoder_lora_layers which are stored in `models`
-        # with new torch.nn.Modules / weights. We simply use the pipeline class as
-        # an easy way to load the lora checkpoints
-        temp_pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            revision=args.revision,
-            torch_dtype=weight_dtype,
+        unet_ = None
+        text_encoder_ = None
+
+        while len(models) > 0:
+            model = models.pop()
+
+            if isinstance(model, type(accelerator.unwrap_model(unet))):
+                unet_ = model
+            elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
+                text_encoder_ = model
+            else:
+                raise ValueError(f"unexpected save model: {model.__class__}")
+
+        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
+        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+        LoraLoaderMixin.load_lora_into_text_encoder(
+            lora_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_
         )
-        temp_pipeline.load_lora_weights(input_dir)
-
-        # load lora weights into models
-        models[0].load_state_dict(AttnProcsLayers(temp_pipeline.unet.attn_processors).state_dict())
-        if len(models) > 1:
-            models[1].load_state_dict(AttnProcsLayers(temp_pipeline.text_encoder_lora_attn_procs).state_dict())
-
-        # delete temporary pipeline and pop models
-        del temp_pipeline
-        for _ in range(len(models)):
-            models.pop()
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -955,9 +964,9 @@ def main(args):
 
     # Optimizer creation
     params_to_optimize = (
-        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
+        itertools.chain(unet_lora_parameters, text_lora_parameters)
         if args.train_text_encoder
-        else unet_lora_layers.parameters()
+        else unet_lora_parameters
     )
     optimizer = optimizer_class(
         params_to_optimize,
@@ -989,10 +998,10 @@ def main(args):
         else:
             validation_prompt_encoder_hidden_states = None
 
-        if args.instance_prompt is not None:
-            pre_computed_instance_prompt_encoder_hidden_states = compute_text_embeddings(args.instance_prompt)
+        if args.class_prompt is not None:
+            pre_computed_class_prompt_encoder_hidden_states = compute_text_embeddings(args.class_prompt)
         else:
-            pre_computed_instance_prompt_encoder_hidden_states = None
+            pre_computed_class_prompt_encoder_hidden_states = None
 
         text_encoder = None
         tokenizer = None
@@ -1003,7 +1012,7 @@ def main(args):
         pre_computed_encoder_hidden_states = None
         validation_prompt_encoder_hidden_states = None
         validation_prompt_negative_prompt_embeds = None
-        pre_computed_instance_prompt_encoder_hidden_states = None
+        pre_computed_class_prompt_encoder_hidden_states = None
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
@@ -1016,7 +1025,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         encoder_hidden_states=pre_computed_encoder_hidden_states,
-        instance_prompt_encoder_hidden_states=pre_computed_instance_prompt_encoder_hidden_states,
+        class_prompt_encoder_hidden_states=pre_computed_class_prompt_encoder_hidden_states,
         tokenizer_max_length=args.tokenizer_max_length,
     )
 
@@ -1038,20 +1047,20 @@ def main(args):
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
-        unet_lora_layers, text_encoder_lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet_lora_layers, text_encoder_lora_layers, optimizer, train_dataloader, lr_scheduler
+        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
         )
     else:
-        unet_lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet_lora_layers, optimizer, train_dataloader, lr_scheduler
+        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, optimizer, train_dataloader, lr_scheduler
         )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -1064,7 +1073,9 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth-lora", config=vars(args))
+        tracker_config = vars(copy.deepcopy(args))
+        tracker_config.pop("validation_images")
+        accelerator.init_trackers("dreambooth-lora", config=tracker_config)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1200,9 +1211,9 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (
-                        itertools.chain(unet_lora_layers.parameters(), text_encoder_lora_layers.parameters())
+                        itertools.chain(unet_lora_parameters, text_lora_parameters)
                         if args.train_text_encoder
-                        else unet_lora_layers.parameters()
+                        else unet_lora_parameters
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
@@ -1291,15 +1302,17 @@ def main(args):
                     pipeline_args = {"prompt": args.validation_prompt}
 
                 if args.validation_images is None:
-                    images = [
-                        pipeline(**pipeline_args, generator=generator).images[0]
-                        for _ in range(args.num_validation_images)
-                    ]
+                    images = []
+                    for _ in range(args.num_validation_images):
+                        with torch.cuda.amp.autocast():
+                            image = pipeline(**pipeline_args, generator=generator).images[0]
+                            images.append(image)
                 else:
                     images = []
                     for image in args.validation_images:
                         image = Image.open(image)
-                        image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
+                        with torch.cuda.amp.autocast():
+                            image = pipeline(**pipeline_args, image=image, generator=generator).images[0]
                         images.append(image)
 
                 for tracker in accelerator.trackers:
@@ -1322,12 +1335,16 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        unet = accelerator.unwrap_model(unet)
         unet = unet.to(torch.float32)
-        unet_lora_layers = accelerator.unwrap_model(unet_lora_layers)
+        unet_lora_layers = unet_attn_processors_state_dict(unet)
 
-        if text_encoder is not None:
+        if text_encoder is not None and args.train_text_encoder:
+            text_encoder = accelerator.unwrap_model(text_encoder)
             text_encoder = text_encoder.to(torch.float32)
-            text_encoder_lora_layers = accelerator.unwrap_model(text_encoder_lora_layers)
+            text_encoder_lora_layers = text_encoder_lora_state_dict(text_encoder)
+        else:
+            text_encoder_lora_layers = None
 
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
@@ -1357,7 +1374,7 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.load_lora_weights(args.output_dir)
+        pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.safetensors")
 
         # run inference
         images = []
