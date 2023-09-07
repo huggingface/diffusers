@@ -742,7 +742,6 @@ class ResnetBlock3D(nn.Module):
         *,
         in_channels,
         out_channels=None,
-        conv_shortcut=False,
         dropout=0.0,
         temb_channels=512,
         groups=32,
@@ -755,7 +754,6 @@ class ResnetBlock3D(nn.Module):
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
         self.output_scale_factor = output_scale_factor
 
         groups_out = groups
