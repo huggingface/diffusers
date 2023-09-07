@@ -1116,7 +1116,8 @@ def main(args):
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
 
-                # Cubic sampling to sample a random timestep for each image
+                # Cubic sampling to sample a random timestep for each image.
+                # For more details about why cubic sampling is used, refer to section 3.4 of https://arxiv.org/abs/2302.08453
                 timesteps = torch.rand((bsz,), device=latents.device)
                 timesteps = (1 - timesteps**3) * noise_scheduler.config.num_train_timesteps
                 timesteps = timesteps.long().to(noise_scheduler.timesteps.dtype)
@@ -1126,6 +1127,7 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
+                # Scale the noisy latents for the UNet
                 sigmas = get_sigmas(timesteps, len(noisy_latents.shape), noisy_latents.dtype)
                 inp_noisy_latents = noisy_latents / ((sigmas**2 + 1) ** 0.5)
 
@@ -1145,7 +1147,8 @@ def main(args):
                     down_block_additional_residuals=down_block_additional_residuals,
                 ).sample
 
-                model_pred = model_pred * (-sigmas) + noisy_latents
+                # Denoise the latents
+                denoised_latents = model_pred * (-sigmas) + noisy_latents
                 weighing = sigmas**-2.0
 
                 # Get the target for loss depending on the prediction type
@@ -1156,8 +1159,10 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
+                # MSE loss
                 loss = torch.mean(
-                    (weighing.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
+                    (weighing.float() * (denoised_latents.float() - target.float()) ** 2).reshape(target.shape[0], -1),
+                    dim=1,
                 )
                 loss = loss.mean()
 
