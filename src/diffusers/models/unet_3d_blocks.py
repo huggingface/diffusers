@@ -996,6 +996,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         cross_attention_kwargs=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
+        # TODO - cross_attention_kwargs are not used
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -1008,7 +1009,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
             ).sample
 
         if self.upsamplers is not None:
@@ -1098,6 +1098,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         cross_attention_kwargs=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
+        # TODO - cross_attention_kwargs are not used.
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -1105,7 +1106,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
             ).sample
 
             output_states += (hidden_states,)

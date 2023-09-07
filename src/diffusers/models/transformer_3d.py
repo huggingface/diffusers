@@ -134,7 +134,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             [`~models.transformer_3d.Transformer3DModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        # TODO: Deal with class_labels, cross_attention_kwargs
         # Input
         assert hidden_states.dim() == 5, f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}."
         video_length = hidden_states.shape[2]
