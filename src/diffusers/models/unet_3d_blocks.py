@@ -1204,7 +1204,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
             ).sample
             hidden_states = resnet(hidden_states, temb)
 
