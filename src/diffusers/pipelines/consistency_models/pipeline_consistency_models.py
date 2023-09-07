@@ -5,8 +5,6 @@ import torch
 from ...models import UNet2DModel
 from ...schedulers import CMStochasticIterativeScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -62,6 +60,7 @@ class ConsistencyModelPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Currently only
             compatible with [`CMStochasticIterativeScheduler`].
     """
+    model_cpu_offload_seq = "unet"
 
     def __init__(self, unet: UNet2DModel, scheduler: CMStochasticIterativeScheduler) -> None:
         super().__init__()

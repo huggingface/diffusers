@@ -22,11 +22,8 @@ from PIL import Image
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
-    replace_example_docstring,
 )
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -109,6 +106,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
     """
+
     model_cpu_offload_seq = "unet->movq"
 
     def __init__(
@@ -179,6 +177,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         return latents
 
     # Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.KandinskyV22Pipeline.enable_model_cpu_offload
+    @torch.no_grad()
     def __call__(
         self,
         image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],

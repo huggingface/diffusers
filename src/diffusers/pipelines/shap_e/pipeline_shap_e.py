@@ -25,8 +25,6 @@ from ...models import PriorTransformer
 from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,

@@ -24,8 +24,6 @@ from ...models import PriorTransformer
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     BaseOutput,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -529,8 +527,7 @@ class KandinskyPriorPipeline(DiffusionPipeline):
         if negative_prompt is None:
             zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
 
-            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-                self.final_offload_hook.offload()
+            self.maybe_free_model_hooks
         else:
             image_embeddings, zero_embeds = image_embeddings.chunk(2)
 

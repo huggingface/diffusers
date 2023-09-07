@@ -17,7 +17,6 @@ from ...utils import (
     BACKENDS_MAPPING,
     PIL_INTERPOLATION,
     is_accelerate_available,
-    is_accelerate_version,
     is_bs4_available,
     is_ftfy_available,
     logging,

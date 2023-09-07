@@ -39,8 +39,6 @@ from ...utils import (
     PIL_INTERPOLATION,
     BaseOutput,
     deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -309,7 +307,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             Whether the pipeline requires a safety checker. We recommend setting it to True if you're using the
             pipeline publicly.
     """
-    model_cpu_offload_seq = "text_encoder->unet->vae->safety_checker"
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = [
         "safety_checker",
         "feature_extractor",

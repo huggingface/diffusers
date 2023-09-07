@@ -32,8 +32,6 @@ from transformers import (
 from ...models import AutoencoderKL
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     is_librosa_available,
     logging,
     randn_tensor,
@@ -141,10 +139,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         vocoder ([`~transformers.SpeechT5HifiGan`]):
             Vocoder of class `SpeechT5HifiGan` to convert the mel-spectrogram latents to the final audio waveform.
     """
-    model_cpu_offload_seq = (
-        "text_encoder.text_model->text_encoder.text_projection->text_encoder_2"
-        "->projection_model->language_model->unet->vae->vocoder->text_encoder"
-    )
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->projection_model->language_model->unet->vae->vocoder"
 
     def __init__(
         self,

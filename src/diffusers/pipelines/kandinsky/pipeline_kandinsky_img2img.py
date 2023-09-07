@@ -25,8 +25,6 @@ from transformers import (
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDIMScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,

@@ -30,8 +30,6 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
     deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
 )
@@ -121,7 +119,7 @@ class StableDiffusionInpaintPipelineLegacy(
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-    model_cpu_offload_seq = "text_encoder->unet->vae->safety_checker"
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["feature_extractor"]
 
     def __init__(

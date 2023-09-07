@@ -491,26 +491,6 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
-        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
-    )
-    def test_model_cpu_offload(self, expected_max_diff=2e-4):
-        components = self.get_dummy_components()
-        audioldm_pipe = AudioLDM2Pipeline(**components)
-        audioldm_pipe = audioldm_pipe.to(torch_device)
-        audioldm_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_without_offload = audioldm_pipe(**inputs)[0]
-
-        audioldm_pipe.enable_model_cpu_offload()
-        inputs = self.get_dummy_inputs(torch_device)
-        output_with_offload = audioldm_pipe(**inputs)[0]
-
-        max_diff = np.abs(output_with_offload - output_without_offload).max()
-        self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
-
 
 @slow
 class AudioLDM2PipelineSlowTests(unittest.TestCase):

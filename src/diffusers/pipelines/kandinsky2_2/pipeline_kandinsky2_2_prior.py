@@ -7,8 +7,6 @@ from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTo
 from ...models import PriorTransformer
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,

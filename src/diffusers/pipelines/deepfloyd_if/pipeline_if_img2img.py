@@ -16,7 +16,6 @@ from ...utils import (
     BACKENDS_MAPPING,
     PIL_INTERPOLATION,
     is_accelerate_available,
-    is_accelerate_version,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -127,7 +126,7 @@ class IFImg2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
-    model_cpu_offload_seq = "text_encoder->unet->safety_checker"
+    model_cpu_offload_seq = "text_encoder->unet"
 
     def __init__(
         self,

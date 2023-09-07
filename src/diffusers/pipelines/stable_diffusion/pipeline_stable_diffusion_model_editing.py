@@ -65,7 +65,7 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline, TextualInversionLoa
         with_augs ([`list`]):
             Textual augmentations to apply while editing the text-to-image model. Set to `[]` for no augmentations.
     """
-    model_cpu_offload_seq = "text_encoder->unet->vae->safety_checker"
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(

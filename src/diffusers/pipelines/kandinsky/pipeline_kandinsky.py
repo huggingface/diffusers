@@ -22,8 +22,6 @@ from transformers import (
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDIMScheduler, DDPMScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -95,7 +93,7 @@ class KandinskyPipeline(DiffusionPipeline):
             MoVQ Decoder to generate the image from the latents.
     """
 
-    model_cpu_offload_seq = "text_encoder->unet-movq"
+    model_cpu_offload_seq = "text_encoder->unet->movq"
 
     def __init__(
         self,

@@ -19,8 +19,6 @@ import torch
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
     replace_example_docstring,
@@ -111,6 +109,8 @@ class KandinskyV22Pipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
+    @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
@@ -248,7 +248,6 @@ class KandinskyV22Pipeline(DiffusionPipeline):
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
-        # Offload all models
         self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np", "pil"]:

@@ -18,8 +18,6 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
     deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     randn_tensor,
 )

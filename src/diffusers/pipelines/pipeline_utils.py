@@ -17,7 +17,6 @@
 import fnmatch
 import importlib
 import inspect
-from multiprocessing import Value
 import os
 import re
 import sys
@@ -1247,12 +1246,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
         self._all_hooks = []
+        prev_module_hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str)
 
             if model is not None:
-                _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
+                _, hook = cpu_offload_with_hook(model, device, prev_module_hook=prev_module_hook)
                 self._all_hooks.append(hook)
+                prev_module_hook = hook
 
         # now also cpu offload all models that are not in the seq chain. these models will stay on GPU until
         # some models cannot be in the seq chain because they are iteratively called, such as controlnet
