@@ -799,7 +799,6 @@ class UpBlockInflated3D(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_upsample=True,
     ):
@@ -821,7 +820,6 @@ class UpBlockInflated3D(nn.Module):
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -862,7 +860,6 @@ class DownBlockInflated3D(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
@@ -883,7 +880,6 @@ class DownBlockInflated3D(nn.Module):
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -931,7 +927,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
@@ -959,7 +954,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -1030,7 +1024,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
@@ -1057,7 +1050,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -1130,7 +1122,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         num_attention_heads=1,
         output_scale_factor=1.0,
         cross_attention_dim=1280
@@ -1153,7 +1144,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                 time_embedding_norm=resnet_time_scale_shift,
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
             )
         ]
 
@@ -1182,7 +1172,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
