@@ -66,6 +66,7 @@ else:
         AutoPipelineForImage2Image,
         AutoPipelineForInpainting,
         AutoPipelineForText2Image,
+        CLIPImageProjection,
         ConsistencyModelPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
@@ -87,6 +88,7 @@ else:
         DDIMScheduler,
         DDPMParallelScheduler,
         DDPMScheduler,
+        DDPMWuerstchenScheduler,
         DEISMultistepScheduler,
         DPMSolverMultistepInverseScheduler,
         DPMSolverMultistepScheduler,
@@ -176,6 +178,7 @@ else:
         StableDiffusionDepth2ImgPipeline,
         StableDiffusionDiffEditPipeline,
         StableDiffusionGLIGENPipeline,
+        StableDiffusionGLIGENTextImagePipeline,
         StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
@@ -193,6 +196,7 @@ else:
         StableDiffusionUpscalePipeline,
         StableDiffusionXLAdapterPipeline,
         StableDiffusionXLControlNetImg2ImgPipeline,
+        StableDiffusionXLControlNetInpaintPipeline,
         StableDiffusionXLControlNetPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
@@ -213,6 +217,9 @@ else:
         VersatileDiffusionTextToImagePipeline,
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
+        WuerstchenCombinedPipeline,
+        WuerstchenDecoderPipeline,
+        WuerstchenPriorPipeline,
     )
 
 try:

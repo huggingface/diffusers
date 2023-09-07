@@ -64,6 +64,12 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
+    - local: using-diffusers/controlnet
+      title: ControlNet
+    - local: using-diffusers/shap-e
+      title: Shap-E
+    - local: using-diffusers/diffedit
+      title: DiffEdit
     - local: using-diffusers/distilled_sd
       title: Distilled Stable Diffusion inference
     - local: using-diffusers/reproducibility
@@ -304,6 +310,8 @@
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
       title: VQ Diffusion
+    - local: api/pipelines/wuerstchen
+      title: Wuerstchen
     title: Pipelines
   - sections:
     - local: api/schedulers/overview

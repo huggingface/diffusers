@@ -132,7 +132,7 @@ class VQModel(ModelMixin, ConfigMixin):
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         # also go through quantization layer
         if not force_not_quantize:
-            quant, emb_loss, info = self.quantize(h)
+            quant, _, _ = self.quantize(h)
         else:
             quant = h
         quant2 = self.post_quant_conv(quant)
