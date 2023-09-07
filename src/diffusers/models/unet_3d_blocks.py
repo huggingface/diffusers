@@ -828,7 +828,7 @@ class UpBlockInflated3D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -971,7 +971,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    # only_cross_attention=only_cross_attention
                 )
             )
 
@@ -979,7 +978,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
