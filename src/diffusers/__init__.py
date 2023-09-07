@@ -480,6 +480,7 @@ if TYPE_CHECKING:
             DDIMScheduler,
             DDPMParallelScheduler,
             DDPMScheduler,
+            DDPMWuerstchenScheduler,
             DEISMultistepScheduler,
             DPMSolverMultistepInverseScheduler,
             DPMSolverMultistepScheduler,
@@ -608,6 +609,9 @@ if TYPE_CHECKING:
             VersatileDiffusionTextToImagePipeline,
             VideoToVideoSDPipeline,
             VQDiffusionPipeline,
+            WuerstchenCombinedPipeline,
+            WuerstchenDecoderPipeline,
+            WuerstchenPriorPipeline,
         )
 
     try:
