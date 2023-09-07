@@ -747,16 +747,12 @@ class ResnetBlock3D(nn.Module):
         temb_channels=512,
         groups=32,
         groups_out=None,
-        pre_norm=True,
         eps=1e-6,
         non_linearity="swish",
         time_embedding_norm="default",
         output_scale_factor=1.0,
-        use_in_shortcut=None,
     ):
         super().__init__()
-        self.pre_norm = pre_norm
-        self.pre_norm = True
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
@@ -789,8 +785,7 @@ class ResnetBlock3D(nn.Module):
 
         self.nonlinearity = get_activation(non_linearity)
 
-        self.use_in_shortcut = self.in_channels != self.out_channels if use_in_shortcut is None else use_in_shortcut
-
+        self.use_in_shortcut = self.in_channels != self.out_channels
         self.conv_shortcut = None
         if self.use_in_shortcut:
             self.conv_shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
