@@ -550,7 +550,7 @@ class BasicSparseTransformerBlock(nn.Module):
         hidden_states = hidden_states.movedim((0, 1, 2, 3), (0, 2, 1, 3))
         hidden_states = hidden_states.flatten(0, 1)
         norm_hidden_states = (
-            self.norm_temp(hidden_states, timestep) if self.use_ada_layer_norm else self.norm_temp(hidden_states)
+            self.norm_temp(hidden_states)
         )
         hidden_states = self.attn_temp(norm_hidden_states) + hidden_states
         # hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
