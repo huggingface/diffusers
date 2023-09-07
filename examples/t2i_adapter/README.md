@@ -1,4 +1,4 @@
-# ControlNet training example for Stable Diffusion XL (SDXL)
+# T2IAdapter training example for Stable Diffusion XL (SDXL)
 
 The `train_t2i_adapter.py` script shows how to implement the T2IAdapter training procedure for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
 
