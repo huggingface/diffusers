@@ -452,7 +452,6 @@ class BlipImageProcessor(BaseImageProcessor):
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "np":
             return sample
-
         # Output_type must be 'pil'
         sample = numpy_to_pil(sample)
         return sample

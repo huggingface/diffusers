@@ -97,6 +97,9 @@ class Blip2TextEmbeddings(nn.Module):
                 embeddings = embeddings + position_embeddings
 
             if query_embeds is not None:
+                batch_size = embeddings.shape[0]
+                # repeat the query embeddings for batch size
+                query_embeds = query_embeds.repeat(batch_size, 1, 1)
                 embeddings = torch.cat((query_embeds, embeddings), dim=1)
         else:
             embeddings = query_embeds
@@ -553,7 +556,8 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         text = self.tokenizer(text_input, return_tensors="pt", padding=True)
         text = text.to(self.device)
         input_ids = text.input_ids
-        query_atts = torch.ones(self.query_tokens.size()[:-1], dtype=torch.long).to(self.device)
+        batch_size = input_ids.shape[0]
+        query_atts = torch.ones((batch_size, self.query_tokens.size()[1]), dtype=torch.long).to(self.device)
         attention_mask = torch.cat([query_atts, text.attention_mask], dim=1)
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
