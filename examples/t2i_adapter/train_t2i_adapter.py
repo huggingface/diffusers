@@ -98,8 +98,19 @@ def log_validation(vae, unet, adapter, args, accelerator, weight_dtype, step):
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
-    validation_images = [os.path.join(args.validation_image, f"{i}.png") for i in range(len(args.validation_prompt))]
-    validation_prompts = args.validation_prompt
+    if len(args.validation_image) == len(args.validation_prompt):
+        validation_images = args.validation_image
+        validation_prompts = args.validation_prompt
+    elif len(args.validation_image) == 1:
+        validation_images = args.validation_image * len(args.validation_prompt)
+        validation_prompts = args.validation_prompt
+    elif len(args.validation_prompt) == 1:
+        validation_images = args.validation_image
+        validation_prompts = args.validation_prompt * len(args.validation_image)
+    else:
+        raise ValueError(
+            "number of `args.validation_image` and `args.validation_prompt` should be checked in `parse_args`"
+        )
 
     image_logs = []
 
@@ -476,7 +487,7 @@ def parse_args(input_args=None):
         "--conditioning_image_column",
         type=str,
         default="conditioning_image",
-        help="The column of the dataset containing the controlnet conditioning image.",
+        help="The column of the dataset containing the adapter conditioning image.",
     )
     parser.add_argument(
         "--caption_column",
@@ -566,6 +577,18 @@ def parse_args(input_args=None):
 
     if args.validation_prompt is None and args.validation_image is not None:
         raise ValueError("`--validation_prompt` must be set if `--validation_image` is set")
+
+    if (
+        args.validation_image is not None
+        and args.validation_prompt is not None
+        and len(args.validation_image) != 1
+        and len(args.validation_prompt) != 1
+        and len(args.validation_image) != len(args.validation_prompt)
+    ):
+        raise ValueError(
+            "Must provide either 1 `--validation_image`, 1 `--validation_prompt`,"
+            " or the same number of `--validation_prompt`s and `--validation_image`s"
+        )
 
     if args.resolution % 8 != 0:
         raise ValueError(
