@@ -30,7 +30,6 @@ import accelerate
 import cv2
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.utils.checkpoint
 import torchvision.transforms.functional as TF
 import transformers
@@ -794,12 +793,6 @@ def parse_args(input_args=None):
         default="canny",
         help=("The type of t2iadapter conditioning image to use. One of `canny`, `depth`" " Defaults to `canny`."),
     )
-    parser.add_argument(
-        "--use_euler",
-        action="store_true",
-        default=False,
-        help="Whether or not to use Euler Scheduler.",
-    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1288,8 +1281,7 @@ def main(args):
                             depth_map = depth_model.infer(control_image)
 
                         control_image = [
-                            torch.tensor(process_zoe_depth_map(depth_map[i]))
-                            for i in range(depth_map.shape[0])
+                            torch.tensor(process_zoe_depth_map(depth_map[i])) for i in range(depth_map.shape[0])
                         ]
                         control_image = torch.stack(control_image, dim=0).to(accelerator.device, dtype=weight_dtype)
                         control_image = control_image.unsqueeze(1)
@@ -1340,11 +1332,8 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                if args.use_euler:
-                    sigmas = get_sigmas(timesteps, len(noisy_latents.shape), noisy_latents.dtype)
-                    inp_noisy_latents = noisy_latents / ((sigmas**2 + 1) ** 0.5)
-                else:
-                    inp_noisy_latents = noisy_latents
+                sigmas = get_sigmas(timesteps, len(noisy_latents.shape), noisy_latents.dtype)
+                inp_noisy_latents = noisy_latents / ((sigmas**2 + 1) ** 0.5)
 
                 prompt_embeds = encoded_text.pop("prompt_embeds")
 
@@ -1364,25 +1353,21 @@ def main(args):
                     down_block_additional_residuals=down_block_additional_residuals,
                 ).sample
 
-                if args.use_euler:
-                    model_pred = model_pred * (-sigmas) + noisy_latents
-                    weighing = sigmas**-2.0
+                model_pred = model_pred * (-sigmas) + noisy_latents
+                weighing = sigmas**-2.0
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
-                    target = latents if args.use_euler else noise
+                    target = latents  # we are computing loss against denoise latents
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                if args.use_euler:
-                    loss = torch.mean(
-                        (weighing.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
-                    )
-                    loss = loss.mean()
-                else:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                loss = torch.mean(
+                    (weighing.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
+                )
+                loss = loss.mean()
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
