@@ -34,27 +34,18 @@ For the sake of usability Würstchen can be used with a single pipeline. This pi
 ```python
 import torch
 from diffusers import AutoPipelineForText2Image
+from diffusers.pipelines.wuerstchen import default_stage_c_timesteps
 
-device = "cuda"
-dtype = torch.float16
-num_images_per_prompt = 2
-
-pipeline =  AutoPipelineForText2Image.from_pretrained(
-    "warp-diffusion/wuerstchen", torch_dtype=dtype
-).to(device)
+pipe = AutoPipelineForText2Image.from_pretrained("warp-ai/wuerstchen", torch_dtype=torch.float16).to("cuda")
 
 caption = "Anthropomorphic cat dressed as a fire fighter"
-negative_prompt = ""
-
-output = pipeline(
-    prompt=caption,
-    height=1024,
+images = pipe(
+    caption, 
     width=1024,
-    negative_prompt=negative_prompt,
+    height=1536,
+    prior_timesteps=default_stage_c_timesteps,
     prior_guidance_scale=4.0,
-    decoder_guidance_scale=0.0,
-    num_images_per_prompt=num_images_per_prompt,
-    output_type="pil",
+    num_images_per_prompt=2,
 ).images
 ```
 
@@ -63,25 +54,27 @@ For explanation purposes, we can also initialize the two main pipelines of Würs
 ```python
 import torch
 from diffusers import WuerstchenDecoderPipeline, WuerstchenPriorPipeline
+from diffusers.pipelines.wuerstchen import default_stage_c_timesteps
 
 device = "cuda"
 dtype = torch.float16
 num_images_per_prompt = 2
 
 prior_pipeline = WuerstchenPriorPipeline.from_pretrained(
-    "warp-diffusion/wuerstchen-prior", torch_dtype=dtype
+    "warp-ai/wuerstchen-prior", torch_dtype=dtype
 ).to(device)
 decoder_pipeline = WuerstchenDecoderPipeline.from_pretrained(
-    "warp-diffusion/wuerstchen", torch_dtype=dtype
+    "warp-ai/wuerstchen", torch_dtype=dtype
 ).to(device)
 
-caption = "A captivating artwork of a mysterious stone golem"
+caption = "Anthropomorphic cat dressed as a fire fighter"
 negative_prompt = ""
 
 prior_output = prior_pipeline(
     prompt=caption,
     height=1024,
-    width=1024,
+    width=1536,
+    timesteps=default_stage_c_timesteps,
     negative_prompt=negative_prompt,
 	guidance_scale=4.0,
     num_images_per_prompt=num_images_per_prompt,

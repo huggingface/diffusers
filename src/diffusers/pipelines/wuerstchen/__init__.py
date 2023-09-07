@@ -8,3 +8,4 @@ if is_transformers_available() and is_torch_available():
     from .pipeline_wuerstchen import WuerstchenDecoderPipeline
     from .pipeline_wuerstchen_combined import WuerstchenCombinedPipeline
     from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
+    from .timesteps import default_stage_c_timesteps
