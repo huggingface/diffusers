@@ -164,7 +164,7 @@ else:
         "VersatileDiffusionTextToImagePipeline",
     ]
     _import_structure["vq_diffusion"] = ["VQDiffusionPipeline"]
-    _import_structure["wurstchen"] = [
+    _import_structure["wuerstchen"] = [
         "WuerstchenCombinedPipeline",
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
