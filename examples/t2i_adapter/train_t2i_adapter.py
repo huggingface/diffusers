@@ -949,7 +949,7 @@ def main(args):
 
     logger.info("Initializing t2iadapter weights from unet")
     t2iadapter = T2IAdapter(
-        in_channels=args.adapter_in_channels,
+        in_channels=3,
         channels=(320, 640, 1280, 1280),
         num_res_blocks=2,
         downscale_factor=16,
@@ -1289,11 +1289,7 @@ def main(args):
                             depth_map = depth_model.infer(control_image)
 
                         control_image = [
-                            torch.tensor(
-                                process_zoe_depth_map(
-                                    depth_map[i], cmap="gray_r", num_channels=args.adapter_in_channels
-                                )
-                            )
+                            torch.tensor(process_zoe_depth_map(depth_map[i]))
                             for i in range(depth_map.shape[0])
                         ]
                         control_image = torch.stack(control_image, dim=0).to(accelerator.device, dtype=weight_dtype)
