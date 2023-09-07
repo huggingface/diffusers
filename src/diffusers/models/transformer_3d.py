@@ -65,10 +65,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             The number of diffusion steps used during training. Note that this is fixed at training time as it is used
             to learn a number of embeddings that are added to the hidden states. During inference, you can denoise for
             up to but not more than steps than `num_embeds_ada_norm`.
-        use_linear_projection: ( `bool`, *optional*, defaults to False):
-            Pass True if linear projection is to be applied on the input hidden_states. If False, uses Conv2D instead.
-        only_cross_attention: ( `bool`, *optional*, defaults to False):
-            Input to the attention processor.
 
     """
 
