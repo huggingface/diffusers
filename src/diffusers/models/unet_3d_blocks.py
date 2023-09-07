@@ -85,7 +85,6 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "CrossAttnDownBlockInflated3D":
         if cross_attention_dim is None:
@@ -102,7 +101,6 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -171,7 +169,6 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "CrossAttnUpBlockInflated3D":
         if cross_attention_dim is None:
@@ -188,7 +185,6 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -796,7 +792,6 @@ class UpBlockInflated3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         output_scale_factor=1.0,
@@ -817,7 +812,6 @@ class UpBlockInflated3D(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                 )
@@ -857,7 +851,6 @@ class DownBlockInflated3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         output_scale_factor=1.0,
@@ -877,7 +870,6 @@ class DownBlockInflated3D(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                 )
@@ -924,7 +916,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         num_attention_heads=1,
@@ -951,7 +942,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                 )
@@ -1021,7 +1011,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         num_attention_heads=1,
@@ -1047,7 +1036,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                 )
@@ -1119,7 +1107,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         num_attention_heads=1,
@@ -1141,7 +1128,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                 eps=resnet_eps,
                 groups=resnet_groups,
                 dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
             )
@@ -1169,7 +1155,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                 )

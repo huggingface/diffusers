@@ -749,7 +749,6 @@ class ResnetBlock3D(nn.Module):
         groups_out=None,
         eps=1e-6,
         non_linearity="swish",
-        time_embedding_norm="default",
         output_scale_factor=1.0,
     ):
         super().__init__()
@@ -757,27 +756,14 @@ class ResnetBlock3D(nn.Module):
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
-        self.time_embedding_norm = time_embedding_norm
         self.output_scale_factor = output_scale_factor
 
-        if groups_out is None:
-            groups_out = groups
+        groups_out = groups
 
         self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
-        if temb_channels is not None:
-            if self.time_embedding_norm == "default":
-                time_emb_proj_out_channels = out_channels
-            elif self.time_embedding_norm == "scale_shift":
-                time_emb_proj_out_channels = out_channels * 2
-            else:
-                raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
-
-            self.time_emb_proj = torch.nn.Linear(temb_channels, time_emb_proj_out_channels)
-        else:
-            self.time_emb_proj = None
+        self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
 
         self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
@@ -808,14 +794,9 @@ class ResnetBlock3D(nn.Module):
         if temb is not None:
             temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None, None]
 
-        if temb is not None and self.time_embedding_norm == "default":
-            hidden_states = hidden_states + temb
+        hidden_states = hidden_states + temb
 
         hidden_states = self.norm2(hidden_states)
-
-        if temb is not None and self.time_embedding_norm == "scale_shift":
-            scale, shift = torch.chunk(temb, 2, dim=1)
-            hidden_states = hidden_states * (1 + scale) + shift
 
         hidden_states = self.nonlinearity(hidden_states)
 
