@@ -24,7 +24,7 @@ import os
 import random
 import shutil
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Union
 
 import accelerate
 import cv2
@@ -39,19 +39,12 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from braceexpand import braceexpand
 from huggingface_hub import create_repo, upload_folder
-from modeling_lineart import LineartDetector
-from modeling_pidinet import pidinet
 from packaging import version
 from PIL import Image
 from torch.utils.data import default_collate
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import (
-    AutoTokenizer,
-    DPTFeatureExtractor,
-    DPTForDepthEstimation,
-    PretrainedConfig,
-)
+from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
 from diffusers import (
@@ -77,30 +70,11 @@ check_min_version("0.18.0.dev0")
 logger = get_logger(__name__)
 
 
-def random_threshold(edge, low_threshold=0.3, high_threshold=0.8):
-    threshold = round(random.uniform(low_threshold, high_threshold), 1)
-    edge = edge > threshold
-    return edge
-
-
 def filter_keys(key_set):
     def _f(dictionary):
         return {k: v for k, v in dictionary.items() if k in key_set}
 
     return _f
-
-
-def process_zoe_depth_map(depth_map):
-    depth_map = depth_map[0].cpu().numpy()
-
-    vmin = np.percentile(depth_map, 2)
-    vmax = np.percentile(depth_map, 85)
-
-    depth_map -= vmin
-    depth_map /= vmax - vmin
-    depth_map = 1.0 - depth_map
-    depth_map = np.power(depth_map, 2.2)
-    return depth_map
 
 
 def get_canny_map(image, low_threshold=100, high_threshold=200, shift_range=50):
@@ -137,80 +111,6 @@ def canny_image_transform(example, resolution=1024, detection_resolution=None):
     image = TF.to_tensor(image)
     image = TF.normalize(image, [0.5], [0.5])
     control_image = TF.to_tensor(control_image)
-
-    example["image"] = image
-    example["control_image"] = control_image
-    example["crop_coords"] = (c_top, c_left)
-
-    return example
-
-
-def depth_image_transform(example, feature_extractor, resolution=1024):
-    image = example["image"]
-    image = transforms.Resize(resolution, interpolation=transforms.InterpolationMode.BILINEAR)(image)
-    # get crop coordinates
-    c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(resolution, resolution))
-    image = transforms.functional.crop(image, c_top, c_left, resolution, resolution)
-
-    if feature_extractor is not None:
-        control_image = feature_extractor(images=image, return_tensors="pt").pixel_values.squeeze(0)
-    else:
-        control_image = transforms.ToTensor()(image)
-
-    image = transforms.ToTensor()(image)
-    image = transforms.Normalize([0.5], [0.5])(image)
-
-    example["image"] = image
-    example["control_image"] = control_image
-    example["crop_coords"] = (c_top, c_left)
-
-    return example
-
-
-def sketch_image_transform(example, resolution=1024, detection_resolution=None):
-    image = example["image"]
-    image = TF.resize(image, resolution, interpolation=transforms.InterpolationMode.BILINEAR)
-
-    # get crop coordinates
-    c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(resolution, resolution))
-    image = TF.crop(image, c_top, c_left, resolution, resolution)
-
-    if detection_resolution is not None:
-        control_image = TF.resize(
-            image, (detection_resolution, detection_resolution), interpolation=transforms.InterpolationMode.BILINEAR
-        )
-        control_image = TF.to_tensor(control_image)
-    else:
-        control_image = TF.to_tensor(image)
-
-    image = TF.to_tensor(image)
-    image = TF.normalize(image, [0.5], [0.5])
-
-    example["image"] = image
-    example["control_image"] = control_image
-    example["crop_coords"] = (c_top, c_left)
-
-    return example
-
-
-def lineart_image_transform(example, resolution=1024, detection_resolution=None):
-    image = example["image"]
-    image = TF.resize(image, resolution, interpolation=transforms.InterpolationMode.BILINEAR)
-
-    # get crop coordinates
-    c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(resolution, resolution))
-    image = TF.crop(image, c_top, c_left, resolution, resolution)
-
-    if detection_resolution is not None:
-        control_image = TF.resize(
-            image, (detection_resolution, detection_resolution), interpolation=transforms.InterpolationMode.BILINEAR
-        )
-        control_image = TF.to_tensor(control_image)
-    else:
-        control_image = TF.to_tensor(image)
-
-    image = TF.to_tensor(image)
-    image = TF.normalize(image, [0.5], [0.5])
 
     example["image"] = image
     example["control_image"] = control_image
@@ -263,8 +163,6 @@ class Text2ImageDataset:
         shuffle_buffer_size: int = 1000,
         pin_memory: bool = False,
         persistent_workers: bool = False,
-        control_type: str = "canny",
-        feature_extractor: Optional[DPTFeatureExtractor] = None,
         detection_resolution=None,
     ):
         if not isinstance(train_shards_path_or_url, str):
@@ -275,24 +173,11 @@ class Text2ImageDataset:
         def get_orig_size(json):
             return (int(json.get("original_width", 0.0)), int(json.get("original_height", 0.0)))
 
-        if control_type == "canny":
-            image_transform = functools.partial(
-                canny_image_transform,
-                resolution=resolution,
-                detection_resolution=detection_resolution,
-            )
-        elif control_type == "depth":
-            image_transform = functools.partial(
-                depth_image_transform, feature_extractor=feature_extractor, resolution=resolution
-            )
-        elif control_type == "sketch":
-            image_transform = functools.partial(
-                sketch_image_transform, resolution=resolution, detection_resolution=detection_resolution
-            )
-        elif control_type == "lineart":
-            image_transform = functools.partial(
-                lineart_image_transform, resolution=resolution, detection_resolution=detection_resolution
-            )
+        image_transform = functools.partial(
+            canny_image_transform,
+            resolution=resolution,
+            detection_resolution=detection_resolution,
+        )
 
         num_worker_batches = math.ceil(num_train_examples / (global_batch_size * num_workers))  # per dataloader worker
         num_batches = num_worker_batches * num_workers
@@ -520,13 +405,6 @@ def parse_args(input_args=None):
             "Revision of pretrained model identifier from huggingface.co/models. Trainable model components should be"
             " float32 precision."
         ),
-    )
-    parser.add_argument(
-        "--depth_model_name_or_path",
-        type=str,
-        default=None,
-        required=False,
-        help=("Path to pretrained depth model or model identifier from huggingface.co/models."),
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -787,12 +665,6 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
-    parser.add_argument(
-        "--control_type",
-        type=str,
-        default="canny",
-        help=("The type of t2iadapter conditioning image to use. One of `canny`, `depth`" " Defaults to `canny`."),
-    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -948,23 +820,6 @@ def main(args):
         adapter_type="full_adapter_xl",
     )
 
-    feature_extractor = None
-    if args.control_type == "depth":
-        if args.depth_model_name_or_path == "zoe":
-            torch.hub.help(
-                "intel-isl/MiDaS", "DPT_BEiT_L_384", force_reload=True
-            )  # Triggers fresh download of MiDaS repo
-            depth_model = torch.hub.load("isl-org/ZoeDepth", "ZoeD_NK", pretrained=True).eval()
-        else:
-            feature_extractor = DPTFeatureExtractor.from_pretrained(args.depth_model_name_or_path)
-            depth_model = DPTForDepthEstimation.from_pretrained(args.depth_model_name_or_path)
-        depth_model.requires_grad_(False)
-    elif args.control_type == "sketch":
-        sketch_model = pidinet()
-        sketch_model.requires_grad_(False)
-    elif args.control_type == "lineart":
-        lineart_model = LineartDetector()
-
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
@@ -1080,15 +935,6 @@ def main(args):
     unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-    if args.control_type == "depth":
-        if args.depth_model_name_or_path == "zoe":
-            depth_model.to(accelerator.device)
-        else:
-            depth_model.to(accelerator.device, dtype=weight_dtype)
-    elif args.control_type == "sketch":
-        sketch_model.to(accelerator.device)
-    elif args.control_type == "lineart":
-        lineart_model.to(accelerator.device)
 
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
@@ -1144,8 +990,6 @@ def main(args):
         shuffle_buffer_size=1000,
         pin_memory=True,
         persistent_workers=True,
-        control_type=args.control_type,
-        feature_extractor=feature_extractor,
         detection_resolution=args.detection_resolution,
     )
     train_dataloader = dataset.train_dataloader
@@ -1264,8 +1108,7 @@ def main(args):
                 else:
                     pixel_values = image
 
-                # latents = vae.encode(pixel_values).latent_dist.sample()
-                # encode pixel values with batch size of at most 8
+                # encode pixel values with batch size of at most 8 to avoid OOM
                 latents = []
                 for i in range(0, pixel_values.shape[0], 8):
                     latents.append(vae.encode(pixel_values[i : i + 8]).latent_dist.sample())
@@ -1274,49 +1117,6 @@ def main(args):
                 latents = latents * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
                     latents = latents.to(weight_dtype)
-
-                if args.control_type == "depth":
-                    if args.depth_model_name_or_path == "zoe":
-                        with torch.autocast("cuda", enabled=True):
-                            depth_map = depth_model.infer(control_image)
-
-                        control_image = [
-                            torch.tensor(process_zoe_depth_map(depth_map[i])) for i in range(depth_map.shape[0])
-                        ]
-                        control_image = torch.stack(control_image, dim=0).to(accelerator.device, dtype=weight_dtype)
-                        control_image = control_image.unsqueeze(1)
-                    else:
-                        control_image = control_image.to(weight_dtype)
-                        with torch.autocast("cuda"):
-                            depth_map = depth_model(control_image).predicted_depth
-                        depth_map = torch.nn.functional.interpolate(
-                            depth_map.unsqueeze(1),
-                            size=image.shape[2:],
-                            mode="bicubic",
-                            align_corners=False,
-                        )
-                        depth_min = torch.amin(depth_map, dim=[1, 2, 3], keepdim=True)
-                        depth_max = torch.amax(depth_map, dim=[1, 2, 3], keepdim=True)
-                        depth_map = (depth_map - depth_min) / (depth_max - depth_min)
-
-                    control_image = (depth_map * 255.0).to(torch.uint8).float() / 255.0  # hack to match inference
-                    control_image = torch.cat([control_image] * 3, dim=1)
-                elif args.control_type == "sketch":
-                    edge_map = sketch_model(control_image)[-1]
-                    control_image = random_threshold(edge_map).to(torch.float32)
-                    # if detection resolution is specified, resize the control image back to the original resolution
-                    if args.detection_resolution is not None:
-                        control_image = torch.nn.functional.interpolate(
-                            control_image,
-                            size=(args.resolution, args.resolution),
-                            mode="bicubic",
-                            align_corners=False,
-                        )
-                    control_image = torch.cat([control_image] * 3, dim=1)
-                elif args.control_type == "lineart":
-                    line_map = lineart_model(control_image, resize_to=(args.resolution, args.resolution))
-                    control_image = line_map.float() / 255.0
-                    control_image = torch.cat([control_image] * 3, dim=1)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)

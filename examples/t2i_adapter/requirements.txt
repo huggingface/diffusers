@@ -2,8 +2,6 @@ transformers>=4.25.1
 accelerate>=0.16.0
 safetensors
 torchvision
-timm==0.6.12 # for zoe depth model
-webdataset
 opencv-python
 ftfy
 tensorboard
