@@ -560,33 +560,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def set_clip_output_layer(self, output_layer_idx: int = 12):
-        """Sets layer index for CLIP to use during `encode_prompt()`. Useful for experimenting with techniques like CLIP-skip.
-
-        Args:
-            output_layer_idx (`int`, *optional*, defaults to 12):
-                The output layer to use for computing the prompt embeddings.
-        """
-        if not hasattr(self, "text_encoder"):
-            raise ValueError("Cannot use `set_clip_output_layer` without a `text_encoder`.")
-
-        if not hasattr(self, "text_encoder_output_layer_idx"):
-            self.text_encoder_output_layer_idx = None
-
-        dtype, device = self.text_encoder.dtype, self.text_encoder.device
-
-        self.text_encoder = self.text_encoder.__class__.from_pretrained(
-            self.text_encoder.config._name_or_path, num_hidden_layers=output_layer_idx, torch_dtype=dtype
-        ).to(device)
-        self.text_encoder_output_layer_idx = output_layer_idx
-
-    def clip_output_layer_to_default(self):
-        """Sets layer index of the text encoder to the default one."""
-        dtype, device = self.text_encoder.dtype, self.text_encoder.device
-        self.text_encoder = self.text_encoder.__class__.from_pretrained(
-            self.text_encoder.config._name_or_path, torch_dtype=dtype
-        ).to(device)
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
