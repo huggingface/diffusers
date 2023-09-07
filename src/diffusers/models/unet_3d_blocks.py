@@ -230,7 +230,6 @@ def get_mid_block(
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
             resnet_groups=resnet_groups,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     raise ValueError(f"{mid_block_type} does not exist.")
 
