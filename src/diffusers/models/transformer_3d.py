@@ -57,14 +57,8 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             The number of norm groups for the group norm.
         cross_attention_dim (`int`, *optional*):
             The number of encoder_hidden_states dimensions to use.
-        attention_bias (`bool`, *optional*, defaults to False):
-            Configure if the TransformerBlocks' attention should contain a bias parameter.
         activation_fn (`str`, *optional*, defaults to `"geglu"`):
             Activation function to be used in feed-forward.
-        num_embeds_ada_norm ( `int`, *optional*): Pass if at least one of the norm_layers is `AdaLayerNorm`.
-            The number of diffusion steps used during training. Note that this is fixed at training time as it is used
-            to learn a number of embeddings that are added to the hidden states. During inference, you can denoise for
-            up to but not more than steps than `num_embeds_ada_norm`.
 
     """
 
