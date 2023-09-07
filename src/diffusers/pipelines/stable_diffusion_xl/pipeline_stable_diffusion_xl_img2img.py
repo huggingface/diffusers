@@ -205,9 +205,6 @@ class StableDiffusionXLImg2ImgPipeline(DiffusionPipeline, FromSingleFileMixin, L
         """
         self.vae.disable_tiling()
 
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
         self,

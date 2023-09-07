@@ -98,6 +98,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             rendering method.
     """
 
+    model_cpu_offload_seq = "image_encoder->prior"
+
     def __init__(
         self,
         prior: PriorTransformer,

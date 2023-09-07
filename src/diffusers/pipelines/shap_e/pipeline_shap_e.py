@@ -97,6 +97,8 @@ class ShapEPipeline(DiffusionPipeline):
             rendering method.
     """
 
+    model_cpu_offload_seq = "text_encoder->prior"
+
     def __init__(
         self,
         prior: PriorTransformer,

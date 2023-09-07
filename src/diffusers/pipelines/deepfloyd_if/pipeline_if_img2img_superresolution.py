@@ -130,6 +130,7 @@ class IFImg2ImgSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor"]
+    model_cpu_offload_seq = "text_encoder->unet"
 
     def __init__(
         self,

@@ -123,6 +123,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
     _optional_components = ["safety_checker", "feature_extractor"]
+    model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(
         self,

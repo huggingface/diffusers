@@ -44,7 +44,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import is_accelerate_available, is_accelerate_version, is_xformers_available, slow, torch_device
+from diffusers.utils import is_xformers_available, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS

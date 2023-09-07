@@ -1246,14 +1246,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
         self._all_hooks = []
-        prev_module_hook = None
+        hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str)
 
             if model is not None:
-                _, hook = cpu_offload_with_hook(model, device, prev_module_hook=prev_module_hook)
+                _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
                 self._all_hooks.append(hook)
-                prev_module_hook = hook
 
         # now also cpu offload all models that are not in the seq chain. these models will stay on GPU until
         # some models cannot be in the seq chain because they are iteratively called, such as controlnet
@@ -1296,7 +1295,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             device_mod = getattr(torch, self.device.type, None)
             if hasattr(device_mod, "empty_cache") and device_mod.is_available():
                 device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue
