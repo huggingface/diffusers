@@ -471,11 +471,8 @@ class BasicSparseTransformerBlock(nn.Module):
         dropout=0.0,
         cross_attention_dim: int = 1280,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        attention_bias: bool = False,
     ):
         super().__init__()
-        self.use_ada_layer_norm = num_embeds_ada_norm is not None
 
         # Temporal-Attention.
         self.attn1 = Attention(
@@ -483,11 +480,11 @@ class BasicSparseTransformerBlock(nn.Module):
             heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
-            bias=attention_bias,
+            bias=False,
             cross_attention_dim=None,
             upcast_attention=False,
         )
-        self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+        self.norm1 = nn.LayerNorm(dim)
 
         # Cross-Attn
         self.attn2 = Attention(
@@ -496,12 +493,12 @@ class BasicSparseTransformerBlock(nn.Module):
             heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
-            bias=attention_bias,
+            bias=False,
             upcast_attention=False,
         )
 
 
-        self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
 
         # Feed-forward
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
@@ -513,18 +510,18 @@ class BasicSparseTransformerBlock(nn.Module):
             heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
-            bias=attention_bias,
+            bias=False,
             upcast_attention=False,
         )
         nn.init.zeros_(self.attn_temp.to_out[0].weight.data)
-        self.norm_temp = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
+        self.norm_temp = nn.LayerNorm(dim)
 
     def forward(
         self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, video_length=None
     ):
         # SparseCausal-Attention
         norm_hidden_states = (
-            self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
+            self.norm1(hidden_states)
         )
 
         hidden_states = (
@@ -533,7 +530,7 @@ class BasicSparseTransformerBlock(nn.Module):
         )
 
         norm_hidden_states = (
-            self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+            self.norm2(hidden_states)
         )
         hidden_states = (
             self.attn2(

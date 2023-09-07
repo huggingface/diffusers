@@ -78,9 +78,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         dropout: float = 0.0,
         norm_num_groups: int = 32,
         cross_attention_dim: int = 1280,
-        attention_bias: bool = False,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -103,8 +101,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
                     dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
                     activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
                 )
                 for d in range(num_layers)
             ]
@@ -118,8 +114,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         hidden_states,
         encoder_hidden_states=None,
         timestep=None,
-        class_labels=None,
-        cross_attention_kwargs=None,
         return_dict: bool = True,
     ):
         """
@@ -131,10 +125,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
                 self-attention.
             timestep ( `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
-            class_labels ( `torch.Tensor`, *optional*):
-                Ignored right now. Added for interoperability with Transformer2DModel.
-            cross_attention_kwargs (`dict`, *optional*):
-                Ignored right now. Added for interoperability with Transformer2DModel.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_3d.Transformer3DModelOutput`] instead of a plain
                 tuple.
