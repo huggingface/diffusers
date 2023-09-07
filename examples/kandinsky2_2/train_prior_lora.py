@@ -798,7 +798,7 @@ def main():
             save_model_card(
                 repo_id,
                 images=images,
-                base_model=args.pretrained_model_name_or_path,
+                base_model=args.pretrained_prior_model_name_or_path,
                 dataset_name=args.dataset_name,
                 repo_folder=args.output_dir,
             )
