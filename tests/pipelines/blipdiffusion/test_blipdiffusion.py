@@ -47,7 +47,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "guidance_scale",
         "prompt_strength",
         "prompt_reps",
-        "use_ddim"
+        "use_ddim",
     ]
 
     def get_dummy_components(self):
@@ -65,37 +65,39 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         vae = AutoencoderKL(
             in_channels=4,
             out_channels=4,
-            down_block_types= ("DownEncoderBlock2D",),
-            up_block_types= ("UpDecoderBlock2D",),
-            block_out_channels = (64,),
-            layers_per_block = 1,
+            down_block_types=("DownEncoderBlock2D",),
+            up_block_types=("UpDecoderBlock2D",),
+            block_out_channels=(64,),
+            layers_per_block=1,
             act_fn="silu",
-            latent_channels= 4,
-            norm_num_groups= 32,
-            sample_size= 32,
-            )
-        
-        blip_vision_config =  {  
-                "hidden_size" : 32,
-                "intermediate_size" : 32,
-                "num_hidden_layers": 1,
-                "num_attention_heads" : 1,
-                "image_size" : 224,
-                "patch_size": 14,
-                "hidden_act" : "quick_gelu",
+            latent_channels=4,
+            norm_num_groups=32,
+            sample_size=32,
+        )
+
+        blip_vision_config = {
+            "hidden_size": 32,
+            "intermediate_size": 32,
+            "num_hidden_layers": 1,
+            "num_attention_heads": 1,
+            "image_size": 224,
+            "patch_size": 14,
+            "hidden_act": "quick_gelu",
         }
 
         blip_qformer_config = {
-                "vocab_size" : 30522,
-                "hidden_size" : 32,
-                "num_hidden_layers" : 1,
-                "num_attention_heads" : 1,
-                "intermediate_size" : 32,
-                "max_position_embeddings" : 512,
-                "cross_attention_frequency" : 1,
-                "encoder_hidden_size" : 32,
+            "vocab_size": 30522,
+            "hidden_size": 32,
+            "num_hidden_layers": 1,
+            "num_attention_heads": 1,
+            "intermediate_size": 32,
+            "max_position_embeddings": 512,
+            "cross_attention_frequency": 1,
+            "encoder_hidden_size": 32,
         }
-        qformer_config = Blip2Config(vision_config=blip_vision_config, qformer_config=blip_qformer_config, num_query_tokens=16)
+        qformer_config = Blip2Config(
+            vision_config=blip_vision_config, qformer_config=blip_qformer_config, num_query_tokens=16
+        )
         qformer = Blip2QFormerModel(qformer_config)
 
         unet = UNet2DConditionModel(
@@ -127,13 +129,13 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "unet": unet,
             "tokenizer": tokenizer,
             "scheduler": scheduler,
-            "image_processor" : image_processor
+            "image_processor": image_processor,
         }
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        reference_image = np.random.rand(224,224, 3) * 255
-        reference_image = Image.fromarray(reference_image.astype('uint8')).convert('RGBA')
+        reference_image = np.random.rand(224, 224, 3) * 255
+        reference_image = Image.fromarray(reference_image.astype("uint8")).convert("RGBA")
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -160,20 +162,17 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         pipe.set_progress_bar_config(disable=None)
 
-        #TODO : Chage input processing in the test
+        # TODO : Chage input processing in the test
         output = pipe(**self.get_dummy_inputs(device))
         image = output[0]
         image = np.asarray(image)
-        image = image/255.0
+        image = image / 255.0
         image_slice = image[-3:, -3:, 0]
 
         assert image.shape == (64, 64, 4)
 
-        expected_slice = np.array(
-           [0.1137, 0.4627,  0.4862, 0.4549, 0.2627,  0.5450, 0.3568, 0.5960, 0.5215]
-        )
+        expected_slice = np.array([0.1137, 0.4627, 0.4862, 0.4549, 0.2627, 0.5450, 0.3568, 0.5960, 0.5215])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-

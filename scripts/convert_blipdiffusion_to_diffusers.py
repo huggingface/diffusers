@@ -23,20 +23,20 @@ import os
 
 BLIP2_CONFIG = {
     "vision_config": {
-        "hidden_size" : 1024,
-        "num_hidden_layers" :  23,
-        "num_attention_heads" : 16,
+        "hidden_size": 1024,
+        "num_hidden_layers": 23,
+        "num_attention_heads": 16,
         "image_size": 224,
-        "patch_size" : 14,
-        "intermediate_size" : 4096,
-        'hidden_act' : 'quick_gelu'
+        "patch_size": 14,
+        "intermediate_size": 4096,
+        "hidden_act": "quick_gelu",
     },
     "qformer_config": {
-        "cross_attention_frequency" : 1,
-        "encoder_hidden_size" : 1024,
-        "vocab_size" : 30523,
+        "cross_attention_frequency": 1,
+        "encoder_hidden_size": 1024,
+        "vocab_size": 30523,
     },
-   "num_query_tokens" : 16
+    "num_query_tokens": 16,
 }
 blip2config = Blip2Config(**BLIP2_CONFIG)
 
@@ -48,11 +48,28 @@ def qformer_model_from_original_config():
 
 def embeddings_from_original_checkpoint(model, diffuser_embeddings_prefix, original_embeddings_prefix):
     embeddings = {}
-    embeddings.update({f"{diffuser_embeddings_prefix}.word_embeddings.weight": model[f"{original_embeddings_prefix}.word_embeddings.weight"]})
-    embeddings.update({f"{diffuser_embeddings_prefix}.position_embeddings.weight": model[f"{original_embeddings_prefix}.position_embeddings.weight"]})
-    embeddings.update({f"{diffuser_embeddings_prefix}.LayerNorm.weight": model[f"{original_embeddings_prefix}.LayerNorm.weight"]})
-    embeddings.update({f"{diffuser_embeddings_prefix}.LayerNorm.bias": model[f"{original_embeddings_prefix}.LayerNorm.bias"]})
+    embeddings.update(
+        {
+            f"{diffuser_embeddings_prefix}.word_embeddings.weight": model[
+                f"{original_embeddings_prefix}.word_embeddings.weight"
+            ]
+        }
+    )
+    embeddings.update(
+        {
+            f"{diffuser_embeddings_prefix}.position_embeddings.weight": model[
+                f"{original_embeddings_prefix}.position_embeddings.weight"
+            ]
+        }
+    )
+    embeddings.update(
+        {f"{diffuser_embeddings_prefix}.LayerNorm.weight": model[f"{original_embeddings_prefix}.LayerNorm.weight"]}
+    )
+    embeddings.update(
+        {f"{diffuser_embeddings_prefix}.LayerNorm.bias": model[f"{original_embeddings_prefix}.LayerNorm.bias"]}
+    )
     return embeddings
+
 
 def proj_layer_from_original_checkpoint(model, diffuser_proj_prefix, original_proj_prefix):
     proj_layer = {}
@@ -67,16 +84,52 @@ def proj_layer_from_original_checkpoint(model, diffuser_proj_prefix, original_pr
 
 def attention_from_original_checkpoint(model, diffuser_attention_prefix, original_attention_prefix):
     attention = {}
-    attention.update({f"{diffuser_attention_prefix}.attention.query.weight": model[f"{original_attention_prefix}.self.query.weight"]})
-    attention.update({f"{diffuser_attention_prefix}.attention.query.bias": model[f"{original_attention_prefix}.self.query.bias"]})
-    attention.update({f"{diffuser_attention_prefix}.attention.key.weight": model[f"{original_attention_prefix}.self.key.weight"]})
-    attention.update({f"{diffuser_attention_prefix}.attention.key.bias": model[f"{original_attention_prefix}.self.key.bias"]})
-    attention.update({f"{diffuser_attention_prefix}.attention.value.weight": model[f"{original_attention_prefix}.self.value.weight"]})
-    attention.update({f"{diffuser_attention_prefix}.attention.value.bias": model[f"{original_attention_prefix}.self.value.bias"]})
-    attention.update({f"{diffuser_attention_prefix}.output.dense.weight": model[f"{original_attention_prefix}.output.dense.weight"]})
-    attention.update({f"{diffuser_attention_prefix}.output.dense.bias": model[f"{original_attention_prefix}.output.dense.bias"]})
-    attention.update({f"{diffuser_attention_prefix}.output.LayerNorm.weight": model[f"{original_attention_prefix}.output.LayerNorm.weight"]})
-    attention.update({f"{diffuser_attention_prefix}.output.LayerNorm.bias": model[f"{original_attention_prefix}.output.LayerNorm.bias"]})
+    attention.update(
+        {
+            f"{diffuser_attention_prefix}.attention.query.weight": model[
+                f"{original_attention_prefix}.self.query.weight"
+            ]
+        }
+    )
+    attention.update(
+        {f"{diffuser_attention_prefix}.attention.query.bias": model[f"{original_attention_prefix}.self.query.bias"]}
+    )
+    attention.update(
+        {f"{diffuser_attention_prefix}.attention.key.weight": model[f"{original_attention_prefix}.self.key.weight"]}
+    )
+    attention.update(
+        {f"{diffuser_attention_prefix}.attention.key.bias": model[f"{original_attention_prefix}.self.key.bias"]}
+    )
+    attention.update(
+        {
+            f"{diffuser_attention_prefix}.attention.value.weight": model[
+                f"{original_attention_prefix}.self.value.weight"
+            ]
+        }
+    )
+    attention.update(
+        {f"{diffuser_attention_prefix}.attention.value.bias": model[f"{original_attention_prefix}.self.value.bias"]}
+    )
+    attention.update(
+        {f"{diffuser_attention_prefix}.output.dense.weight": model[f"{original_attention_prefix}.output.dense.weight"]}
+    )
+    attention.update(
+        {f"{diffuser_attention_prefix}.output.dense.bias": model[f"{original_attention_prefix}.output.dense.bias"]}
+    )
+    attention.update(
+        {
+            f"{diffuser_attention_prefix}.output.LayerNorm.weight": model[
+                f"{original_attention_prefix}.output.LayerNorm.weight"
+            ]
+        }
+    )
+    attention.update(
+        {
+            f"{diffuser_attention_prefix}.output.LayerNorm.bias": model[
+                f"{original_attention_prefix}.output.LayerNorm.bias"
+            ]
+        }
+    )
     return attention
 
 
@@ -84,37 +137,90 @@ def output_layers_from_original_checkpoint(model, diffuser_output_prefix, origin
     output_layers = {}
     output_layers.update({f"{diffuser_output_prefix}.dense.weight": model[f"{original_output_prefix}.dense.weight"]})
     output_layers.update({f"{diffuser_output_prefix}.dense.bias": model[f"{original_output_prefix}.dense.bias"]})
-    output_layers.update({f"{diffuser_output_prefix}.LayerNorm.weight": model[f"{original_output_prefix}.LayerNorm.weight"]})
-    output_layers.update({f"{diffuser_output_prefix}.LayerNorm.bias": model[f"{original_output_prefix}.LayerNorm.bias"]})
+    output_layers.update(
+        {f"{diffuser_output_prefix}.LayerNorm.weight": model[f"{original_output_prefix}.LayerNorm.weight"]}
+    )
+    output_layers.update(
+        {f"{diffuser_output_prefix}.LayerNorm.bias": model[f"{original_output_prefix}.LayerNorm.bias"]}
+    )
     return output_layers
+
 
 def encoder_from_original_checkpoint(model, diffuser_encoder_prefix, original_encoder_prefix):
     encoder = {}
     for i in range(blip2config.qformer_config.num_hidden_layers):
-        encoder.update(attention_from_original_checkpoint(model, f"{diffuser_encoder_prefix}.{i}.attention", f"{original_encoder_prefix}.{i}.attention"))
-        encoder.update(attention_from_original_checkpoint(model, f"{diffuser_encoder_prefix}.{i}.crossattention", f"{original_encoder_prefix}.{i}.crossattention"))
-        
-        encoder.update({f"{diffuser_encoder_prefix}.{i}.intermediate.dense.weight": model[f"{original_encoder_prefix}.{i}.intermediate.dense.weight"]})
-        encoder.update({f"{diffuser_encoder_prefix}.{i}.intermediate.dense.bias": model[f"{original_encoder_prefix}.{i}.intermediate.dense.bias"]})
-        encoder.update({f"{diffuser_encoder_prefix}.{i}.intermediate_query.dense.weight": model[f"{original_encoder_prefix}.{i}.intermediate_query.dense.weight"]})
-        encoder.update({f"{diffuser_encoder_prefix}.{i}.intermediate_query.dense.bias": model[f"{original_encoder_prefix}.{i}.intermediate_query.dense.bias"]})
+        encoder.update(
+            attention_from_original_checkpoint(
+                model, f"{diffuser_encoder_prefix}.{i}.attention", f"{original_encoder_prefix}.{i}.attention"
+            )
+        )
+        encoder.update(
+            attention_from_original_checkpoint(
+                model, f"{diffuser_encoder_prefix}.{i}.crossattention", f"{original_encoder_prefix}.{i}.crossattention"
+            )
+        )
 
-        encoder.update(output_layers_from_original_checkpoint(model, f"{diffuser_encoder_prefix}.{i}.output", f"{original_encoder_prefix}.{i}.output"))
-        encoder.update(output_layers_from_original_checkpoint(model, f"{diffuser_encoder_prefix}.{i}.output_query", f"{original_encoder_prefix}.{i}.output_query"))
+        encoder.update(
+            {
+                f"{diffuser_encoder_prefix}.{i}.intermediate.dense.weight": model[
+                    f"{original_encoder_prefix}.{i}.intermediate.dense.weight"
+                ]
+            }
+        )
+        encoder.update(
+            {
+                f"{diffuser_encoder_prefix}.{i}.intermediate.dense.bias": model[
+                    f"{original_encoder_prefix}.{i}.intermediate.dense.bias"
+                ]
+            }
+        )
+        encoder.update(
+            {
+                f"{diffuser_encoder_prefix}.{i}.intermediate_query.dense.weight": model[
+                    f"{original_encoder_prefix}.{i}.intermediate_query.dense.weight"
+                ]
+            }
+        )
+        encoder.update(
+            {
+                f"{diffuser_encoder_prefix}.{i}.intermediate_query.dense.bias": model[
+                    f"{original_encoder_prefix}.{i}.intermediate_query.dense.bias"
+                ]
+            }
+        )
+
+        encoder.update(
+            output_layers_from_original_checkpoint(
+                model, f"{diffuser_encoder_prefix}.{i}.output", f"{original_encoder_prefix}.{i}.output"
+            )
+        )
+        encoder.update(
+            output_layers_from_original_checkpoint(
+                model, f"{diffuser_encoder_prefix}.{i}.output_query", f"{original_encoder_prefix}.{i}.output_query"
+            )
+        )
     return encoder
 
 
 def visual_encoder_layer_from_original_checkpoint(model, diffuser_prefix, original_prefix):
-    visual_encoder_layer = {} 
+    visual_encoder_layer = {}
 
     visual_encoder_layer.update({f"{diffuser_prefix}.layer_norm1.weight": model[f"{original_prefix}.ln_1.weight"]})
     visual_encoder_layer.update({f"{diffuser_prefix}.layer_norm1.bias": model[f"{original_prefix}.ln_1.bias"]})
     visual_encoder_layer.update({f"{diffuser_prefix}.layer_norm2.weight": model[f"{original_prefix}.ln_2.weight"]})
     visual_encoder_layer.update({f"{diffuser_prefix}.layer_norm2.bias": model[f"{original_prefix}.ln_2.bias"]})
-    visual_encoder_layer.update({f"{diffuser_prefix}.self_attn.qkv.weight": model[f"{original_prefix}.attn.in_proj_weight"]})
-    visual_encoder_layer.update({f"{diffuser_prefix}.self_attn.qkv.bias": model[f"{original_prefix}.attn.in_proj_bias"]})
-    visual_encoder_layer.update({f"{diffuser_prefix}.self_attn.projection.weight": model[f"{original_prefix}.attn.out_proj.weight"]})
-    visual_encoder_layer.update({f"{diffuser_prefix}.self_attn.projection.bias": model[f"{original_prefix}.attn.out_proj.bias"]})
+    visual_encoder_layer.update(
+        {f"{diffuser_prefix}.self_attn.qkv.weight": model[f"{original_prefix}.attn.in_proj_weight"]}
+    )
+    visual_encoder_layer.update(
+        {f"{diffuser_prefix}.self_attn.qkv.bias": model[f"{original_prefix}.attn.in_proj_bias"]}
+    )
+    visual_encoder_layer.update(
+        {f"{diffuser_prefix}.self_attn.projection.weight": model[f"{original_prefix}.attn.out_proj.weight"]}
+    )
+    visual_encoder_layer.update(
+        {f"{diffuser_prefix}.self_attn.projection.bias": model[f"{original_prefix}.attn.out_proj.bias"]}
+    )
     visual_encoder_layer.update({f"{diffuser_prefix}.mlp.fc1.weight": model[f"{original_prefix}.mlp.c_fc.weight"]})
     visual_encoder_layer.update({f"{diffuser_prefix}.mlp.fc1.bias": model[f"{original_prefix}.mlp.c_fc.bias"]})
     visual_encoder_layer.update({f"{diffuser_prefix}.mlp.fc2.weight": model[f"{original_prefix}.mlp.c_proj.weight"]})
@@ -124,17 +230,35 @@ def visual_encoder_layer_from_original_checkpoint(model, diffuser_prefix, origin
 
 
 def visual_encoder_from_original_checkpoint(model, diffuser_prefix, original_prefix):
-    visual_encoder = {} 
+    visual_encoder = {}
 
-    visual_encoder.update({f"{diffuser_prefix}.embeddings.class_embedding": model[f"{original_prefix}.class_embedding"].unsqueeze(0).unsqueeze(0)})
-    visual_encoder.update({f"{diffuser_prefix}.embeddings.position_embedding": model[f"{original_prefix}.positional_embedding"].unsqueeze(0)})
-    visual_encoder.update({f"{diffuser_prefix}.embeddings.patch_embedding.weight": model[f"{original_prefix}.conv1.weight"]})
+    visual_encoder.update(
+        {
+            f"{diffuser_prefix}.embeddings.class_embedding": model[f"{original_prefix}.class_embedding"]
+            .unsqueeze(0)
+            .unsqueeze(0)
+        }
+    )
+    visual_encoder.update(
+        {
+            f"{diffuser_prefix}.embeddings.position_embedding": model[
+                f"{original_prefix}.positional_embedding"
+            ].unsqueeze(0)
+        }
+    )
+    visual_encoder.update(
+        {f"{diffuser_prefix}.embeddings.patch_embedding.weight": model[f"{original_prefix}.conv1.weight"]}
+    )
     visual_encoder.update({f"{diffuser_prefix}.pre_layernorm.weight": model[f"{original_prefix}.ln_pre.weight"]})
     visual_encoder.update({f"{diffuser_prefix}.pre_layernorm.bias": model[f"{original_prefix}.ln_pre.bias"]})
 
     for i in range(blip2config.vision_config.num_hidden_layers):
-        visual_encoder.update(visual_encoder_layer_from_original_checkpoint(model, f"{diffuser_prefix}.encoder.layers.{i}", f"{original_prefix}.transformer.resblocks.{i}"))
-    
+        visual_encoder.update(
+            visual_encoder_layer_from_original_checkpoint(
+                model, f"{diffuser_prefix}.encoder.layers.{i}", f"{original_prefix}.transformer.resblocks.{i}"
+            )
+        )
+
     visual_encoder.update({f"{diffuser_prefix}.post_layernorm.weight": model["blip.ln_vision.weight"]})
     visual_encoder.update({f"{diffuser_prefix}.post_layernorm.bias": model["blip.ln_vision.bias"]})
 
@@ -146,7 +270,9 @@ def qformer_original_checkpoint_to_diffusers_checkpoint(model):
     qformer_checkpoint.update(embeddings_from_original_checkpoint(model, "embeddings", "blip.Qformer.bert.embeddings"))
     qformer_checkpoint.update({"query_tokens": model["blip.query_tokens"]})
     qformer_checkpoint.update(proj_layer_from_original_checkpoint(model, "proj_layer", "proj_layer"))
-    qformer_checkpoint.update(encoder_from_original_checkpoint(model, "encoder.layer", "blip.Qformer.bert.encoder.layer"))
+    qformer_checkpoint.update(
+        encoder_from_original_checkpoint(model, "encoder.layer", "blip.Qformer.bert.encoder.layer")
+    )
     qformer_checkpoint.update(visual_encoder_from_original_checkpoint(model, "visual_encoder", "blip.visual_encoder"))
     return qformer_checkpoint
 
@@ -176,17 +302,10 @@ def save_blip_diffusion_model(model, args):
     qformer = get_qformer(model)
     qformer.eval()
 
-    text_encoder = ContextCLIPTextModel.from_pretrained(
-        "runwayml/stable-diffusion-v1-5", subfolder="text_encoder"
-    )
-    vae = AutoencoderKL.from_pretrained(
-        "runwayml/stable-diffusion-v1-5", subfolder="vae"
-    )
+    text_encoder = ContextCLIPTextModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="text_encoder")
+    vae = AutoencoderKL.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="vae")
 
-    unet = UNet2DConditionModel.from_pretrained(
-        "runwayml/stable-diffusion-v1-5", subfolder="unet"
-
-    )
+    unet = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet")
     vae.eval()
     text_encoder.eval()
     scheduler = PNDMScheduler(
@@ -196,13 +315,18 @@ def save_blip_diffusion_model(model, args):
         set_alpha_to_one=False,
         skip_prk_steps=True,
     )
-    tokenizer = CLIPTokenizer.from_pretrained(
-        "runwayml/stable-diffusion-v1-5", subfolder="tokenizer"
-    )
+    tokenizer = CLIPTokenizer.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="tokenizer")
     image_processor = BlipImageProcessor()
-    blip_diffusion = BlipDiffusionPipeline(tokenizer=tokenizer, text_encoder=text_encoder,  vae=vae, unet=unet, scheduler=scheduler, qformer=qformer, image_processor=image_processor)
+    blip_diffusion = BlipDiffusionPipeline(
+        tokenizer=tokenizer,
+        text_encoder=text_encoder,
+        vae=vae,
+        unet=unet,
+        scheduler=scheduler,
+        qformer=qformer,
+        image_processor=image_processor,
+    )
     blip_diffusion.save_pretrained(args.checkpoint_path)
-
 
 
 def main(args):
@@ -216,5 +340,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args)
-    
-

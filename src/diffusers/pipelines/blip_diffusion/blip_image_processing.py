@@ -44,7 +44,6 @@ if is_vision_available():
 logger = logging.get_logger(__name__)
 
 
-
 # Copy-pasted from transformers.models.blip.image_processing_blip.BlipImageProcessor
 class BlipImageProcessor(BaseImageProcessor):
     r"""
@@ -289,7 +288,7 @@ class BlipImageProcessor(BaseImageProcessor):
                 for image in images
             ]
         if do_center_crop:
-            images = [self.center_crop(image, size, input_data_format=input_data_format) for image in images ]
+            images = [self.center_crop(image, size, input_data_format=input_data_format) for image in images]
 
         images = [
             to_channel_dimension_format(image, data_format, input_channel_dim=input_data_format) for image in images
@@ -401,7 +400,12 @@ class BlipImageProcessor(BaseImageProcessor):
 
         if do_resize:
             images = [
-                self.resize(image=image, size={'width':512, 'height':512}, resample=resample, input_data_format=input_data_format)
+                self.resize(
+                    image=image,
+                    size={"width": 512, "height": 512},
+                    resample=resample,
+                    input_data_format=input_data_format,
+                )
                 for image in images
             ]
 
@@ -420,7 +424,7 @@ class BlipImageProcessor(BaseImageProcessor):
                 self.rescale(image=image, scale=rescale_factor, input_data_format=input_data_format)
                 for image in images
             ]
-        
+
         images = [
             to_channel_dimension_format(image, data_format, input_channel_dim=input_data_format) for image in images
         ]
@@ -428,7 +432,7 @@ class BlipImageProcessor(BaseImageProcessor):
         images = torch.from_numpy(images).unsqueeze(0)
 
         if do_classifier_free_guidance:
-            images = torch.cat([images]*2)
+            images = torch.cat([images] * 2)
 
         return images
 

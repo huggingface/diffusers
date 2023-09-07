@@ -86,19 +86,11 @@ class ContextCLIPTextTransformer(nn.Module):
         Returns:
 
         """
-        output_attentions = (
-            output_attentions
-            if output_attentions is not None
-            else self.config.output_attentions
-        )
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if input_ids is None:
             raise ValueError("You have to specify either input_ids")
@@ -118,9 +110,9 @@ class ContextCLIPTextTransformer(nn.Module):
             seq_len += ctx_embeddings.size(1)
         # CLIP's text model uses causal mask, prepare it here.
         # https://github.com/openai/CLIP/blob/cfcffb90e69f37bf2ff1e988237a0fbe41f33c04/clip/model.py#L324
-        causal_attention_mask = self._build_causal_attention_mask(
-            bsz, seq_len, hidden_states.dtype
-        ).to(hidden_states.device)
+        causal_attention_mask = self._build_causal_attention_mask(bsz, seq_len, hidden_states.dtype).to(
+            hidden_states.device
+        )
         # expand attention_mask
         if attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
@@ -172,14 +164,10 @@ class ContextCLIPTextEmbeddings(nn.Module):
         embed_dim = config.hidden_size
 
         self.token_embedding = nn.Embedding(config.vocab_size, embed_dim)
-        self.position_embedding = nn.Embedding(
-            config.max_position_embeddings, embed_dim
-        )
+        self.position_embedding = nn.Embedding(config.max_position_embeddings, embed_dim)
 
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
-        self.register_buffer(
-            "position_ids", torch.arange(config.max_position_embeddings).expand((1, -1))
-        )
+        self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
 
     def forward(
         self,
@@ -194,9 +182,7 @@ class ContextCLIPTextEmbeddings(nn.Module):
         else:
             ctx_len = ctx_embeddings.shape[1]
 
-        seq_length = (
-            input_ids.shape[-1] if input_ids is not None else inputs_embeds.shape[-2]
-        ) + ctx_len
+        seq_length = (input_ids.shape[-1] if input_ids is not None else inputs_embeds.shape[-2]) + ctx_len
 
         if position_ids is None:
             position_ids = self.position_ids[:, :seq_length]
@@ -216,9 +202,7 @@ class ContextCLIPTextEmbeddings(nn.Module):
                     # remove the special token embedding
                     suffix = inputs_embeds[i, cbp:]
 
-                    input_embeds_ctx.append(
-                        torch.cat([prefix, ctx_embeddings[i], suffix], dim=0)
-                    )
+                    input_embeds_ctx.append(torch.cat([prefix, ctx_embeddings[i], suffix], dim=0))
 
                 inputs_embeds = torch.stack(input_embeds_ctx, dim=0)
 

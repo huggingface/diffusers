@@ -39,24 +39,30 @@ from transformers.utils import (
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2Config, Blip2VisionConfig
 from transformers import BertTokenizer
 from transformers.activations import QuickGELUActivation as QuickGELU
-from transformers.models.blip_2.modeling_blip_2 import Blip2Attention, Blip2MLP, Blip2EncoderLayer, Blip2Encoder, Blip2QFormerAttention, Blip2QFormerIntermediate, Blip2QFormerOutput, Blip2PreTrainedModel
+from transformers.models.blip_2.modeling_blip_2 import (
+    Blip2Attention,
+    Blip2MLP,
+    Blip2EncoderLayer,
+    Blip2Encoder,
+    Blip2QFormerAttention,
+    Blip2QFormerIntermediate,
+    Blip2QFormerOutput,
+    Blip2PreTrainedModel,
+)
 
 logger = logging.get_logger(__name__)
 
-# There is an implementation of Blip2 in `transformers` : https://github.com/huggingface/transformers/blob/main/src/transformers/models/blip_2/modeling_blip_2.py. 
+
+# There is an implementation of Blip2 in `transformers` : https://github.com/huggingface/transformers/blob/main/src/transformers/models/blip_2/modeling_blip_2.py.
 # But it doesn't support getting multimodal embeddings. So, this module can be
-# replaced with a future `transformers` version supports that. 
+# replaced with a future `transformers` version supports that.
 class Blip2TextEmbeddings(nn.Module):
     """Construct the embeddings from word and position embeddings."""
 
     def __init__(self, config):
         super().__init__()
-        self.word_embeddings = nn.Embedding(
-            config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id
-        )
-        self.position_embeddings = nn.Embedding(
-            config.max_position_embeddings, config.hidden_size
-        )
+        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+        self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
 
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
@@ -64,12 +70,8 @@ class Blip2TextEmbeddings(nn.Module):
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
-        self.register_buffer(
-            "position_ids", torch.arange(config.max_position_embeddings).expand((1, -1))
-        )
-        self.position_embedding_type = getattr(
-            config, "position_embedding_type", "absolute"
-        )
+        self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
+        self.position_embedding_type = getattr(config, "position_embedding_type", "absolute")
 
         self.config = config
 
@@ -86,9 +88,7 @@ class Blip2TextEmbeddings(nn.Module):
             seq_length = 0
 
         if position_ids is None:
-            position_ids = self.position_ids[
-                :, past_key_values_length : seq_length + past_key_values_length
-            ].clone()
+            position_ids = self.position_ids[:, past_key_values_length : seq_length + past_key_values_length].clone()
 
         if input_ids is not None:
             embeddings = self.word_embeddings(input_ids)
@@ -103,7 +103,6 @@ class Blip2TextEmbeddings(nn.Module):
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
-
 
 
 # Copy-pasted from transformers.models.blip.modeling_blip.BlipVisionEmbeddings with Blip->Blip2
@@ -136,6 +135,7 @@ class Blip2VisionEmbeddings(nn.Module):
         embeddings = torch.cat([class_embeds, patch_embeds], dim=1)
         embeddings = embeddings + self.position_embedding[:, : embeddings.size(1), :].to(target_dtype)
         return embeddings
+
 
 # The Qformer encoder, which takes the visual embeddings, and the text input, to get multimodal embeddings
 class Blip2QFormerEncoder(nn.Module):
@@ -238,8 +238,6 @@ class Blip2QFormerEncoder(nn.Module):
             attentions=all_self_attentions,
             cross_attentions=all_cross_attentions,
         )
-
-
 
 
 # The layers making up the Qformer encoder
@@ -346,7 +344,7 @@ class Blip2QFormerLayer(nn.Module):
         return layer_output
 
 
-# ProjLayer used to project the multimodal Blip2 embeddings to be used in the text encoder 
+# ProjLayer used to project the multimodal Blip2 embeddings to be used in the text encoder
 class ProjLayer(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim, drop_p=0.1, eps=1e-12):
         super().__init__()
@@ -376,7 +374,7 @@ class Blip2VisionModel(Blip2PreTrainedModel):
     def __init__(self, config: Blip2VisionConfig):
         super().__init__(config)
         self.config = config
-        embed_dim = config.hidden_size  
+        embed_dim = config.hidden_size
         # TO-DO Added pre_layernorm which is not present in OG HF Code
         self.embeddings = Blip2VisionEmbeddings(config)
         self.pre_layernorm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
@@ -433,6 +431,7 @@ class Blip2VisionModel(Blip2PreTrainedModel):
     def get_input_embeddings(self):
         return self.embeddings
 
+
 # Qformer model, used to get multimodal embeddings from the text and image inputs
 class Blip2QFormerModel(Blip2PreTrainedModel):
     """
@@ -447,10 +446,13 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         self.query_tokens = nn.Parameter(torch.zeros(1, config.num_query_tokens, config.qformer_config.hidden_size))
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", truncation_side="right")
         self.tokenizer.add_special_tokens({"bos_token": "[DEC]"})
-        self.proj_layer =  ProjLayer(
-            in_dim=config.qformer_config.hidden_size, out_dim=config.qformer_config.hidden_size, hidden_dim=config.qformer_config.hidden_size*4, drop_p=0.1, eps=1e-12
+        self.proj_layer = ProjLayer(
+            in_dim=config.qformer_config.hidden_size,
+            out_dim=config.qformer_config.hidden_size,
+            hidden_dim=config.qformer_config.hidden_size * 4,
+            drop_p=0.1,
+            eps=1e-12,
         )
-
 
         self.encoder = Blip2QFormerEncoder(config.qformer_config)
 
@@ -551,11 +553,8 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         text = self.tokenizer(text_input, return_tensors="pt", padding=True)
         text = text.to(self.device)
         input_ids = text.input_ids
-        query_atts = torch.ones(self.query_tokens.size()[:-1], dtype=torch.long).to(
-            self.device
-        )
+        query_atts = torch.ones(self.query_tokens.size()[:-1], dtype=torch.long).to(self.device)
         attention_mask = torch.cat([query_atts, text.attention_mask], dim=1)
-
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -568,7 +567,7 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
             past_key_values[0][0].shape[2] - self.config.query_length if past_key_values is not None else 0
         )
 
-        query_length = self.query_tokens.shape[1] 
+        query_length = self.query_tokens.shape[1]
 
         embedding_output = self.embeddings(
             input_ids=input_ids,
@@ -586,7 +585,6 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         image_embeds_frozen = self.visual_encoder(image_input).last_hidden_state
         # image_embeds_frozen = torch.ones_like(image_embeds_frozen)
         encoder_hidden_states = image_embeds_frozen
-
 
         if attention_mask is None:
             attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
@@ -648,4 +646,3 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
             attentions=encoder_outputs.attentions,
             cross_attentions=encoder_outputs.cross_attentions,
         )
-
