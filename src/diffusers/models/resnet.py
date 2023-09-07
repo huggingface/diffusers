@@ -667,11 +667,10 @@ class ResnetBlock2D(nn.Module):
 
 
 class Upsample3D(nn.Module):
-    def __init__(self, channels, use_conv=False, out_channels=None):
+    def __init__(self, channels, out_channels=None):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
-        self.use_conv = use_conv
 
         self.conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
@@ -698,40 +697,31 @@ class Upsample3D(nn.Module):
         if dtype == torch.bfloat16:
             hidden_states = hidden_states.to(dtype)
 
-        if self.use_conv:
-            # Inflate
-            video_length = hidden_states.shape[2]
-            # b c f h w -> (b f) c h w
-            hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-            hidden_states = hidden_states.flatten(0, 1)
+        # Inflate
+        video_length = hidden_states.shape[2]
+        # b c f h w -> (b f) c h w
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = hidden_states.flatten(0, 1)
 
-            hidden_states = self.conv(hidden_states)
-            # Deflate
-            # (b f) c h w -> b c f h w (f=video_length)
-            hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
-            hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = self.conv(hidden_states)
+        # Deflate
+        # (b f) c h w -> b c f h w (f=video_length)
+        hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         return hidden_states
 
 
 class Downsample3D(nn.Module):
-    def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
+    def __init__(self, channels, out_channels=None, padding=1, name="conv"):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.padding = padding
-        stride = 2
         self.name = name
 
-        self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+        self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=2, padding=padding)
 
     def forward(self, hidden_states):
-        assert hidden_states.shape[1] == self.channels
-        if self.use_conv and self.padding == 0:
-            raise NotImplementedError
-
-        assert hidden_states.shape[1] == self.channels
 
         video_length = hidden_states.shape[2]
         # b c f h w -> (b f) c h w
