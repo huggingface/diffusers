@@ -572,8 +572,8 @@ def main():
         num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
-    clip_mean = prior.clip_mean
-    clip_std = prior.clip_std
+    clip_mean = prior.clip_mean.clone()
+    clip_std = prior.clip_std.clone()
     lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         lora_layers, optimizer, train_dataloader, lr_scheduler
     )
@@ -630,7 +630,7 @@ def main():
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
-    progress_bar.set_description("training goes brrr")
+    progress_bar.set_description("Steps")
     clip_mean = clip_mean.to(weight_dtype).to(accelerator.device)
     clip_std = clip_std.to(weight_dtype).to(accelerator.device)
     for epoch in range(first_epoch, args.num_train_epochs):
