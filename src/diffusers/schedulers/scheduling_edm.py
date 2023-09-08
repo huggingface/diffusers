@@ -94,7 +94,7 @@ def betas_for_alpha_bar(
 
 class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
     """
-    Implements the "EDM" column of Table 1 and Algorithm 2 in Karras et al. 2022 [1]/
+    Implements the "EDM" column of Table 1 and Algorithm 2 in Karras et al. 2022 [1].
 
     [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
     https://arxiv.org/abs/2206.00364
@@ -116,17 +116,17 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             `linear` or `scaled_linear`.
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
-        prediction_type (`str`, *optional*, defaults to `sample`):
+        prediction_type (`str`, *optional*, defaults to `edm`):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
-        interpolation_type(`str`, defaults to `"linear"`, *optional*):
+        interpolation_type(`str`, *optional*, defaults to `"linear"`):
             The interpolation type to compute intermediate sigmas for the scheduler denoising steps. Should be on of
             `"linear"` or `"log_linear"`.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
-        timestep_spacing (`str`, defaults to `"linspace"`):
+        timestep_spacing (`str`, *optional*, defaults to `"linspace"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         precondition_type (`str`, *optional*, defaults to `edm`):
@@ -169,7 +169,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-        prediction_type: str = "sample",
+        prediction_type: str = "edm",
         interpolation_type: str = "linear",
         use_karras_sigmas: Optional[bool] = True,
         timestep_spacing: str = "linspace",
@@ -278,6 +278,15 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
         return indices[pos].item()
 
+    def precondition_inputs(self, sample, sigma):
+        if self.precondition_type in ["edm", "cm_edm"]:
+            scaled_sample = sample / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
+        else:
+            # No input preconsitioning
+            scaled_sample = sample
+
+        return scaled_sample
+
     def precondition_noise(self, sigma):
         if self.precondition_type == "edm":
             scaled_noise = 0.25 * torch.log(sigma)
@@ -288,15 +297,6 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             scaled_noise = sigma
 
         return scaled_noise
-
-    def precondition_inputs(self, sample, sigma):
-        if self.precondition_type in ["edm", "cm_edm"]:
-            scaled_sample = sample / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
-        else:
-            # No input preconsitioning
-            scaled_sample = sample
-
-        return scaled_sample
 
     def precondition_outputs(self, sample, model_output, sigma):
         if self.precondition_type in ["edm", "cm_edm"]:
@@ -341,9 +341,10 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         sigma_hat = self.sigma_hats[self.step_index]
 
         # 2. Add noise based on noise level sigma_hat
-        if self.state_in_first_order and sigma_hat > sigma:  # equivalent to gamma > 0
-            eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
-            sample = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
+        if self.state_in_first_order:
+            if sigma_hat > sigma:  # equivalent to gamma > 0
+                eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
+                sample = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
         
             self.sample_hat = sample
 
@@ -380,6 +381,8 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps is not None and timesteps is not None:
             raise ValueError("Can only pass one of `num_inference_steps` or `timesteps`.")
 
+        num_train_timesteps = num_train_timesteps or self.config.num_train_timesteps
+
         # 1. Handle custom timestesp or generate timesteps
         # NOTE: Follows DDPMScheduler custom timesteps logic
         if timesteps is not None:
@@ -408,32 +411,27 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
             # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
             if self.config.timestep_spacing == "linspace":
-                timesteps = (
-                    np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps)
-                    .round()[::-1]
-                    .copy()
-                    .astype(np.int64)
-                )
+                timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[::-1].copy()
             elif self.config.timestep_spacing == "leading":
-                step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+                step_ratio = num_train_timesteps // self.num_inference_steps
                 # creates integer timesteps by multiplying by ratio
                 # casting to int to avoid issues when num_inference_step is power of 3
-                timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+                timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
                 timesteps += self.config.steps_offset
             elif self.config.timestep_spacing == "trailing":
-                step_ratio = self.config.num_train_timesteps / self.num_inference_steps
+                step_ratio = num_train_timesteps / self.num_inference_steps
                 # creates integer timesteps by multiplying by ratio
                 # casting to int to avoid issues when num_inference_step is power of 3
-                timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio)).astype(np.int64)
+                timesteps = (np.arange(num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
                 timesteps -= 1
             else:
                 raise ValueError(
                     f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
                 )
 
-        # 3. Define sigmas and handle sigma interpolation
+        # 2. Define sigmas and handle sigma interpolation
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        log_sigmas = np.log(sigmas)
+        # log_sigmas = np.log(sigmas)
 
         if self.config.interpolation_type == "linear":
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
@@ -445,7 +443,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
                 " 'linear' or 'log_linear'"
             )
 
-        # 4. Calculate the Karras sigmas, if necessary
+        # 3. Calculate the Karras sigmas, if necessary
         if self.use_karras_sigmas:
             if self.custom_timesteps:
                 # timesteps is in decreasing order, but ramp should be in increasing order
@@ -461,10 +459,10 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
             # timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
-        # 5. Calculate sigma_hat schedule
+        # 4. Calculate sigma_hat schedule
         # TODO: vectorize this?
         sigma_hats = []
-        for sigma in self.sigmas:
+        for sigma in sigmas:
             # Temporarily raise the noise level (see Line 5 of Algorithm 2 in the EDM paper)
             if self.config.s_tmin <= sigma <= self.config.s_tmax:
                 gamma = min(self.config.s_churn / len(sigmas), 2**0.5 - 1)
@@ -473,35 +471,38 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             sigma_hat = sigma * (gamma + 1)
             sigma_hats.append(sigma_hat)
 
-        # 6. Finish processing sigmas and timesteps
+        # 5. Finish processing sigmas and timesteps
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        sigma_hats = np.asarray(sigma_hats, dtype=sigmas.dtype)
+        # In the sampling loop, we want to output timesteps in the following order:
+        # [sigma_hat_0, sigma_1, sigma_hat_1, sigma_2, ..., sigma_hat_{n - 1}, 0]
+        timesteps = np.empty((sigma_hats.size + sigmas.size - 1,), dtype=sigmas.dtype)
+        timesteps[0::2] = sigma_hats
+        timesteps[1::2] = sigmas[1:]
+
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         # Magic to convert sigmas from [sigma_1, sigma_2, ..., sigma_n, 0.0] to
         # [sigma_1, sigma_2, sigma_2, sigma_3, sigma_3, ..., sigma_n, sigma_n, 0.0]
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
 
-        # self.timesteps = torch.from_numpy(timesteps).to(device=device)
-        # timesteps = torch.from_numpy(timesteps)
-        sigma_hats = torch.tensor(sigma_hats, dtype=self.sigmas.dtype)
-        # Apply noise preconditioning to the sigma_hats, which will be directly given to the model.
-        timesteps = self.precondition_noise(sigma_hats)
-
+        sigma_hats = np.concatenate([sigma_hats, [0.0]]).astype(np.float32)
+        sigma_hats = torch.from_numpy(sigma_hats).to(device=device)
         # Same schedule as self.sigmas:
         # [sigma_hat_1, sigma_hat_2, sigma_hat_2, sigma_hat_3, sigma_hat_3, ..., sigma_hat_n, sigma_hat_n, 0.0]
-        sigma_hats = torch.cat(
-            [sigma_hats[:1], sigma_hats[1:].repeat_interleave(2), torch.zeros((1,), dtype=sigma_hats.dtype)]
-        )
-        self.sigma_hats = sigma_hats.to(device=device)
-        # Analogous magic to convert timesteps from [t_1, t_2, ..., t_n] to [t_1, t_2, t_2, t_3, t_3, ..., t_n, t_n]
+        self.sigma_hats = torch.cat([sigma_hats[:1], sigma_hats[1:-1].repeat_interleave(2), sigma_hats[-1:]])
+
+        timesteps = torch.from_numpy(timesteps)
+        timesteps = self.precondition_noise(timesteps)
+        # [t_0, t_1, t_2, ..., t_{n - 1}] -> [t_0, t_1, t_1, t_2, t_2, ..., t_{n - 1}, t_{n - 1}]
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
         self.timesteps = timesteps.to(device=device)
 
-        # 7. Empty dt and derivative to set the scheduler in first order mode
+        # 6. Empty dt and derivative to set the scheduler in first order mode
         self.prev_derivative = None
         self.dt = None
         self.sample_hat = None
 
-        # 8. Reset step_index
+        # 7. Reset step_index
         self._step_index = None
 
         # (YiYi Notes: keep this for now since we are keeping add_noise function which use index_for_timestep)
@@ -615,65 +616,61 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         # 3. Compute predicted original sample (x_0) from sigma-scaled predicted noise
         # NOTE: "original_sample" should not be an expected prediction_type but is left in for
         # backwards compatibility
+        sigma_input = sigma_hat if self.state_in_first_order else sigma_next
         if self.config.prediction_type == "original_sample" or self.config.prediction_type == "sample":
             pred_original_sample = model_output
         elif self.config.prediction_type == "epsilon":
-            pred_original_sample = sample - sigma_hat * model_output
+            pred_original_sample = sample - sigma_input * model_output
         elif self.config.prediction_type == "v_prediction":
             # sample * c_out + input * c_skip
             # TODO: how should this interact with self.precondition_outputs below?
-            pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
+            pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (sample / (sigma_input**2 + 1))
+        elif self.config.prediction_type == "edm":
+            # Apply output preconditioning
+            # TODO: should we always be using sample_input in the other prediction_types?
+            sample_input = self.sample_hat if self.state_in_first_order else sample
+            pred_original_sample = self.precondition_inputs(sample_input, model_output, sigma_input)
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
 
-        # 4. Convert model output to denoiser output using output preconditioning scalings c_skip, c_out
-        # TODO: not quite sure if this is correct, I think output preconditioning should happen after we recover the
-        # original predicted sample
-        if self.state_in_first_order:
-            current_sample = self.sample_hat
-            current_sigma = sigma_hat
-        else:
-            current_sample = sample
-            current_sigma = sigma_next
-        denoised = self.precondition_outputs(current_sample, pred_original_sample, current_sigma)
-
         if self.config.clip_sample:
-            denoised = denoised.clamp(-self.config.clip_sample_range, self.config.clip_sample_range)
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
+            )
 
-        # 5. Perform a first order (Euler) or second order correction (Heun) step.
+        # 4. Perform a first order (Euler) or second order correction (Heun) step.
         if self.state_in_first_order:
-            # 5.1. 1st order / Euler's method
-            # 5.l.1. Get Karras ODE derivative (Line 7 in Algorithm 2 in EDM paper)
-            derivative = (self.sample_hat - denoised) / sigma_hat  # d_i
+            # 4.1. 1st order / Euler's method
+            # 4.l.1. Get Karras ODE derivative (Line 7 in Algorithm 2 in EDM paper)
+            derivative = (self.sample_hat - pred_original_sample) / sigma_hat  # d_i
 
-            # 5.1.2. Get delta timestep
+            # 4.1.2. Get delta timestep
             dt = sigma_next - sigma_hat
 
-            # 5.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper)
+            # 4.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper)
             prev_sample = self.sample_hat + derivative * dt  # x_{i + 1}
 
-            # 5.1.4. Store values for 2nd order step
+            # 4.1.4. Store values for 2nd order step
             self.prev_derivative = derivative
             self.dt = dt
         else:
-            # 5.2. 2nd order / Heun's method
-            # 5.2.1. Get Karras ODE derivative (Line 10 in Algorithm 2 in EDM paper)
+            # 4.2. 2nd order / Heun's method
+            # 4.2.1. Get Karras ODE derivative (Line 10 in Algorithm 2 in EDM paper)
             # NOTE: sample here corresponds to x_{i + 1} in Algorithm 2, which is the output of the Euler step from
             # the previous scheduler step()
-            derivative = (sample - denoised) / sigma_next  # d_i'
-            # 5.2.2 Get Heun correction to the derivative
+            derivative = (sample - pred_original_sample) / sigma_next  # d_i'
+            # 4.2.2 Get Heun correction to the derivative
             derivative = (self.prev_derivative + derivative) / 2
 
-            # 5.2.3. Take Heun step (Line 11 in Algorithm 2 in EDM paper)
+            # 4.2.3. Take Heun step (Line 11 in Algorithm 2 in EDM paper)
             prev_sample = self.sample_hat + derivative * self.dt
 
-            # 5.2.4. Put the scheduler in first order mode by freeing up dt and derivative
+            # 4.2.4. Put the scheduler in first order mode by freeing up dt and derivative
             self.prev_derivative = None
             self.dt = None
             self.sample_hat = None
-            self.sigma_hat = None
 
         if not return_dict:
             return (prev_sample,)
