@@ -745,7 +745,6 @@ class ResnetBlock3D(nn.Module):
         dropout=0.0,
         temb_channels=512,
         groups=32,
-        groups_out=None,
         eps=1e-6,
         non_linearity="swish",
         output_scale_factor=1.0,
@@ -756,14 +755,12 @@ class ResnetBlock3D(nn.Module):
         self.out_channels = out_channels
         self.output_scale_factor = output_scale_factor
 
-        groups_out = groups
-
         self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
 
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
+        self.norm2 = torch.nn.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
