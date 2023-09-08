@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Accelerated PyTorch 2.0 support in Diffusers
+# Torch 2.0
 
 Starting from version `0.13.0`, Diffusers supports the latest optimization from [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). These include:
 1. Support for accelerated transformers implementation with memory-efficient attention – no extra dependencies (such as `xformers`) required.

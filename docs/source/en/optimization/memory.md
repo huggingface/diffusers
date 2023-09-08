@@ -1,26 +1,31 @@
 # Reduce memory usage
 
-A major challenge in using diffusion models is the large amount of memory required. To overcome this barrier, there are several memory-reducing techniques you can use to run even some of the largest models on free-tier Colabs or consumer GPUs. Some of these techniques can even be combined together to further reduce memory usage!
+A barrier to using diffusion models is the large amount of memory required. To overcome this challenge, there are several memory-reducing techniques you can use to run even some of the largest models on free-tier or consumer GPUs. Some of these techniques can even be combined to further reduce memory usage.
 
+<Tip>
 
-|                  | Latency | Speedup |
+In many cases, optimizing for memory or speed leads to improved performance in the other, so you should try to optimize for both whenever you can. This guide focuses on minimizing memory usage, but you can also learn more about how to [Speed up inference](fp16).
+
+</Tip>
+
+The results below are obtained from generating a single 512x512 image from the prompt a photo of an astronaut riding a horse on mars with 50 DDIM steps on a Nvidia Titan RTX, demonstrating the speed-up you can expect as a result of reduced memory consumption.
+
+|                  | latency | speed-up |
 | ---------------- | ------- | ------- |
 | original         | 9.50s   | x1      |
 | fp16             | 3.61s   | x2.63   |
 | channels last    | 3.30s   | x2.88   |
 | traced UNet      | 3.21s   | x2.96   |
-| memory efficient attention  | 2.63s  | x3.61   |
+| memory-efficient attention  | 2.63s  | x3.61   |
 
 
 ## Sliced VAE
 
-To decode large batches of images with limited VRAM, or to enable batches with 32 images or more, you can use sliced VAE to decode the batches of latents one image at a time.
+Sliced VAE enables decoding large batches of images with limited VRAM or batches with 32 images or more by decoding the batches of latents one image at a time. You'll likely want to couple this with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to further reduce memory use.
 
-You likely want to couple this with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to further reduce memory use.
+To use sliced VAE, call [`~StableDiffusionPipeline.enable_vae_slicing`] on your pipeline before inference:
 
-To use sliced VAE to decode one image at a time, call [`~StableDiffusionPipeline.enable_vae_slicing`] in your pipeline before inference
-
-```Python
+```python
 import torch
 from diffusers import StableDiffusionPipeline
 
@@ -40,11 +45,9 @@ You may see a small performance boost in VAE decoding on multi-image batches, an
 
 ## Tiled VAE
 
-Tiled VAE processing also enables working with large images on limited VRAM (for example, generating 4k images in 8GB of VRAM) by splitting the image into overlapping tiles, decoding the tiles, and then blending the outputs together to compose the final image.
+Tiled VAE processing also enables working with large images on limited VRAM (for example, generating 4k images on 8GB of VRAM) by splitting the image into overlapping tiles, decoding the tiles, and then blending the outputs together to compose the final image. You should also used tiled VAE with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to further reduce memory use.
 
-You should also used tiled VAE with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to further reduce memory use.
-
-To use tiled VAE processing, call [`~StableDiffusionPipeline.enable_vae_tiling`] in your pipeline before inference.
+To use tiled VAE processing, call [`~StableDiffusionPipeline.enable_vae_tiling`] on your pipeline before inference:
 
 ```python
 import torch
@@ -64,7 +67,7 @@ pipe.enable_xformers_memory_efficient_attention()
 image = pipe([prompt], width=3840, height=2224, num_inference_steps=20).images[0]
 ```
 
-The output image will have some tile-to-tile tone variation because the tiles are decoded separately, but you shouldn't see any sharp and obvious seams between the tiles. Tiling is turned off for images that are 512x512 or smaller.
+The output image has some tile-to-tile tone variation because the tiles are decoded separately, but you shouldn't see any sharp and obvious seams between the tiles. Tiling is turned off for images that are 512x512 or smaller.
 
 ## CPU offloading
 
@@ -87,11 +90,11 @@ pipe.enable_sequential_cpu_offload()
 image = pipe(prompt).images[0]
 ```
 
-CPU offloading works at the submodule level, and not on whole models. This is the best way to minimize memory consumption, but inference is much slower due to the iterative nature of the diffusion process. The UNet component of the pipeline runs several times (as many as `num_inference_steps`); each time, the different submodules of the UNet are sequentially onloaded and then offloaded as they are needed, resulting in a large number of memory transfers.
+CPU offloading works on submodules rather than whole models. This is the best way to minimize memory consumption, but inference is much slower due to the iterative nature of the diffusion process. The UNet component of the pipeline runs several times (as many as `num_inference_steps`); each time, the different UNet submodules are sequentially onloaded and offloaded as needed, resulting in a large number of memory transfers.
 
 <Tip>
 
-Consider using [model offloading](#model-offloading) if you need more speed because it is much faster, but the memory savings won't be as large.
+Consider using [model offloading](#model-offloading) if you want to optimize for speed because it is much faster. The tradeoff is your memory savings won't be as large.
 
 </Tip>
 
@@ -129,7 +132,7 @@ Model offloading requires 🤗 Accelerate version 0.17.0 or higher.
 
 </Tip>
 
-[Sequential CPU offloading](#cpu-offloading) preserves a lot of memory but it makes inference slower, because submodules are moved to GPU as needed, and they're immediately returned to the CPU when a new module runs.
+[Sequential CPU offloading](#cpu-offloading) preserves a lot of memory but it makes inference slower because submodules are moved to GPU as needed, and they're immediately returned to the CPU when a new module runs.
 
 Full-model offloading is an alternative that moves whole models to the GPU, instead of handling each model's constituent *submodules*. There is a negligible impact on inference time (compared with moving the pipeline to `cuda`), and it still provides some memory savings.
 
@@ -173,7 +176,7 @@ image = pipe(prompt).images[0]
 
 <Tip warning={true}>
 
-In order to properly offload models after they're called, it is required that the entire pipeline is run and models are called in the pipeline's expected order. Exercise caution if models are reused outside the context of the pipeline after hooks have been installed. See [Removing Hooks](https://huggingface.co/docs/accelerate/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module)
+In order to properly offload models after they're called, it is required to run the entire pipeline and models are called in the pipeline's expected order. Exercise caution if models are reused outside the context of the pipeline after hooks have been installed. See [Removing Hooks](https://huggingface.co/docs/accelerate/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module)
 for more information.
 
 [`~StableDiffusionPipeline.enable_model_cpu_offload`] is a stateful operation that installs hooks on the models and state on the pipeline.
@@ -182,9 +185,9 @@ for more information.
 
 ## Channels-last memory format
 
-The channels-last memory format is an alternative way of ordering NCHW tensors in memory to preserve dimension ordering. Channels-last tensors are ordered in such a way that the channels become the densest dimension (storing images pixel-per-pixel). Since not all operators currently support the channels-last format, it may result in worst performance. But you should still try and see if it works for your model!
+The channels-last memory format is an alternative way of ordering NCHW tensors in memory to preserve dimension ordering. Channels-last tensors are ordered in such a way that the channels become the densest dimension (storing images pixel-per-pixel). Since not all operators currently support the channels-last format, it may result in worst performance but you should still try and see if it works for your model.
 
-For example, in order to set the UNet in the pipeline to use the channels-last format:
+For example, to set the pipeline's UNet to use the channels-last format:
 
 ```python
 print(pipe.unet.conv_out.state_dict()["weight"].stride())  # (2880, 9, 3, 1)
@@ -196,7 +199,7 @@ print(
 
 ## Tracing
 
-Tracing runs an example input tensor through your model and captures the operations that are performed on it as that input makes its way through the model's layers. The executable or `ScriptFunction` that is returned is optimized with just-in-time compilation.
+Tracing runs an example input tensor through the model and captures the operations that are performed on it as that input makes its way through the model's layers. The executable or `ScriptFunction` that is returned is optimized with just-in-time compilation.
 
 To trace a UNet:
 
@@ -314,21 +317,21 @@ with torch.inference_mode():
     image = pipe([prompt] * 1, num_inference_steps=50).images[0]
 ```
 
-## Memory efficient attention
+## Memory-efficient attention
 
-Recent work on optimizing bandwidth in the attention block has generated huge speed-ups and gains in GPU memory usage. The most recent type of memory efficient attention is [Flash Attention](https://arxiv.org/pdf/2205.14135.pdf) (you can check out the original code at [HazyResearch/flash-attention](https://github.com/HazyResearch/flash-attention)).
+Recent work on optimizing bandwidth in the attention block has generated huge speed-ups and reductions in GPU memory usage. The most recent type of memory-efficient attention is [Flash Attention](https://arxiv.org/pdf/2205.14135.pdf) (you can check out the original code at [HazyResearch/flash-attention](https://github.com/HazyResearch/flash-attention)).
 
 The table below details the speed-ups from a few different Nvidia GPUs when running inference on image sizes of 512x512 and a batch size of 1 (one prompt):
 
-| GPU              	| Base Attention FP16 	| Memory Efficient Attention FP16 	|
-|------------------	|---------------------	|---------------------------------	|
-| NVIDIA Tesla T4  	| 3.5it/s             	| 5.5it/s                         	|
-| NVIDIA 3060 RTX  	| 4.6it/s             	| 7.8it/s                         	|
-| NVIDIA A10G      	| 8.88it/s            	| 15.6it/s                        	|
-| NVIDIA RTX A6000 	| 11.7it/s            	| 21.09it/s                       	|
-| NVIDIA TITAN RTX  | 12.51it/s         	| 18.22it/s                       	|
-| A100-SXM4-40GB    	| 18.6it/s            	| 29.it/s                        	|
-| A100-SXM-80GB    	| 18.7it/s            	| 29.5it/s                        	|
+| GPU              | base attention (fp16) | memory-efficient attention (fp16) |
+|------------------|-----------------------|-----------------------------------|
+| NVIDIA Tesla T4  |               3.5it/s |                           5.5it/s |
+| NVIDIA 3060 RTX  |               4.6it/s |                           7.8it/s |
+| NVIDIA A10G      |              8.88it/s |                          15.6it/s |
+| NVIDIA RTX A6000 |              11.7it/s |                         21.09it/s |
+| NVIDIA TITAN RTX |             12.51it/s |                         18.22it/s |
+| A100-SXM4-40GB   |              18.6it/s |                           29.it/s |
+| A100-SXM-80GB    |              18.7it/s |                          29.5it/s |
 
 To use Flash Attention, install the following:
 
@@ -341,6 +344,8 @@ If you have PyTorch 2.0 installed, you shouldn't use xFormers!
 - PyTorch > 1.12
 - CUDA available
 - [xFormers](xformers)
+
+Then call [`~ModelMixin.enable_xformers_memory_efficient_attention`] on the pipeline:
 
 ```python
 from diffusers import DiffusionPipeline
