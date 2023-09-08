@@ -186,8 +186,9 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 expense of slower inference. For more specific timestep spacing, you can pass customized
                 `prior_timesteps`
             num_inference_steps (`int`, *optional*, defaults to 12):
-                The number of decoder denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. For more specific timestep spacing, you can pass customized `timesteps`
+                The number of decoder denoising steps. More denoising steps usually lead to a higher quality image at
+                the expense of slower inference. For more specific timestep spacing, you can pass customized
+                `timesteps`
             prior_timesteps (`List[float]`, *optional*):
                 Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced
                 `prior_num_inference_steps` timesteps are used. Must be in descending order.
