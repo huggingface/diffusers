@@ -630,17 +630,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
 
         return image_latents
 
-    # Note that the CLIP latents are not decoded for image generation.
-    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    # Rename: decode_latents -> decode_image_latents
-    def decode_image_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
-
     def prepare_text_latents(
         self, batch_size, num_images_per_prompt, seq_len, hidden_size, dtype, device, generator, latents=None
     ):
