@@ -17,7 +17,6 @@ from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    PIL_INTERPOLATION,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -710,7 +709,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-    
+
     def decode_text_latents(self, text_latents, device):
         output_token_list, seq_lengths = self.text_decoder.generate_captions(
             text_latents, self.text_tokenizer.eos_token_id, device=device
