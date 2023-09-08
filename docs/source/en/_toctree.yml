@@ -102,6 +102,8 @@
       title: InstructPix2Pix Training
     - local: training/custom_diffusion
       title: Custom Diffusion
+    - local: training/t2i_adapters
+      title: T2I-Adapters
     title: Training
   - sections:
     - local: using-diffusers/other-modalities
