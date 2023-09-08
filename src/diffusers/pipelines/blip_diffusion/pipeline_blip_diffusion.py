@@ -295,7 +295,7 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             max_length = self.text_encoder.text_model.config.max_position_embeddings
 
             uncond_input = self.tokenizer(
-                [neg_prompt]*batch_size,
+                [neg_prompt] * batch_size,
                 padding="max_length",
                 max_length=max_length,
                 return_tensors="pt",
@@ -357,4 +357,3 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
-

@@ -195,7 +195,6 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         batch_size = query_embeds.shape[0]
         ctx_begin_pos = [self.config.ctx_begin_pos] * batch_size
 
-
         text_embeddings = self.text_encoder(
             input_ids=tokenized_prompt.input_ids,
             ctx_embeddings=query_embeds,
@@ -304,7 +303,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             max_length = self.text_encoder.text_model.config.max_position_embeddings
 
             uncond_input = self.tokenizer(
-                [neg_prompt]*batch_size,
+                [neg_prompt] * batch_size,
                 padding="max_length",
                 max_length=max_length,
                 return_tensors="pt",
@@ -317,7 +316,6 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-
 
         latents = self.prepare_latents(
             batch_size=batch_size,
@@ -342,7 +340,10 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
             cond_image = self.image_processor.canny_preprocess(
-                condtioning_image, size={"width": width, "height": height}, do_rescale=True, do_classifier_free_guidance=do_classifier_free_guidance
+                condtioning_image,
+                size={"width": width, "height": height},
+                do_rescale=True,
+                do_classifier_free_guidance=do_classifier_free_guidance,
             ).to(self.device)
             down_block_res_samples, mid_block_res_sample = self.controlnet(
                 latent_model_input,
@@ -376,6 +377,5 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
 
         if not return_dict:
             return (image,)
-        
-        return ImagePipelineOutput(images=image)
 
+        return ImagePipelineOutput(images=image)

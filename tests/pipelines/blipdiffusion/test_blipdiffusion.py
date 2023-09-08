@@ -169,10 +169,9 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = pipe(**self.get_dummy_inputs(device))[0]
         image_slice = image[0, -3:, -3:, 0]
 
-
         assert image.shape == (1, 64, 64, 4)
 
-        expected_slice = np.array([0.5250, 0.4738,  0.3700,  0.4632, 0.5203, 0.5275, 0.5552,  0.5766, 0.5742])
+        expected_slice = np.array([0.5250, 0.4738, 0.3700, 0.4632, 0.5203, 0.5275, 0.5552, 0.5766, 0.5742])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
