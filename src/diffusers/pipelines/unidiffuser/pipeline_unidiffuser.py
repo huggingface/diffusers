@@ -13,6 +13,7 @@ from transformers import (
     GPT2Tokenizer,
 )
 
+from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -142,6 +143,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         self.num_channels_latents = vae.config.latent_channels
         self.text_encoder_seq_len = text_encoder.config.max_position_embeddings
@@ -1248,7 +1250,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             # 4.1. Encode images, if available
             assert image is not None, "`img2text` requires a conditioning image"
             # Encode image using VAE
-            image_vae = preprocess(image)
+            image_vae = self.image_processor.preprocess(image)
             height, width = image_vae.shape[-2:]
             image_vae_latents = self.encode_image_vae_latents(
                 image=image_vae,
@@ -1348,46 +1350,55 @@ class UniDiffuserPipeline(DiffusionPipeline):
                         callback(i, t, latents)
 
         # 9. Post-processing
-        gen_image = None
-        gen_text = None
+        image = None
+        text = None
         if mode == "joint":
             image_vae_latents, image_clip_latents, text_latents = self._split_joint(latents, height, width)
 
-            # Map latent VAE image back to pixel space
-            gen_image = self.decode_image_latents(image_vae_latents)
+            if not output_type == "latent":
+                # Map latent VAE image back to pixel space
+                image = self.vae.decode(image_vae_latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            else:
+                image = image_vae_latents
 
             # Generate text using the text decoder
             output_token_list, seq_lengths = self.text_decoder.generate_captions(
                 text_latents, self.text_tokenizer.eos_token_id, device=device
             )
             output_list = output_token_list.cpu().numpy()
-            gen_text = [
+            text = [
                 self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
                 for output, length in zip(output_list, seq_lengths)
             ]
         elif mode in ["text2img", "img"]:
             image_vae_latents, image_clip_latents = self._split(latents, height, width)
-            gen_image = self.decode_image_latents(image_vae_latents)
+
+            if not output_type == "latent":
+                # Map latent VAE image back to pixel space
+                image = self.vae.decode(image_vae_latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            else:
+                image = image_vae_latents
         elif mode in ["img2text", "text"]:
             text_latents = latents
             output_token_list, seq_lengths = self.text_decoder.generate_captions(
                 text_latents, self.text_tokenizer.eos_token_id, device=device
             )
             output_list = output_token_list.cpu().numpy()
-            gen_text = [
+            text = [
                 self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
                 for output, length in zip(output_list, seq_lengths)
             ]
 
-        # 10. Convert to PIL
-        if output_type == "pil" and gen_image is not None:
-            gen_image = self.numpy_to_pil(gen_image)
+        # 10. Postprocess the image, if necessary
+        if image is not None:
+            do_denormalize = [True] * image.shape[0]
+            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (gen_image, gen_text)
+            return (image, text)
 
-        return ImageTextPipelineOutput(images=gen_image, text=gen_text)
+        return ImageTextPipelineOutput(images=image, text=text)
