@@ -38,6 +38,14 @@ check_min_version("0.17.0.dev0")
 logger = get_logger(__name__, log_level="INFO")
 
 
+def get_num_parameters(model):
+  num_params = 0
+  for param in model.parameters():
+    num_params += param.numel()
+  # in million
+  num_params /= 10**6
+  return num_params
+
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
     """
     Extract values from a 1-D numpy array for a batch of indices.
@@ -578,6 +586,9 @@ def main(args):
     # mlflow_runner = mlflow.start_run(run_name=f'bs{args.train_batch_size}_{current_datetime}', experiment_id=experiment.experiment_id)
 
     mlflow.start_run()
+
+    num_params = get_num_parameters(model)
+    mlflow.log_param('num_params', num_params)
 
     start_time = time.time()
     throughput_list = []

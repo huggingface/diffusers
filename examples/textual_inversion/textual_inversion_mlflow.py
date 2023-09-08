@@ -86,6 +86,14 @@ check_min_version("0.17.0.dev0")
 logger = get_logger(__name__)
 
 
+def get_num_parameters(model):
+  num_params = 0
+  for param in model.parameters():
+    num_params += param.numel()
+  # in million
+  num_params /= 10**6
+  return num_params
+
 def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None):
     img_str = ""
     for i, image in enumerate(images):
@@ -843,6 +851,10 @@ def main():
     # mlflow_runner = mlflow.start_run(run_name=f'bs{args.train_batch_size}_{current_datetime}', experiment_id=experiment.experiment_id)
 
     mlflow.start_run()
+    num_params = get_num_parameters(text_encoder)
+    num_params += get_num_parameters(vae)
+    num_params += get_num_parameters(unet)
+    mlflow.log_param('num_params', num_params)
     start_time = time.time()
     throughput_list = []
     for epoch in range(first_epoch, args.num_train_epochs):
