@@ -12,8 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -689,45 +687,3 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             return (sample,)
 
         return UNet3DConditionOutput(sample=sample)
-
-    # TODO: Check if to retain this or remove.
-    @classmethod
-    def from_pretrained_2d(cls, pretrained_model_path, subfolder=None):
-        if subfolder is not None:
-            pretrained_model_path = os.path.join(pretrained_model_path, subfolder)
-
-        config_file = os.path.join(pretrained_model_path, "config.json")
-        if not os.path.isfile(config_file):
-            raise RuntimeError(f"{config_file} does not exist")
-        with open(config_file, "r") as f:
-            config = json.load(f)
-        config["_class_name"] = cls.__name__
-        config["down_block_types"] = [
-            "CrossAttnDownBlockInflated3D",
-            "CrossAttnDownBlockInflated3D",
-            "CrossAttnDownBlockInflated3D",
-            "DownBlockInflated3D",
-        ]
-        config["mid_block_type"] = "UNetMidBlockInflated3DCrossAttn"
-        config["up_block_types"] = [
-            "UpBlockInflated3D",
-            "CrossAttnUpBlockInflated3D",
-            "CrossAttnUpBlockInflated3D",
-            "CrossAttnUpBlockInflated3D",
-        ]
-        config["use_linear_projection"] = False
-        config["use_temporal_transformer"] = False
-
-        from diffusers.utils import WEIGHTS_NAME
-
-        model = cls.from_config(config)
-        model_file = os.path.join(pretrained_model_path, WEIGHTS_NAME)
-        if not os.path.isfile(model_file):
-            raise RuntimeError(f"{model_file} does not exist")
-        state_dict = torch.load(model_file, map_location="cpu")
-        for k, v in model.state_dict().items():
-            if "_temp." in k:
-                state_dict.update({k: v})
-        model.load_state_dict(state_dict)
-
-        return model
