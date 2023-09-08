@@ -35,19 +35,16 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "target_subject_category",
     ]
     required_optional_params = [
-        "condtioning_image",
         "generator",
         "height",
         "width",
         "latents",
-        "seed",
         "guidance_scale",
         "num_inference_steps",
         "neg_prompt",
         "guidance_scale",
         "prompt_strength",
         "prompt_reps",
-        "use_ddim",
     ]
 
     def get_dummy_components(self):
@@ -120,6 +117,10 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             skip_prk_steps=True,
         )
 
+        vae.eval()
+        qformer.eval()
+        text_encoder.eval()
+
         image_processor = BlipImageProcessor()
 
         components = {
@@ -134,6 +135,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        np.random.seed(seed)
         reference_image = np.random.rand(224, 224, 3) * 255
         reference_image = Image.fromarray(reference_image.astype("uint8")).convert("RGBA")
 
@@ -143,6 +145,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "swimming underwater",
+            "generator": generator,
             "reference_image": reference_image,
             "source_subject_category": "dog",
             "target_subject_category": "dog",
@@ -150,6 +153,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "width": 512,
             "guidance_scale": 7.5,
             "num_inference_steps": 2,
+            "output_type": "np",
         }
         return inputs
 
@@ -162,17 +166,14 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         pipe.set_progress_bar_config(disable=None)
 
-        # TODO : Chage input processing in the test
-        output = pipe(**self.get_dummy_inputs(device))
-        image = output[0]
-        image = np.asarray(image)
-        image = image / 255.0
-        image_slice = image[-3:, -3:, 0]
+        image = pipe(**self.get_dummy_inputs(device))[0]
+        image_slice = image[0, -3:, -3:, 0]
 
-        assert image.shape == (64, 64, 4)
 
-        expected_slice = np.array([0.1137, 0.4627, 0.4862, 0.4549, 0.2627, 0.5450, 0.3568, 0.5960, 0.5215])
+        assert image.shape == (1, 64, 64, 4)
+
+        expected_slice = np.array([0.5250, 0.4738,  0.3700,  0.4632, 0.5203, 0.5275, 0.5552,  0.5766, 0.5742])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+        ), f" expected_slice {image_slice.flatten()}, but got {image_slice.flatten()}"

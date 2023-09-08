@@ -209,8 +209,8 @@ class BlipDiffusionPipeline(DiffusionPipeline):
         guidance_scale: float = 7.5,
         height: int = 512,
         width: int = 512,
-        seed: int = 42,
         num_inference_steps: int = 50,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         neg_prompt: Optional[str] = "",
         prompt_strength: float = 1.0,
         prompt_reps: int = 20,
@@ -243,11 +243,12 @@ class BlipDiffusionPipeline(DiffusionPipeline):
                 The height of the generated image.
             width (`int`, *optional*, defaults to 512):
                 The width of the generated image.
-            seed (`int`, *optional*, defaults to 42):
-                The seed to use for random generation.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             neg_prompt (`str`, *optional*, defaults to ""):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
@@ -307,10 +308,6 @@ class BlipDiffusionPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-
-        if seed is not None:
-            generator = torch.Generator(device=self.device)
-            generator = generator.manual_seed(seed)
 
         # TODO - Handle batch size > 1
         latents = self.prepare_latents(
