@@ -40,6 +40,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import InterpolationMode
 from .blip_image_processing import BlipImageProcessor
 from PIL import Image
+from ..pipeline_utils import ImagePipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 import re
@@ -148,7 +149,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         pass
 
     def get_query_embeddings(self, input_image, src_subject):
-        return self.forward_ctx_embeddings(input_image, src_subject)
+        return self.qformer(image_input=input_image, text_input=src_subject, return_dict=False)
 
     # from the original Blip Diffusion code, speciefies the target subject and augments the prompt by repeating it
     def _build_prompt(self, prompts, tgt_subjects, prompt_strength=1.0, prompt_reps=20):
@@ -191,10 +192,14 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             return_tensors="pt",
         ).to(self.device)
 
+        batch_size = query_embeds.shape[0]
+        ctx_begin_pos = [self.config.ctx_begin_pos] * batch_size
+
+
         text_embeddings = self.text_encoder(
             input_ids=tokenized_prompt.input_ids,
             ctx_embeddings=query_embeds,
-            ctx_begin_pos=[self.config.ctx_begin_pos],
+            ctx_begin_pos=ctx_begin_pos,
         )[0]
 
         return text_embeddings
@@ -214,9 +219,12 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         width: int = 512,
         seed: int = 42,
         num_inference_steps: int = 50,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         neg_prompt: Optional[str] = "",
         prompt_strength: float = 1.0,
         prompt_reps: int = 20,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -251,6 +259,9 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
             neg_prompt (`str`, *optional*, defaults to ""):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
@@ -262,13 +273,22 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            `List[PIL.Image.Image]` : The generated images.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
 
         reference_image = self.image_processor.preprocess(
             reference_image, image_mean=self.config.mean, image_std=self.config.std, return_tensors="pt"
         )["pixel_values"]
         reference_image = reference_image.to(self.device)
+
+        if type(prompt) == str:
+            prompt = [prompt]
+        if type(source_subject_category) == str:
+            source_subject_category = [source_subject_category]
+        if type(target_subject_category) == str:
+            target_subject_category = [target_subject_category]
+
+        batch_size = len(prompt)
 
         prompt = self._build_prompt(
             prompts=prompt,
@@ -284,7 +304,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             max_length = self.text_encoder.text_model.config.max_position_embeddings
 
             uncond_input = self.tokenizer(
-                [neg_prompt],
+                [neg_prompt]*batch_size,
                 padding="max_length",
                 max_length=max_length,
                 return_tensors="pt",
@@ -298,13 +318,9 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
-        if seed is not None:
-            generator = torch.Generator(device=self.device)
-            generator = generator.manual_seed(seed)
 
-        # TODO - Handle batch size > 1
         latents = self.prepare_latents(
-            batch_size=1,
+            batch_size=batch_size,
             num_channels=self.unet.in_channels,
             height=height // 8,
             width=width // 8,
@@ -326,7 +342,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
             cond_image = self.image_processor.canny_preprocess(
-                condtioning_image, size={"width": width, "height": height}, do_rescale=True
+                condtioning_image, size={"width": width, "height": height}, do_rescale=True, do_classifier_free_guidance=do_classifier_free_guidance
             ).to(self.device)
             down_block_res_samples, mid_block_res_sample = self.controlnet(
                 latent_model_input,
@@ -356,36 +372,10 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
                 latents,
             )["prev_sample"]
         image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-        image = self.image_processor.postprocess(image, output_type="pil")
+        image = self.image_processor.postprocess(image, output_type=output_type)
 
-        return image
+        if not return_dict:
+            return (image,)
+        
+        return ImagePipelineOutput(images=image)
 
-    def forward_ctx_embeddings(self, input_image, text_input, ratio=None):
-        def compute_ctx_embeddings(input_image, text_input):
-            ctx_embeddings = self.qformer(image_input=input_image, text_input=text_input, return_dict=False)
-            return ctx_embeddings
-
-        if isinstance(text_input, str):
-            text_input = [text_input]
-
-        if isinstance(text_input[0], str):
-            text_input, input_image = [text_input], [input_image]
-
-        all_ctx_embeddings = []
-
-        for inp_image, inp_text in zip(input_image, text_input):
-            ctx_embeddings = compute_ctx_embeddings(inp_image, inp_text)
-            all_ctx_embeddings.append(ctx_embeddings)
-
-        if ratio is not None:
-            assert len(ratio) == len(all_ctx_embeddings)
-            assert sum(ratio) == 1
-        else:
-            ratio = [1 / len(all_ctx_embeddings)] * len(all_ctx_embeddings)
-
-        ctx_embeddings = torch.zeros_like(all_ctx_embeddings[0])
-
-        for ratio, ctx_embeddings_ in zip(ratio, all_ctx_embeddings):
-            ctx_embeddings += ratio * ctx_embeddings_
-
-        return ctx_embeddings

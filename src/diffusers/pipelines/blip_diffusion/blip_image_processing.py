@@ -428,12 +428,11 @@ class BlipImageProcessor(BaseImageProcessor):
         images = [
             to_channel_dimension_format(image, data_format, input_channel_dim=input_data_format) for image in images
         ]
-        images = np.concatenate(images, axis=0)
-        images = torch.from_numpy(images).unsqueeze(0)
+        images = np.stack(images, axis=0)
+        images = torch.from_numpy(images)
 
         if do_classifier_free_guidance:
-            images = torch.cat([images] * 2)
-
+            images = images.repeat_interleave(2, dim=0)
         return images
 
     # Follows diffusers.VaeImageProcessor.postprocess
