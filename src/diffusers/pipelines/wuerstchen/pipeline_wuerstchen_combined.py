@@ -182,19 +182,19 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked
                 to the text `prompt`, usually at the expense of lower image quality.
             prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 30):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                The number of prior denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized
                 `prior_timesteps`
             num_inference_steps (`int`, *optional*, defaults to 12):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                The number of decoder denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized `timesteps`
             prior_timesteps (`List[float]`, *optional*):
                 Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced
                 `prior_num_inference_steps` timesteps are used. Must be in descending order.
-            timesteps (`List[float]`, *optional*):
+            decoder_timesteps (`List[float]`, *optional*):
                 Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced
-                `decoder_num_inference_steps` timesteps are used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 4.0):
+                `num_inference_steps` timesteps are used. Must be in descending order.
+            decoder_guidance_scale (`float`, *optional*, defaults to 0.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
