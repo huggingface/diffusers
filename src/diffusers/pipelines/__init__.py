@@ -87,7 +87,6 @@ else:
     from .latent_diffusion import LDMTextToImagePipeline
     from .musicldm import MusicLDMPipeline
     from .paint_by_example import PaintByExamplePipeline
-    from .prompt2prompt import Prompt2PromptPipeline
     from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
     from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
     from .stable_diffusion import (

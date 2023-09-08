@@ -21,8 +21,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ...models.attention import Attention
-from ..stable_diffusion import StableDiffusionPipeline, StableDiffusionPipelineOutput
+from ...src.diffusers.models.attention import Attention
+from ...src.diffusers.pipelines.stable_diffusion import StableDiffusionPipeline, StableDiffusionPipelineOutput
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg

@@ -167,7 +167,6 @@ else:
         LDMTextToImagePipeline,
         MusicLDMPipeline,
         PaintByExamplePipeline,
-        Prompt2PromptPipeline,
         SemanticStableDiffusionPipeline,
         ShapEImg2ImgPipeline,
         ShapEPipeline,
