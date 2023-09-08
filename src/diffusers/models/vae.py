@@ -52,7 +52,7 @@ class Encoder(nn.Module):
         super().__init__()
         self.layers_per_block = layers_per_block
 
-        self.conv_in = torch.nn.Conv2d(
+        self.conv_in = nn.Conv2d(
             in_channels,
             block_out_channels[0],
             kernel_size=3,
@@ -732,7 +732,8 @@ class EncoderTiny(nn.Module):
                 x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x)
 
         else:
-            x = self.layers(x)
+            # scale image from [-1, 1] to [0, 1] to match TAESD convention
+            x = self.layers(x.add(1).div(2))
 
         return x
 
@@ -790,4 +791,5 @@ class DecoderTiny(nn.Module):
         else:
             x = self.layers(x)
 
-        return x
+        # scale image from [0, 1] to [-1, 1] to match diffusers convention
+        return x.mul(2).sub(1)
