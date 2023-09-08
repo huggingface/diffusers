@@ -710,6 +710,17 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
+    
+    def decode_text_latents(self, text_latents, device):
+        output_token_list, seq_lengths = self.text_decoder.generate_captions(
+            text_latents, self.text_tokenizer.eos_token_id, device=device
+        )
+        output_list = output_token_list.cpu().numpy()
+        generated_text = [
+            self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
+            for output, length in zip(output_list, seq_lengths)
+        ]
+        return generated_text
 
     def _split(self, x, height, width):
         r"""
@@ -1326,15 +1337,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             else:
                 image = image_vae_latents
 
-            # Generate text using the text decoder
-            output_token_list, seq_lengths = self.text_decoder.generate_captions(
-                text_latents, self.text_tokenizer.eos_token_id, device=device
-            )
-            output_list = output_token_list.cpu().numpy()
-            text = [
-                self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
-                for output, length in zip(output_list, seq_lengths)
-            ]
+            text = self.decode_text_latents(text_latents, device)
         elif mode in ["text2img", "img"]:
             image_vae_latents, image_clip_latents = self._split(latents, height, width)
 
@@ -1345,14 +1348,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 image = image_vae_latents
         elif mode in ["img2text", "text"]:
             text_latents = latents
-            output_token_list, seq_lengths = self.text_decoder.generate_captions(
-                text_latents, self.text_tokenizer.eos_token_id, device=device
-            )
-            output_list = output_token_list.cpu().numpy()
-            text = [
-                self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
-                for output, length in zip(output_list, seq_lengths)
-            ]
+            text = self.decode_text_latents(text_latents, device)
 
         # 10. Postprocess the image, if necessary
         if image is not None:
