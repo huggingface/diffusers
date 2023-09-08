@@ -333,13 +333,13 @@ The table below details the speed-ups from a few different Nvidia GPUs when runn
 | A100-SXM4-40GB   |              18.6it/s |                           29.it/s |
 | A100-SXM-80GB    |              18.7it/s |                          29.5it/s |
 
-To use Flash Attention, install the following:
-
 <Tip warning={true}>
 
 If you have PyTorch 2.0 installed, you shouldn't use xFormers!
 
 </Tip>
+
+To use Flash Attention, install the following:
 
 - PyTorch > 1.12
 - CUDA available

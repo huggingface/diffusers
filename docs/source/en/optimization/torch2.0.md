@@ -12,84 +12,69 @@ specific language governing permissions and limitations under the License.
 
 # Torch 2.0
 
-Starting from version `0.13.0`, Diffusers supports the latest optimization from [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). These include:
-1. Support for accelerated transformers implementation with memory-efficient attention – no extra dependencies (such as `xformers`) required.
-2. [torch.compile](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) support for extra performance boost when individual models are compiled.
+🤗 Diffusers supports the latest optimizations from [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/) which include:
 
+1. A memory-efficient attention implementation, scaled dot product attention, without requiring any extra dependencies such as xFormers.
+2. [`torch.compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html), a just-in-time (JIT) compiler to provide an extra performance boost when individual models are compiled.
 
-## Installation
-
-To benefit from the accelerated attention implementation and `torch.compile()`, you just need to install the latest versions of PyTorch 2.0 from pip, and make sure you are on diffusers 0.13.0 or later. As explained below, diffusers automatically uses the optimized attention processor ([`AttnProcessor2_0`](https://github.com/huggingface/diffusers/blob/1a5797c6d4491a879ea5285c4efc377664e0332d/src/diffusers/models/attention_processor.py#L798)) (but not `torch.compile()`)
-when PyTorch 2.0 is available.
+Both of these optimizations require PyTorch 2.0 or later and 🤗 Diffusers > 0.13.0.
 
 ```bash
 pip install --upgrade torch diffusers
 ```
 
-## Using accelerated transformers and `torch.compile`.
+## Scaled dot product attention
 
+[`torch.nn.functional.scaled_dot_product_attention`](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention) (SDPA) is an optimized and memory-efficient attention (similar to xFormers) that automatically enables several other optimizations depending on the model inputs and GPU type. SDPA is enabled by default if you're using PyTorch 2.0 and the latest version of 🤗 Diffusers, so you don't need to add anything to your code.
 
-1. **Accelerated Transformers implementation**
+However, if you want to explicitly enable it, you can set a [`DiffusionPipeline`] to use [`~models.attention_processor.AttnProcessor2_0`]:
 
-   PyTorch 2.0 includes an optimized and memory-efficient attention implementation through the [`torch.nn.functional.scaled_dot_product_attention`](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention) function, which automatically enables several optimizations depending on the inputs and the GPU type. This is similar to the `memory_efficient_attention` from [xFormers](https://github.com/facebookresearch/xformers), but built natively into PyTorch. 
+```diff
+  import torch
+  from diffusers import DiffusionPipeline
++ from diffusers.models.attention_processor import AttnProcessor2_0
 
-   These optimizations will be enabled by default in Diffusers if PyTorch 2.0 is installed and if `torch.nn.functional.scaled_dot_product_attention` is available. To use it, just install `torch 2.0` as suggested above and simply use the pipeline. For example:
+  pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
++ pipe.unet.set_attn_processor(AttnProcessor2_0())
 
-    ```Python
-    import torch
-    from diffusers import DiffusionPipeline
+  prompt = "a photo of an astronaut riding a horse on mars"
+  image = pipe(prompt).images[0]
+```
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
-    pipe = pipe.to("cuda")
+SDPA should be as fast and memory efficient as `xFormers`; check the [benchmark](#benchmark) for more details.
 
-    prompt = "a photo of an astronaut riding a horse on mars"
-    image = pipe(prompt).images[0]
-    ```
+In some cases - such as making the pipeline more deterministic or converting it to other formats - it may be helpful to use the vanilla attention processor, [`~models.attention_processor.AttnProcessor`]. To revert to [`~models.attention_processor.AttnProcessor`], call the [`~UNet2DConditionModel.set_default_attn_processor`] function on the pipeline:
 
-    If you want to enable it explicitly (which is not required), you can do so as shown below.
+```diff
+  import torch
+  from diffusers import DiffusionPipeline
+  from diffusers.models.attention_processor import AttnProcessor
 
-    ```diff
-    import torch
-    from diffusers import DiffusionPipeline
-    + from diffusers.models.attention_processor import AttnProcessor2_0
+  pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
++ pipe.unet.set_default_attn_processor()
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-    + pipe.unet.set_attn_processor(AttnProcessor2_0())
+  prompt = "a photo of an astronaut riding a horse on mars"
+  image = pipe(prompt).images[0]
+```
 
-    prompt = "a photo of an astronaut riding a horse on mars"
-    image = pipe(prompt).images[0]
-    ```
+## torch.compile
 
-    This should be as fast and memory efficient as `xFormers`. More details [in our benchmark](#benchmark).
+The `torch.compile` function can often provide an additional speed-up to your PyTorch code. In 🤗 Diffusers, it is usually best to wrap the UNet with `torch.compile` because it does most of the heavy lifting in the pipeline.
 
-    It is possible to revert to the vanilla attention processor ([`AttnProcessor`](https://github.com/huggingface/diffusers/blob/1a5797c6d4491a879ea5285c4efc377664e0332d/src/diffusers/models/attention_processor.py#L402)), which can be helpful to make the pipeline more deterministic, or if you need to convert a fine-tuned model to other formats such as [Core ML](https://huggingface.co/docs/diffusers/v0.16.0/en/optimization/coreml#how-to-run-stable-diffusion-with-core-ml). To use the normal attention processor you can use the [`~diffusers.UNet2DConditionModel.set_default_attn_processor`] function:
+```python
+from diffusers import DiffusionPipeline
+import torch
 
-    ```Python
-    import torch
-    from diffusers import DiffusionPipeline
-    from diffusers.models.attention_processor import AttnProcessor
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images[0]
+```
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-    pipe.unet.set_default_attn_processor()
+Depending on GPU type, `torch.compile` can provide an *addtional speed-up* of **5-300x** on top of SDPA! If you're using more recent GPU architectures such as Ampere (A100, 3090), Ada (4090), and Hopper (H100), `torch.compile` is able to squeeze even more performance out of these GPUs.
 
-    prompt = "a photo of an astronaut riding a horse on mars"
-    image = pipe(prompt).images[0]
-    ```
+Compilation requires some time to complete, so it is best suited for situations where you prepare your pipeline once and then perform the same type of inference operations multiple times. For example, calling the compiled pipeline on a different image size triggers compilation again which can be expensive.
 
-2. **torch.compile**
-
-    To get an additional speedup, we can use the new `torch.compile` feature. Since the UNet of the pipeline is usually the most computationally expensive, we wrap the `unet` with `torch.compile` leaving rest of the sub-models (text encoder and VAE) as is. For more information and different options, refer to the 
-    [torch compile docs](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html).
-
-    ```python
-    pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-    images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images
-    ```
-
-    Depending on the type of GPU, `compile()` can yield between **5% - 300%** of _additional speed-up_ over the accelerated transformer optimizations. Note, however, that compilation is able to squeeze more performance improvements in more recent GPU architectures such as Ampere (A100, 3090), Ada (4090) and Hopper (H100).
-    
-    Compilation takes some time to complete, so it is best suited for situations where you need to prepare your pipeline once and then perform the same type of inference operations multiple times. Calling the compiled pipeline on a different image size will re-trigger compilation which can be expensive.
-
+For more information and different options about `torch.compile`, refer to the [`torch_compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) tutorial.
 
 ## Benchmark
 
