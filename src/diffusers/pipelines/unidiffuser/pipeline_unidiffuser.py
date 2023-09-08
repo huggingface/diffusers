@@ -143,7 +143,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.vae_image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         self.num_channels_latents = vae.config.latent_channels
         self.text_encoder_seq_len = text_encoder.config.max_position_embeddings
@@ -1250,7 +1250,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             # 4.1. Encode images, if available
             assert image is not None, "`img2text` requires a conditioning image"
             # Encode image using VAE
-            image_vae = self.image_processor.preprocess(image)
+            image_vae = self.vae_image_processor.preprocess(image)
             height, width = image_vae.shape[-2:]
             image_vae_latents = self.encode_image_vae_latents(
                 image=image_vae,
@@ -1392,7 +1392,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # 10. Postprocess the image, if necessary
         if image is not None:
             do_denormalize = [True] * image.shape[0]
-            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+            image = self.vae_image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
