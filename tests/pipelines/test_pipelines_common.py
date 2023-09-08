@@ -724,11 +724,13 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload()
-        inputs = self.get_dummy_inputs(torch_device)
+
+        inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()

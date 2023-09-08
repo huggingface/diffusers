@@ -1241,7 +1241,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+            device_mod = getattr(torch, self.device.type, None)
+            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
@@ -1249,16 +1251,22 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str)
+            if not isinstance(model, torch.nn.Module):
+                continue
 
-            if model is not None:
-                _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
-                self._all_hooks.append(hook)
+            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
+            self._all_hooks.append(hook)
 
-        # now also cpu offload all models that are not in the seq chain. these models will stay on GPU until
+        # CPU offload models that are not in the seq chain unless they are explicitly excluded
+        # these models will stay on CPU until maybe_free_model_hooks is called
         # some models cannot be in the seq chain because they are iteratively called, such as controlnet
-        # maybe_free_model_hooks is called
-        for model in all_model_components.values():
-            if model is not None:
+        for name, model in all_model_components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            if name in self._exclude_from_cpu_offload:
+                model.to(device)
+            else:
                 _, hook = cpu_offload_with_hook(model, device)
                 self._all_hooks.append(hook)
 
@@ -1295,6 +1303,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             device_mod = getattr(torch, self.device.type, None)
             if hasattr(device_mod, "empty_cache") and device_mod.is_available():
                 device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
         for name, model in self.components.items():
             if not isinstance(model, torch.nn.Module):
                 continue
