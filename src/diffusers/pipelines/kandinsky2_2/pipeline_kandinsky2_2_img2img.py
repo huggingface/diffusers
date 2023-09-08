@@ -176,7 +176,6 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
 
         return latents
 
-    # Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.KandinskyV22Pipeline.enable_model_cpu_offload
     @torch.no_grad()
     def __call__(
         self,
