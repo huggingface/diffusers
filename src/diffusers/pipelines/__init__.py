@@ -63,6 +63,7 @@ else:
         IFPipeline,
         IFSuperResolutionPipeline,
     )
+    from .ip_adapter import IPAdapterPipeline
     from .kandinsky import (
         KandinskyCombinedPipeline,
         KandinskyImg2ImgCombinedPipeline,
