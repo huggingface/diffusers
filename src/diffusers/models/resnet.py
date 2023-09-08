@@ -667,6 +667,15 @@ class ResnetBlock2D(nn.Module):
 
 
 class Upsample3D(nn.Module):
+    """A 3D upsampling layer. Reshapes the input tensor to video like tensor, applies upsampling conv,
+    converts it back to the original shape.
+    
+    Parameters:
+        channels (`int`):
+            number of channels in the inputs and outputs.
+        out_channels (`int`, optional):
+            number of output channels. Defaults to `channels`.
+    """
     def __init__(self, channels, out_channels=None):
         super().__init__()
         self.channels = channels
@@ -713,6 +722,15 @@ class Upsample3D(nn.Module):
 
 
 class Downsample3D(nn.Module):
+    """A 3D downsampling layer. Reshapes the input tensor to video like tensor, applies conv,
+    converts it back to the original shape.
+    
+    Parameters:
+        channels (`int`):
+            number of channels in the inputs and outputs.
+        out_channels (`int`, optional):
+            number of output channels. Defaults to `channels`.
+    """
     def __init__(self, channels, out_channels=None, padding=1, name="conv"):
         super().__init__()
         self.channels = channels
@@ -737,6 +755,20 @@ class Downsample3D(nn.Module):
 
 
 class ResnetBlock3D(nn.Module):
+    r"""
+    A Resnet block. Used specifically for video like data.
+
+    Parameters:
+        in_channels (`int`): The number of channels in the input.
+        out_channels (`int`, *optional*, default to be `None`):
+            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
+        dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
+        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
+        groups (`int`, *optional*, default to `32`): The number of groups to use for the first normalization layer.
+        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
+        non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
+        output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
+    """
     def __init__(
         self,
         *,
