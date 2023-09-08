@@ -428,19 +428,28 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. Finish processing sigmas and timesteps
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        sigma_hats = np.asarray(sigma_hats, dtype=sigmas.dtype)
+        # TODO: fix the condition here (should also be applicable when we're not using custom timesteps?)
+        if self.custom_timesteps:
+            # In the sampling loop, we want to output timesteps in the following order:
+            # [sigma_hat_0, sigma_1, sigma_hat_1, sigma_2, ..., sigma_hat_{n - 1}, 0]
+            timesteps = np.empty((sigma_hats.size + sigmas.size - 1,), dtype=sigmas.dtype)
+            timesteps[0::2] = sigma_hats
+            timesteps[1::2] = sigmas[1:]
+
         sigmas = torch.from_numpy(sigmas).to(device=device)
+        # [sigma_0, sigma_1, sigma_2, ..., sigma_{n - 1}, 0] ->
+        # [sigma_0, sigma_1, sigma_1, sigma_2, sigma_2, ...,sigma_{n - 1}, sigma_{n - 1}, 0]
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
 
-        sigma_hats = np.asarray(sigma_hats)
-        if self.custom_timesteps:
-            timesteps = sigma_hats
-        # Make sigma_hats have the same schedule as self.sigmas
         sigma_hats = np.concatenate([sigma_hats, [0.0]]).astype(np.float32)
         sigma_hats = torch.from_numpy(sigma_hats).to(device=device)
+        # Make sigma_hats have the same schedule as self.sigmas
         self.sigma_hats = torch.cat([sigma_hats[:1], sigma_hats[1:-1].repeat_interleave(2), sigma_hats[-1:]])
 
         timesteps = torch.from_numpy(timesteps)
         timesteps = self.precondition_noise(timesteps)
+        # [t_0, t_1, t_2, ..., t_{n - 1}] -> [t_0, t_1, t_1, t_2, t_2, ..., t_{n - 1}, t_{n - 1}]
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
 
         self.timesteps = timesteps.to(device=device)
