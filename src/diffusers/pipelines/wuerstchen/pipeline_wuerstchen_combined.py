@@ -150,7 +150,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         prior_num_inference_steps: int = 60,
         prior_timesteps: Optional[List[float]] = None,
         prior_guidance_scale: float = 4.0,
-        decoder_num_inference_steps: int = 12,
+        num_inference_steps: int = 12,
         decoder_timesteps: Optional[List[float]] = None,
         decoder_guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -238,7 +238,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
             prompt=prompt,
-            num_inference_steps=decoder_num_inference_steps,
+            num_inference_steps=num_inference_steps,
             timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
             negative_prompt=negative_prompt,
