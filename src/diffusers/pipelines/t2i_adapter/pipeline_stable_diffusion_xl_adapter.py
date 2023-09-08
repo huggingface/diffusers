@@ -121,7 +121,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin):
+class StableDiffusionXLAdapterPipeline(
+    DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion augmented with T2I-Adapter
     https://arxiv.org/abs/2302.08453
@@ -621,7 +623,11 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
         original_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
+        negative_original_size: Optional[Tuple[int, int]] = None,
+        negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
+        negative_target_size: Optional[Tuple[int, int]] = None,
         adapter_conditioning_scale: Union[float, List[float]] = 1.0,
+        adapter_conditioning_factor: float = 1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -729,10 +735,30 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
                 For most cases, `target_size` should be set to the desired height and width of the generated image. If
                 not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+                section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            negative_original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                To negatively condition the generation process based on a specific image resolution. Part of SDXL's
+                micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
+                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
+            negative_crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+                To negatively condition the generation process based on a specific crop coordinates. Part of SDXL's
+                micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
+                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
+            negative_target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                To negatively condition the generation process based on a target image resolution. It should be as same
+                as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
+                information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
             adapter_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
                 The outputs of the adapter are multiplied by `adapter_conditioning_scale` before they are added to the
                 residual in the original unet. If multiple adapters are specified in init, you can set the
                 corresponding scale as a list.
+            adapter_conditioning_factor (`float`, *optional*, defaults to 1.0):
+                The fraction of timesteps for which adapter should be applied. If `adapter_conditioning_factor` is
+                `0.0`, adapter is not applied at all. If `adapter_conditioning_factor` is `1.0`, adapter is applied for
+                all timesteps. If `adapter_conditioning_factor` is `0.5`, adapter is applied for half of the timesteps.
         Examples:
 
         Returns:
@@ -837,11 +863,20 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
         add_time_ids = self._get_add_time_ids(
             original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
         )
+        if negative_original_size is not None and negative_target_size is not None:
+            negative_add_time_ids = self._get_add_time_ids(
+                negative_original_size,
+                negative_crops_coords_top_left,
+                negative_target_size,
+                dtype=prompt_embeds.dtype,
+            )
+        else:
+            negative_add_time_ids = add_time_ids
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
+            add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
@@ -870,6 +905,12 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+                if i < int(num_inference_steps * adapter_conditioning_factor):
+                    down_block_additional_residuals = [state.clone() for state in adapter_state]
+                else:
+                    down_block_additional_residuals = None
+
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
@@ -877,7 +918,7 @@ class StableDiffusionXLAdapterPipeline(DiffusionPipeline, FromSingleFileMixin, L
                     cross_attention_kwargs=cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
-                    down_block_additional_residuals=[state.clone() for state in adapter_state],
+                    down_block_additional_residuals=down_block_additional_residuals,
                 )[0]
 
                 # perform guidance

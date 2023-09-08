@@ -88,6 +88,7 @@ else:
         DDIMScheduler,
         DDPMParallelScheduler,
         DDPMScheduler,
+        DDPMWuerstchenScheduler,
         DEISMultistepScheduler,
         DPMSolverMultistepInverseScheduler,
         DPMSolverMultistepScheduler,
@@ -216,6 +217,9 @@ else:
         VersatileDiffusionTextToImagePipeline,
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
+        WuerstchenCombinedPipeline,
+        WuerstchenDecoderPipeline,
+        WuerstchenPriorPipeline,
     )
 
 try:
