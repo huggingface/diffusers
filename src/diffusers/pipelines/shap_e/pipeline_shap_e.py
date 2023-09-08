@@ -98,6 +98,7 @@ class ShapEPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->prior"
+    _exclude_from_cpu_offload = ["shap_e_renderer"]
 
     def __init__(
         self,
@@ -290,6 +291,9 @@ class ShapEPipeline(DiffusionPipeline):
                 sample=latents,
             ).prev_sample
 
+        # Offload all models
+        self.maybe_free_model_hooks()
+
         if output_type not in ["np", "pil", "latent", "mesh"]:
             raise ValueError(
                 f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}"
@@ -323,9 +327,6 @@ class ShapEPipeline(DiffusionPipeline):
 
             if output_type == "pil":
                 images = [self.numpy_to_pil(image) for image in images]
-
-        # Offload all models
-        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (images,)

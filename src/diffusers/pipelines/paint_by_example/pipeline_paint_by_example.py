@@ -169,7 +169,8 @@ class PaintByExamplePipeline(DiffusionPipeline):
     # TODO: feature_extractor is required to encode initial images (if they are in PIL format),
     # we should give a descriptive message if the pipeline doesn't have one.
 
-    model_cpu_offload_seq = "image_encoder->unet->vae"
+    model_cpu_offload_seq = "unet->vae"
+    _exclude_from_cpu_offload = ["image_encoder"]
     _optional_components = ["safety_checker"]
 
     def __init__(

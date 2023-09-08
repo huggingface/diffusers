@@ -99,6 +99,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "image_encoder->prior"
+    _exclude_from_cpu_offload = ["shap_e_renderer"]
 
     def __init__(
         self,
