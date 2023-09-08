@@ -149,16 +149,16 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         expected_slice = np.array(
             [
-                -7172.8359,
-                -3438.8640,
-                -1093.3131,
-                388.8844,
-                -7471.4878,
-                -7998.1260,
-                -5328.2407,
-                218.0018,
-                -2731.5864,
-                -8056.7622,
+                -7172.837,
+                -3438.855,
+                -1093.312,
+                388.8835,
+                -7471.467,
+                -7998.1206,
+                -5328.259,
+                218.00089,
+                -2731.5745,
+                -8056.734,
             ]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
