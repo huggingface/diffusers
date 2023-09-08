@@ -17,13 +17,14 @@ After the initial paper release, we have improved numerous things in the archite
 - Multi Aspect Resolution Sampling
 - Better quality
 
-We are releasing 3 checkpoints for the text-conditional image generation model (Stage C). Those are: 
+We are releasing 3 checkpoints for the text-conditional image generation model (Stage C). Those are:
+
 - v2-base
 - v2-aesthetic
 - v2-interpolated (50% interpolation between v2-base and v2-aesthetic)
 
 We recommend to use v2-interpolated, as it has a nice touch of both photorealism and aesthetic. Use v2-base for finetunings as it does not have a style bias and use v2-aesthetic for very artistic generations.
-A comparison can be seen here: 
+A comparison can be seen here:
 
 <img src="https://github.com/dome272/Wuerstchen/assets/61938694/2914830f-cbd3-461c-be64-d50734f4b49d" width=500>
 
@@ -76,7 +77,7 @@ prior_output = prior_pipeline(
     width=1536,
     timesteps=default_stage_c_timesteps,
     negative_prompt=negative_prompt,
-	guidance_scale=4.0,
+    guidance_scale=4.0,
     num_images_per_prompt=num_images_per_prompt,
 )
 decoder_output = decoder_pipeline(
@@ -90,6 +91,7 @@ decoder_output = decoder_pipeline(
 ```
 
 ## Speed-Up Inference
+
 You can make use of ``torch.compile`` function and gain a speed-up of about 2-3x:
 
 ```python
@@ -98,14 +100,14 @@ pipeline.decoder = torch.compile(pipeline.decoder, mode="reduce-overhead", fullg
 ```
 
 ## Limitations
+
 - Due to the high compression employed by Würstchen, generations can lack a good amount
 of detail. To our human eye, this is especially noticeable in faces, hands etc.
-- **Images can only be generated in 128-pixel steps**, e.g. the next higher resolution 
+- **Images can only be generated in 128-pixel steps**, e.g. the next higher resolution
 after 1024x1024 is 1152x1152
 - The model lacks the ability to render correct text in images
 - The model often does not achieve photorealism
 - Difficult compositional prompts are hard for the model
-
 
 The original codebase, as well as experimental ideas, can be found at [dome272/Wuerstchen](https://github.com/dome272/Wuerstchen).
 
