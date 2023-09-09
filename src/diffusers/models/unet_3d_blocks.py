@@ -85,7 +85,6 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif down_block_type == "CrossAttnDownBlockInflated3D":
         if cross_attention_dim is None:
@@ -102,10 +101,6 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            use_linear_projection=use_linear_projection,
-            only_cross_attention=only_cross_attention,
-            upcast_attention=upcast_attention,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -174,7 +169,6 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     elif up_block_type == "CrossAttnUpBlockInflated3D":
         if cross_attention_dim is None:
@@ -191,10 +185,6 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            use_linear_projection=use_linear_projection,
-            only_cross_attention=only_cross_attention,
-            upcast_attention=upcast_attention,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -240,9 +230,6 @@ def get_mid_block(
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
             resnet_groups=resnet_groups,
-            use_linear_projection=use_linear_projection,
-            upcast_attention=upcast_attention,
-            resnet_time_scale_shift=resnet_time_scale_shift,
         )
     raise ValueError(f"{mid_block_type} does not exist.")
 
@@ -804,10 +791,8 @@ class UpBlockInflated3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_upsample=True,
     ):
@@ -826,17 +811,15 @@ class UpBlockInflated3D(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -867,10 +850,8 @@ class DownBlockInflated3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
@@ -888,10 +869,8 @@ class DownBlockInflated3D(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -901,7 +880,7 @@ class DownBlockInflated3D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample3D(
-                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -936,17 +915,12 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
-        use_linear_projection=False,
-        only_cross_attention=False,
-        upcast_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -967,10 +941,8 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -982,9 +954,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
-                    only_cross_attention=only_cross_attention,
-                    upcast_attention=upcast_attention,
                 )
             )
 
@@ -992,7 +961,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList([Upsample3D(out_channels, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -1010,6 +979,7 @@ class CrossAttnUpBlockInflated3D(nn.Module):
         cross_attention_kwargs=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
+        # TODO - cross_attention_kwargs are not used
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -1022,7 +992,6 @@ class CrossAttnUpBlockInflated3D(nn.Module):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
             ).sample
 
         if self.upsamplers is not None:
@@ -1041,18 +1010,13 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         num_attention_heads=1,
         cross_attention_dim=1280,
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
-        use_linear_projection=False,
-        only_cross_attention=False,
-        upcast_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -1071,10 +1035,8 @@ class CrossAttnDownBlockInflated3D(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -1086,9 +1048,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
-                    only_cross_attention=only_cross_attention,
-                    upcast_attention=upcast_attention,
                 )
             )
 
@@ -1099,7 +1058,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample3D(
-                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -1118,6 +1077,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
         cross_attention_kwargs=None,
     ):
         # TODO(Patrick, William) - attention mask is not used
+        # TODO - cross_attention_kwargs are not used.
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -1125,7 +1085,6 @@ class CrossAttnDownBlockInflated3D(nn.Module):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
             ).sample
 
             output_states += (hidden_states,)
@@ -1147,15 +1106,11 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         num_attention_heads=1,
         output_scale_factor=1.0,
-        cross_attention_dim=1280,
-        use_linear_projection=True,
-        upcast_attention=False,
+        cross_attention_dim=1280
     ):
         super().__init__()
 
@@ -1172,10 +1127,8 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                 eps=resnet_eps,
                 groups=resnet_groups,
                 dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
             )
         ]
 
@@ -1189,9 +1142,7 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
-                    upcast_attention=upcast_attention,
+                    norm_num_groups=resnet_groups
                 )
             )
 
@@ -1203,10 +1154,8 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                     eps=resnet_eps,
                     groups=resnet_groups,
                     dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
                 )
             )
 
@@ -1228,7 +1177,6 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
             ).sample
             hidden_states = resnet(hidden_states, temb)
 

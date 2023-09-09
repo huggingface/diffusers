@@ -1,4 +1,4 @@
-# TODO: Check if showlab/TuneAVideo needs to be credited here.
+# Based on the TuneAVideo Transformer3DModel from Showlab: https://arxiv.org/abs/2212.11565
 # Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,20 +57,8 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             The number of norm groups for the group norm.
         cross_attention_dim (`int`, *optional*):
             The number of encoder_hidden_states dimensions to use.
-        attention_bias (`bool`, *optional*, defaults to False):
-            Configure if the TransformerBlocks' attention should contain a bias parameter.
         activation_fn (`str`, *optional*, defaults to `"geglu"`):
             Activation function to be used in feed-forward.
-        num_embeds_ada_norm ( `int`, *optional*): Pass if at least one of the norm_layers is `AdaLayerNorm`.
-            The number of diffusion steps used during training. Note that this is fixed at training time as it is used
-            to learn a number of embeddings that are added to the hidden states. During inference, you can denoise for
-            up to but not more than steps than `num_embeds_ada_norm`.
-        use_linear_projection: ( `bool`, *optional*, defaults to False):
-            Pass True if linear projection is to be applied on the input hidden_states. If False, uses Conv2D instead.
-        only_cross_attention: ( `bool`, *optional*, defaults to False):
-            Input to the attention processor.
-        upcast_attention: ( `bool`, *optional*, defaults to False),
-            Input to the attention processor.
 
     """
 
@@ -83,16 +71,10 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         num_layers: int = 1,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
-        cross_attention_dim: Optional[int] = None,
-        attention_bias: bool = False,
+        cross_attention_dim: int = 1280,
         activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        use_linear_projection: bool = False,
-        only_cross_attention: bool = False,
-        upcast_attention: bool = False,
     ):
         super().__init__()
-        self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
@@ -101,10 +83,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         self.in_channels = in_channels
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-        if use_linear_projection:
-            self.proj_in = nn.Linear(in_channels, inner_dim)
-        else:
-            self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
+        self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
 
         # Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -116,28 +95,19 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
                     dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
                     activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    upcast_attention=upcast_attention,
                 )
                 for d in range(num_layers)
             ]
         )
 
         # 4. Define output layers
-        if use_linear_projection:
-            self.proj_out = nn.Linear(in_channels, inner_dim)
-        else:
-            self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
+        self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(
         self,
         hidden_states,
         encoder_hidden_states=None,
         timestep=None,
-        class_labels=None,
-        cross_attention_kwargs=None,
         return_dict: bool = True,
     ):
         """
@@ -149,10 +119,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
                 self-attention.
             timestep ( `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
-            class_labels ( `torch.Tensor`, *optional*):
-                Ignored right now. Added for interoperability with Transformer2DModel.
-            cross_attention_kwargs (`dict`, *optional*):
-                Ignored right now. Added for interoperability with Transformer2DModel.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.transformer_3d.Transformer3DModelOutput`] instead of a plain
                 tuple.
@@ -162,7 +128,6 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             [`~models.transformer_3d.Transformer3DModelOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        # TODO: Deal with class_labels, cross_attention_kwargs
         # Input
         assert hidden_states.dim() == 5, f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}."
         video_length = hidden_states.shape[2]
@@ -176,14 +141,9 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         residual = hidden_states
 
         hidden_states = self.norm(hidden_states)
-        if not self.use_linear_projection:
-            hidden_states = self.proj_in(hidden_states)
-            inner_dim = hidden_states.shape[1]
-            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
-        else:
-            inner_dim = hidden_states.shape[1]
-            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
-            hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.proj_in(hidden_states)
+        inner_dim = hidden_states.shape[1]
+        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
 
         # Blocks
         for block in self.transformer_blocks:
@@ -195,12 +155,8 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             )
 
         # Output
-        if not self.use_linear_projection:
-            hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2).contiguous()
-            hidden_states = self.proj_out(hidden_states)
-        else:
-            hidden_states = self.proj_out(hidden_states)
-            hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2).contiguous()
+        hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2).contiguous()
+        hidden_states = self.proj_out(hidden_states)
 
         output = hidden_states + residual
 

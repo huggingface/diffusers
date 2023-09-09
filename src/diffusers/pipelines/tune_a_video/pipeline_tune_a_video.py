@@ -239,7 +239,7 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         # We'll offload the last model manually.
         self.final_offload_hook = hook
 
-    def _encode_prompt(
+    def encode_prompt(
         self,
         prompt,
         device,
@@ -631,7 +631,7 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
 
-        prompt_embeds = self._encode_prompt(
+        prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_videos_per_prompt,

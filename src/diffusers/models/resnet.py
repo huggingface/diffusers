@@ -667,11 +667,19 @@ class ResnetBlock2D(nn.Module):
 
 
 class Upsample3D(nn.Module):
-    def __init__(self, channels, use_conv=False, out_channels=None):
+    """A 3D upsampling layer. Reshapes the input tensor to video like tensor, applies upsampling conv,
+    converts it back to the original shape.
+    
+    Parameters:
+        channels (`int`):
+            number of channels in the inputs and outputs.
+        out_channels (`int`, optional):
+            number of output channels. Defaults to `channels`.
+    """
+    def __init__(self, channels, out_channels=None):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
-        self.use_conv = use_conv
 
         self.conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
@@ -698,40 +706,40 @@ class Upsample3D(nn.Module):
         if dtype == torch.bfloat16:
             hidden_states = hidden_states.to(dtype)
 
-        if self.use_conv:
-            # Inflate
-            video_length = hidden_states.shape[2]
-            # b c f h w -> (b f) c h w
-            hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-            hidden_states = hidden_states.flatten(0, 1)
+        # Inflate
+        video_length = hidden_states.shape[2]
+        # b c f h w -> (b f) c h w
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = hidden_states.flatten(0, 1)
 
-            hidden_states = self.conv(hidden_states)
-            # Deflate
-            # (b f) c h w -> b c f h w (f=video_length)
-            hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
-            hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+        hidden_states = self.conv(hidden_states)
+        # Deflate
+        # (b f) c h w -> b c f h w (f=video_length)
+        hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
         return hidden_states
 
 
 class Downsample3D(nn.Module):
-    def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
+    """A 3D downsampling layer. Reshapes the input tensor to video like tensor, applies conv,
+    converts it back to the original shape.
+    
+    Parameters:
+        channels (`int`):
+            number of channels in the inputs and outputs.
+        out_channels (`int`, optional):
+            number of output channels. Defaults to `channels`.
+    """
+    def __init__(self, channels, out_channels=None, padding=1, name="conv"):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.padding = padding
-        stride = 2
         self.name = name
 
-        self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+        self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=2, padding=padding)
 
     def forward(self, hidden_states):
-        assert hidden_states.shape[1] == self.channels
-        if self.use_conv and self.padding == 0:
-            raise NotImplementedError
-
-        assert hidden_states.shape[1] == self.channels
 
         video_length = hidden_states.shape[2]
         # b c f h w -> (b f) c h w
@@ -747,60 +755,50 @@ class Downsample3D(nn.Module):
 
 
 class ResnetBlock3D(nn.Module):
+    r"""
+    A Resnet block. Used specifically for video like data.
+
+    Parameters:
+        in_channels (`int`): The number of channels in the input.
+        out_channels (`int`, *optional*, default to be `None`):
+            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
+        dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
+        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
+        groups (`int`, *optional*, default to `32`): The number of groups to use for the first normalization layer.
+        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
+        non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
+        output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
+    """
     def __init__(
         self,
         *,
         in_channels,
         out_channels=None,
-        conv_shortcut=False,
         dropout=0.0,
         temb_channels=512,
         groups=32,
-        groups_out=None,
-        pre_norm=True,
         eps=1e-6,
         non_linearity="swish",
-        time_embedding_norm="default",
         output_scale_factor=1.0,
-        use_in_shortcut=None,
     ):
         super().__init__()
-        self.pre_norm = pre_norm
-        self.pre_norm = True
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
-        self.time_embedding_norm = time_embedding_norm
         self.output_scale_factor = output_scale_factor
 
-        if groups_out is None:
-            groups_out = groups
-
         self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
-        if temb_channels is not None:
-            if self.time_embedding_norm == "default":
-                time_emb_proj_out_channels = out_channels
-            elif self.time_embedding_norm == "scale_shift":
-                time_emb_proj_out_channels = out_channels * 2
-            else:
-                raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
+        self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
 
-            self.time_emb_proj = torch.nn.Linear(temb_channels, time_emb_proj_out_channels)
-        else:
-            self.time_emb_proj = None
-
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
+        self.norm2 = torch.nn.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         self.nonlinearity = get_activation(non_linearity)
 
-        self.use_in_shortcut = self.in_channels != self.out_channels if use_in_shortcut is None else use_in_shortcut
-
+        self.use_in_shortcut = self.in_channels != self.out_channels
         self.conv_shortcut = None
         if self.use_in_shortcut:
             self.conv_shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
@@ -823,14 +821,9 @@ class ResnetBlock3D(nn.Module):
         if temb is not None:
             temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None, None]
 
-        if temb is not None and self.time_embedding_norm == "default":
-            hidden_states = hidden_states + temb
+        hidden_states = hidden_states + temb
 
         hidden_states = self.norm2(hidden_states)
-
-        if temb is not None and self.time_embedding_norm == "scale_shift":
-            scale, shift = torch.chunk(temb, 2, dim=1)
-            hidden_states = hidden_states * (1 + scale) + shift
 
         hidden_states = self.nonlinearity(hidden_states)
 
