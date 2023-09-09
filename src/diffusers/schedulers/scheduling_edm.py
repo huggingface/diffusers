@@ -47,51 +47,6 @@ class KarrasEDMSchedulerOutput(BaseOutput):
     pred_original_sample: Optional[torch.FloatTensor] = None
 
 
-# Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
-def betas_for_alpha_bar(
-    num_diffusion_timesteps,
-    max_beta=0.999,
-    alpha_transform_type="cosine",
-):
-    """
-    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
-    (1-beta) over time from t = [0,1].
-
-    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
-    to that part of the diffusion process.
-
-
-    Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
-                     Choose from `cosine` or `exp`
-
-    Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
-    """
-    if alpha_transform_type == "cosine":
-
-        def alpha_bar_fn(t):
-            return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
-
-    elif alpha_transform_type == "exp":
-
-        def alpha_bar_fn(t):
-            return math.exp(t * -12.0)
-
-    else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
-
-    betas = []
-    for i in range(num_diffusion_timesteps):
-        t1 = i / num_diffusion_timesteps
-        t2 = (i + 1) / num_diffusion_timesteps
-        betas.append(min(1 - alpha_bar_fn(t2) / alpha_bar_fn(t1), max_beta))
-    return torch.tensor(betas, dtype=torch.float32)
-
-
 class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
     """
     Implements the "EDM" column of Table 1 and Algorithm 2 in Karras et al. 2022 [1].
@@ -107,25 +62,10 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
     Args:
         num_train_timesteps (`int`, *optional*, defaults t0 40):
             Number of diffusion steps used to train the model.
-        beta_start (`float`, defaults to 0.0001):
-            The starting `beta` value of inference.
-        beta_end (`float`, defaults to 0.02):
-            The final `beta` value.
-        beta_schedule (`str`, defaults to `"linear"`):
-            The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `linear` or `scaled_linear`.
-        trained_betas (`np.ndarray`, *optional*):
-            Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
         prediction_type (`str`, *optional*, defaults to `edm`):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
-        interpolation_type(`str`, *optional*, defaults to `"linear"`):
-            The interpolation type to compute intermediate sigmas for the scheduler denoising steps. Should be on of
-            `"linear"` or `"log_linear"`.
-        use_karras_sigmas (`bool`, *optional*, defaults to `False`):
-            Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
-            the sigmas are determined according to a sequence of noise levels {σi}.
         timestep_spacing (`str`, *optional*, defaults to `"linspace"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
@@ -165,13 +105,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
         num_train_timesteps: int = 40,
-        beta_start: float = 0.0001,
-        beta_end: float = 0.02,
-        beta_schedule: str = "linear",
-        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         prediction_type: str = "edm",
-        interpolation_type: str = "linear",
-        use_karras_sigmas: Optional[bool] = True,
         timestep_spacing: str = "linspace",
         precondition_type: str = "edm",
         sigma_min: float = 0.002,
@@ -185,38 +119,17 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: Optional[bool] = False,
         clip_sample_range: float = 1.0,
     ):
-        # Handle beta schedule
-        if trained_betas is not None:
-            self.betas = torch.tensor(trained_betas, dtype=torch.float32)
-        elif beta_schedule == "linear":
-            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
-        elif beta_schedule == "scaled_linear":
-            # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
-        elif beta_schedule == "squaredcos_cap_v2":
-            # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps)
-        else:
-            raise NotImplementedError(f"{beta_schedule} is not implemented for {self.__class__}")
-
-        self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
-        self.sigmas = torch.from_numpy(sigmas)
-
-        self.precondition_type = precondition_type
+        ramp = np.linspace(0, 1, num_train_timesteps)
+        sigmas = self._convert_to_karras(ramp, sigma_min, sigma_max)
 
         # setable values
         self.num_inference_steps = None
-        timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
-        self.timesteps = torch.from_numpy(timesteps)
+        self.precondition_type = precondition_type
+        self.sigmas = torch.from_numpy(sigmas)
+        self.timesteps = self.precondition_inputs(self.sigmas)
+
         self.custom_timesteps = False
         self.is_scale_input_called = False
-        self.use_karras_sigmas = use_karras_sigmas
 
         self._step_index = None
 
@@ -282,7 +195,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         if self.precondition_type in ["edm", "cm_edm"]:
             scaled_sample = sample / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
         else:
-            # No input preconsitioning
+            # No input preconditioning
             scaled_sample = sample
 
         return scaled_sample
@@ -429,37 +342,18 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
                     f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
                 )
 
-        # 2. Define sigmas and handle sigma interpolation
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        # log_sigmas = np.log(sigmas)
-
-        if self.config.interpolation_type == "linear":
-            sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-        elif self.config.interpolation_type == "log_linear":
-            sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp()
+        # 2. Calculate the Karras sigmas
+        if self.custom_timesteps:
+            # timesteps is in decreasing order, but ramp should be in increasing order
+            ramp = timesteps[::-1].copy() / (self.config.num_train_timesteps - 1)
         else:
-            raise ValueError(
-                f"{self.config.interpolation_type} is not implemented. Please specify interpolation_type to either"
-                " 'linear' or 'log_linear'"
-            )
+            ramp = np.linspace(0, 1, self.num_inference_steps)
 
-        # 3. Calculate the Karras sigmas, if necessary
-        if self.use_karras_sigmas:
-            if self.custom_timesteps:
-                # timesteps is in decreasing order, but ramp should be in increasing order
-                ramp = timesteps[::-1].copy() / (self.config.num_train_timesteps - 1)
-                sigma_min = self.config.sigma_min
-                sigma_max = self.config.sigma_max
-            else:
-                ramp = np.linspace(0, 1, self.num_inference_steps)
-                sigma_min: float = sigmas[-1].item()
-                sigma_max: float = sigmas[0].item()
+        sigmas = self._convert_to_karras(ramp)
 
-            sigmas = self._convert_to_karras(ramp, sigma_min, sigma_max)
+        # timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
-            # timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
-
-        # 4. Calculate sigma_hat schedule
+        # 3. Calculate the sigma_hat schedule for stochastic sampling
         # TODO: vectorize this?
         sigma_hats = []
         for sigma in sigmas:
@@ -471,7 +365,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             sigma_hat = sigma * (gamma + 1)
             sigma_hats.append(sigma_hat)
 
-        # 5. Finish processing sigmas and timesteps
+        # 4. Finish processing sigmas and timesteps
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigma_hats = np.asarray(sigma_hats, dtype=sigmas.dtype)
         # In the sampling loop, we want to output timesteps in the following order:
@@ -497,12 +391,12 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
         self.timesteps = timesteps.to(device=device)
 
-        # 6. Empty dt and derivative to set the scheduler in first order mode
+        # 5. Empty dt and derivative to set the scheduler in first order mode
         self.prev_derivative = None
         self.dt = None
         self.sample_hat = None
 
-        # 7. Reset step_index
+        # 6. Reset step_index
         self._step_index = None
 
         # (YiYi Notes: keep this for now since we are keeping add_noise function which use index_for_timestep)
@@ -511,8 +405,13 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         self._index_counter = defaultdict(int)
 
     # Modified _convert_to_karras implementation that takes in ramp as argument
-    def _convert_to_karras(self, ramp, sigma_min, sigma_max):
+    def _convert_to_karras(self, ramp, sigma_min = None, sigma_max = None):
         """Constructs the noise schedule of Karras et al. (2022)."""
+        if sigma_min is None:
+            sigma_min = self.config.sigma_min
+        if sigma_max is None:
+            sigma_max = self.config.sigma_max
+
         rho = self.config.rho
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
@@ -617,18 +516,17 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         # NOTE: "original_sample" should not be an expected prediction_type but is left in for
         # backwards compatibility
         sigma_input = sigma_hat if self.state_in_first_order else sigma_next
+        sample_input = self.sample_hat if self.state_in_first_order else sample
         if self.config.prediction_type == "original_sample" or self.config.prediction_type == "sample":
             pred_original_sample = model_output
         elif self.config.prediction_type == "epsilon":
-            pred_original_sample = sample - sigma_input * model_output
+            pred_original_sample = sample_input - sigma_input * model_output
         elif self.config.prediction_type == "v_prediction":
             # sample * c_out + input * c_skip
             # TODO: how should this interact with self.precondition_outputs below?
-            pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (sample / (sigma_input**2 + 1))
+            pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (sample_input / (sigma_input**2 + 1))
         elif self.config.prediction_type == "edm":
             # Apply output preconditioning
-            # TODO: should we always be using sample_input in the other prediction_types?
-            sample_input = self.sample_hat if self.state_in_first_order else sample
             pred_original_sample = self.precondition_inputs(sample_input, model_output, sigma_input)
         else:
             raise ValueError(
