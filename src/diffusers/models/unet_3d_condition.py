@@ -619,7 +619,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # 4. mid
         if self.mid_block is not None:
-            # Mid block can handle num_frames being passed 2d or 3d
             sample = self.mid_block(
                 sample,
                 emb,
