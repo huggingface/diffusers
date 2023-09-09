@@ -24,33 +24,9 @@ from .unet_3d_blocks import (
     get_down_block,
     get_up_block,
 )
+from .unet_3d_motion_module_blocks import InflatedConv3d
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def rearrange_0(tensor):
-    b, c, f, h, w = tensor.size()
-    tensor = tensor.view(b * f, c, h, w)
-    return tensor  # b c f h w -> (b f) c h w
-
-
-def rearrange_1(tensor, f):
-    bf, c, h, w = tensor.size()
-    b = bf // f
-    tensor = tensor.view(b, f, c, h, w)
-
-    return tensor  # (b f) c h w -> b c f h w
-
-
-class InflatedConv3d(nn.Conv2d):
-    def forward(self, x):
-        video_length = x.shape[2]
-
-        x = rearrange_0(x)
-        x = super().forward(x)
-        x = rearrange_1(x, "(b f) c h w -> b c f h w", f=video_length)
-
-        return x
 
 
 @dataclass

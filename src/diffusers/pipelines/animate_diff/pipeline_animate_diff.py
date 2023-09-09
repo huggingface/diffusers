@@ -25,20 +25,32 @@ from ...schedulers import (
 )
 from ...utils import deprecate, logging, BaseOutput
 
-from einops import rearrange
-
 from ...models import UNet3DConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def rearrange_0(tensor):
+    b, c, f, h, w = tensor.size()
+    tensor = tensor.view(b * f, c, h, w)
+    return tensor  # b c f h w -> (b f) c h w
+
+
+def rearrange_1(tensor, f):
+    bf, c, h, w = tensor.size()
+    b = bf // f
+    tensor = tensor.view(b, f, c, h, w)
+
+    return tensor  # (b f) c h w -> b c f h w
+
+
 @dataclass
-class AnimationPipelineOutput(BaseOutput):
+class AnimateDiffPipelineOutput(BaseOutput):
     videos: Union[torch.Tensor, np.ndarray]
 
 
-class AnimationPipeline(DiffusionPipeline):
+class AnimateDiffPipeline(DiffusionPipeline):
     _optional_components = []
 
     def __init__(
@@ -57,55 +69,6 @@ class AnimationPipeline(DiffusionPipeline):
         ],
     ):
         super().__init__()
-
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(unet.config._diffusers_version).base_version
-        ) < version.parse("0.9.0.dev0")
-        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
-        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
-            deprecation_message = (
-                "The configuration file of the unet has set the default `sample_size` to smaller than"
-                " 64 which seems highly unlikely. If your checkpoint is a fine-tuned version of any of the"
-                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
-                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
-                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
-                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
-                " in the config might lead to incorrect results in future versions. If you have downloaded this"
-                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
-                " the `unet/config.json` file"
-            )
-            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(unet.config)
-            new_config["sample_size"] = 64
-            unet._internal_dict = FrozenDict(new_config)
-
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -116,38 +79,27 @@ class AnimationPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
         self.vae.enable_slicing()
 
     def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
         self.vae.disable_slicing()
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-
-    @property
-    def _execution_device(self):
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
-
-    def _encode_prompt(self, prompt, device, num_videos_per_prompt, do_classifier_free_guidance, negative_prompt):
+    def _encode_prompt(
+        self,
+        prompt,
+        device,
+        num_videos_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
+    ):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         text_inputs = self.tokenizer(
@@ -239,13 +191,13 @@ class AnimationPipeline(DiffusionPipeline):
     def decode_latents(self, latents):
         video_length = latents.shape[2]
         latents = 1 / 0.18215 * latents
-        latents = rearrange(latents, "b c f h w -> (b f) c h w")
+        latents = rearrange_0(latents)
         # video = self.vae.decode(latents).sample
         video = []
         for frame_idx in tqdm(range(latents.shape[0])):
-            video.append(self.vae.decode(latents[frame_idx:frame_idx+1]).sample)
+            video.append(self.vae.decode(latents[frame_idx : frame_idx + 1]).sample)
         video = torch.cat(video)
-        video = rearrange(video, "(b f) c h w -> b c f h w", f=video_length)
+        video = rearrange_1(video, f=video_length)
         video = (video / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
         video = video.cpu().float().numpy()
@@ -283,8 +235,25 @@ class AnimationPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-    def prepare_latents(self, batch_size, num_channels_latents, video_length, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, video_length, height // self.vae_scale_factor, width // self.vae_scale_factor)
+    def prepare_latents(
+        self,
+        batch_size,
+        num_channels_latents,
+        video_length,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        shape = (
+            batch_size,
+            num_channels_latents,
+            video_length,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -356,9 +325,13 @@ class AnimationPipeline(DiffusionPipeline):
         # Encode input prompt
         prompt = prompt if isinstance(prompt, list) else [prompt] * batch_size
         if negative_prompt is not None:
-            negative_prompt = negative_prompt if isinstance(negative_prompt, list) else [negative_prompt] * batch_size 
+            negative_prompt = negative_prompt if isinstance(negative_prompt, list) else [negative_prompt] * batch_size
         text_embeddings = self._encode_prompt(
-            prompt, device, num_videos_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt,
+            device,
+            num_videos_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
         )
 
         # Prepare timesteps
@@ -392,7 +365,9 @@ class AnimationPipeline(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample.to(dtype=latents_dtype)
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample.to(
+                    dtype=latents_dtype
+                )
                 # noise_pred = []
                 # import pdb
                 # pdb.set_trace()
@@ -425,4 +400,4 @@ class AnimationPipeline(DiffusionPipeline):
         if not return_dict:
             return video
 
-        return AnimationPipelineOutput(videos=video)
+        return AnimateDiffPipelineOutput(videos=video)
