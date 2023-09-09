@@ -1222,8 +1222,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def enable_sequential_cpu_offload(self, gpu_id: int = 0, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, all
-        `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) have their state dicts saved to CPU
-        and then are moved to `torch.device('meta')` and loaded to GPU only when their specific submodule has its
+        `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) have their state dicts saved to
+        CPU and then are moved to `torch.device('meta')` and loaded to GPU only when their specific submodule has its
         `forward` method called. Note that offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
