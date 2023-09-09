@@ -669,13 +669,14 @@ class ResnetBlock2D(nn.Module):
 class Upsample3D(nn.Module):
     """A 3D upsampling layer. Reshapes the input tensor to video like tensor, applies upsampling conv,
     converts it back to the original shape.
-    
+
     Parameters:
         channels (`int`):
             number of channels in the inputs and outputs.
         out_channels (`int`, optional):
             number of output channels. Defaults to `channels`.
     """
+
     def __init__(self, channels, out_channels=None):
         super().__init__()
         self.channels = channels
@@ -724,13 +725,14 @@ class Upsample3D(nn.Module):
 class Downsample3D(nn.Module):
     """A 3D downsampling layer. Reshapes the input tensor to video like tensor, applies conv,
     converts it back to the original shape.
-    
+
     Parameters:
         channels (`int`):
             number of channels in the inputs and outputs.
         out_channels (`int`, optional):
             number of output channels. Defaults to `channels`.
     """
+
     def __init__(self, channels, out_channels=None, padding=1, name="conv"):
         super().__init__()
         self.channels = channels
@@ -740,7 +742,6 @@ class Downsample3D(nn.Module):
         self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=2, padding=padding)
 
     def forward(self, hidden_states):
-
         video_length = hidden_states.shape[2]
         # b c f h w -> (b f) c h w
         hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
@@ -769,6 +770,7 @@ class ResnetBlock3D(nn.Module):
         non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
         output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
     """
+
     def __init__(
         self,
         *,

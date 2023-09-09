@@ -878,11 +878,7 @@ class DownBlockInflated3D(nn.Module):
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
-                [
-                    Downsample3D(
-                        out_channels, out_channels=out_channels, padding=downsample_padding, name="op"
-                    )
-                ]
+                [Downsample3D(out_channels, out_channels=out_channels, padding=downsample_padding, name="op")]
             )
         else:
             self.downsamplers = None
@@ -1056,11 +1052,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
-                [
-                    Downsample3D(
-                        out_channels, out_channels=out_channels, padding=downsample_padding, name="op"
-                    )
-                ]
+                [Downsample3D(out_channels, out_channels=out_channels, padding=downsample_padding, name="op")]
             )
         else:
             self.downsamplers = None
@@ -1110,7 +1102,7 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
         resnet_groups: int = 32,
         num_attention_heads=1,
         output_scale_factor=1.0,
-        cross_attention_dim=1280
+        cross_attention_dim=1280,
     ):
         super().__init__()
 
@@ -1142,7 +1134,7 @@ class UNetMidBlockInflated3DCrossAttn(nn.Module):
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=resnet_groups
+                    norm_num_groups=resnet_groups,
                 )
             )
 

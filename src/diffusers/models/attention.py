@@ -491,7 +491,6 @@ class BasicSparseTransformerBlock(nn.Module):
             upcast_attention=False,
         )
 
-
         self.norm2 = nn.LayerNorm(dim)
 
         # Feed-forward
@@ -514,22 +513,15 @@ class BasicSparseTransformerBlock(nn.Module):
         self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, video_length=None
     ):
         # SparseCausal-Attention
-        norm_hidden_states = (
-            self.norm1(hidden_states)
-        )
+        norm_hidden_states = self.norm1(hidden_states)
 
         hidden_states = (
-            self.attn1(norm_hidden_states, attention_mask=attention_mask, video_length=video_length)
-            + hidden_states
+            self.attn1(norm_hidden_states, attention_mask=attention_mask, video_length=video_length) + hidden_states
         )
 
-        norm_hidden_states = (
-            self.norm2(hidden_states)
-        )
+        norm_hidden_states = self.norm2(hidden_states)
         hidden_states = (
-            self.attn2(
-                norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask
-            )
+            self.attn2(norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask)
             + hidden_states
         )
 
@@ -543,9 +535,7 @@ class BasicSparseTransformerBlock(nn.Module):
         hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
         hidden_states = hidden_states.movedim((0, 1, 2, 3), (0, 2, 1, 3))
         hidden_states = hidden_states.flatten(0, 1)
-        norm_hidden_states = (
-            self.norm_temp(hidden_states)
-        )
+        norm_hidden_states = self.norm_temp(hidden_states)
         hidden_states = self.attn_temp(norm_hidden_states) + hidden_states
         # hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
         # (b d) f c -> b d f c ->  b f d c -> (b f) d c
