@@ -103,7 +103,7 @@ def parse_args():
     )
     parser.add_argument(
         "--vae_precision",
-        type="choice",
+        type=str,
         choices=["fp32", "fp16", "bf16"],
         default="fp32",
         help=(
