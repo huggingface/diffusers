@@ -23,17 +23,24 @@ from diffusers import (
 from diffusers.utils import floats_tensor, load_image, nightly, randn_tensor, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 
-from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+)
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class UniDiffuserPipelineFastTests(PipelineTesterMixin, PipelineLatentTesterMixin, unittest.TestCase):
     pipeline_class = UniDiffuserPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    # vae_latents, not latents, is the argument that corresponds to VAE latent inputs
+    image_latents_params = frozenset(["vae_latents"])
 
     def get_dummy_components(self):
         unet = UniDiffuserModel.from_pretrained(
