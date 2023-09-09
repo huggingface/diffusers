@@ -733,12 +733,10 @@ class Downsample3D(nn.Module):
             number of output channels. Defaults to `channels`.
     """
 
-    def __init__(self, channels, out_channels=None, padding=1, name="conv"):
+    def __init__(self, channels, out_channels=None, padding=1):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
-        self.name = name
-
         self.conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=2, padding=padding)
 
     def forward(self, hidden_states):

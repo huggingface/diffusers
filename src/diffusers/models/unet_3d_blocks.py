@@ -878,7 +878,7 @@ class DownBlockInflated3D(nn.Module):
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
-                [Downsample3D(out_channels, out_channels=out_channels, padding=downsample_padding, name="op")]
+                [Downsample3D(out_channels, out_channels=out_channels, padding=downsample_padding)]
             )
         else:
             self.downsamplers = None
@@ -1052,7 +1052,7 @@ class CrossAttnDownBlockInflated3D(nn.Module):
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
-                [Downsample3D(out_channels, out_channels=out_channels, padding=downsample_padding, name="op")]
+                [Downsample3D(out_channels, out_channels=out_channels, padding=downsample_padding)]
             )
         else:
             self.downsamplers = None
