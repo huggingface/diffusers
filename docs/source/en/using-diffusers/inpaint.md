@@ -116,7 +116,7 @@ mask_image_arr[mask_image_arr < 0.5] = 0
 mask_image_arr[mask_image_arr >= 0.5] = 1
 
 # Take the masked pixels from the repainted image and the unmasked pixels from the initial image
-unmasked_unchanged_image_arr = (1 - mask_image_arr) * init_image_arr + mask_image_arr * repainted_image_arr
+unmasked_unchanged_image_arr = (1 - mask_image_arr) * init_image + mask_image_arr * repainted_image
 unmasked_unchanged_image = PIL.Image.fromarray(unmasked_unchanged_image_arr.round().astype("uint8"))
 unmasked_unchanged_image.save("force_unmasked_unchanged.png")
 ```

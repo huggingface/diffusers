@@ -188,7 +188,7 @@ class Attention(nn.Module):
         if use_memory_efficient_attention_xformers:
             if is_added_kv_processor and (is_lora or is_custom_diffusion):
                 raise NotImplementedError(
-                    f"Memory efficient attention is currently not supported for LoRA or custom diffuson for attention processor type {self.processor}"
+                    f"Memory efficient attention is currently not supported for LoRA or custom diffusion for attention processor type {self.processor}"
                 )
             if not is_xformers_available():
                 raise ModuleNotFoundError(

@@ -45,7 +45,6 @@ if is_transformers_available():
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
-    from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
     from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)
@@ -663,6 +662,8 @@ class TextualInversionLoaderMixin:
         self,
         pretrained_model_name_or_path: Union[str, List[str], Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]],
         token: Optional[Union[str, List[str]]] = None,
+        tokenizer: Optional[PreTrainedTokenizer] = None,
+        text_encoder: Optional[PreTrainedModel] = None,
         **kwargs,
     ):
         r"""
@@ -684,6 +685,11 @@ class TextualInversionLoaderMixin:
             token (`str` or `List[str]`, *optional*):
                 Override the token to use for the textual inversion weights. If `pretrained_model_name_or_path` is a
                 list, then `token` must also be a list of equal length.
+            text_encoder ([`~transformers.CLIPTextModel`], *optional*):
+                Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
+                If not specified, function will take self.tokenizer.
+            tokenizer ([`~transformers.CLIPTokenizer`], *optional*):
+                A `CLIPTokenizer` to tokenize text. If not specified, function will take self.tokenizer.
             weight_name (`str`, *optional*):
                 Name of a custom weight file. This should be used when:
 
@@ -757,32 +763,20 @@ class TextualInversionLoaderMixin:
         ```
 
         """
-        if not hasattr(self, "tokenizer") or not isinstance(self.tokenizer, PreTrainedTokenizer):
+        tokenizer = tokenizer or getattr(self, "tokenizer", None)
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
+
+        if tokenizer is None:
             raise ValueError(
-                f"{self.__class__.__name__} requires `self.tokenizer` of type `PreTrainedTokenizer` for calling"
+                f"{self.__class__.__name__} requires `self.tokenizer` or passing a `tokenizer` of type `PreTrainedTokenizer` for calling"
                 f" `{self.load_textual_inversion.__name__}`"
             )
 
-        if not hasattr(self, "text_encoder") or not isinstance(self.text_encoder, PreTrainedModel):
+        if text_encoder is None:
             raise ValueError(
-                f"{self.__class__.__name__} requires `self.text_encoder` of type `PreTrainedModel` for calling"
+                f"{self.__class__.__name__} requires `self.text_encoder` or passing a `text_encoder` of type `PreTrainedModel` for calling"
                 f" `{self.load_textual_inversion.__name__}`"
             )
-
-        # Remove any existing hooks.
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        recursive = False
-        for _, component in self.components.items():
-            if isinstance(component, nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
-                    )
-                    recursive = is_sequential_cpu_offload
-                    remove_hook_from_module(component, recurse=recursive)
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -830,7 +824,7 @@ class TextualInversionLoaderMixin:
         token_ids_and_embeddings = []
 
         for pretrained_model_name_or_path, token in zip(pretrained_model_name_or_paths, tokens):
-            if not isinstance(pretrained_model_name_or_path, dict):
+            if not isinstance(pretrained_model_name_or_path, (dict, torch.Tensor)):
                 # 1. Load textual inversion file
                 model_file = None
                 # Let's first try to load .safetensors weights
@@ -897,10 +891,10 @@ class TextualInversionLoaderMixin:
             else:
                 token = loaded_token
 
-            embedding = embedding.to(dtype=self.text_encoder.dtype, device=self.text_encoder.device)
+            embedding = embedding.to(dtype=text_encoder.dtype, device=text_encoder.device)
 
             # 3. Make sure we don't mess up the tokenizer or text encoder
-            vocab = self.tokenizer.get_vocab()
+            vocab = tokenizer.get_vocab()
             if token in vocab:
                 raise ValueError(
                     f"Token {token} already in tokenizer vocabulary. Please choose a different token name or remove {token} and embedding from the tokenizer and text encoder."
@@ -908,7 +902,7 @@ class TextualInversionLoaderMixin:
             elif f"{token}_1" in vocab:
                 multi_vector_tokens = [token]
                 i = 1
-                while f"{token}_{i}" in self.tokenizer.added_tokens_encoder:
+                while f"{token}_{i}" in tokenizer.added_tokens_encoder:
                     multi_vector_tokens.append(f"{token}_{i}")
                     i += 1
 
@@ -926,22 +920,16 @@ class TextualInversionLoaderMixin:
                 embeddings = [embedding[0]] if len(embedding.shape) > 1 else [embedding]
 
             # add tokens and get ids
-            self.tokenizer.add_tokens(tokens)
-            token_ids = self.tokenizer.convert_tokens_to_ids(tokens)
+            tokenizer.add_tokens(tokens)
+            token_ids = tokenizer.convert_tokens_to_ids(tokens)
             token_ids_and_embeddings += zip(token_ids, embeddings)
 
             logger.info(f"Loaded textual inversion embedding for {token}.")
 
         # resize token embeddings and set all new embeddings
-        self.text_encoder.resize_token_embeddings(len(self.tokenizer))
+        text_encoder.resize_token_embeddings(len(tokenizer))
         for token_id, embedding in token_ids_and_embeddings:
-            self.text_encoder.get_input_embeddings().weight.data[token_id] = embedding
-
-        # offload back
-        if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
+            text_encoder.get_input_embeddings().weight.data[token_id] = embedding
 
 
 class LoraLoaderMixin:
@@ -974,21 +962,6 @@ class LoraLoaderMixin:
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
-        # Remove any existing hooks.
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        recurive = False
-        for _, component in self.components.items():
-            if isinstance(component, nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    recurive = is_sequential_cpu_offload
-                    remove_hook_from_module(component, recurse=recurive)
-
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
         self.load_lora_into_text_encoder(
@@ -997,12 +970,6 @@ class LoraLoaderMixin:
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
         )
-
-        # Offload back.
-        if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
 
     @classmethod
     def lora_state_dict(
