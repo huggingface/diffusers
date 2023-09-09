@@ -83,7 +83,7 @@ EXAMPLE_DOC_STRING = """
         ...     height=512,
         ...     width=512,
         ...     )
-        >>> output[0].save("kettle_new.png")
+        >>> output[0][0].save("kettle_new.png")
         ```
 """
 
@@ -143,10 +143,6 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             image_processor=image_processor,
         )
         self.register_to_config(ctx_begin_pos=ctx_begin_pos, mean=mean, std=std)
-
-    # TODO Complete this function
-    def check_inputs(self, prompt, reference_image, source_subject_category, target_subject_category):
-        pass
 
     def get_query_embeddings(self, input_image, src_subject):
         return self.qformer(image_input=input_image, text_input=src_subject, return_dict=False)
@@ -331,9 +327,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         extra_set_kwargs = {}
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
-        iterator = tqdm.tqdm(self.scheduler.timesteps)
-
-        for i, t in enumerate(iterator):
+        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             do_classifier_free_guidance = guidance_scale > 1.0
 
