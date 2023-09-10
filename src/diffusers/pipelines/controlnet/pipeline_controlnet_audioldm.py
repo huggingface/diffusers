@@ -430,8 +430,8 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
                     instrument.is_drum = False
             piano_roll_ = midi_.get_piano_roll(pedal_threshold=None, fs=200)
             piano_roll_ = piano_roll_[:,:int(audio_length_in_s*200)]
-            if piano_roll_.shape[1] < int(audio_length_in_s*200):
-                piano_roll_ = np.pad(piano_roll_, [(0, 0), (0, int(audio_length_in_s*200)-piano_roll_.shape[1])])
+            if piano_roll_.shape[1] < int(audio_length_in_s*200)-1:
+                piano_roll_ = np.pad(piano_roll_, [(0, 0), (0, int(audio_length_in_s*200)-piano_roll_.shape[1]-1)])
             piano_roll_ = piano_roll_.T[None,None,:,:]
             piano_roll.append(piano_roll_)
         
@@ -757,3 +757,4 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
             return (audio,)
 
         return AudioPipelineOutput(audios=audio)
+        
