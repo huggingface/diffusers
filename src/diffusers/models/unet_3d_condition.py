@@ -121,7 +121,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
-        use_linear_projection: bool = True,
         use_temporal_transformer: bool = True,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
     ):
@@ -214,7 +213,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 cross_attention_dim=cross_attention_dim,
                 num_attention_heads=num_attention_heads[i],
                 downsample_padding=downsample_padding,
-                use_linear_projection=use_linear_projection,
             )
             self.down_blocks.append(down_block)
 
@@ -229,7 +227,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
-            use_linear_projection=use_linear_projection,
         )
 
         # count how many layers upsample the videos
@@ -267,7 +264,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                use_linear_projection=use_linear_projection,
                 num_attention_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=False,
             )
@@ -501,7 +497,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet3DConditionOutput, Tuple]:
-        # TODO: Verify sample input shape
         r"""
         The [`UNet3DConditionModel`] forward method.
 
