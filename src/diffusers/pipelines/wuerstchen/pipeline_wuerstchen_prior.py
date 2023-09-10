@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import ceil
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Callable
 
 import numpy as np
 import torch
@@ -274,6 +274,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -314,6 +316,12 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
 
         Examples:
 
@@ -365,7 +373,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents, self.scheduler)
 
         # 6. Run denoising loop
-        for t in self.progress_bar(timesteps[:-1]):
+        for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
 
             # 7. Denoise image embeddings
@@ -389,6 +397,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 sample=latents,
                 generator=generator,
             ).prev_sample
+
+            if callback is not None and i % callback_steps == 0:
+                r = callback(i, t, r)
 
         # 10. Denormalize the latents
         latents = latents * self.config.latent_mean - self.config.latent_std

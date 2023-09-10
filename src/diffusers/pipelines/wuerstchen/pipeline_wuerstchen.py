@@ -338,7 +338,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         # 3. Determine latent shape of latents
         latent_height = int(image_embeddings.size(2) * self.config.latent_dim_scale)
         latent_width = int(image_embeddings.size(3) * self.config.latent_dim_scale)
-        latent_features_shape = (image_embeddings.size(0) * num_images_per_prompt, 4, latent_height, latent_width)
+        latent_features_shape = (image_embeddings.size(0), 4, latent_height, latent_width)
 
         # 4. Prepare and set timesteps
         if timesteps is not None:
