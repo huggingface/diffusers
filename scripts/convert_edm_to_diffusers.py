@@ -9,8 +9,32 @@ from diffusers import (
     UNet2DModel,
 )
 
+EDM_TEST_UNET_CONFIG = {
+    "sample_size": 32,
+    "in_channels": 3,
+    "out_channels": 3,
+    "time_embedding_type": "positional",
+    "freq_shift": 0,
+    "flip_sin_to_cos": True,
+    "layers_per_block": 2,
+    "num_class_embeds": 1000,
+    "block_out_channels": [64, 128],
+    "attention_head_dim": 64,
+    "down_block_types": [
+        "ResnetDownsampleBlock2D",  # TODO: want downsample to be resnet w/ conv downsample at end??
+        "AttnDownBlock2D",
+    ],
+    "up_block_types": [
+        "AttnUpBlock2D",
+        "ResnetUpsampleBlock2D",
+    ],
+    "resnet_time_scale_shift": "scale_shift",
+    "upsample_type": "resnet",
+    "downsample_type": "resnet",
+    "act_fn": "silu",
+}
 
-TEST_UNET_CONFIG = {
+CM_TEST_UNET_CONFIG = {
     "sample_size": 32,
     "in_channels": 3,
     "out_channels": 3,
@@ -23,6 +47,31 @@ TEST_UNET_CONFIG = {
         "AttnDownBlock2D",
     ],
     "up_block_types": [
+        "AttnUpBlock2D",
+        "ResnetUpsampleBlock2D",
+    ],
+    "resnet_time_scale_shift": "scale_shift",
+    "upsample_type": "resnet",
+    "downsample_type": "resnet",
+}
+
+EDM_IMAGENET_64_UNET_CONFIG = {
+    "sample_size": 64,
+    "in_channels": 3,
+    "out_channels": 3,
+    "layers_per_block": 3,
+    "num_class_embeds": 1000,
+    "block_out_channels": [192, 192 * 2, 192 * 3, 192 * 4],
+    "attention_head_dim": 64,
+    "down_block_types": [
+        "ResnetDownsampleBlock2D",
+        "AttnDownBlock2D",
+        "AttnDownBlock2D",
+        "AttnDownBlock2D",
+    ],
+    "up_block_types": [
+        "AttnUpBlock2D",
+        "AttnUpBlock2D",
         "AttnUpBlock2D",
         "ResnetUpsampleBlock2D",
     ],
@@ -85,7 +134,15 @@ CM_LSUN_256_UNET_CONFIG = {
     "downsample_type": "resnet",
 }
 
-CM_EDM_SCHEDULER_CONFIG = {
+EDM_SCHEDULER_CONFIG = {
+    "num_train_timesteps": 256,
+    "sigma_min": 0.05,
+    "sigma_max": 50.0,
+    "s_churn": 40.0,
+    "s_noise": 1.003,
+}
+
+CM_SCHEDULER_CONFIG = {
     "num_train_timesteps": 40,
     "sigma_min": 0.002,
     "sigma_max": 80.0,
@@ -250,48 +307,61 @@ def convert_cm_edm_to_diffusers(checkpoint_path: str, unet_config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--unet_path", default=None, type=str, required=True, help="Path to the unet.pt to convert.")
+    parser.add_argument("--unet_path", type=str, default=None, required=True, help="Path to the unet.pt to convert.")
     parser.add_argument(
-        "--dump_path", default=None, type=str, required=True, help="Path to output the converted UNet model."
+        "--dump_path", type=str, default=None, required=True, help="Path to output the converted UNet model."
+    )
+    parser.add_argument(
+        "--implementation",
+        type=str,
+        default="edm",
+        help="The implementation of the checkpoint. Currently 'edm' and 'cm_edm' are supported.",
     )
     parser.add_argument("--class_cond", action="store_true", help="Whether the model is class-conditional.")
-    parser.add_argument(
-        "--cm_edm",
-        action="store_true",
-        help="Whether the checkpoint is a consistency models EDM implementation checkpoint.",
-    )
 
     args = parser.parse_args()
 
     ckpt_name = os.path.basename(args.unet_path)
     print(f"Checkpoint: {ckpt_name}")
 
+    if args.implementation not in ["edm", "cm_edm"]:
+        raise ValueError(
+            f"Implementation type {args.implementation} is not supported. Currently supported implementation types are"
+            " 'edm' and 'cm_edm'."
+        )
+
     # Get U-Net config
-    if args.cm_edm:
+    if args.implementation == "edm":
+        if "test" in ckpt_name:
+            unet_config = EDM_TEST_UNET_CONFIG
+        else:
+            unet_config = EDM_IMAGENET_64_UNET_CONFIG
+    elif args.implementation == "cm_edm":
         if "imagenet64" in ckpt_name:
             unet_config = CM_IMAGENET_64_UNET_CONFIG
         elif "256" in ckpt_name and (("bedroom" in ckpt_name) or ("cat" in ckpt_name)):
             unet_config = CM_LSUN_256_UNET_CONFIG
         elif "test" in ckpt_name:
-            unet_config = TEST_UNET_CONFIG
+            unet_config = CM_TEST_UNET_CONFIG
         else:
             raise ValueError(f"CM checkpoint type {ckpt_name} is not currently supported.")
-    else:
-        raise NotImplementedError("Original EDM implementation checkpoints are currently not supported.")
 
     if not args.class_cond:
         unet_config["num_class_embeds"] = None
 
-    converted_unet_ckpt = convert_cm_edm_to_diffusers(args.unet_path, unet_config)
+    if args.implementation == "edm":
+        raise NotImplementedError("Converting EDM checkpoints is not yet supported.")
+    elif args.implementation == "cm_edm":
+        converted_unet_ckpt = convert_cm_edm_to_diffusers(args.unet_path, unet_config)
 
     image_unet = UNet2DModel(**unet_config)
     image_unet.load_state_dict(converted_unet_ckpt)
 
     # Get scheduler config
-    if args.cm_edm:
-        scheduler_config = CM_EDM_SCHEDULER_CONFIG
-    else:
-        raise NotImplementedError("Original EDM implementation checkpoints are not currently supported.")
+    if args.implementation == "edm":
+        scheduler_config = EDM_SCHEDULER_CONFIG
+    elif args.implementation == "cm_edm":
+        scheduler_config = CM_SCHEDULER_CONFIG
 
     edm_scheduler = KarrasEDMScheduler(**scheduler_config)
 
