@@ -126,7 +126,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.precondition_type = precondition_type
         self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = self.precondition_inputs(self.sigmas)
+        self.timesteps = self.precondition_noise(self.sigmas)
 
         self.custom_timesteps = False
         self.is_scale_input_called = False
@@ -156,6 +156,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
     def state_in_first_order(self):
         return self.dt is None
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
@@ -272,6 +273,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
         timesteps: Optional[List[int]] = None,
+        num_train_timesteps: Optional[int] = None,
     ):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -374,7 +376,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         timesteps[0::2] = sigma_hats
         timesteps[1::2] = sigmas[1:]
 
-        self.sigmas = torch.from_numpy(sigmas).to(device=device)
+        sigmas = torch.from_numpy(sigmas).to(device=device)
         # Magic to convert sigmas from [sigma_1, sigma_2, ..., sigma_n, 0.0] to
         # [sigma_1, sigma_2, sigma_2, sigma_3, sigma_3, ..., sigma_n, sigma_n, 0.0]
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
@@ -527,7 +529,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (sample_input / (sigma_input**2 + 1))
         elif self.config.prediction_type == "edm":
             # Apply output preconditioning
-            pred_original_sample = self.precondition_inputs(sample_input, model_output, sigma_input)
+            pred_original_sample = self.precondition_outputs(sample_input, model_output, sigma_input)
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
