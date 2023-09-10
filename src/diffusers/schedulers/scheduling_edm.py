@@ -136,14 +136,10 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
-        # if self.config.timestep_spacing in ["linspace", "trailing"]:
-        #     return self.sigmas.max()
+        if self.config.timestep_spacing in ["linspace", "trailing"]:
+            return self.config.sigma_max
 
-        # return (self.sigmas.max() ** 2 + 1) ** 0.5
-
-        # Initial latents are not scaled.
-        # TODO: check that this is correct
-        return 1.0
+        return self.config.sigma_max
 
     @property
     def step_index(self):
