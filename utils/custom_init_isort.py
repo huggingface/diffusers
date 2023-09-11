@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Utility that sorts the imports in the custom inits of Transformers. Transformers uses init files that delay the
+Utility that sorts the imports in the custom inits of Diffusers. Diffusers uses init files that delay the
 import of an object to when it's actually needed. This is to avoid the main init importing all models, which would
 make the line `import transformers` very slow when the user has all optional dependencies installed. The inits with
 delayed imports have two halves: one definining a dictionary `_import_structure` which maps modules to the name of the
