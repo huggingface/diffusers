@@ -221,7 +221,7 @@ In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-de
 
 [cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
 
-With LoRA, it's possible to fine-tune Kandinsky2.2 on a custom image-caption pair dataset
+With LoRA, it's possible to fine-tune Kandinsky 2.2 on a custom image-caption pair dataset
 on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
