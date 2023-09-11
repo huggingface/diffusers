@@ -55,7 +55,7 @@ If you're using **PyTorch 1.13**, you need to "prime" the pipeline with an addit
   image = pipe(prompt).images[0]
 ```
 
-## Recommendation
+## Troubleshoot
 
 M1/M2 performance is very sensitive to memory pressure. When this occurs, the system automatically swaps if it needs to which significantly degrades performance.
 

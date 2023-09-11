@@ -76,6 +76,6 @@ prompt = "sailing ship in storm by Rembrandt"
 image = pipeline(prompt).images[0]
 ```
 
-To further speed-up inference, statically reshape the model as shown in the [Stable Diffusion](#stable-diffusion) section.
+To further speed-up inference, [statically reshape](#stable-diffusion) the model as shown in the Stable Diffusion section.
 
-You can find more examples in the 🤗 Optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion-xl), and SDXL is supported for text-to-image and image-to-image.
+You can find more examples in the 🤗 Optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion-xl), and running SDXL in OpenVINO is supported for text-to-image and image-to-image.

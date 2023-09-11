@@ -84,4 +84,4 @@ To export the pipeline in the ONNX format and use it later for inference, use th
 optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl sd_xl_onnx/
 ```
 
-SDXL is supported for text-to-image and image-to-image.
+SDXL in the ONNX format is supported for text-to-image and image-to-image.
