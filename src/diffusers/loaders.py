@@ -2381,7 +2381,7 @@ class FromOriginalVAEMixin:
             vae.load_state_dict(converted_vae_checkpoint)
 
         if torch_dtype is not None:
-            vae.to(torch_dtype=torch_dtype)
+            vae.to(dtype=torch_dtype)
 
         return vae
 
