@@ -78,8 +78,8 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_decoder.py \
 <!-- accelerate_snippet_end -->
 
 
-To run on your own training files prepare the dataset according to the format required by `datasets`, you can find the instructions for how to do that in this [document](https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder-with-metadata).
-If you wish to use custom loading logic, you should modify the script, we have left pointers for that in the training script.
+To train on your own training files, prepare the dataset according to the format required by `datasets`. You can find the instructions for how to do that in the [ImageFolder with metadata](https://huggingface.co/docs/datasets/en/image_load#imagefolder-with-metadata) guide.
+If you wish to use custom loading logic, you should modify the script and we have left pointers for that in the training script.
 
 ```bash
 export TRAIN_DIR="path_to_your_dataset"
