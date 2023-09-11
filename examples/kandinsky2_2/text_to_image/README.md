@@ -8,7 +8,6 @@ ___This script is experimental. The script fine-tunes the whole model and often 
 
 
 ## Running locally with PyTorch
-### Installing the dependencies
 
 Before running the scripts, make sure to install the library's training dependencies:
 
