@@ -204,9 +204,9 @@ accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image_deco
 
 #### Training with Min-SNR weighting
 
-We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence
-by rebalancing the loss. In order to use it, one needs to set the `--snr_gamma` argument. The recommended
-value when using it is 5.0. 
+We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps achieve faster convergence
+by rebalancing the loss. Enable the `--snr_gamma` argument and set it to the recommended
+value of 5.0.
 
 
 ## Training with LoRA
