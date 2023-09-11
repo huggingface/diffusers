@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2021 The HuggingFace Inc. team.
+# Copyright 2023 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -270,7 +270,12 @@ def sort_imports(file: str, check_only: bool = True):
 
         # Ignore beginning and last line: they don't contain anything.
         internal_block_code = "\n".join(block_lines[line_idx:-1])
-        indent = get_indent(block_lines[1])
+        try:
+            indent = get_indent(block_lines[1])
+        except:
+            import ipdb
+
+            ipdb.set_trace()
         # Slit the internal block into blocks of indent level 1.
         internal_blocks = split_code_in_indented_blocks(internal_block_code, indent_level=indent)
         # We have two categories of import key: list or _import_structure[key].append/extend
