@@ -17,46 +17,123 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-from diffusers import DDIMScheduler, TextToVideoZeroSDXLPipeline
+from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
 from diffusers.utils import require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism
 
+enable_full_determinism()
 
 class TextToVideoZeroSDXLPipelineFastTests(unittest.TestCase):
-    def test_forward_loop(self):
-        model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-        pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
-            model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-        ).to(torch_device)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        latents = torch.randn((1, 4, 128, 128), dtype=torch.float32, device=torch_device, generator=generator)
+    def get_dummy_components(self, seed=0):
+        torch.manual_seed(seed)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            # SD2-specific config below
+            attention_head_dim=(2, 4),
+            use_linear_projection=True,
+            addition_embed_type="text_time",
+            addition_time_embed_dim=8,
+            transformer_layers_per_block=(1, 2),
+            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
+            cross_attention_dim=64,
+        )
+        scheduler = DDIMScheduler(
+            num_train_timesteps=1000,
+            beta_start=0.0001,
+            beta_end=0.02,
+            beta_schedule="linear",
+            trained_betas=None,
+            clip_sample=True,
+            set_alpha_to_one=True,
+            steps_offset=0,
+            prediction_type="epsilon",
+            thresholding=False,
+            dynamic_thresholding_ratio=0.995,
+            clip_sample_range=1.0,
+            sample_max_value=1.0,
+            timestep_spacing="leading",
+            rescale_betas_zero_snr=False,
+        )
+        torch.manual_seed(seed)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+            sample_size=128,
+        )
+        torch.manual_seed(seed)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            # SD2-specific config below
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        output = pipe.forward_loop(latents, t0=10, t1=30, generator=generator).cpu().numpy()
+        text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        slice1 = output[0, -1, -3:, -3:]
-        slice2 = output[-1, 0, -3:, -3:]
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer_2": tokenizer_2,
+            # "safety_checker": None,
+            # "feature_extractor": None,
+        }
+        return components
 
-        if torch_device == "cuda":
-            expected_slice1 = np.array([0.25, 2.51, -0.95, 0.93, -3.50, -1.03, 0.63, -1.14, -0.81])
-            expected_slice2 = np.array([-0.45, -0.63, 0.93, 0.22, 0.86, -0.04, -0.08, -0.43, -3.12])
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
         else:
-            expected_slice1 = np.array([0.70, -1.63, 0.43, 0.20, -1.46, -0.08, -0.11, 0.40, -1.53])
-            expected_slice2 = np.array([1.26, 0.53, 1.43, -0.36, -0.62, -0.26, 0.07, -1.22, -0.96])
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A panda dancing in Antarctica",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 9.0,
+            "output_type": "np",
+        }
+        return inputs
 
-        assert np.abs(slice1.flatten() - expected_slice1).max() < 1e-2
-        assert np.abs(slice2.flatten() - expected_slice2).max() < 1e-2
+    def get_generator(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        return generator
 
-    def test_full_model(self):
-        model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+    def test_text_to_video_zero_sdxl(self):
+        components = self.get_dummy_components()
+        pipe = TextToVideoZeroSDXLPipeline(**components)
+        pipe = pipe.to(torch_device)
 
-        pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
-            model_id, torch_dtype=torch.float32, use_safetensors=True
-        ).to(torch_device)
-
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-
+        generator = self.get_generator(torch_device)
+        
         prompt = "A panda dancing in Antarctica"
         result = pipe(
             prompt=prompt,
@@ -74,11 +151,11 @@ class TextToVideoZeroSDXLPipelineFastTests(unittest.TestCase):
         last_frame_slice = result[-1, -3:, -3:, 0]
 
         if torch_device == "cuda":
-            expected_slice1 = np.array([0.044, 0.061, 0.066, 0.124, 0.134, 0.135, 0.211, 0.220, 0.200])
-            expected_slice2 = np.array([0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.076, 0.075, 0.064])
+            expected_slice1 = np.array([0.50, 0.39, 0.65, 0.42, 0.24, 0.46, 0.49, 0.50, 0.47])
+            expected_slice2 = np.array([0.38, 0.55, 0.69, 0.44, 0.40, 0.47, 0.57, 0.47, 0.48])
         else:
-            expected_slice1 = np.array([0.005, 0.005, 0.017, 0.004, 0.011, 0.013, 0.020, 0.034, 0.022])
-            expected_slice2 = np.array([0.009, 0.000, 0.000, 0.008, 0.000, 0.000, 0.000, 0.000, 0.000])
+            expected_slice1 = np.array([0.37, 0.42, 0.48, 0.39, 0.43, 0.43, 0.49, 0.51, 0.54])
+            expected_slice2 = np.array([0.39, 0.44, 0.48, 0.57, 0.35, 0.52, 0.68, 0.60, 0.53])
 
         assert np.abs(first_frame_slice.flatten() - expected_slice1).max() < 1e-2
         assert np.abs(last_frame_slice.flatten() - expected_slice2).max() < 1e-2
