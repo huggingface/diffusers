@@ -159,7 +159,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_prior.py \
 <!-- accelerate_snippet_end -->
 
 
-To perform inference with the fune-tuned prior model, you will need to first create a prior pipeline by passing the `output_dir` to `DiffusionPpeline`, and then you can create a `KandinskyV22CombinedPipeline` with a pretrained or fine-tuned decoder checkpoint, along with all the modules of the prior pipeline you just created. 
+To perform inference with the fine-tuned prior model, you will need to first create a prior pipeline by passing the `output_dir` to `DiffusionPipeline`. Then create a `KandinskyV22CombinedPipeline` from a pretrained or fine-tuned decoder checkpoint along with all the modules of the prior pipeline you just created. 
 
 ```python
 from diffusers import AutoPipelineForText2Image, DiffusionPipeline
