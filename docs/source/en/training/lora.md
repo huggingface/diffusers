@@ -341,7 +341,7 @@ images_fusion = pipe(
 
 Let's say you want to load the pipeline above that has its UNet fused with the LoRA parameters. You can easily do so by simply calling the `save_pretrained()` method on `pipe`. 
 
-More generally, after loading the LoRA parameters into a pipeline, if you want to serialize the pipeline such as the affected model components are already fused with the LoRA paraemetrs, you should:
+After loading the LoRA parameters into a pipeline, if you want to serialize the pipeline such that the affected model components are already fused with the LoRA parameters, you should:
 
 * call `fuse_lora()` on the pipeline with the desired `lora_scale`, given you've already loaded the LoRA parameters into it.
 * call `save_pretrained()` on the pipeline. 
@@ -364,7 +364,7 @@ pipe.fuse_lora()
 pipe.save_pretrained("my-pipeline-with-fused-lora", safe_serialization=True)
 ```
 
-Now, you can load the pipeline and directly perform inference without having to load the loRA parameters again:
+Now, you can load the pipeline and directly perform inference without having to load the LoRA parameters again:
 
 ```python
 from diffusers import DiffusionPipeline
