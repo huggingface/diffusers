@@ -51,7 +51,7 @@ class SafetyConfig(object):
 _dummy_objects = {}
 _additional_imports = {}
 _import_structure = {
-    "pipeline_output": ["StableDiffusionPipelineOutput"],
+    "pipeline_output": ["StableDiffusionSafePipelineOutput"],
     "pipeline_stable_diffusion": ["StableDiffusionPipeline"],
     "safety_checker": ["StableDiffusionSafetyChecker"],
 }
