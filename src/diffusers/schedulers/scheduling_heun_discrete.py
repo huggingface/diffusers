@@ -428,18 +428,19 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 gamma = 0
             sigma_hat = sigma * (gamma + 1)
             sigma_hats.append(sigma_hat)
-
-        # 5. Finish processing sigmas and timesteps
-        sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigma_hats = np.asarray(sigma_hats, dtype=sigmas.dtype)
+
+        # 5. Calculate timestep schedule from sigmas and sigma_hats
         # TODO: fix the condition here (should also be applicable when we're not using custom timesteps?)
         if self.custom_timesteps:
             # In the sampling loop, we want to output timesteps in the following order:
             # [sigma_hat_0, sigma_1, sigma_hat_1, sigma_2, ..., sigma_hat_{n - 1}, 0]
-            timesteps = np.empty((sigma_hats.size + sigmas.size - 2,), dtype=sigmas.dtype)
+            timesteps = np.empty((sigma_hats.size + sigmas.size - 1,), dtype=sigmas.dtype)
             timesteps[0::2] = sigma_hats
-            timesteps[1::2] = sigmas[1:-1]
+            timesteps[1::2] = sigmas[1:]
 
+        # 6. Finish processing sigmas and timesteps
+        sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
         # [sigma_0, sigma_1, sigma_2, ..., sigma_{n - 1}, 0] ->
         # [sigma_0, sigma_1, sigma_1, sigma_2, sigma_2, ...,sigma_{n - 1}, sigma_{n - 1}, 0]
@@ -459,12 +460,12 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = timesteps.to(device=device)
 
-        # 6. Empty dt and derivative to set scheduler to first order mode
+        # 7. Empty dt and derivative to set scheduler to first order mode
         self.prev_derivative = None
         self.dt = None
         self.sample_hat = None
 
-        # 7. Reset _step_index
+        # 8. Reset _step_index
         self._step_index = None
 
         # (YiYi Notes: keep this for now since we are keeping add_noise function which use index_for_timestep)
