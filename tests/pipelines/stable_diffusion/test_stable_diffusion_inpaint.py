@@ -36,12 +36,17 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    nightly,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    slow,
+    torch_device,
 )
 
 from ...models.test_models_unet_2d_condition import create_lora_layers

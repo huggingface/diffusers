@@ -22,8 +22,7 @@ from transformers import CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModel
 
 from diffusers import HeunDiscreteScheduler, PriorTransformer, ShapEImg2ImgPipeline
 from diffusers.pipelines.shap_e import ShapERenderer
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow
-from diffusers.utils.testing_utils import require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import floats_tensor, load_image, load_numpy, require_torch_gpu, slow, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
