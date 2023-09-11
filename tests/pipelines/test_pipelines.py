@@ -62,24 +62,24 @@ from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
-    floats_tensor,
-    is_compiled_module,
-    nightly,
-    require_torch_2,
-    slow,
-    torch_device,
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    floats_tensor,
     get_tests_dir,
     load_numpy,
+    nightly,
     require_compel,
     require_flax,
     require_onnxruntime,
+    require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    slow,
+    torch_device,
 )
+from diffusers.utils.torch_utils import is_compiled_module
 
 
 enable_full_determinism()

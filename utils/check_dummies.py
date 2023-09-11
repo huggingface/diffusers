@@ -71,24 +71,27 @@ def read_init():
 
     # Get to the point we do the actual imports for type checking
     line_index = 0
+    while not lines[line_index].startswith("if TYPE_CHECKING"):
+        line_index += 1
+
     backend_specific_objects = {}
     # Go through the end of the file
     while line_index < len(lines):
         # If the line contains is_backend_available, we grab all objects associated with the `else` block
         backend = find_backend(lines[line_index])
         if backend is not None:
-            while not lines[line_index].startswith("else:"):
+            while not lines[line_index].startswith("    else:"):
                 line_index += 1
             line_index += 1
             objects = []
             # Until we unindent, add backend objects to the list
-            while line_index < len(lines) and len(lines[line_index]) > 1:
+            while len(lines[line_index]) <= 1 or lines[line_index].startswith(" " * 8):
                 line = lines[line_index]
                 single_line_import_search = _re_single_line_import.search(line)
                 if single_line_import_search is not None:
                     objects.extend(single_line_import_search.groups()[0].split(", "))
-                elif line.startswith(" " * 8):
-                    objects.append(line[8:-2])
+                elif line.startswith(" " * 12):
+                    objects.append(line[12:-2])
                 line_index += 1
 
             if len(objects) > 0:
