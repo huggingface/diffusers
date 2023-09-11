@@ -25,9 +25,9 @@ from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .renderer import ShapERenderer
 

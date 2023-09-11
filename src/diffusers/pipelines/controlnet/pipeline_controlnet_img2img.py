@@ -30,11 +30,10 @@ from ...utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
-    is_compiled_module,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
