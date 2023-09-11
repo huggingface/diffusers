@@ -24,7 +24,7 @@ else:
     _import_structure["modeling_wuerstchen_prior"] = ["WuerstchenPrior"]
     _import_structure["pipeline_wuerstchen"] = ["WuerstchenDecoderPipeline"]
     _import_structure["pipeline_wuerstchen_combined"] = ["WuerstchenCombinedPipeline"]
-    _import_structure["pipeline_wuerstchen_prior"] = ["WuerstchenPriorPipeline"]
+    _import_structure["pipeline_wuerstchen_prior"] = ["DEFAULT_STAGE_C_TIMESTEPS", "WuerstchenPriorPipeline"]
 
 
 import sys

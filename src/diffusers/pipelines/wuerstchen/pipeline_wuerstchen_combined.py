@@ -31,9 +31,9 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
         ```py
         >>> from diffusions import WuerstchenCombinedPipeline
 
-        >>> pipe = WuerstchenCombinedPipeline.from_pretrained(
-        ...     "warp-diffusion/Wuerstchen", torch_dtype=torch.float16
-        ... ).to("cuda")
+        >>> pipe = WuerstchenCombinedPipeline.from_pretrained("warp-ai/Wuerstchen", torch_dtype=torch.float16).to(
+        ...     "cuda"
+        ... )
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> images = pipe(prompt=prompt)
         ```
@@ -145,16 +145,16 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        guidance_scale: float = 4.0,
-        num_images_per_prompt: int = 1,
         height: int = 512,
         width: int = 512,
-        prior_guidance_scale: float = 4.0,
         prior_num_inference_steps: int = 60,
-        num_inference_steps: int = 12,
         prior_timesteps: Optional[List[float]] = None,
-        timesteps: Optional[List[float]] = None,
+        prior_guidance_scale: float = 4.0,
+        num_inference_steps: int = 12,
+        decoder_timesteps: Optional[List[float]] = None,
+        decoder_guidance_scale: float = 0.0,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -182,19 +182,20 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked
                 to the text `prompt`, usually at the expense of lower image quality.
             prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 30):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                The number of prior denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized
                 `prior_timesteps`
             num_inference_steps (`int`, *optional*, defaults to 12):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. For more specific timestep spacing, you can pass customized `timesteps`
+                The number of decoder denoising steps. More denoising steps usually lead to a higher quality image at
+                the expense of slower inference. For more specific timestep spacing, you can pass customized
+                `timesteps`
             prior_timesteps (`List[float]`, *optional*):
                 Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced
                 `prior_num_inference_steps` timesteps are used. Must be in descending order.
-            timesteps (`List[float]`, *optional*):
+            decoder_timesteps (`List[float]`, *optional*):
                 Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced
-                `decoder_num_inference_steps` timesteps are used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 4.0):
+                `num_inference_steps` timesteps are used. Must be in descending order.
+            decoder_guidance_scale (`float`, *optional*, defaults to 0.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -221,27 +222,28 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         """
         prior_outputs = self.prior_pipe(
             prompt=prompt,
-            negative_prompt=negative_prompt,
-            width=width,
             height=height,
-            num_images_per_prompt=num_images_per_prompt,
+            width=width,
             num_inference_steps=prior_num_inference_steps,
             timesteps=prior_timesteps,
+            guidance_scale=prior_guidance_scale,
+            negative_prompt=negative_prompt,
+            num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             latents=latents,
-            guidance_scale=prior_guidance_scale,
             output_type="pt",
             return_dict=False,
         )
         image_embeddings = prior_outputs[0]
 
         outputs = self.decoder_pipe(
-            prompt=prompt,
             image_embeddings=image_embeddings,
+            prompt=prompt,
             num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
+            timesteps=decoder_timesteps,
+            guidance_scale=decoder_guidance_scale,
+            negative_prompt=negative_prompt,
             generator=generator,
-            guidance_scale=guidance_scale,
             output_type=output_type,
             return_dict=return_dict,
         )
