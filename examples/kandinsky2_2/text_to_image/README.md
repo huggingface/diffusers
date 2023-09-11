@@ -289,7 +289,7 @@ image = pipe(prompt=prompt).images[0]
 image.save("robot_pokemon.png")
 ```
 
-#### Inference using fine-tuned LoRA checkpoint for Prior
+#### Inference using fine-tuned LoRA checkpoint for prior
 
 ```python
 from diffusers import AutoPipelineForText2Image
