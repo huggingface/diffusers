@@ -9,8 +9,8 @@ from ...utils import (
 )
 
 
-_import_structure = {}
 _dummy_objects = {}
+_import_structure = {}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -20,11 +20,11 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["pipeline_output"] = ["AltDiffusionPipelineOutput"]
     _import_structure["modeling_roberta_series"] = ["RobertaSeriesModelWithTransformation"]
     _import_structure["pipeline_alt_diffusion"] = ["AltDiffusionPipeline"]
     _import_structure["pipeline_alt_diffusion_img2img"] = ["AltDiffusionImg2ImgPipeline"]
 
+    _import_structure["pipeline_output"] = ["AltDiffusionPipelineOutput"]
 
 if TYPE_CHECKING:
     try:

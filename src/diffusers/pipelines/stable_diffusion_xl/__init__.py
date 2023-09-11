@@ -9,10 +9,8 @@ from ...utils import (
 )
 
 
-_import_structure = {}
 _dummy_objects = {}
-
-_import_structure["pipeline_output"] = ["StableDiffusionXLPipelineOutput"]
+_import_structure = {"pipeline_output": ["StableDiffusionXLPipelineOutput"]}
 
 try:
     if not (is_transformers_available() and is_torch_available()):

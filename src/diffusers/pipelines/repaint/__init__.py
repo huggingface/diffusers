@@ -3,8 +3,7 @@ from typing import TYPE_CHECKING
 from ...utils import _LazyModule
 
 
-_import_structure = {}
-_import_structure["pipeline_repaint"] = ["RePaintPipeline"]
+_import_structure = {"pipeline_repaint": ["RePaintPipeline"]}
 
 if TYPE_CHECKING:
     from .pipeline_repaint import RePaintPipeline

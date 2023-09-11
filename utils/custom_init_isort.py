@@ -270,12 +270,7 @@ def sort_imports(file: str, check_only: bool = True):
 
         # Ignore beginning and last line: they don't contain anything.
         internal_block_code = "\n".join(block_lines[line_idx:-1])
-        try:
-            indent = get_indent(block_lines[1])
-        except:
-            import ipdb
-
-            ipdb.set_trace()
+        indent = get_indent(block_lines[1])
         # Slit the internal block into blocks of indent level 1.
         internal_blocks = split_code_in_indented_blocks(internal_block_code, indent_level=indent)
         # We have two categories of import key: list or _import_structure[key].append/extend

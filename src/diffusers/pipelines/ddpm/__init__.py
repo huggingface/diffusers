@@ -5,8 +5,7 @@ from ...utils import (
 )
 
 
-_import_structure = {}
-_import_structure["pipeline_ddpm"] = ["DDPMPipeline"]
+_import_structure = {"pipeline_ddpm": ["DDPMPipeline"]}
 
 if TYPE_CHECKING:
     from .pipeline_ddpm import DDPMPipeline

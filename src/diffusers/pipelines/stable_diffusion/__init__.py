@@ -14,11 +14,10 @@ from ...utils import (
 )
 
 
-_import_structure = {}
-_additional_imports = {}
 _dummy_objects = {}
+_additional_imports = {}
+_import_structure = {"pipeline_output": ["StableDiffusionPipelineOutput"]}
 
-_import_structure["pipeline_output"] = ["StableDiffusionPipelineOutput"]
 if is_transformers_available() and is_flax_available():
     _import_structure["pipeline_output"].extend(["FlaxStableDiffusionPipelineOutput"])
 try:
@@ -29,10 +28,13 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["clip_image_project_model"] = ["CLIPImageProjection"]
     _import_structure["pipeline_cycle_diffusion"] = ["CycleDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion"] = ["StableDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["pipeline_stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
+    _import_structure["pipeline_stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
+    _import_structure["pipeline_stable_diffusion_gligen_text_image"] = ["StableDiffusionGLIGENTextImagePipeline"]
     _import_structure["pipeline_stable_diffusion_img2img"] = ["StableDiffusionImg2ImgPipeline"]
     _import_structure["pipeline_stable_diffusion_inpaint"] = ["StableDiffusionInpaintPipeline"]
     _import_structure["pipeline_stable_diffusion_inpaint_legacy"] = ["StableDiffusionInpaintPipelineLegacy"]
@@ -48,9 +50,6 @@ else:
     _import_structure["pipeline_stable_unclip_img2img"] = ["StableUnCLIPImg2ImgPipeline"]
     _import_structure["safety_checker"] = ["StableDiffusionSafetyChecker"]
     _import_structure["stable_unclip_image_normalizer"] = ["StableUnCLIPImageNormalizer"]
-    _import_structure["pipeline_stable_diffusion_gligen_text_image"] = ["StableDiffusionGLIGENTextImagePipeline"]
-    _import_structure["pipeline_stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
-    _import_structure["clip_image_project_model"] = ["CLIPImageProjection"]
 try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
         raise OptionalDependencyNotAvailable()

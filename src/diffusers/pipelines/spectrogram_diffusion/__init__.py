@@ -9,8 +9,8 @@ from ...utils import (
     get_objects_from_module,
 )
 
-_import_structure = {}
 _dummy_objects = {}
+_import_structure = {}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -20,8 +20,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["notes_encoder"] = ["SpectrogramNotesEncoder"]
     _import_structure["continous_encoder"] = ["SpectrogramContEncoder"]
+    _import_structure["notes_encoder"] = ["SpectrogramNotesEncoder"]
     _import_structure["pipeline_spectrogram_diffusion"] = [
         "SpectrogramContEncoder",
         "SpectrogramDiffusionPipeline",

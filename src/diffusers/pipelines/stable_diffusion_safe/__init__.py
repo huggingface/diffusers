@@ -16,11 +16,6 @@ from ...utils import (
 )
 
 
-_import_structure = {}
-_dummy_objects = {}
-_additional_imports = {}
-
-
 @dataclass
 class SafetyConfig(object):
     WEAK = {
@@ -53,9 +48,13 @@ class SafetyConfig(object):
     }
 
 
-_import_structure["pipeline_output"] = ["StableDiffusionSafePipelineOutput"]
-_import_structure["pipeline_stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
-_import_structure["safety_checker"] = ["SafeStableDiffusionSafetyChecker"]
+_dummy_objects = {}
+_additional_imports = {}
+_import_structure = {
+    "pipeline_output": ["StableDiffusionPipelineOutput"],
+    "pipeline_stable_diffusion": ["StableDiffusionPipeline"],
+    "safety_checker": ["StableDiffusionSafetyChecker"],
+}
 _additional_imports.update({"SafetyConfig": SafetyConfig})
 
 

@@ -5,8 +5,7 @@ from ...utils import (
 )
 
 
-_import_structure = {}
-_import_structure["pipeline_consistency_models"] = ["ConsistencyModelPipeline"]
+_import_structure = {"pipeline_consistency_models": ["ConsistencyModelPipeline"]}
 
 if TYPE_CHECKING:
     from .pipeline_consistency_models import ConsistencyModelPipeline

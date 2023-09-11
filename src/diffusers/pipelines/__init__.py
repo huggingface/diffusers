@@ -15,8 +15,8 @@ from ..utils import (
 
 
 # These modules contain pipelines from multiple libraries/frameworks
-_import_structure = {"stable_diffusion": [], "latent_diffusion": [], "controlnet": []}
 _dummy_objects = {}
+_import_structure = {"stable_diffusion": [], "latent_diffusion": [], "controlnet": []}
 
 try:
     if not is_torch_available():
@@ -118,6 +118,8 @@ else:
             "StableDiffusionDepth2ImgPipeline",
             "StableDiffusionDiffEditPipeline",
             "StableDiffusionGLIGENPipeline",
+            "StableDiffusionGLIGENPipeline",
+            "StableDiffusionGLIGENTextImagePipeline",
             "StableDiffusionImageVariationPipeline",
             "StableDiffusionImg2ImgPipeline",
             "StableDiffusionInpaintPipeline",
@@ -134,8 +136,6 @@ else:
             "StableDiffusionUpscalePipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
-            "StableDiffusionGLIGENTextImagePipeline",
-            "StableDiffusionGLIGENPipeline",
         ]
     )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]

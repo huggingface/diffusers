@@ -9,8 +9,9 @@ from ...utils import (
 )
 
 
-_import_structure = {}
 _dummy_objects = {}
+_import_structure = {}
+
 try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.27.0")):
         raise OptionalDependencyNotAvailable()

@@ -3,9 +3,10 @@ from typing import TYPE_CHECKING
 from ...utils import _LazyModule
 
 
-_import_structure = {}
-_import_structure["mel"] = ["Mel"]
-_import_structure["pipeline_audio_diffusion"] = ["AudioDiffusionPipeline"]
+_import_structure = {
+    "mel": ["Mel"],
+    "pipeline_audio_diffusion": ["AudioDiffusionPipeline"],
+}
 
 if TYPE_CHECKING:
     from .mel import Mel

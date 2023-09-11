@@ -3,8 +3,7 @@ from typing import TYPE_CHECKING
 from ...utils import _LazyModule
 
 
-_import_structure = {}
-_import_structure["pipeline_stochastic_karras_ve"] = ["KarrasVePipeline"]
+_import_structure = {"pipeline_stochastic_karras_ve": ["KarrasVePipeline"]}
 
 if TYPE_CHECKING:
     from .pipeline_stochastic_karras_ve import KarrasVePipeline

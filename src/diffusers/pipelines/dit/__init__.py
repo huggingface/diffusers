@@ -3,8 +3,7 @@ from typing import TYPE_CHECKING
 from ...utils import _LazyModule
 
 
-_import_structure = {}
-_import_structure["pipeline_dit"] = ["DiTPipeline"]
+_import_structure = {"pipeline_dit": ["DiTPipeline"]}
 
 if TYPE_CHECKING:
     from .pipeline_dit import DiTPipeline

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from ..utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
+    get_objects_from_module,
     is_flax_available,
     is_scipy_available,
     is_torch_available,
@@ -24,8 +25,8 @@ from ..utils import (
 )
 
 
-_import_structure = {}
 _dummy_modules = {}
+_import_structure = {}
 
 try:
     if not is_torch_available():
@@ -33,12 +34,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils import dummy_pt_objects  # noqa F403
 
-    modules = {}
-    for name in dir(dummy_pt_objects):
-        if (not name.endswith("Scheduler")) or name.startswith("_"):
-            continue
-        modules[name] = getattr(dummy_pt_objects, name)
-    _dummy_modules.update(modules)
+    _dummy_modules.update(get_objects_from_module(dummy_pt_objects))
 
 else:
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
@@ -47,6 +43,7 @@ else:
     _import_structure["scheduling_ddim_parallel"] = ["DDIMParallelScheduler"]
     _import_structure["scheduling_ddpm"] = ["DDPMScheduler"]
     _import_structure["scheduling_ddpm_parallel"] = ["DDPMParallelScheduler"]
+    _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
     _import_structure["scheduling_deis_multistep"] = ["DEISMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
@@ -66,13 +63,15 @@ else:
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
     _import_structure["scheduling_utils"] = ["KarrasDiffusionSchedulers", "SchedulerMixin"]
     _import_structure["scheduling_vq_diffusion"] = ["VQDiffusionScheduler"]
-    _import_structure["scheduling_ddpm_wuerstchen"] = ["DDPMWuerstchenScheduler"]
 
 try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils.dummy_flax_objects import *  # noqa F403
+    from ..utils import dummy_flax_objects  # noqa F403
+
+    _dummy_modules.update(get_objects_from_module(dummy_flax_objects))
+
 else:
     _import_structure["scheduling_ddim_flax"] = ["FlaxDDIMScheduler"]
     _import_structure["scheduling_ddpm_flax"] = ["FlaxDDPMScheduler"]
@@ -95,13 +94,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils import dummy_torch_and_scipy_objects  # noqa F403
 
-    modules = {}
-    for name in dir(dummy_torch_and_scipy_objects):
-        if (not name.endswith("Scheduler")) or name.startswith("_"):
-            continue
-        modules[name] = getattr(dummy_torch_and_scipy_objects, name)
-
-    _dummy_modules.update(modules)
+    _dummy_modules.update(get_objects_from_module(dummy_torch_and_scipy_objects))
 
 else:
     _import_structure["scheduling_lms_discrete"] = ["LMSDiscreteScheduler"]
@@ -112,14 +105,7 @@ try:
 except OptionalDependencyNotAvailable:
     from ..utils import dummy_torch_and_torchsde_objects  # noqa F403
 
-    modules = {}
-    for name in dir(dummy_torch_and_torchsde_objects):
-        if (not name.endswith("Scheduler")) or name.startswith("_"):
-            continue
-        modules[name] = getattr(dummy_torch_and_torchsde_objects, name)
-
-    _dummy_modules.update(modules)
-
+    _dummy_modules.update(get_objects_from_module(dummy_torch_and_torchsde_objects))
 
 else:
     _import_structure["scheduling_dpmsolver_sde"] = ["DPMSolverSDEScheduler"]

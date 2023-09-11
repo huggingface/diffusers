@@ -3,8 +3,7 @@ from typing import TYPE_CHECKING
 from ...utils import _LazyModule
 
 
-_import_structure = {}
-_import_structure["pipeline_pndm"] = ["PNDMPipeline"]
+_import_structure = {"pipeline_pndm": ["PNDMPipeline"]}
 
 if TYPE_CHECKING:
     from .pipeline_pndm import PNDMPipeline
