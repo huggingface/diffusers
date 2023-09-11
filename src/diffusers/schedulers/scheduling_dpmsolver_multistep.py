@@ -235,7 +235,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
-            timesteps = np.linspace(0, last_timestep - 1, num_inference_steps).round()[::-1].copy().astype(np.float32)
+            timesteps = np.linspace(0, last_timestep - 1, num_inference_steps)[::-1].copy().astype(np.float32)
         elif self.config.timestep_spacing == "leading":
             step_ratio = last_timestep // self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
