@@ -309,7 +309,7 @@ image
 
 You can enable memory efficient attention by [installing xFormers](https://huggingface.co/docs/diffusers/main/en/optimization/xformers) and passing the `--enable_xformers_memory_efficient_attention` argument to the script.
 
-xFormers training is not available for Prior model fine-tune.
+xFormers training is not available for fine-tuning the prior model.
 
 **Note**:
 
