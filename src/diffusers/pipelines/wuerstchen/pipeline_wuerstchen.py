@@ -19,7 +19,8 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import is_accelerate_available, is_accelerate_version, logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
@@ -34,11 +35,11 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenDecoderPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "warp-diffusion/wuerstchen-prior", torch_dtype=torch.float16
+        ...     "warp-ai/wuerstchen-prior", torch_dtype=torch.float16
         ... ).to("cuda")
-        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain(
-        ...     "warp-diffusion/wuerstchen", torch_dtype=torch.float16
-        ... ).to("cuda")
+        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain("warp-ai/wuerstchen", torch_dtype=torch.float16).to(
+        ...     "cuda"
+        ... )
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)

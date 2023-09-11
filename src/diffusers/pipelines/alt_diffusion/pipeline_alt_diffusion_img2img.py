@@ -29,7 +29,8 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor, replace_example_docstring
+from ...utils import PIL_INTERPOLATION, deprecate, logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from . import AltDiffusionPipelineOutput, RobertaSeriesModelWithTransformation

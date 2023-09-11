@@ -39,11 +39,10 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
-    is_compiled_module,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl import StableDiffusionXLPipelineOutput
 
@@ -1216,6 +1215,26 @@ class StableDiffusionXLControlNetPipeline(
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.
+
+        # Remove any existing hooks.
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
+        else:
+            raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
+
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        recursive = False
+        for _, component in self.components.items():
+            if isinstance(component, torch.nn.Module):
+                if hasattr(component, "_hf_hook"):
+                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    recursive = is_sequential_cpu_offload
+                    remove_hook_from_module(component, recurse=recursive)
         state_dict, network_alphas = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
             unet_config=self.unet.config,
@@ -1242,6 +1261,12 @@ class StableDiffusionXLControlNetPipeline(
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
             )
+
+        # Offload back.
+        if is_model_cpu_offload:
+            self.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            self.enable_sequential_cpu_offload()
 
     @classmethod
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.save_lora_weights
