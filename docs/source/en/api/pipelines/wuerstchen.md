@@ -18,6 +18,7 @@ After the initial paper release, we have improved numerous things in the archite
 - Better quality
 
 We are releasing 3 checkpoints for the text-conditional image generation model (Stage C). Those are: 
+
 - v2-base
 - v2-aesthetic
 - v2-interpolated (50% interpolation between v2-base and v2-aesthetic)
@@ -58,7 +59,7 @@ output = pipeline(
 ).images
 ```
 
-For explanation purposes, we can also initialize the two main pipelines of Würstchen individually. Würstchen consists of 3 stages: Stage C, Stage B, Stage A. They all have different jobs and work only together. When generating text-conditional images, Stage C will first generate the latents in a very compressed latent space. This is what happens in the `prior_pipeline`. Afterwards, the generated latents will be passed to Stage B, which decompresses the latents into a bigger latent space of a VQGAN. These latents can then be decoded by Stage A, which is a VQGAN, into the pixel-space. Stage B & Stage A are both encapsulated in the `decoder_pipeline`. For more details, take a look the [paper](https://huggingface.co/papers/2306.00637).
+For explanation purposes, we can also initialize the two main pipelines of Würstchen individually. Würstchen consists of 3 stages: Stage C, Stage B, Stage A. They all have different jobs and work only together. When generating text-conditional images, Stage C will first generate the latents in a very compressed latent space. This is what happens in the `prior_pipeline`. Afterwards, the generated latents will be passed to Stage B, which decompresses the latents into a bigger latent space of a VQGAN. These latents can then be decoded by Stage A, which is a VQGAN, into the pixel-space. Stage B & Stage A are both encapsulated in the `decoder_pipeline`. For more details, take a look at the [paper](https://huggingface.co/papers/2306.00637).
 
 ```python
 import torch
@@ -97,7 +98,7 @@ decoder_output = decoder_pipeline(
 ```
 
 ## Speed-Up Inference
-You can make use of ``torch.compile`` function and gain a speed-up of about 2-3x:
+You can make use of `torch.compile` function and gain a speed-up of about 2-3x:
 
 ```python
 pipeline.prior = torch.compile(pipeline.prior, mode="reduce-overhead", fullgraph=True)
@@ -105,6 +106,7 @@ pipeline.decoder = torch.compile(pipeline.decoder, mode="reduce-overhead", fullg
 ```
 
 ## Limitations
+
 - Due to the high compression employed by Würstchen, generations can lack a good amount
 of detail. To our human eye, this is especially noticeable in faces, hands etc.
 - **Images can only be generated in 128-pixel steps**, e.g. the next higher resolution 
