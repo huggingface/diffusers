@@ -50,7 +50,7 @@ We also use [Weights and Biases](https://docs.wandb.ai/quickstart) logging by de
 pip install wandb
 ```
 
-To diable wandb logging, remove the `--report_to=="wandb"` and `--validation_prompts="A robot pokemon, 4k photo"` flags from below examples
+To disable wandb logging, remove the `--report_to=="wandb"` and `--validation_prompts="A robot pokemon, 4k photo"` flags from below examples
 
 #### Fine-tune decoder
 <br>
