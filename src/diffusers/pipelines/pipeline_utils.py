@@ -342,7 +342,12 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    pipeline_cls = getattr(diffusers_module, config["_class_name"])
+    class_name = config["_class_name"]
+
+    if class_name.startswith("Flax"):
+        class_name = class_name[4:]
+
+    pipeline_cls = getattr(diffusers_module, class_name)
 
     if load_connected_pipeline:
         from .auto_pipeline import _get_connected_pipeline
@@ -1438,6 +1443,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             ]
 
             # retrieve passed components that should not be downloaded
+            import ipdb; ipdb.set_trace()
             pipeline_class = _get_pipeline_class(
                 cls,
                 config_dict,
