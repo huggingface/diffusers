@@ -62,43 +62,6 @@ else:
     logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
 
-
-_tf_version = "N/A"
-if USE_TF in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TORCH not in ENV_VARS_TRUE_VALUES:
-    _tf_available = importlib.util.find_spec("tensorflow") is not None
-    if _tf_available:
-        candidates = (
-            "tensorflow",
-            "tensorflow-cpu",
-            "tensorflow-gpu",
-            "tf-nightly",
-            "tf-nightly-cpu",
-            "tf-nightly-gpu",
-            "intel-tensorflow",
-            "intel-tensorflow-avx512",
-            "tensorflow-rocm",
-            "tensorflow-macos",
-            "tensorflow-aarch64",
-        )
-        _tf_version = None
-        # For the metadata, we have to look for both tensorflow and tensorflow-cpu
-        for pkg in candidates:
-            try:
-                _tf_version = importlib_metadata.version(pkg)
-                break
-            except importlib_metadata.PackageNotFoundError:
-                pass
-        _tf_available = _tf_version is not None
-    if _tf_available:
-        if version.parse(_tf_version) < version.parse("2"):
-            logger.info(f"TensorFlow found but with version {_tf_version}. Diffusers requires version 2 minimum.")
-            _tf_available = False
-        else:
-            logger.info(f"TensorFlow version {_tf_version} available.")
-else:
-    logger.info("Disabling Tensorflow because USE_TORCH is set")
-    _tf_available = False
-
 _jax_version = "N/A"
 _flax_version = "N/A"
 if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
@@ -306,10 +269,6 @@ except importlib_metadata.PackageNotFoundError:
 
 def is_torch_available():
     return _torch_available
-
-
-def is_tf_available():
-    return _tf_available
 
 
 def is_flax_available():
