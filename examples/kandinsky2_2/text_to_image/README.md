@@ -133,7 +133,7 @@ image.save("robot-pokemon.png")
 
 #### Fine-tune prior 
 
-You can fine-tune kandinsky prior model with `train_text_to_image_prior.py` script. Note that we currently do not support `--gradient_checkpointing` for prior model fine-tune.
+You can fine-tune the Kandinsky prior model with `train_text_to_image_prior.py` script. Note that we currently do not support `--gradient_checkpointing` for prior model fine-tuning.
 
 <br>
 
