@@ -27,17 +27,8 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-<<<<<<< HEAD
-from ...utils import (
-    PIL_INTERPOLATION,
-    deprecate,
-    logging,
-    randn_tensor,
-)
-=======
-from ...utils import PIL_INTERPOLATION, deprecate, is_accelerate_available, is_accelerate_version, logging
+from ...utils import PIL_INTERPOLATION, deprecate, logging
 from ...utils.torch_utils import randn_tensor
->>>>>>> main
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker

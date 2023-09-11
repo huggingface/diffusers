@@ -28,19 +28,14 @@ from transformers import (
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-<<<<<<< HEAD
 from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_librosa_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
-=======
-from ...utils import is_librosa_available, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
->>>>>>> main
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
