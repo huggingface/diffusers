@@ -175,6 +175,7 @@ images = pipe(prompt=prompt, negative_prompt=negative_prompt).images
 images[0]
 ```
 
+If you want to use a fine-tuned decoder checkpoint along with your fine-tuned prior checkpoint, you can simply replace the "kandinsky-community/kandinsky-2-2-decoder" in above code with your custom model repo name. Note that in order to be able to create a `KandinskyV22CombinedPipeline`, your model repository need to have a prior tag. If you have created your model repo using our training script, the prior tag is automatically included. 
 
 #### Training with multiple GPUs
 
