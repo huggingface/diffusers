@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -28,15 +28,27 @@ else:
     _import_structure["image_encoder"] = ["PaintByExampleImageEncoder"]
     _import_structure["pipeline_paint_by_example"] = ["PaintByExamplePipeline"]
 
-import sys
 
+if TYPE_CHECKING:
+    try:
+        if not (is_transformers_available() and is_torch_available()):
+            raise OptionalDependencyNotAvailable()
 
-sys.modules[__name__] = _LazyModule(
-    __name__,
-    globals()["__file__"],
-    _import_structure,
-    module_spec=__spec__,
-)
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_transformers_objects import *
+    else:
+        from .image_encoder import PaintByExampleImageEncoder
+        from .pipeline_paint_by_example import PaintByExamplePipeline
 
-for name, value in _dummy_objects.items():
-    setattr(sys.modules[__name__], name, value)
+else:
+    import sys
+
+    sys.modules[__name__] = _LazyModule(
+        __name__,
+        globals()["__file__"],
+        _import_structure,
+        module_spec=__spec__,
+    )
+
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)

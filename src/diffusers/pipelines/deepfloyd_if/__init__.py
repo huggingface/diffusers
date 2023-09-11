@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -20,7 +22,6 @@ _import_structure["timesteps"] = [
     "super40_timesteps",
     "super100_timesteps",
 ]
-
 try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
@@ -28,7 +29,6 @@ except OptionalDependencyNotAvailable:
     from ...utils import dummy_torch_and_transformers_objects  # noqa F403
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
-
 else:
     _import_structure["pipeline_output"] = ["IFPipelineOutput"]
     _import_structure["pipeline_if"] = ["IFPipeline"]
@@ -41,15 +41,43 @@ else:
     _import_structure["watermark"] = ["IFWatermarker"]
 
 
-import sys
+if TYPE_CHECKING:
+    try:
+        if not (is_transformers_available() and is_torch_available()):
+            raise OptionalDependencyNotAvailable()
 
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_transformers_objects import *
+    else:
+        from .pipeline_if import IFPipeline
+        from .pipeline_if_img2img import IFImg2ImgPipeline
+        from .pipeline_if_img2img_superresolution import IFImg2ImgSuperResolutionPipeline
+        from .pipeline_if_inpainting import IFInpaintingPipeline
+        from .pipeline_if_inpainting_superresolution import IFInpaintingSuperResolutionPipeline
+        from .pipeline_if_superresolution import IFSuperResolutionPipeline
+        from .pipeline_output import IFPipelineOutput
+        from .safety_checker import IFSafetyChecker
+        from .timesteps import (
+            fast27_timesteps,
+            smart27_timesteps,
+            smart50_timesteps,
+            smart100_timesteps,
+            smart185_timesteps,
+            super27_timesteps,
+            super40_timesteps,
+            super100_timesteps,
+        )
+        from .watermark import IFWatermarker
 
-sys.modules[__name__] = _LazyModule(
-    __name__,
-    globals()["__file__"],
-    _import_structure,
-    module_spec=__spec__,
-)
+else:
+    import sys
 
-for name, value in _dummy_objects.items():
-    setattr(sys.modules[__name__], name, value)
+    sys.modules[__name__] = _LazyModule(
+        __name__,
+        globals()["__file__"],
+        _import_structure,
+        module_spec=__spec__,
+    )
+
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)
