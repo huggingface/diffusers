@@ -52,7 +52,7 @@ _dummy_objects = {}
 _additional_imports = {}
 _import_structure = {
     "pipeline_output": ["StableDiffusionSafePipelineOutput"],
-    "pipeline_stable_diffusion": ["StableDiffusionPipeline"],
+    "pipeline_stable_diffusion_safe": ["StableDiffusionPipelineSafe"],
     "safety_checker": ["StableDiffusionSafetyChecker"],
 }
 _additional_imports.update({"SafetyConfig": SafetyConfig})
