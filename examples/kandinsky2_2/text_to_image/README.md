@@ -1,6 +1,6 @@
 # Kandinsky2.2 text-to-image fine-tuning
 
-Kandinsky 2.2 includes a prior pipeline that generates image embeddings from text prompts, and a decoder pipeline to that generate the output image based on the image embeddings. We provide `train_text_to_image_prior.py` and `train_text_to_image_decoder.py` scripts to show you how to fine-tune the kandinsky prior and decoder models seperately based on your own dataset. To achieve the best resutls, you should fine-tune both your prior and decoder models.
+Kandinsky 2.2 includes a prior pipeline that generates image embeddings from text prompts, and a decoder pipeline that generates the output image based on the image embeddings. We provide `train_text_to_image_prior.py` and `train_text_to_image_decoder.py` scripts to show you how to fine-tune the Kandinsky prior and decoder models separately based on your own dataset. To achieve the best results, you should fine-tune **_both_** your prior and decoder models.
 
 ___Note___:
 
