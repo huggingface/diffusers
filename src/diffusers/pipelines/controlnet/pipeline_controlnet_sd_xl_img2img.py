@@ -36,11 +36,16 @@ from ...models.attention_processor import (
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+<<<<<<< HEAD
     is_compiled_module,
+=======
+    is_accelerate_available,
+    is_accelerate_version,
+>>>>>>> main
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl import StableDiffusionXLPipelineOutput
 

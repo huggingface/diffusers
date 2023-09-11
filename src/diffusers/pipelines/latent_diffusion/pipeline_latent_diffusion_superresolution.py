@@ -15,7 +15,8 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, randn_tensor
+from ...utils import PIL_INTERPOLATION
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 

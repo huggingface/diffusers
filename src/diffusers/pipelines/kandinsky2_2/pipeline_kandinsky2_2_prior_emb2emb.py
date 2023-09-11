@@ -8,9 +8,9 @@ from ...models import PriorTransformer
 from ...schedulers import UnCLIPScheduler
 from ...utils import (
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..kandinsky import KandinskyPriorPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
 

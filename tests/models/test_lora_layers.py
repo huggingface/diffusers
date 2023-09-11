@@ -43,8 +43,7 @@ from diffusers.models.attention_processor import (
     LoRAAttnProcessor2_0,
     XFormersAttnProcessor,
 )
-from diffusers.utils import floats_tensor, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu, slow
+from diffusers.utils.testing_utils import floats_tensor, require_torch_gpu, slow, torch_device
 
 
 def create_unet_lora_layers(unet: nn.Module):

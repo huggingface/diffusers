@@ -31,9 +31,9 @@ from ...utils import (
     BaseOutput,
     deprecate,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 

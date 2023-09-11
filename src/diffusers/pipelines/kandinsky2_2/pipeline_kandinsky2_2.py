@@ -20,9 +20,9 @@ from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 

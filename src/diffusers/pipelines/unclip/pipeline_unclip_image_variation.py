@@ -27,7 +27,8 @@ from transformers import (
 
 from ...models import UNet2DConditionModel, UNet2DModel
 from ...schedulers import UnCLIPScheduler
-from ...utils import logging, randn_tensor
+from ...utils import logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_proj import UnCLIPTextProjModel
 

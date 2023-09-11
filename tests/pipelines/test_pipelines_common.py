@@ -455,12 +455,13 @@ class PipelineTesterMixin:
             # TODO same as above
             test_mean_pixel_difference = torch_device != "mps"
 
+        generator_device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(generator_device)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
@@ -624,7 +625,8 @@ class PipelineTesterMixin:
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -642,7 +644,7 @@ class PipelineTesterMixin:
                 f"`{optional_component}` did not stay set to None after loading.",
             )
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(generator_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()

@@ -32,7 +32,12 @@ from ...models.attention_processor import (
 )
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
+<<<<<<< HEAD
 from ...utils import deprecate, logging, randn_tensor
+=======
+from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging
+from ...utils.torch_utils import randn_tensor
+>>>>>>> main
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 

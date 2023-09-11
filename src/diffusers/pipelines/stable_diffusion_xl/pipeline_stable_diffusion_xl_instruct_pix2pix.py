@@ -34,9 +34,9 @@ from ...utils import (
     deprecate,
     is_invisible_watermark_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionXLPipelineOutput
 

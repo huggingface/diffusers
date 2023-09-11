@@ -6,9 +6,9 @@ from ...models import UNet2DModel
 from ...schedulers import CMStochasticIterativeScheduler
 from ...utils import (
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 

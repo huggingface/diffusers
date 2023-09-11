@@ -24,7 +24,7 @@ import torch
 
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 

@@ -20,9 +20,9 @@ from ...utils import (
     is_bs4_available,
     is_ftfy_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import IFPipelineOutput
 from .safety_checker import IFSafetyChecker

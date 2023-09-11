@@ -28,7 +28,8 @@ from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor
+from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 

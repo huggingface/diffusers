@@ -11,7 +11,8 @@ from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.utils import is_compiled_module, logging, randn_tensor
+from diffusers.utils import logging
+from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

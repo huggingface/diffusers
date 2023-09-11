@@ -25,7 +25,7 @@ from transformers.utils import logging
 
 from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
