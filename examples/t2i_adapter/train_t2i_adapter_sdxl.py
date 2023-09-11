@@ -246,6 +246,13 @@ def parse_args(input_args=None):
         help="Path to an improved VAE to stabilize training. For more details check out: https://github.com/huggingface/diffusers/pull/4038.",
     )
     parser.add_argument(
+        "--adapter_model_name_or_path",
+        type=str,
+        default=None,
+        help="Path to pretrained adapter model or model identifier from huggingface.co/models."
+        " If not specified adapter weights are initialized w.r.t the configurations of SDXL.",
+    )
+    parser.add_argument(
         "--revision",
         type=str,
         default=None,
@@ -840,14 +847,18 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
-    logger.info("Initializing t2iadapter weights from unet")
-    t2iadapter = T2IAdapter(
-        in_channels=3,
-        channels=(320, 640, 1280, 1280),
-        num_res_blocks=2,
-        downscale_factor=16,
-        adapter_type="full_adapter_xl",
-    )
+    if args.adapter_model_name_or_path:
+        logger.info("Loading existing adapter weights.")
+        t2iadapter = T2IAdapter.from_pretrained(args.adapter_model_name_or_path)
+    else:
+        logger.info("Initializing t2iadapter weights.")
+        t2iadapter = T2IAdapter(
+            in_channels=3,
+            channels=(320, 640, 1280, 1280),
+            num_res_blocks=2,
+            downscale_factor=16,
+            adapter_type="full_adapter_xl",
+        )
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
