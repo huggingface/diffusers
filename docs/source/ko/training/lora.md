@@ -47,7 +47,7 @@ huggingface-cli login
 수십억 개의 파라메터들이 있는 Stable Diffusion과 같은 모델을 파인튜닝하는 것은 느리고 어려울 수 있습니다. LoRA를 사용하면 diffusion 모델을 파인튜닝하는 것이 훨씬 쉽고 빠릅니다. 8비트 옵티마이저와 같은 트릭에 의존하지 않고도 11GB의 GPU RAM으로 하드웨어에서 실행할 수 있습니다.
 
 
-### 학습 [[text-to-image 학습]]
+### 학습[[dreambooth-training]]
 
 [Pokémon BLIP 캡션](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) 데이터셋으로 [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)를 파인튜닝해 나만의 포켓몬을 생성해 보겠습니다.
 
@@ -89,7 +89,7 @@ accelerate launch train_dreambooth_lora.py \
   --push_to_hub
 ```
 
-### 추론 [[dreambooth 추론]]
+### 추론[[dreambooth-inference]]
 
 이제 [`StableDiffusionPipeline`]에서 기본 모델을 불러와 추론을 위해 모델을 사용할 수 있습니다:
 

@@ -51,12 +51,12 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
-    is_compiled_module,
     is_torch_version,
     is_transformers_available,
     logging,
     numpy_to_pil,
 )
+from ..utils.torch_utils import is_compiled_module
 
 
 if is_transformers_available():
@@ -342,7 +342,12 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    pipeline_cls = getattr(diffusers_module, config["_class_name"])
+    class_name = config["_class_name"]
+
+    if class_name.startswith("Flax"):
+        class_name = class_name[4:]
+
+    pipeline_cls = getattr(diffusers_module, class_name)
 
     if load_connected_pipeline:
         from .auto_pipeline import _get_connected_pipeline
@@ -1147,8 +1152,22 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "variant": variant,
                 "use_safetensors": use_safetensors,
             }
+
+            def get_connected_passed_kwargs(prefix):
+                connected_passed_class_obj = {
+                    k.replace(f"{prefix}_", ""): w for k, w in passed_class_obj.items() if k.split("_")[0] == prefix
+                }
+                connected_passed_pipe_kwargs = {
+                    k.replace(f"{prefix}_", ""): w for k, w in passed_pipe_kwargs.items() if k.split("_")[0] == prefix
+                }
+
+                connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
+                return connected_passed_kwargs
+
             connected_pipes = {
-                prefix: DiffusionPipeline.from_pretrained(repo_id, **load_kwargs.copy())
+                prefix: DiffusionPipeline.from_pretrained(
+                    repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix)
+                )
                 for prefix, repo_id in connected_pipes.items()
                 if repo_id is not None
             }

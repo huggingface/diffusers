@@ -18,8 +18,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import deprecate, logging, maybe_allow_in_graph
+from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
+from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 
@@ -188,7 +189,7 @@ class Attention(nn.Module):
         if use_memory_efficient_attention_xformers:
             if is_added_kv_processor and (is_lora or is_custom_diffusion):
                 raise NotImplementedError(
-                    f"Memory efficient attention is currently not supported for LoRA or custom diffuson for attention processor type {self.processor}"
+                    f"Memory efficient attention is currently not supported for LoRA or custom diffusion for attention processor type {self.processor}"
                 )
             if not is_xformers_available():
                 raise ModuleNotFoundError(
@@ -570,15 +571,15 @@ class AttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, lora_scale=scale)
-        value = attn.to_v(encoder_hidden_states, lora_scale=scale)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
@@ -589,7 +590,7 @@ class AttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -722,17 +723,17 @@ class AttnAddedKVProcessor:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
         query = attn.head_to_batch_dim(query)
 
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states, lora_scale=scale)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states, lora_scale=scale)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states, scale=scale)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states, scale=scale)
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states, lora_scale=scale)
-            value = attn.to_v(hidden_states, lora_scale=scale)
+            key = attn.to_k(hidden_states, scale=scale)
+            value = attn.to_v(hidden_states, scale=scale)
             key = attn.head_to_batch_dim(key)
             value = attn.head_to_batch_dim(value)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
@@ -746,7 +747,7 @@ class AttnAddedKVProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -782,7 +783,7 @@ class AttnAddedKVProcessor2_0:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
         query = attn.head_to_batch_dim(query, out_dim=4)
 
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
@@ -791,8 +792,8 @@ class AttnAddedKVProcessor2_0:
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj, out_dim=4)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states, lora_scale=scale)
-            value = attn.to_v(hidden_states, lora_scale=scale)
+            key = attn.to_k(hidden_states, scale=scale)
+            value = attn.to_v(hidden_states, scale=scale)
             key = attn.head_to_batch_dim(key, out_dim=4)
             value = attn.head_to_batch_dim(value, out_dim=4)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
@@ -809,7 +810,7 @@ class AttnAddedKVProcessor2_0:
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, residual.shape[1])
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -937,15 +938,15 @@ class XFormersAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, lora_scale=scale)
-        value = attn.to_v(encoder_hidden_states, lora_scale=scale)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         query = attn.head_to_batch_dim(query).contiguous()
         key = attn.head_to_batch_dim(key).contiguous()
@@ -958,7 +959,7 @@ class XFormersAttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1015,15 +1016,15 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, lora_scale=scale)
-        value = attn.to_v(encoder_hidden_states, lora_scale=scale)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -1043,7 +1044,7 @@ class AttnProcessor2_0:
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1619,6 +1620,24 @@ LORA_ATTENTION_PROCESSORS = (
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
+)
+
+ADDED_KV_ATTENTION_PROCESSORS = (
+    AttnAddedKVProcessor,
+    SlicedAttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    XFormersAttnAddedKVProcessor,
+    LoRAAttnAddedKVProcessor,
+)
+
+CROSS_ATTENTION_PROCESSORS = (
+    AttnProcessor,
+    AttnProcessor2_0,
+    XFormersAttnProcessor,
+    SlicedAttnProcessor,
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
 )
 
 AttentionProcessor = Union[

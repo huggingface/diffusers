@@ -20,8 +20,14 @@ import unittest
 import torch
 
 from diffusers import UNet2DModel
-from diffusers.utils import floats_tensor, logging, slow, torch_all_close, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils import logging
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    slow,
+    torch_all_close,
+    torch_device,
+)
 
 from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -263,7 +269,7 @@ class NCSNppModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
-        expected_output_slice = torch.tensor([-4842.8691, -6499.6631, -3800.1953, -7978.2686, -10980.7129, -20028.8535, 8148.2822, 2342.2905, 567.7608])
+        expected_output_slice = torch.tensor([-4836.2178, -6487.1470, -3816.8196, -7964.9302, -10966.3037, -20043.5957, 8137.0513, 2340.3328, 544.6056])
         # fmt: on
 
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
