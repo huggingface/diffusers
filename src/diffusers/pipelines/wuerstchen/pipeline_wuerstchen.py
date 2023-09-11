@@ -34,11 +34,11 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenDecoderPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "warp-diffusion/wuerstchen-prior", torch_dtype=torch.float16
+        ...     "warp-ai/wuerstchen-prior", torch_dtype=torch.float16
         ... ).to("cuda")
-        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain(
-        ...     "warp-diffusion/wuerstchen", torch_dtype=torch.float16
-        ... ).to("cuda")
+        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain("warp-ai/wuerstchen", torch_dtype=torch.float16).to(
+        ...     "cuda"
+        ... )
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)
@@ -338,7 +338,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         # 3. Determine latent shape of latents
         latent_height = int(image_embeddings.size(2) * self.config.latent_dim_scale)
         latent_width = int(image_embeddings.size(3) * self.config.latent_dim_scale)
-        latent_features_shape = (image_embeddings.size(0), 4, latent_height, latent_width)
+        latent_features_shape = (image_embeddings.size(0) * num_images_per_prompt, 4, latent_height, latent_width)
 
         # 4. Prepare and set timesteps
         if timesteps is not None:

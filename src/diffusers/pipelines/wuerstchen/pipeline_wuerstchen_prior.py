@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import ceil
-from typing import List, Optional, Union, Callable
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
@@ -42,7 +42,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "warp-diffusion/wuerstchen-prior", torch_dtype=torch.float16
+        ...     "warp-ai/wuerstchen-prior", torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
@@ -399,7 +399,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             ).prev_sample
 
             if callback is not None and i % callback_steps == 0:
-                r = callback(i, t, r)
+                callback(i, t, latents)
 
         # 10. Denormalize the latents
         latents = latents * self.config.latent_mean - self.config.latent_std
