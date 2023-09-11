@@ -1443,7 +1443,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             ]
 
             # retrieve passed components that should not be downloaded
-            import ipdb; ipdb.set_trace()
+            import ipdb
+
+            ipdb.set_trace()
             pipeline_class = _get_pipeline_class(
                 cls,
                 config_dict,
