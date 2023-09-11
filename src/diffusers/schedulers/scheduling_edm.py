@@ -368,9 +368,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         sigma_hats = np.asarray(sigma_hats, dtype=sigmas.dtype)
         # In the sampling loop, we want to output timesteps in the following order:
         # [sigma_hat_0, sigma_1, sigma_hat_1, sigma_2, ..., sigma_hat_{n - 1}, 0]
-        timesteps = np.empty((sigma_hats.size + sigmas.size - 1,), dtype=sigmas.dtype)
+        timesteps = np.empty((sigma_hats.size + sigmas.size - 2,), dtype=sigmas.dtype)
         timesteps[0::2] = sigma_hats
-        timesteps[1::2] = sigmas[1:]
+        timesteps[1::2] = sigmas[1:-1]
 
         sigmas = torch.from_numpy(sigmas).to(device=device)
         # Magic to convert sigmas from [sigma_1, sigma_2, ..., sigma_n, 0.0] to
@@ -385,8 +385,6 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
         timesteps = torch.from_numpy(timesteps)
         timesteps = self.precondition_noise(timesteps)
-        # [t_0, t_1, t_2, ..., t_{n - 1}] -> [t_0, t_1, t_1, t_2, t_2, ..., t_{n - 1}, t_{n - 1}]
-        timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
         self.timesteps = timesteps.to(device=device)
 
         # 5. Empty dt and derivative to set the scheduler in first order mode
@@ -567,6 +565,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             self.prev_derivative = None
             self.dt = None
             self.sample_hat = None
+
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
