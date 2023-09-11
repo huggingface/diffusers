@@ -1287,7 +1287,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # offload model and remove hook from model
             hook.offload()
             hook.remove()
-        
+
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload()
 
