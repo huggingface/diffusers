@@ -406,32 +406,38 @@ class UNet2DConditionLoadersMixin:
                 # or add_{k,v,q,out_proj}_proj_lora layers.
                 rank = value_dict["lora.down.weight"].shape[0]
 
-                if isinstance(attn_processor, LoRACompatibleConv):
-                    in_features = attn_processor.in_channels
-                    out_features = attn_processor.out_channels
-                    kernel_size = attn_processor.kernel_size
+                ctx = init_empty_weights if is_accelerate_available() else nullcontext
+                with ctx():
+                    if isinstance(attn_processor, LoRACompatibleConv):
+                        in_features = attn_processor.in_channels
+                        out_features = attn_processor.out_channels
+                        kernel_size = attn_processor.kernel_size
 
-                    lora = LoRAConv2dLayer(
-                        in_features=in_features,
-                        out_features=out_features,
-                        rank=rank,
-                        kernel_size=kernel_size,
-                        stride=attn_processor.stride,
-                        padding=attn_processor.padding,
-                        network_alpha=mapped_network_alphas.get(key),
-                    )
-                elif isinstance(attn_processor, LoRACompatibleLinear):
-                    lora = LoRALinearLayer(
-                        attn_processor.in_features,
-                        attn_processor.out_features,
-                        rank,
-                        mapped_network_alphas.get(key),
-                    )
-                else:
-                    raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
+                        lora = LoRAConv2dLayer(
+                            in_features=in_features,
+                            out_features=out_features,
+                            rank=rank,
+                            kernel_size=kernel_size,
+                            stride=attn_processor.stride,
+                            padding=attn_processor.padding,
+                            network_alpha=mapped_network_alphas.get(key),
+                        )
+                    elif isinstance(attn_processor, LoRACompatibleLinear):
+                        lora = LoRALinearLayer(
+                            attn_processor.in_features,
+                            attn_processor.out_features,
+                            rank,
+                            mapped_network_alphas.get(key),
+                        )
+                    else:
+                        raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
 
                 value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
-                lora.load_state_dict(value_dict)
+                if is_accelerate_available():
+                    for param_name, param in value_dict.items():
+                        set_module_tensor_to_device(lora, param_name, "cpu", value=param)
+                else:
+                    lora.load_state_dict(value_dict)
                 lora_layers_list.append((attn_processor, lora))
 
         elif is_custom_diffusion:
