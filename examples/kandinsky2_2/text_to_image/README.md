@@ -273,7 +273,7 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_prior_lora.py \
 
 #### Inference using fine-tuned LoRA checkpoint for decoder
 
-Once you have trained a kandinsky decoder model using above command, the inference can be done simply using the `AutoPipelineForText2Image` after loading the trained LoRA weights.  You need to pass the `output_dir` for loading the LoRA weights which, in this case, is `kandi22-decoder-pokemon-lora`.
+Once you have trained a Kandinsky decoder model using the above command, inference can be done with the `AutoPipelineForText2Image` after loading the trained LoRA weights.  You need to pass the `output_dir` for loading the LoRA weights, which in this case is `kandi22-decoder-pokemon-lora`.
 
 
 ```python
