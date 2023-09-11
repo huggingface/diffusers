@@ -21,7 +21,7 @@ class KarrasEDMSchedulerTest(SchedulerCommonTest):
 
         config.update(**kwargs)
         return config
-    
+
     # Override test_step_shape to add KarrasEDMSchedulerr-specific logic regarding timesteps
     # Problem is that we don't know two timesteps that will always be in the timestep schedule from only the scheduler
     # config; scaled sigma_max is always in the timestep schedule, but sigma_min is in the sigma schedule while scaled
@@ -91,7 +91,7 @@ class KarrasEDMSchedulerTest(SchedulerCommonTest):
             msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
         ):
             scheduler.set_timesteps(timesteps=timesteps)
-    
+
     def test_full_loop_no_noise(self, seed=0):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()

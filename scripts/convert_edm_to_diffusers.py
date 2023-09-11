@@ -9,6 +9,7 @@ from diffusers import (
     UNet2DModel,
 )
 
+
 EDM_TEST_UNET_CONFIG = {
     "sample_size": 32,
     "in_channels": 3,

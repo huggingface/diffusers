@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
@@ -253,7 +252,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             if sigma_hat > sigma:  # equivalent to gamma > 0
                 eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
                 sample = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
-        
+
             self.sample_hat = sample
 
         # 3. Precondition the input sample and timestep.
@@ -392,7 +391,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         self._index_counter = defaultdict(int)
 
     # Modified _convert_to_karras implementation that takes in ramp as argument
-    def _convert_to_karras(self, ramp, sigma_min = None, sigma_max = None):
+    def _convert_to_karras(self, ramp, sigma_min=None, sigma_max=None):
         """Constructs the noise schedule of Karras et al. (2022)."""
         if sigma_min is None:
             sigma_min = self.config.sigma_min
@@ -503,12 +502,12 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
         if self.state_in_first_order:
             # 1st order / Euler's method
-            sigma = self.sigmas[self.step_index]
+            # sigma = self.sigmas[self.step_index]
             sigma_hat = self.sigma_hats[self.step_index]
             sigma_next = self.sigmas[self.step_index + 1]
         else:
             # 2nd order / Heun's method
-            sigma = self.sigmas[self.step_index - 1]
+            # sigma = self.sigmas[self.step_index - 1]
             sigma_hat = self.sigma_hats[self.step_index - 1]
             sigma_next = self.sigmas[self.step_index]
 
@@ -528,7 +527,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.prediction_type == "v_prediction":
             # sample * c_out + input * c_skip
             # TODO: how should this interact with self.precondition_outputs below?
-            pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (sample_input / (sigma_input**2 + 1))
+            pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (
+                sample_input / (sigma_input**2 + 1)
+            )
         elif self.config.prediction_type == "edm":
             # Apply output preconditioning
             pred_original_sample = self.precondition_outputs(sample_input, model_output, sigma_input)
