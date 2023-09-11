@@ -35,6 +35,8 @@ from .modeling_wuerstchen_prior import WuerstchenPrior
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+DEFAULT_STAGE_C_TIMESTEPS = list(np.linspace(1.0, 2 / 3, 20)) + list(np.linspace(2 / 3, 0.0, 11))[1:]
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py

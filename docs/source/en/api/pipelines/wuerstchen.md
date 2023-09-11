@@ -36,7 +36,7 @@ For the sake of usability Würstchen can be used with a single pipeline. This pi
 ```python
 import torch
 from diffusers import AutoPipelineForText2Image
-from diffusers.pipelines.wuerstchen import default_stage_c_timesteps
+from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS
 
 pipe = AutoPipelineForText2Image.from_pretrained("warp-ai/wuerstchen", torch_dtype=torch.float16).to("cuda")
 
@@ -45,7 +45,7 @@ images = pipe(
     caption, 
     width=1024,
     height=1536,
-    prior_timesteps=default_stage_c_timesteps,
+    prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS,
     prior_guidance_scale=4.0,
     num_images_per_prompt=2,
 ).images
@@ -56,7 +56,7 @@ For explanation purposes, we can also initialize the two main pipelines of Würs
 ```python
 import torch
 from diffusers import WuerstchenDecoderPipeline, WuerstchenPriorPipeline
-from diffusers.pipelines.wuerstchen import default_stage_c_timesteps
+from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS
 
 device = "cuda"
 dtype = torch.float16
@@ -76,7 +76,7 @@ prior_output = prior_pipeline(
     prompt=caption,
     height=1024,
     width=1536,
-    timesteps=default_stage_c_timesteps,
+    timesteps=DEFAULT_STAGE_C_TIMESTEPS,
     negative_prompt=negative_prompt,
     guidance_scale=4.0,
     num_images_per_prompt=num_images_per_prompt,
