@@ -33,6 +33,7 @@ from diffusers import (
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     IPNDMScheduler,
+    KarrasEDMScheduler,
     LMSDiscreteScheduler,
     UniPCMultistepScheduler,
     VQDiffusionScheduler,
@@ -312,6 +313,9 @@ class SchedulerCommonTest(unittest.TestCase):
                 # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                 scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
                 time_step = scaled_sigma_max
+            elif scheduler_class == KarrasEDMScheduler:
+                scaled_sigma_max = scheduler.precondition_noise(scheduler.config.sigma_max)
+                time_step = scaled_sigma_max
 
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
@@ -333,7 +337,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Make sure `scale_model_input` is invoked to prevent a warning
-            if scheduler_class == CMStochasticIterativeScheduler:
+            if scheduler_class in [CMStochasticIterativeScheduler, KarrasEDMScheduler]:
                 # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                 _ = scheduler.scale_model_input(sample, scaled_sigma_max)
                 _ = new_scheduler.scale_model_input(sample, scaled_sigma_max)
@@ -410,6 +414,8 @@ class SchedulerCommonTest(unittest.TestCase):
             if scheduler_class == CMStochasticIterativeScheduler:
                 # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                 timestep = scheduler.sigma_to_t(scheduler.config.sigma_max)
+            elif scheduler_class == KarrasEDMScheduler:
+                timestep = scheduler.precondition_noise(scheduler.config.sigma_max)
 
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
@@ -560,6 +566,8 @@ class SchedulerCommonTest(unittest.TestCase):
             if scheduler_class == CMStochasticIterativeScheduler:
                 # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                 timestep = scheduler.sigma_to_t(scheduler.config.sigma_max)
+            elif scheduler_class == KarrasEDMScheduler:
+                timestep = scheduler.precondition_noise(scheduler.config.sigma_max)
 
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
@@ -620,6 +628,9 @@ class SchedulerCommonTest(unittest.TestCase):
                     # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                     scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
                     scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
+                elif scheduler_class == KarrasEDMScheduler:
+                    scaled_sigma_max = scheduler.precondition_noise(scheduler.config.sigma_max)
+                    scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
                 else:
                     scaled_sample = scheduler.scale_model_input(sample, 0.0)
                 self.assertEqual(sample.shape, scaled_sample.shape)
@@ -636,6 +647,10 @@ class SchedulerCommonTest(unittest.TestCase):
             if scheduler_class == CMStochasticIterativeScheduler:
                 # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                 scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
+                scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
+            elif scheduler_class == KarrasEDMScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                scaled_sigma_max = scheduler.precondition_noise(scheduler.config.sigma_max)
                 scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
             else:
                 scaled_sample = scheduler.scale_model_input(sample, 0.0)

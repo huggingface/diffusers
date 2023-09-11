@@ -119,14 +119,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: Optional[bool] = False,
         clip_sample_range: float = 1.0,
     ):
-        ramp = np.linspace(0, 1, num_train_timesteps)
-        sigmas = self._convert_to_karras(ramp, sigma_min, sigma_max)
-
         # setable values
-        self.num_inference_steps = None
         self.precondition_type = precondition_type
-        self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = self.precondition_noise(self.sigmas)
+        self.set_timesteps(num_train_timesteps, None, None, num_train_timesteps)
 
         self.custom_timesteps = False
         self.is_scale_input_called = False
@@ -198,6 +193,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         return scaled_sample
 
     def precondition_noise(self, sigma):
+        if not isinstance(sigma, torch.Tensor):
+            sigma = torch.tensor([sigma])
+
         if self.precondition_type == "edm":
             scaled_noise = 0.25 * torch.log(sigma)
         elif self.precondition_type == "cm_edm":
@@ -284,6 +282,8 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
                 Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
                 timestep spacing strategy of equal spacing between timesteps is used. If `timesteps` is passed,
                 `num_inference_steps` must be `None`.
+            num_train_timesteps: (`int`, *optional*):
+                Number of diffusion steps used to train the model.
         """
         # 0. Check inputs
         if num_inference_steps is None and timesteps is None:
@@ -352,16 +352,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         # timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         # 3. Calculate the sigma_hat schedule for stochastic sampling
-        # TODO: vectorize this?
-        sigma_hats = []
-        for sigma in sigmas:
-            # Temporarily raise the noise level (see Line 5 of Algorithm 2 in the EDM paper)
-            if self.config.s_tmin <= sigma <= self.config.s_tmax:
-                gamma = min(self.config.s_churn / len(sigmas), 2**0.5 - 1)
-            else:
-                gamma = 0
-            sigma_hat = sigma * (gamma + 1)
-            sigma_hats.append(sigma_hat)
+        sigma_hats = self._get_sigma_hats(sigmas)
 
         # 4. Finish processing sigmas and timesteps
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
@@ -413,6 +404,19 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
+
+    def _get_sigma_hats(self, sigmas):
+        # TODO: vectorize this?
+        sigma_hats = []
+        for sigma in sigmas:
+            # Temporarily raise the noise level (see Line 5 of Algorithm 2 in the EDM paper)
+            if self.config.s_tmin <= sigma <= self.config.s_tmax:
+                gamma = min(self.config.s_churn / len(sigmas), 2**0.5 - 1)
+            else:
+                gamma = 0
+            sigma_hat = sigma * (gamma + 1)
+            sigma_hats.append(sigma_hat)
+        return sigma_hats
 
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
@@ -508,6 +512,10 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             sigma_hat = self.sigma_hats[self.step_index - 1]
             sigma_next = self.sigmas[self.step_index]
 
+        # hack: Set sample_hat to sample in case it's None
+        if self.sample_hat is None:
+            self.sample_hat = sample
+
         # 3. Compute predicted original sample (x_0) from sigma-scaled predicted noise
         # NOTE: "original_sample" should not be an expected prediction_type but is left in for
         # backwards compatibility
@@ -575,7 +583,6 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         return KarrasEDMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     # TODO: change to match noise added for EDM training???
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
@@ -592,7 +599,7 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

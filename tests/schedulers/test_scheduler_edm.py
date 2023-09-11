@@ -1,3 +1,5 @@
+import unittest
+
 import torch
 
 from diffusers import KarrasEDMScheduler
@@ -12,13 +14,37 @@ class KarrasEDMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "num_train_timesteps": 40,
+            "num_train_timesteps": 256,
             "sigma_min": 0.002,
             "sigma_max": 80.0,
         }
 
         config.update(**kwargs)
         return config
+    
+    # Override test_step_shape to add KarrasEDMSchedulerr-specific logic regarding timesteps
+    # Problem is that we don't know two timesteps that will always be in the timestep schedule from only the scheduler
+    # config; scaled sigma_max is always in the timestep schedule, but sigma_min is in the sigma schedule while scaled
+    # sigma_min is not in the timestep schedule
+    def test_step_shape(self):
+        num_inference_steps = 10
+
+        scheduler_config = self.get_scheduler_config()
+        scheduler = self.scheduler_classes[0](**scheduler_config)
+
+        scheduler.set_timesteps(num_inference_steps)
+
+        timestep_0 = scheduler.timesteps[0]
+        timestep_1 = scheduler.timesteps[1]
+
+        sample = self.dummy_sample
+        residual = 0.1 * sample
+
+        output_0 = scheduler.step(residual, timestep_0, sample).prev_sample
+        output_1 = scheduler.step(residual, timestep_1, sample).prev_sample
+
+        self.assertEqual(output_0.shape, sample.shape)
+        self.assertEqual(output_0.shape, output_1.shape)
 
     def test_timesteps(self):
         for timesteps in [10, 50, 100, 1000]:
@@ -185,3 +211,7 @@ class KarrasEDMSchedulerTest(SchedulerCommonTest):
             # CUDA
             assert abs(result_sum.item() - 261.2027) < 1
             assert abs(result_mean.item() - 0.3401) < 1e-2
+
+    @unittest.skip(reason="KarrasEDMScheduler does not support beta schedules.")
+    def test_trained_betas(self):
+        pass
