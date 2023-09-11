@@ -94,7 +94,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
-            Video](https://imagen.research.google/video/paper.pdf) paper).
+            Video](https://imagen.research.google/video/paper.pdf) paper) or `edm` (apply output preconditioning).
         interpolation_type(`str`, defaults to `"linear"`, *optional*):
             The interpolation type to compute intermediate sigmas for the scheduler denoising steps. Should be on of
             `"linear"` or `"log_linear"`.
@@ -190,10 +190,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         #  set all values
-        self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
-        self.use_karras_sigmas = use_karras_sigmas
-        
         self.precondition_type = precondition_type
+        self.set_timesteps(num_train_timesteps, None, num_train_timesteps, None)
+        self.use_karras_sigmas = use_karras_sigmas
+
         self.custom_timesteps = False
         self.is_scale_input_called = False
 
@@ -239,6 +239,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return scaled_sample
     
     def precondition_noise(self, sigma):
+        if not isinstance(sigma, torch.Tensor):
+            sigma = torch.tensor([sigma])
+
         if self.precondition_type == "edm":
             scaled_noise = 0.25 * torch.log(sigma)
         elif self.precondition_type == "cm_edm":
@@ -433,9 +436,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.custom_timesteps:
             # In the sampling loop, we want to output timesteps in the following order:
             # [sigma_hat_0, sigma_1, sigma_hat_1, sigma_2, ..., sigma_hat_{n - 1}, 0]
-            timesteps = np.empty((sigma_hats.size + sigmas.size - 1,), dtype=sigmas.dtype)
+            timesteps = np.empty((sigma_hats.size + sigmas.size - 2,), dtype=sigmas.dtype)
             timesteps[0::2] = sigma_hats
-            timesteps[1::2] = sigmas[1:]
+            timesteps[1::2] = sigmas[1:-1]
 
         sigmas = torch.from_numpy(sigmas).to(device=device)
         # [sigma_0, sigma_1, sigma_2, ..., sigma_{n - 1}, 0] ->
@@ -449,8 +452,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         timesteps = torch.from_numpy(timesteps)
         timesteps = self.precondition_noise(timesteps)
-        # [t_0, t_1, t_2, ..., t_{n - 1}] -> [t_0, t_1, t_1, t_2, t_2, ..., t_{n - 1}, t_{n - 1}]
-        timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
+        if not self.custom_timesteps:
+            # TODO: for now keep this in, need to figure out logic when timesteps are set with a beta schedule
+            # [t_0, t_1, t_2, ..., t_{n - 1}] -> [t_0, t_1, t_1, t_2, t_2, ..., t_{n - 1}, t_{n - 1}]
+            timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
 
         self.timesteps = timesteps.to(device=device)
 
@@ -595,59 +600,58 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # gamma = 0
         # sigma_hat = sigma * (gamma + 1)  # Note: sigma_hat == sigma for now
 
+        # TODO: Hack for tests that call step() without first calling scale_model_input()???
+        if self.sample_hat is None:
+            self.sample_hat = sample
+
         # 3. compute predicted original sample (x_0) from sigma-scaled predicted noise
         sigma_input = sigma_hat if self.state_in_first_order else sigma_next
+        sample_input = self.sample_hat if self.state_in_first_order else sample
         if self.config.prediction_type == "epsilon":
-            pred_original_sample = sample - sigma_input * model_output
+            pred_original_sample = sample_input - sigma_input * model_output
         elif self.config.prediction_type == "v_prediction":
             pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (
-                sample / (sigma_input**2 + 1)
+                sample_input / (sigma_input**2 + 1)
             )
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
+        elif self.config.prediction_type == "edm":
+            # Get denoiser output based on EDM output preconditioning type.
+            pred_original_sample = self.precondition_outputs(sample_input, pred_original_sample, sigma_input)
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
-
-        # 4. Convert model output to denoiser output using output preconditioning scalings c_skip, c_out
-        # TODO: not quite sure if this is correct, I think output preconditioning should happen after we recover the
-        # original predicted sample
-        sample_input = self.sample_hat if self.state_in_first_order else sample
-        pred_original_sample = self.precondition_outputs(sample_input, pred_original_sample, sigma_input)
 
         if self.config.clip_sample:
             pred_original_sample = pred_original_sample.clamp(
                 -self.config.clip_sample_range, self.config.clip_sample_range
             )
 
-        # 5. Perform a first order (Euler) or second order correction (Heun) step.
-        # TODO: Hack for tests that call step() without first calling scale_model_input()???
-        if self.sample_hat is None:
-            self.sample_hat = sample
+        # 4. Perform a first order (Euler) or second order correction (Heun) step.
         if self.state_in_first_order:
-            # 5.1. 1st order / Euler's method
-            # 5.l.1. Get Karras ODE derivative (Line 7 in Algorithm 2 in EDM paper)
+            # 4.1. 1st order / Euler's method
+            # 4.l.1. Get Karras ODE derivative (Line 7 in Algorithm 2 in EDM paper)
             derivative = (sample - pred_original_sample) / sigma_hat
-            # 5.1.2. Get delta timestep
+            # 4.1.2. Get delta timestep
             dt = sigma_next - sigma_hat
 
-            # 5.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper)
+            # 4.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper)
             prev_sample = self.sample_hat + derivative * dt  # x_{i + 1}
 
-            # 5.1.4. Store values for 2nd order step
+            # 4.1.4. Store values for 2nd order step
             self.prev_derivative = derivative
             self.dt = dt
         else:
-            # 5.2. 2nd order / Heun's method
-            # 5.2.1. Get Karras ODE derivative (Line 10 in Algorithm 2 in EDM paper)
+            # 4.2. 2nd order / Heun's method
+            # 4.2.1. Get Karras ODE derivative (Line 10 in Algorithm 2 in EDM paper)
             # NOTE: sample here corresponds to x_{i + 1} in Algorithm 2, which is the output of the Euler step from
             # the previous scheduler step()
             derivative = (sample - pred_original_sample) / sigma_next
-            # 5.2.2 Get Heun correction to the derivative
+            # 4.2.2 Get Heun correction to the derivative
             derivative = (self.prev_derivative + derivative) / 2
 
-            # 5.2.3. Take Heun step (Line 11 in Algorithm 2 in EDM paper)
+            # 4.2.3. Take Heun step (Line 11 in Algorithm 2 in EDM paper)
             prev_sample = self.sample_hat + derivative * self.dt
 
             # free dt and derivative
