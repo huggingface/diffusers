@@ -3,7 +3,7 @@ import unittest
 import torch
 
 from diffusers import KarrasEDMScheduler
-from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import torch_device
 
 from .test_schedulers import SchedulerCommonTest
 
