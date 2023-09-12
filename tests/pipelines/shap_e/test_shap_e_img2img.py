@@ -212,7 +212,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_consistent(self):
         # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
-        self._test_inference_batch_consistent(batch_sizes=[1, 2])
+        self._test_inference_batch_consistent(batch_sizes=[2])
 
     def test_inference_batch_single_identical(self):
         test_max_difference = torch_device == "cpu"

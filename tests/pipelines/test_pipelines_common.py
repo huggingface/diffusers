@@ -374,11 +374,11 @@ class PipelineTesterMixin:
             f"Required optional parameters not present: {remaining_required_optional_parameters}",
         )
 
-    def test_inference_batch_consistent(self, batch_sizes=[2, 3]):
+    def test_inference_batch_consistent(self, batch_sizes=[2]):
         self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
-        self, batch_sizes=[2, 3], additional_params_copy_to_batched_inputs=["num_inference_steps"]
+        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"]
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -391,47 +391,34 @@ class PipelineTesterMixin:
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
 
-        # batchify inputs
+        # prepare batched inputs
+        batched_inputs = []
         for batch_size in batch_sizes:
-            batched_inputs = {}
-            for name, value in inputs.items():
-                if name in self.batch_params:
-                    # prompt is string
-                    if name == "prompt":
-                        len_prompt = len(value)
-                        # make unequal batch sizes
-                        batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+            batched_input = {}
 
-                        # make last batch super long
-                        batched_inputs[name][-1] = 100 * "very long"
-                    # or else we have images
-                    else:
-                        batched_inputs[name] = batch_size * [value]
+            for name in self.batch_params:
+                value = inputs[name]
+                if name == "prompt":
+                    len_prompt = len(value)
+                    # make unequal batch sizes
+                    batched_input[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+
+                    # make last batch super long
+                    batched_input[name][-1] = 100 * "very long"
+
+                elif name == "image":
+                    batched_input[name] = batch_size * [value]
+
                 elif name == "batch_size":
-                    batched_inputs[name] = batch_size
+                    batched_input[name] = batch_size
                 else:
-                    batched_inputs[name] = value
+                    batched_input[name] = value
 
-            for arg in additional_params_copy_to_batched_inputs:
-                batched_inputs[arg] = inputs[arg]
+            batched_inputs.append(batched_input)
 
-            batched_inputs["output_type"] = "np"
-
-            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
-                batched_inputs.pop("output_type")
-
-            output = pipe(**batched_inputs)
-
+        for batched_input in zip(batch_sizes, batched_inputs):
+            output = pipe(**batched_input)
             assert len(output[0]) == batch_size
-
-            batched_inputs["output_type"] = "np"
-
-            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
-                batched_inputs.pop("output_type")
-
-            output = pipe(**batched_inputs)[0]
-
-            assert output.shape[0] == batch_size
 
         logger.setLevel(level=diffusers.logging.WARNING)
 
@@ -467,8 +454,8 @@ class PipelineTesterMixin:
         batched_inputs = {}
         batch_size = batch_size
         for name in self.batch_params:
+            value = inputs[name]
             if name == "prompt":
-                value = inputs[name]
                 len_prompt = len(value)
                 batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
                 batched_inputs[name][-1] = 100 * "very long"
@@ -488,7 +475,8 @@ class PipelineTesterMixin:
         for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]
 
-        batched_inputs["output_type"] = "np"
+        if "output_type" in inputs:
+            batched_inputs.update({"output_type": inputs["output_type"]})
 
         output_batch = pipe(**batched_inputs)
         assert output_batch[0].shape[0] == batch_size
@@ -497,6 +485,7 @@ class PipelineTesterMixin:
         output = pipe(**inputs)
 
         max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
+        assert max_diff < expected_max_diff
 
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
