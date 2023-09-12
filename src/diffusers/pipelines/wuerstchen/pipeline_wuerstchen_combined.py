@@ -154,6 +154,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         decoder_timesteps: Optional[List[float]] = None,
         decoder_guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -165,10 +167,17 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+                The prompt or prompts to guide the image generation for the prior and decoder.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             height (`int`, *optional*, defaults to 512):
@@ -221,13 +230,15 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
         prior_outputs = self.prior_pipe(
-            prompt=prompt,
+            prompt=prompt if prompt_embeds is None else None,
             height=height,
             width=width,
             num_inference_steps=prior_num_inference_steps,
             timesteps=prior_timesteps,
             guidance_scale=prior_guidance_scale,
-            negative_prompt=negative_prompt,
+            negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
             num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             latents=latents,

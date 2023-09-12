@@ -330,7 +330,11 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
 
         # 2. Encode caption
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt,
+            device,
+            image_embeddings.size(0) * num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
         )
         text_encoder_hidden_states = (
             torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
