@@ -766,7 +766,7 @@ if __name__ == "__main__":
         vae=vae,
         text_encoder=text_encoder,
         image_encoder=image_encoder,
-        image_processor=image_processor,
+        clip_image_processor=image_processor,
         clip_tokenizer=clip_tokenizer,
         text_decoder=text_decoder,
         text_tokenizer=text_tokenizer,
