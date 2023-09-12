@@ -1552,12 +1552,11 @@ class LoraLoaderMixin:
         rank: Union[Dict[str, int], int] = 4,
         dtype=None,
         patch_mlp=False,
-        low_cpu_mem_usage=None,
+        low_cpu_mem_usage=False,
     ):
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
-        low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
 
         def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
             linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
