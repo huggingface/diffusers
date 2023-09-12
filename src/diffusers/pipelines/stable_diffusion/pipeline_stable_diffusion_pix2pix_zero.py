@@ -315,6 +315,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         "caption_processor",
         "inverse_scheduler",
     ]
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
