@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import copy
 import os
 import re
 import warnings
@@ -27,6 +26,7 @@ import torch
 from huggingface_hub import hf_hub_download, model_info
 from torch import nn
 
+from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -38,7 +38,6 @@ from .utils import (
     logging,
 )
 from .utils.import_utils import BACKENDS_MAPPING
-from .models.modeling_utils import load_model_dict_into_meta, _LOW_CPU_MEM_USAGE_DEFAULT
 
 
 if is_transformers_available():
@@ -291,7 +290,8 @@ class UNet2DConditionLoadersMixin:
 
         """
         import time
-        start_time = time.time()
+
+        time.time()
         from .models.attention_processor import (
             CustomDiffusionAttnProcessor,
         )
@@ -408,10 +408,10 @@ class UNet2DConditionLoadersMixin:
                             used_network_alphas_keys.add(k)
 
             if not is_network_alphas_none:
-               if len(set(network_alphas_keys) - used_network_alphas_keys) > 0:
-                   raise ValueError(
-                       f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
-                   )
+                if len(set(network_alphas_keys) - used_network_alphas_keys) > 0:
+                    raise ValueError(
+                        f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
+                    )
 
             if len(state_dict) > 0:
                 raise ValueError(
@@ -442,7 +442,7 @@ class UNet2DConditionLoadersMixin:
                             stride=attn_processor.stride,
                             padding=attn_processor.padding,
                             network_alpha=mapped_network_alphas.get(key),
-                    )
+                        )
                 elif isinstance(attn_processor, LoRACompatibleLinear):
                     ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
                     with ctx():
@@ -1031,7 +1031,9 @@ class LoraLoaderMixin:
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
-        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet, low_cpu_mem_usage=low_cpu_mem_usage)
+        self.load_lora_into_unet(
+            state_dict, network_alphas=network_alphas, unet=self.unet, low_cpu_mem_usage=low_cpu_mem_usage
+        )
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
@@ -1389,7 +1391,9 @@ class LoraLoaderMixin:
         unet.load_attn_procs(state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage)
 
     @classmethod
-    def load_lora_into_text_encoder(cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None):
+    def load_lora_into_text_encoder(
+        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
 
@@ -1506,7 +1510,9 @@ class LoraLoaderMixin:
                 if low_cpu_mem_usage:
                     device = next(iter(text_encoder_lora_state_dict.values())).device
                     dtype = next(iter(text_encoder_lora_state_dict.values())).dtype
-                    unexpected_keys = load_model_dict_into_meta(text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype)
+                    unexpected_keys = load_model_dict_into_meta(
+                        text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype
+                    )
                 else:
                     load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
                     unexpected_keys = load_state_dict_results.unexpected_keys
@@ -1566,7 +1572,6 @@ class LoraLoaderMixin:
             lora_parameters.extend(model.lora_linear_layer.parameters())
             return model
 
-
         # First, remove any monkey-patch that might have been applied before
         cls._remove_text_encoder_monkey_patch_classmethod(text_encoder)
 
@@ -1585,10 +1590,18 @@ class LoraLoaderMixin:
             else:
                 current_rank = rank
 
-            attn_module.q_proj = create_patched_linear_lora(attn_module.q_proj, query_alpha, current_rank, dtype, lora_parameters)
-            attn_module.k_proj = create_patched_linear_lora(attn_module.k_proj, key_alpha, current_rank, dtype, lora_parameters)
-            attn_module.v_proj = create_patched_linear_lora(attn_module.v_proj, value_alpha, current_rank, dtype, lora_parameters)
-            attn_module.out_proj = create_patched_linear_lora(attn_module.out_proj, out_alpha, current_rank, dtype, lora_parameters)
+            attn_module.q_proj = create_patched_linear_lora(
+                attn_module.q_proj, query_alpha, current_rank, dtype, lora_parameters
+            )
+            attn_module.k_proj = create_patched_linear_lora(
+                attn_module.k_proj, key_alpha, current_rank, dtype, lora_parameters
+            )
+            attn_module.v_proj = create_patched_linear_lora(
+                attn_module.v_proj, value_alpha, current_rank, dtype, lora_parameters
+            )
+            attn_module.out_proj = create_patched_linear_lora(
+                attn_module.out_proj, out_alpha, current_rank, dtype, lora_parameters
+            )
 
         if patch_mlp:
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
@@ -1598,8 +1611,12 @@ class LoraLoaderMixin:
                 current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
                 current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
 
-                mlp_module.fc1 = create_patched_linear_lora(mlp_module.fc1, fc1_alpha, current_rank_fc1, dtype, lora_parameters)
-                mlp_module.fc2 = create_patched_linear_lora(mlp_module.fc2, fc2_alpha, current_rank_fc2, dtype, lora_parameters)
+                mlp_module.fc1 = create_patched_linear_lora(
+                    mlp_module.fc1, fc1_alpha, current_rank_fc1, dtype, lora_parameters
+                )
+                mlp_module.fc2 = create_patched_linear_lora(
+                    mlp_module.fc2, fc2_alpha, current_rank_fc2, dtype, lora_parameters
+                )
 
         if is_network_alphas_populated and len(network_alphas) > 0:
             raise ValueError(

@@ -145,13 +145,9 @@ def load_model_dict_into_meta(model, state_dict, device=None, dtype=None, model_
                 f"Cannot load {model_name_or_path_str}because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
             )
 
-        accepts_dtype = "dtype" in set(
-            inspect.signature(set_module_tensor_to_device).parameters.keys()
-        )
+        accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
         if accepts_dtype:
-            set_module_tensor_to_device(
-                model, param_name, device, value=param, dtype=dtype
-            )
+            set_module_tensor_to_device(model, param_name, device, value=param, dtype=dtype)
         else:
             set_module_tensor_to_device(model, param_name, device, value=param)
     return unexpected_keys
@@ -654,7 +650,13 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             " those weights or else make sure your checkpoint file is correct."
                         )
 
-                    unexpected_keys = load_model_dict_into_meta(model, state_dict, device=param_device, dtype=torch_dtype, model_name_or_path=pretrained_model_name_or_path)
+                    unexpected_keys = load_model_dict_into_meta(
+                        model,
+                        state_dict,
+                        device=param_device,
+                        dtype=torch_dtype,
+                        model_name_or_path=pretrained_model_name_or_path,
+                    )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
                         for pat in cls._keys_to_ignore_on_load_unexpected:
