@@ -355,9 +355,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
-    def convert_model_output(
-        self, model_output: torch.FloatTensor, sample: torch.FloatTensor
-    ) -> torch.FloatTensor:
+    def convert_model_output(self, model_output: torch.FloatTensor, sample: torch.FloatTensor) -> torch.FloatTensor:
         """
         Convert the model output to the corresponding type the DPMSolver/DPMSolver++ algorithm needs. DPM-Solver is
         designed to discretize an integral of the noise prediction model, and DPM-Solver++ is designed to discretize an
@@ -737,17 +735,11 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             noise = None
 
         if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
-            prev_sample = self.dpm_solver_first_order_update(
-                model_output, sample, noise=noise
-            )
+            prev_sample = self.dpm_solver_first_order_update(model_output, sample, noise=noise)
         elif self.config.solver_order == 2 or self.lower_order_nums < 2 or lower_order_second:
-            prev_sample = self.multistep_dpm_solver_second_order_update(
-                self.model_outputs, sample, noise=noise
-            )
+            prev_sample = self.multistep_dpm_solver_second_order_update(self.model_outputs, sample, noise=noise)
         else:
-            prev_sample = self.multistep_dpm_solver_third_order_update(
-                self.model_outputs, sample
-            )
+            prev_sample = self.multistep_dpm_solver_third_order_update(self.model_outputs, sample)
 
         if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
