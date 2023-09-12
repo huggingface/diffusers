@@ -25,7 +25,6 @@ import safetensors
 import torch
 from huggingface_hub import create_repo
 from torch import Tensor, device, nn
-from transformers.models.auto.configuration_auto import model_type_to_module_name
 
 from .. import __version__
 from ..utils import (

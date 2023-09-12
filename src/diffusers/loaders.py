@@ -290,14 +290,10 @@ class UNet2DConditionLoadersMixin:
                 information.
 
         """
-        import time
-        start_time = time.time()
         from .models.attention_processor import (
             CustomDiffusionAttnProcessor,
         )
         from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
-
-
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
