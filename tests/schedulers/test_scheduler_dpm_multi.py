@@ -59,6 +59,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
             output, new_output = sample, sample
             for t in range(time_step, time_step + scheduler.config.solver_order + 1):
+                t = new_scheduler.timesteps[t]
                 output = scheduler.step(residual, t, output, **kwargs).prev_sample
                 new_output = new_scheduler.step(residual, t, new_output, **kwargs).prev_sample
 
@@ -91,6 +92,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
                 # copy over dummy past residual (must be after setting timesteps)
                 new_scheduler.model_outputs = dummy_past_residuals[: new_scheduler.config.solver_order]
 
+            time_step = new_scheduler.timesteps[time_step]
             output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
             new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 

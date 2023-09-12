@@ -679,21 +679,21 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        print(f" timestep: {timestep}")
-        print(f" self.timesteps: {self.timesteps}")
 
         index_candidates = (self.timesteps == timestep).nonzero()
 
+        if len(index_candidates) == 0:
+            step_index = len(self.timesteps) - 1
         # The sigma index that is taken for the **very** first `step`
         # is always the second index (or the last index if there is only 1)
         # This way we can ensure we don't accidentally skip a sigma in
         # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        if len(index_candidates) > 1:
-            step_index = index_candidates[1]
+        elif len(index_candidates) > 1:
+            step_index = index_candidates[1].item()
         else:
-            step_index = index_candidates[0]
+            step_index = index_candidates[0].item()
 
-        self._step_index = step_index.item()
+        self._step_index = step_index
 
     def step(
         self,
