@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import TYPE_CHECKING
+
 from ..utils import _LazyModule, is_flax_available, is_torch_available
 
 
@@ -40,7 +42,32 @@ if is_flax_available():
     _import_structure["unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
     _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
-import sys
 
+if TYPE_CHECKING:
+    if is_torch_available():
+        from .adapter import MultiAdapter, T2IAdapter
+        from .autoencoder_asym_kl import AsymmetricAutoencoderKL
+        from .autoencoder_kl import AutoencoderKL
+        from .autoencoder_tiny import AutoencoderTiny
+        from .controlnet import ControlNetModel
+        from .dual_transformer_2d import DualTransformer2DModel
+        from .modeling_utils import ModelMixin
+        from .prior_transformer import PriorTransformer
+        from .t5_film_transformer import T5FilmDecoder
+        from .transformer_2d import Transformer2DModel
+        from .transformer_temporal import TransformerTemporalModel
+        from .unet_1d import UNet1DModel
+        from .unet_2d import UNet2DModel
+        from .unet_2d_condition import UNet2DConditionModel
+        from .unet_3d_condition import UNet3DConditionModel
+        from .vq_model import VQModel
 
-sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
+    if is_flax_available():
+        from .controlnet_flax import FlaxControlNetModel
+        from .unet_2d_condition_flax import FlaxUNet2DConditionModel
+        from .vae_flax import FlaxAutoencoderKL
+
+else:
+    import sys
+
+    sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
