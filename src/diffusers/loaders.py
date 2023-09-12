@@ -1504,7 +1504,9 @@ class LoraLoaderMixin:
                     for k, v in text_encoder_lora_state_dict.items()
                 }
                 if low_cpu_mem_usage:
-                    unexpected_keys = load_model_dict_into_meta(text_encoder, text_encoder_lora_state_dict, device=text_encoder.device, dtype=text_encoder.dtype)
+                    device = next(iter(text_encoder_lora_state_dict.values())).device
+                    dtype = next(iter(text_encoder_lora_state_dict.values())).dtype
+                    unexpected_keys = load_model_dict_into_meta(text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype)
                 else:
                     load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
                     unexpected_keys = load_state_dict_results.unexpected_keys
@@ -1513,6 +1515,8 @@ class LoraLoaderMixin:
                     raise ValueError(
                         f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
                     )
+
+                text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
 
     @property
     def lora_scale(self) -> float:
