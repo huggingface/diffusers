@@ -263,8 +263,10 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = np.flip(timesteps).copy().astype(np.int64)
-        
-        sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+            sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        else:
+            sigma_last = (1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0] ** 0.5
+            sigmas = np.concatenate([sigmas,[sigma_last]])
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         
         # when num_inference_steps == num_train_timesteps, we can end up with
@@ -482,8 +484,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         print(f" - step_index: {self.step_index}")
         sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
         print(f" - sigma_t, sigma_s: {sigma_t}, {sigma_s}")
-        sigma_t, alpha_t = self._sigma_to_alpha_sigma_t(sigma_t)
-        sigma_s, alpha_s = self._sigma_to_alpha_sigma_t(sigma_s)
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
+        alpha_s, sigma_s = self._sigma_to_alpha_sigma_t(sigma_s)
         lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
         lambda_s = torch.log(alpha_s) - torch.log(sigma_s)
         print(f" - sigma_t, sigma_s: {sigma_t}, {sigma_s}")
