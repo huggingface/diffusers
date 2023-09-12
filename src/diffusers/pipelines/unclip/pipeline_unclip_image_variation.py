@@ -77,6 +77,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
 
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
+    model_cpu_offload_seq = "text_encoder->image_encoder->text_proj->decoder->super_res_first->super_res_last"
 
     def __init__(
         self,

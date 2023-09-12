@@ -163,8 +163,8 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
-    def test_cpu_offload_forward_pass(self):
-        super().test_cpu_offload_forward_pass(expected_max_diff=5e-4)
+    def test_sequential_cpu_offload_forward_pass(self):
+        super().test_sequential_cpu_offload_forward_pass(expected_max_diff=5e-4)
 
     def test_inference_batch_consistent(self):
         # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches

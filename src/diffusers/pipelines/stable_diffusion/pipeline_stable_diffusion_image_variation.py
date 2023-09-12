@@ -65,6 +65,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     # TODO: feature_extractor is required to encode images (if they are in PIL format),
     # we should give a descriptive message if the pipeline doesn't have one.
     _optional_components = ["safety_checker"]
+    model_cpu_offload_seq = "image_encoder->unet->vae"
 
     def __init__(
         self,
@@ -391,6 +392,8 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        self.maybe_free_model_hooks()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
