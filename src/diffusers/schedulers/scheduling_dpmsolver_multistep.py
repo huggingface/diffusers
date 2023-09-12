@@ -251,22 +251,20 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        print(f" testing here")
-        print(f" - timesteps: {timesteps}")
-        print(f" expected sigma: {[sigmas[t] for t in timesteps]}")
 
         log_sigmas = np.log(sigmas)
-        sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-        print(f" - sigmas: {sigmas}")
 
         if self.config.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = np.flip(timesteps).copy().astype(np.int64)
-            sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+            sigmas = np.flip(sigmas).copy()
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         else:
+            sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
             sigma_last = (1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0] ** 0.5
             sigmas = np.concatenate([sigmas,[sigma_last]])
+        
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         
         # when num_inference_steps == num_train_timesteps, we can end up with
@@ -402,8 +400,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                     model_output = model_output[:, :3]
                 sigma = self.sigmas[self.step_index]
                 alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
-                print(f" - original: timestep: {timestep}, alpha_t, {self.alpha_t[timestep]}, sigma_t: {self.sigma_t[timestep]}")
-                print(f" - current: sigma: {sigma}, alpha_t: {alpha_t}, sigma_t: {sigma_t}")
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
             elif self.config.prediction_type == "sample":
                 x0_pred = model_output
@@ -478,24 +474,16 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 The sample tensor at the previous timestep.
         """
-        print(f" ")
-        print(f" - 1st order update")
-        print(f" - timestep: {timestep}")
-        print(f" - step_index: {self.step_index}")
+
         sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
-        print(f" - sigma_t, sigma_s: {sigma_t}, {sigma_s}")
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s, sigma_s = self._sigma_to_alpha_sigma_t(sigma_s)
         lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
         lambda_s = torch.log(alpha_s) - torch.log(sigma_s)
-        print(f" - sigma_t, sigma_s: {sigma_t}, {sigma_s}")
-        print(f" - alpha_t, alpha_s: {alpha_t}, {alpha_s}")
-        print(f" - lambda_t, lambda_s: {lambda_t}, {lambda_s}")
 
         h = lambda_t - lambda_s
         if self.config.algorithm_type == "dpmsolver++":
             x_t = (sigma_t / sigma_s) * sample - (alpha_t * (torch.exp(-h) - 1.0)) * model_output
-            print(f" x_t: {x_t[0,0,:3,:3]}")
         elif self.config.algorithm_type == "dpmsolver":
             x_t = (alpha_t / alpha_s) * sample - (sigma_t * (torch.exp(h) - 1.0)) * model_output
         elif self.config.algorithm_type == "sde-dpmsolver++":
@@ -553,11 +541,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
         lambda_s0 = torch.log(alpha_s0) - torch.log(sigma_s0)
         lambda_s1 = torch.log(alpha_s1) - torch.log(sigma_s1)
-        print(f" ")
-        print(f" 2nd order update")
-        print(f" - sigma_t, sigma_s0, sigma_s1: {sigma_t}, {sigma_s0}, {sigma_s1}")
-        print(f" - alpha_t, alpha_s0, alpha_s1: {alpha_t},{alpha_s0},{alpha_s1}")
-        print(f" - lambda_t, lambda_s0, lambda_s1: {lambda_t},{lambda_s0},{lambda_s1}")
 
         m0, m1 = model_output_list[-1], model_output_list[-2]
 
@@ -572,7 +555,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                     - (alpha_t * (torch.exp(-h) - 1.0)) * D0
                     - 0.5 * (alpha_t * (torch.exp(-h) - 1.0)) * D1
                 )
-                print(f" - x_t: {x_t[0,0,:3,:3]}")
             elif self.config.solver_type == "heun":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
