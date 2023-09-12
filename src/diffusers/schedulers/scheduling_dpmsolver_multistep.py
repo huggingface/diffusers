@@ -356,7 +356,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         return sigmas
 
     def convert_model_output(
-        self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
+        self, model_output: torch.FloatTensor, sample: torch.FloatTensor
     ) -> torch.FloatTensor:
         """
         Convert the model output to the corresponding type the DPMSolver/DPMSolver++ algorithm needs. DPM-Solver is
@@ -373,8 +373,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.FloatTensor`):
                 The direct output from the learned diffusion model.
-            timestep (`int`):
-                The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
 
@@ -443,8 +441,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def dpm_solver_first_order_update(
         self,
         model_output: torch.FloatTensor,
-        timestep: int,
-        prev_timestep: int,
         sample: torch.FloatTensor,
         noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
@@ -496,8 +492,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def multistep_dpm_solver_second_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
-        timestep_list: List[int],
-        prev_timestep: int,
         sample: torch.FloatTensor,
         noise: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
@@ -603,8 +597,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def multistep_dpm_solver_third_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
-        timestep_list: List[int],
-        prev_timestep: int,
         sample: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
@@ -725,7 +717,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.step_index is None:
             self._init_step_index(timestep)
 
-        prev_timestep = 0 if self.step_index == len(self.timesteps) - 1 else self.timesteps[self.step_index + 1]
         lower_order_final = (
             (self.step_index == len(self.timesteps) - 1) and self.config.lower_order_final and len(self.timesteps) < 15
         )
@@ -733,7 +724,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
         )
 
-        model_output = self.convert_model_output(model_output, timestep, sample)
+        model_output = self.convert_model_output(model_output, sample)
         for i in range(self.config.solver_order - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
@@ -747,17 +738,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
             prev_sample = self.dpm_solver_first_order_update(
-                model_output, timestep, prev_timestep, sample, noise=noise
+                model_output, sample, noise=noise
             )
         elif self.config.solver_order == 2 or self.lower_order_nums < 2 or lower_order_second:
-            timestep_list = [self.timesteps[self.step_index - 1], timestep]
             prev_sample = self.multistep_dpm_solver_second_order_update(
-                self.model_outputs, timestep_list, prev_timestep, sample, noise=noise
+                self.model_outputs, sample, noise=noise
             )
         else:
-            timestep_list = [self.timesteps[self.step_index - 2], self.timesteps[self.step_index - 1], timestep]
             prev_sample = self.multistep_dpm_solver_third_order_update(
-                self.model_outputs, timestep_list, prev_timestep, sample
+                self.model_outputs, sample
             )
 
         if self.lower_order_nums < self.config.solver_order:
