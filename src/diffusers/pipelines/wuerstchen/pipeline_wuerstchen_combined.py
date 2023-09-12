@@ -172,12 +172,12 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
+                Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
+                Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             height (`int`, *optional*, defaults to 512):
