@@ -36,12 +36,17 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    nightly,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    slow,
+    torch_device,
 )
 
 from ...models.test_models_unet_2d_condition import create_lora_layers
@@ -144,16 +149,31 @@ class StableDiffusionInpaintPipelineFastTests(
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0, img_res=64, output_pil=True):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        image = image.cpu().permute(0, 2, 3, 1)[0]
-        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
+        if output_pil:
+            # Get random floats in [0, 1] as image
+            image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+            image = image.cpu().permute(0, 2, 3, 1)[0]
+            mask_image = torch.ones_like(image)
+            # Convert image and mask_image to [0, 255]
+            image = 255 * image
+            mask_image = 255 * mask_image
+            # Convert to PIL image
+            init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((img_res, img_res))
+            mask_image = Image.fromarray(np.uint8(mask_image)).convert("RGB").resize((img_res, img_res))
+        else:
+            # Get random floats in [0, 1] as image with spatial size (img_res, img_res)
+            image = floats_tensor((1, 3, img_res, img_res), rng=random.Random(seed)).to(device)
+            # Convert image to [-1, 1]
+            init_image = 2.0 * image - 1.0
+            mask_image = torch.ones((1, 1, img_res, img_res), device=device)
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": init_image,
@@ -177,7 +197,7 @@ class StableDiffusionInpaintPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4723, 0.5731, 0.3939, 0.5441, 0.5922, 0.4392, 0.5059, 0.4651, 0.4474])
+        expected_slice = np.array([0.4703, 0.5697, 0.3879, 0.5470, 0.6042, 0.4413, 0.5078, 0.4728, 0.4469])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -357,7 +377,7 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4925, 0.4967, 0.4100, 0.5234, 0.5322, 0.4532, 0.5805, 0.5877, 0.4151])
+        expected_slice = np.array([0.6584, 0.5424, 0.5649, 0.5449, 0.5897, 0.6111, 0.5404, 0.5463, 0.5214])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

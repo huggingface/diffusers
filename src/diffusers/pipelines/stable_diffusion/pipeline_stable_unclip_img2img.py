@@ -19,14 +19,14 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from diffusers.utils.import_utils import is_accelerate_available
-
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.embeddings import get_timestep_embedding
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import deprecate, logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
@@ -92,6 +92,7 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
     """
 
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
     _exclude_from_cpu_offload = ["image_normalizer"]
 
     # image encoding components
@@ -158,31 +159,6 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         computing decoding in one step.
         """
         self.vae.disable_slicing()
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
-        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
-        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
-        iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.image_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -312,6 +288,9 @@ class StableUnCLIPImg2ImgPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1

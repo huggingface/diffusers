@@ -455,12 +455,13 @@ class PipelineTesterMixin:
             # TODO same as above
             test_mean_pixel_difference = torch_device != "mps"
 
+        generator_device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(generator_device)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
@@ -535,6 +536,8 @@ class PipelineTesterMixin:
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
+        init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float))}
+
         pipe = self.pipeline_class(**init_components)
 
         self.assertTrue(hasattr(pipe, "components"))
@@ -622,7 +625,8 @@ class PipelineTesterMixin:
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -640,7 +644,7 @@ class PipelineTesterMixin:
                 f"`{optional_component}` did not stay set to None after loading.",
             )
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(generator_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
@@ -713,7 +717,7 @@ class PipelineTesterMixin:
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
-    def test_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
+    def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -722,11 +726,39 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload()
-        inputs = self.get_dummy_inputs(torch_device)
+
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
+        self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
+    )
+    def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(generator_device)
+        output_without_offload = pipe(**inputs)[0]
+
+        pipe.enable_model_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()

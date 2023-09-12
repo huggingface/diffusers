@@ -21,7 +21,8 @@ import torch
 
 from ...models import UNet2DModel
 from ...schedulers import RePaintScheduler
-from ...utils import PIL_INTERPOLATION, deprecate, logging, randn_tensor
+from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -88,6 +89,7 @@ class RePaintPipeline(DiffusionPipeline):
 
     unet: UNet2DModel
     scheduler: RePaintScheduler
+    model_cpu_offload_seq = "unet"
 
     def __init__(self, unet, scheduler):
         super().__init__()
