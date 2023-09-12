@@ -32,8 +32,6 @@ from ...utils import (
     PIL_INTERPOLATION,
     BaseOutput,
     deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     replace_example_docstring,
 )
@@ -272,6 +270,7 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor", "inverse_scheduler"]
 
     def __init__(
@@ -399,35 +398,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
-        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
-        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
-        iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -1070,9 +1040,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         if output_type == "pil":
             mask_image = self.image_processor.numpy_to_pil(mask_image)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         return mask_image
 
@@ -1305,9 +1274,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         if decode_latents and output_type == "pil":
             image = self.image_processor.numpy_to_pil(image)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (latents, image)
@@ -1548,9 +1516,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image, has_nsfw_concept)

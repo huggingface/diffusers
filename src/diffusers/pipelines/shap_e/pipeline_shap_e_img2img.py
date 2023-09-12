@@ -98,6 +98,9 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             rendering method.
     """
 
+    model_cpu_offload_seq = "image_encoder->prior"
+    _exclude_from_cpu_offload = ["shap_e_renderer"]
+
     def __init__(
         self,
         prior: PriorTransformer,
@@ -309,9 +312,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             if output_type == "pil":
                 images = [self.numpy_to_pil(image) for image in images]
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (images,)

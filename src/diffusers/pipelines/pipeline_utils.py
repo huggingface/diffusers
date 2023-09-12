@@ -495,6 +495,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
           pipeline to function (should be overridden by subclasses).
     """
     config_name = "model_index.json"
+    model_cpu_offload_seq = None
     _optional_components = []
     _exclude_from_cpu_offload = []
     _load_connected_pipes = False
@@ -1223,6 +1224,72 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 ):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
+
+    def enable_model_cpu_offload(self, gpu_id: int = 0, device: Union[torch.device, str] = "cuda"):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if self.model_cpu_offload_seq is None:
+            raise ValueError(
+                "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set."
+            )
+
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            device_mod = getattr(torch, self.device.type, None)
+            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
+
+        self._all_hooks = []
+        hook = None
+        for model_str in self.model_cpu_offload_seq.split("->"):
+            model = all_model_components.pop(model_str)
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
+            self._all_hooks.append(hook)
+
+        # CPU offload models that are not in the seq chain unless they are explicitly excluded
+        # these models will stay on CPU until maybe_free_model_hooks is called
+        # some models cannot be in the seq chain because they are iteratively called, such as controlnet
+        for name, model in all_model_components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            if name in self._exclude_from_cpu_offload:
+                model.to(device)
+            else:
+                _, hook = cpu_offload_with_hook(model, device)
+                self._all_hooks.append(hook)
+
+    def maybe_free_model_hooks(self):
+        r"""
+        TODO: Better doc string
+        """
+        if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
+            # `enable_model_cpu_offload` has not be called, so silently do nothing
+            return
+
+        for hook in self._all_hooks:
+            # offload model and remove hook from model
+            hook.offload()
+            hook.remove()
+
+        # make sure the model is in the same state as before calling it
+        self.enable_model_cpu_offload()
 
     def enable_sequential_cpu_offload(self, gpu_id: int = 0, device: Union[torch.device, str] = "cuda"):
         r"""

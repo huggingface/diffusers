@@ -103,6 +103,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
             original UniDiffuser paper uses the [`DPMSolverMultistepScheduler`] scheduler.
     """
 
+    # TODO: support for moving submodules for components with enable_model_cpu_offload
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae->text_decoder"
+
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -173,7 +176,15 @@ class UniDiffuserPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae, self.image_encoder, self.text_decoder]:
+        for cpu_offloaded_model in [
+            self.text_encoder.text_model,
+            self.image_encoder,
+            self.unet,
+            self.vae,
+            self.text_decoder.encode_prefix,
+            self.text_decoder.decode_prefix,
+            self.text_decoder,
+        ]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -1343,6 +1354,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
                 for output, length in zip(output_list, seq_lengths)
             ]
+
+        self.maybe_free_model_hooks()
 
         # 10. Convert to PIL
         if output_type == "pil" and gen_image is not None:
