@@ -262,7 +262,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-            sigma_last = (1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0] ** 0.5
+            sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
             sigmas = np.concatenate([sigmas, [sigma_last]])
 
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
