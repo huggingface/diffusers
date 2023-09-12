@@ -289,9 +289,6 @@ class UNet2DConditionLoadersMixin:
                 information.
 
         """
-        import time
-
-        time.time()
         from .models.attention_processor import (
             CustomDiffusionAttnProcessor,
         )
