@@ -231,19 +231,19 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
             timesteps = (
-                np.linspace(0, last_timestep - 1, num_inference_steps + 1).round()[::-1][:-1].copy().astype(np.int32)
+                np.linspace(0, last_timestep - 1, num_inference_steps + 1).round()[::-1][:-1].copy().astype(np.int64)
             )
         elif self.config.timestep_spacing == "leading":
             step_ratio = last_timestep // (num_inference_steps + 1)
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int32)
+            timesteps = (np.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(np.int64)
             timesteps += self.config.steps_offset
         elif self.config.timestep_spacing == "trailing":
             step_ratio = self.config.num_train_timesteps / num_inference_steps
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(np.int32)
+            timesteps = np.arange(last_timestep, 0, -step_ratio).round().copy().astype(np.int64)
             timesteps -= 1
         else:
             raise ValueError(
@@ -679,6 +679,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
+        print(f" timestep: {timestep}")
+        print(f" self.timesteps: {self.timesteps}")
 
         index_candidates = (self.timesteps == timestep).nonzero()
 
@@ -800,6 +802,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        print(f" - timesteps (add_noise): {timesteps}")
         alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
