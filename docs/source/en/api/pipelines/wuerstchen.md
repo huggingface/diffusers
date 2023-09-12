@@ -17,13 +17,15 @@ After the initial paper release, we have improved numerous things in the archite
 - Multi Aspect Resolution Sampling
 - Better quality
 
+
 We are releasing 3 checkpoints for the text-conditional image generation model (Stage C). Those are: 
+
 - v2-base
 - v2-aesthetic
 - v2-interpolated (50% interpolation between v2-base and v2-aesthetic)
 
 We recommend to use v2-interpolated, as it has a nice touch of both photorealism and aesthetic. Use v2-base for finetunings as it does not have a style bias and use v2-aesthetic for very artistic generations.
-A comparison can be seen here: 
+A comparison can be seen here:
 
 <img src="https://github.com/dome272/Wuerstchen/assets/61938694/2914830f-cbd3-461c-be64-d50734f4b49d" width=500>
 
@@ -34,56 +36,49 @@ For the sake of usability Würstchen can be used with a single pipeline. This pi
 ```python
 import torch
 from diffusers import AutoPipelineForText2Image
+from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS
 
-device = "cuda"
-dtype = torch.float16
-num_images_per_prompt = 2
-
-pipeline =  AutoPipelineForText2Image.from_pretrained(
-    "warp-diffusion/wuerstchen", torch_dtype=dtype
-).to(device)
+pipe = AutoPipelineForText2Image.from_pretrained("warp-ai/wuerstchen", torch_dtype=torch.float16).to("cuda")
 
 caption = "Anthropomorphic cat dressed as a fire fighter"
-negative_prompt = ""
-
-output = pipeline(
-    prompt=caption,
-    height=1024,
+images = pipe(
+    caption, 
     width=1024,
-    negative_prompt=negative_prompt,
+    height=1536,
+    prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS,
     prior_guidance_scale=4.0,
-    decoder_guidance_scale=0.0,
-    num_images_per_prompt=num_images_per_prompt,
-    output_type="pil",
+    num_images_per_prompt=2,
 ).images
 ```
 
-For explanation purposes, we can also initialize the two main pipelines of Würstchen individually. Würstchen consists of 3 stages: Stage C, Stage B, Stage A. They all have different jobs and work only together. When generating text-conditional images, Stage C will first generate the latents in a very compressed latent space. This is what happens in the `prior_pipeline`. Afterwards, the generated latents will be passed to Stage B, which decompresses the latents into a bigger latent space of a VQGAN. These latents can then be decoded by Stage A, which is a VQGAN, into the pixel-space. Stage B & Stage A are both encapsulated in the `decoder_pipeline`. For more details, take a look the [paper](https://huggingface.co/papers/2306.00637).
+For explanation purposes, we can also initialize the two main pipelines of Würstchen individually. Würstchen consists of 3 stages: Stage C, Stage B, Stage A. They all have different jobs and work only together. When generating text-conditional images, Stage C will first generate the latents in a very compressed latent space. This is what happens in the `prior_pipeline`. Afterwards, the generated latents will be passed to Stage B, which decompresses the latents into a bigger latent space of a VQGAN. These latents can then be decoded by Stage A, which is a VQGAN, into the pixel-space. Stage B & Stage A are both encapsulated in the `decoder_pipeline`. For more details, take a look at the [paper](https://huggingface.co/papers/2306.00637).
 
 ```python
 import torch
 from diffusers import WuerstchenDecoderPipeline, WuerstchenPriorPipeline
+from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS
 
 device = "cuda"
 dtype = torch.float16
 num_images_per_prompt = 2
 
 prior_pipeline = WuerstchenPriorPipeline.from_pretrained(
-    "warp-diffusion/wuerstchen-prior", torch_dtype=dtype
+    "warp-ai/wuerstchen-prior", torch_dtype=dtype
 ).to(device)
 decoder_pipeline = WuerstchenDecoderPipeline.from_pretrained(
-    "warp-diffusion/wuerstchen", torch_dtype=dtype
+    "warp-ai/wuerstchen", torch_dtype=dtype
 ).to(device)
 
-caption = "A captivating artwork of a mysterious stone golem"
+caption = "Anthropomorphic cat dressed as a fire fighter"
 negative_prompt = ""
 
 prior_output = prior_pipeline(
     prompt=caption,
     height=1024,
-    width=1024,
+    width=1536,
+    timesteps=DEFAULT_STAGE_C_TIMESTEPS,
     negative_prompt=negative_prompt,
-	guidance_scale=4.0,
+    guidance_scale=4.0,
     num_images_per_prompt=num_images_per_prompt,
 )
 decoder_output = decoder_pipeline(
@@ -97,7 +92,7 @@ decoder_output = decoder_pipeline(
 ```
 
 ## Speed-Up Inference
-You can make use of ``torch.compile`` function and gain a speed-up of about 2-3x:
+You can make use of `torch.compile` function and gain a speed-up of about 2-3x:
 
 ```python
 pipeline.prior = torch.compile(pipeline.prior, mode="reduce-overhead", fullgraph=True)
@@ -105,14 +100,14 @@ pipeline.decoder = torch.compile(pipeline.decoder, mode="reduce-overhead", fullg
 ```
 
 ## Limitations
+
 - Due to the high compression employed by Würstchen, generations can lack a good amount
 of detail. To our human eye, this is especially noticeable in faces, hands etc.
-- **Images can only be generated in 128-pixel steps**, e.g. the next higher resolution 
+- **Images can only be generated in 128-pixel steps**, e.g. the next higher resolution
 after 1024x1024 is 1152x1152
 - The model lacks the ability to render correct text in images
 - The model often does not achieve photorealism
 - Difficult compositional prompts are hard for the model
-
 
 The original codebase, as well as experimental ideas, can be found at [dome272/Wuerstchen](https://github.com/dome272/Wuerstchen).
 

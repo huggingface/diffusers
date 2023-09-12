@@ -36,9 +36,9 @@ from ...utils import (
     is_accelerate_version,
     is_librosa_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
@@ -946,6 +946,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        self.maybe_free_model_hooks()
 
         # 8. Post-processing
         if not output_type == "latent":

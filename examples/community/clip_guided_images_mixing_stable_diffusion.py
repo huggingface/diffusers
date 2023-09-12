@@ -19,10 +19,8 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.utils import (
-    PIL_INTERPOLATION,
-    randn_tensor,
-)
+from diffusers.utils import PIL_INTERPOLATION
+from diffusers.utils.torch_utils import randn_tensor
 
 
 def preprocess(image, w, h):

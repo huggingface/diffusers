@@ -25,9 +25,9 @@ from ...schedulers import HeunDiscreteScheduler
 from ...utils import (
     BaseOutput,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .renderer import ShapERenderer
 
@@ -97,6 +97,9 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             Shap-E renderer projects the generated latents into parameters of a MLP to create 3D objects with the NeRF
             rendering method.
     """
+
+    model_cpu_offload_seq = "image_encoder->prior"
+    _exclude_from_cpu_offload = ["shap_e_renderer"]
 
     def __init__(
         self,
@@ -309,9 +312,8 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
             if output_type == "pil":
                 images = [self.numpy_to_pil(image) for image in images]
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (images,)
