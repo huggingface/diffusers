@@ -263,10 +263,10 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
             sigma_last = (1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0] ** 0.5
-            sigmas = np.concatenate([sigmas,[sigma_last]])
-        
+            sigmas = np.concatenate([sigmas, [sigma_last]])
+
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        
+
         # when num_inference_steps == num_train_timesteps, we can end up with
         # duplicates in timesteps.
         _, unique_indices = np.unique(timesteps, return_index=True)
@@ -342,9 +342,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         t = (1 - w) * low_idx + w * high_idx
         t = t.reshape(sigma.shape)
         return t
-    
-    def _sigma_to_alpha_sigma_t(self, sigma):
 
+    def _sigma_to_alpha_sigma_t(self, sigma):
         alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
         sigma_t = sigma * alpha_t
 
@@ -635,10 +634,10 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
 
         sigma_t, sigma_s0, sigma_s1, sigma_s2 = (
-            self.sigmas[self.step_index +1],
+            self.sigmas[self.step_index + 1],
             self.sigmas[self.step_index],
-            self.sigmas[self.step_index -1],
-            self.sigmas[self.step_index -2]
+            self.sigmas[self.step_index - 1],
+            self.sigmas[self.step_index - 2],
         )
 
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
