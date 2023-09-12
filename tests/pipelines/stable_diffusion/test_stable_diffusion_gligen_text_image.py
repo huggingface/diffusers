@@ -28,11 +28,11 @@ from transformers import (
 
 from diffusers import (
     AutoencoderKL,
-    CLIPImageProjection,
     DDIMScheduler,
     StableDiffusionGLIGENTextImagePipeline,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.stable_diffusion import CLIPImageProjection
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import enable_full_determinism
 

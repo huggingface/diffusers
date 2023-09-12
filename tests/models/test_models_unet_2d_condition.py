@@ -25,17 +25,17 @@ from pytest import mark
 
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, LoRAAttnProcessor
-from diffusers.utils import (
+from diffusers.utils import logging
+from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
     floats_tensor,
     load_hf_numpy,
-    logging,
     require_torch_gpu,
     slow,
     torch_all_close,
     torch_device,
 )
-from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 

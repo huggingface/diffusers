@@ -38,14 +38,17 @@ from diffusers import (
     logging,
 )
 from diffusers.models.attention_processor import AttnProcessor, LoRAXFormersAttnProcessor
-from diffusers.utils import load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    load_numpy,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    slow,
+    torch_device,
 )
 
 from ...models.test_lora_layers import create_unet_lora_layers

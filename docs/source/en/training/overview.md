@@ -34,13 +34,16 @@ If you feel like another important example should exist, we are more than happy 
 Training examples show how to pretrain or fine-tune diffusion models for a variety of tasks. Currently we support:
 
 - [Unconditional Training](./unconditional_training)
-- [Text-to-Image Training](./text2image)
+- [Text-to-Image Training](./text2image)<sup>*</sup>
 - [Text Inversion](./text_inversion)
-- [Dreambooth](./dreambooth)
-- [LoRA Support](./lora)
-- [ControlNet](./controlnet)
-- [InstructPix2Pix](./instructpix2pix)
+- [Dreambooth](./dreambooth)<sup>*</sup>
+- [LoRA Support](./lora)<sup>*</sup>
+- [ControlNet](./controlnet)<sup>*</sup>
+- [InstructPix2Pix](./instructpix2pix)<sup>*</sup>
 - [Custom Diffusion](./custom_diffusion)
+- [T2I-Adapters](./t2i_adapters)<sup>*</sup>
+
+<sup>*</sup>: Supports [Stable Diffusion XL](../api/pipelines/stable_diffusion/stable_diffusion_xl).
 
 If possible, please [install xFormers](../optimization/xformers) for memory efficient attention. This could help make your training faster and less memory intensive.
 
@@ -54,6 +57,7 @@ If possible, please [install xFormers](../optimization/xformers) for memory effi
 | [**ControlNet**](./controlnet) | ✅ | ✅ | - |
 | [**InstructPix2Pix**](./instructpix2pix) | ✅ | ✅ | - |
 | [**Custom Diffusion**](./custom_diffusion) | ✅ | ✅ | - |
+| [**T2I Adapters**](./t2i_adapters) | ✅ | ✅ | - |
 
 ## Community
 

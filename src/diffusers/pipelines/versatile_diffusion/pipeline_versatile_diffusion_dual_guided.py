@@ -29,7 +29,8 @@ from transformers import (
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, DualTransformer2DModel, Transformer2DModel, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, logging, randn_tensor
+from ...utils import deprecate, logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_text_unet import UNetFlatConditionModel
 
@@ -57,6 +58,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+    model_cpu_offload_seq = "bert->unet->vqvae"
+
     tokenizer: CLIPTokenizer
     image_feature_extractor: CLIPImageProcessor
     text_encoder: CLIPTextModelWithProjection
