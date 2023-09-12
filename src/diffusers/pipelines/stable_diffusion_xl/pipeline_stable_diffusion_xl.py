@@ -14,7 +14,6 @@
 
 import inspect
 import os
-import time
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -943,7 +942,6 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                     )
                     recursive = is_sequential_cpu_offload
                     remove_hook_from_module(component, recurse=recursive)
-
         state_dict, network_alphas = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
             unet_config=self.unet.config,
@@ -960,6 +958,7 @@ class StableDiffusionXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoad
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
             )
+
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
         if len(text_encoder_2_state_dict) > 0:
             self.load_lora_into_text_encoder(
