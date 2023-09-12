@@ -22,6 +22,7 @@ from typing import Callable, Dict, List, Optional, Union
 
 import requests
 import safetensors
+from safetensors.torch import load_model
 import torch
 from huggingface_hub import hf_hub_download, model_info
 from torch import nn
@@ -46,7 +47,6 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
     from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
-    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)
 
@@ -2410,8 +2410,7 @@ class FromOriginalVAEMixin:
             vae = AutoencoderKL(**vae_config)
 
         if is_accelerate_available():
-            for param_name, param in converted_vae_checkpoint.items():
-                set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+            load_model_dict_into_meta(vae, converted_vae_checkpoint, device="cpu")
         else:
             vae.load_state_dict(converted_vae_checkpoint)
 
