@@ -249,9 +249,36 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         negative_prompt,
         num_inference_steps,
         do_classifier_free_guidance,
-        batch_size,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
     ):
-        if not isinstance(prompt, list):
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+
+        if prompt is not None and not isinstance(prompt, list):
             if isinstance(prompt, str):
                 prompt = [prompt]
             else:
@@ -272,9 +299,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                            In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
             )
 
-        batch_size = len(prompt) if isinstance(prompt, list) else 1
-
-        return prompt, negative_prompt, num_inference_steps, batch_size
+        return prompt, negative_prompt, num_inference_steps
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -361,11 +386,21 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         # 0. Define commonly used variables
         device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
-        batch_size = len(prompt) if isinstance(prompt, list) else 1
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
 
         # 1. Check inputs. Raise error if not correct
-        prompt, negative_prompt, num_inference_steps, batch_size = self.check_inputs(
-            prompt, negative_prompt, num_inference_steps, do_classifier_free_guidance, batch_size
+        prompt, negative_prompt, num_inference_steps = self.check_inputs(
+            prompt,
+            negative_prompt,
+            num_inference_steps,
+            do_classifier_free_guidance,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
         )
 
         # 2. Encode caption
