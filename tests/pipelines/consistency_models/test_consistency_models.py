@@ -212,7 +212,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
         expected_slice = np.array([0.0146, 0.0158, 0.0092, 0.0086, 0.0000, 0.0000, 0.0000, 0.0000, 0.0058])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_consistency_model_cd_onestep(self):
         unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
@@ -235,7 +235,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
         expected_slice = np.array([0.0059, 0.0003, 0.0000, 0.0023, 0.0052, 0.0007, 0.0165, 0.0081, 0.0095])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @require_torch_2
     def test_consistency_model_cd_multistep_flash_attn(self):
