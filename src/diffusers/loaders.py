@@ -383,8 +383,6 @@ class UNet2DConditionLoadersMixin:
         is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
-        print(time.time() - start_time)
-
         if is_lora:
             # correct keys
             state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
@@ -458,11 +456,11 @@ class UNet2DConditionLoadersMixin:
                     raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
 
                 value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
-                device = next(iter(value_dict.values())).device
-                dtype = next(iter(value_dict.values())).dtype
-
                 lora_layers_list.append((attn_processor, lora))
+
                 if low_cpu_mem_usage:
+                    device = next(iter(value_dict.values())).device
+                    dtype = next(iter(value_dict.values())).dtype
                     load_model_dict_into_meta(lora, value_dict, device=device, dtype=dtype)
                 else:
                     lora.load_state_dict(value_dict)
