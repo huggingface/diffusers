@@ -22,7 +22,6 @@ from typing import Callable, Dict, List, Optional, Union
 
 import requests
 import safetensors
-from safetensors.torch import load_model
 import torch
 from huggingface_hub import hf_hub_download, model_info
 from torch import nn

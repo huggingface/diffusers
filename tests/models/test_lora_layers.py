@@ -277,7 +277,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         assert outputs_without_lora.shape == (1, 77, 32)
 
         # monkey patch
-        params = pipe._modify_text_encoder(pipe.text_encoder, pipe.lora_scale)
+        params = pipe._modify_text_encoder(pipe.text_encoder, pipe.lora_scale, low_cpu_mem_usage=False)
 
         set_lora_weights(params, randn_weight=False)
 
