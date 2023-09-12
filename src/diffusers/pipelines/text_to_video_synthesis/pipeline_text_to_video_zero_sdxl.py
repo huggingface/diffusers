@@ -355,7 +355,6 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
         )
         self.unet.set_attn_processor(processor)
 
-
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.TextToVideoZeroPipeline.forward_loop
     def forward_loop(self, x_t0, t0, t1, generator):
         """

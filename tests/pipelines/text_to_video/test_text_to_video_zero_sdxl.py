@@ -22,7 +22,9 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
 
+
 enable_full_determinism()
+
 
 class TextToVideoZeroSDXLPipelineFastTests(unittest.TestCase):
     def get_dummy_components(self, seed=0):
@@ -132,7 +134,7 @@ class TextToVideoZeroSDXLPipelineFastTests(unittest.TestCase):
         pipe = pipe.to(torch_device)
 
         generator = self.get_generator(torch_device)
-        
+
         prompt = "A panda dancing in Antarctica"
         result = pipe(
             prompt=prompt,
