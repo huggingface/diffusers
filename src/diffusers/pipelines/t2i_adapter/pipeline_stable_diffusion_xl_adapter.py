@@ -910,6 +910,10 @@ class StableDiffusionXLAdapterPipeline(
                     down_block_additional_residuals = [state.clone() for state in adapter_state]
                 else:
                     down_block_additional_residuals = None
+                    
+                # expand down block additional residuals if bz > 1
+                if batch_size > 1:
+                    down_block_additional_residuals = [state.repeat(batch_size, 1, 1, 1) for state in down_block_additional_residuals]
 
                 noise_pred = self.unet(
                     latent_model_input,
