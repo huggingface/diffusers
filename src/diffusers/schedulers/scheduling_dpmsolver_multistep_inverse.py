@@ -258,13 +258,16 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = timesteps.copy().astype(np.int64)
-            sigmas = np.concatenate([sigmas[:1], sigmas]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-            sigma_first = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
-            sigmas = np.concatenate([[sigma_first], sigmas]).astype(np.float32)
+        sigmas = np.concatenate([sigmas,sigmas[-1:]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
+
+        # when num_inference_steps == num_train_timesteps, we can end up with
+        # duplicates in timesteps.
+        _, unique_indices = np.unique(timesteps, return_index=True)
+        timesteps = timesteps[np.sort(unique_indices)]
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
@@ -467,11 +470,16 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         """
 
         sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
+        print(f" 1st order update")
+        print(f" index: {self.step_index +1, self.step_index}")
+        print(f" - sigmas: {sigma_t},{sigma_s}")
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s, sigma_s = self._sigma_to_alpha_sigma_t(sigma_s)
         lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
         lambda_s = torch.log(alpha_s) - torch.log(sigma_s)
-
+        print(f" - sigmas: {sigma_t},{sigma_s}")
+        print(f" - alphas: {alpha_t},{alpha_s}")
+        print(f" - lambdas: {lambda_t},{lambda_s}")
         h = lambda_t - lambda_s
         if self.config.algorithm_type == "dpmsolver++":
             x_t = (sigma_t / sigma_s) * sample - (alpha_t * (torch.exp(-h) - 1.0)) * model_output
