@@ -260,7 +260,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             timesteps = timesteps.copy().astype(np.int64)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-        sigmas = np.concatenate([sigmas,sigmas[-1:]]).astype(np.float32)
+        
+        sigma_max = ((1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]) ** 0.5
+        sigmas = np.concatenate([sigmas, [sigma_max]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
 
@@ -280,8 +282,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
-        print(f" - timesteps: {self.timesteps}")
-        print(f" -sigmas: {self.sigmas}")
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
