@@ -92,7 +92,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
-        use_temporal_transformer (`bool`, defaults to `True`): If `False`, skips the temporal attention layer before processing the input.
+        use_temporal_transformer (`bool`, defaults to `True`):
+            If `False`, skips the temporal attention layer before processing the input.
         num_attention_heads (`int`, *optional*): The number of attention heads.
     """
 
