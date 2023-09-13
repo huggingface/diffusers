@@ -249,7 +249,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
-            prompt=prompt,
+            prompt=prompt if prompt is not None else "",
             num_inference_steps=num_inference_steps,
             timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
