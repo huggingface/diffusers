@@ -2099,6 +2099,7 @@ class FromSingleFileMixin:
         from .pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
         original_config_file = kwargs.pop("original_config_file", None)
+        config_files = kwargs.pop("config_files", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
@@ -2216,6 +2217,7 @@ class FromSingleFileMixin:
             vae=vae,
             tokenizer=tokenizer,
             original_config_file=original_config_file,
+            config_files=config_files,
         )
 
         if torch_dtype is not None:
