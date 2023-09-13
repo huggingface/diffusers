@@ -846,6 +846,8 @@ class StableDiffusionXLInstructPix2PixPipeline(
             )
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
             timesteps = timesteps[:num_inference_steps]
+        
+        print(f"latents: {latents.dtype}")
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
