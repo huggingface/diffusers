@@ -495,7 +495,8 @@ class StableDiffusionXLInstructPix2PixPipeline(
             image_latents = image
         else:
             # make sure the VAE is in float32 mode, as it overflows in float16
-            if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
+            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+            if needs_upcasting:
                 self.upcast_vae()
                 image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
@@ -510,6 +511,10 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 image_latents = torch.cat(image_latents, dim=0)
             else:
                 image_latents = self.vae.encode(image).latent_dist.mode()
+
+            # cast back to fp16 if needed
+            if needs_upcasting:
+                self.vae.to(dtype=torch.float16)
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
@@ -536,7 +541,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
         if image_latents.dtype != self.vae.dtype:
             image_latents = image_latents.to(dtype=self.vae.dtype)
 
-        print(f"image_latents: {image_latents.dtype}")
+        print(f"image_latents: {image_latents.dtype}, vae: {self.vae.dtype}, {self.vae.config.force_upcast}")
         return image_latents
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
