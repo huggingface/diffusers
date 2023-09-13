@@ -498,6 +498,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
             if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
                 self.upcast_vae()
                 image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+                print(f"Within upcasting block: {self.vae.dtype}, {image.dtype}")
 
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
@@ -865,7 +866,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                # print(self.unet.dtype, scaled_latent_model_input.dtype, t.dtype, prompt_embeds.dtype)
                 noise_pred = self.unet(
                     scaled_latent_model_input,
                     t,
