@@ -41,7 +41,7 @@ Core library:
 - Schedulers: @williamberman and @patrickvonplaten
 - Pipelines:  @patrickvonplaten and @sayakpaul
 - Training examples: @sayakpaul and @patrickvonplaten
-- Docs: @stevenliu and @yiyixu
+- Docs: @stevhliu and @yiyixuxu
 - JAX and MPS: @pcuenca
 - Audio: @sanchit-gandhi
 - General functionalities: @patrickvonplaten and @sayakpaul

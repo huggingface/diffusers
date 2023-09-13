@@ -1,8 +1,7 @@
 import torch
 
 from diffusers import DPMSolverSDEScheduler
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import require_torchsde
+from diffusers.utils.testing_utils import require_torchsde, torch_device
 
 from .test_schedulers import SchedulerCommonTest
 

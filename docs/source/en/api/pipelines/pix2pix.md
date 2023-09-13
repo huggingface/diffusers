@@ -36,3 +36,11 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 
 ## StableDiffusionPipelineOutput
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
+
+## StableDiffusionXLInstructPix2PixPipeline
+[[autodoc]] StableDiffusionXLInstructPix2PixPipeline
+	- __call__
+	- all
+
+## StableDiffusionXLPipelineOutput
+[[autodoc]] pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput

@@ -24,7 +24,8 @@ from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, logging, randn_tensor
+from ...utils import deprecate, logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -64,6 +65,8 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     # TODO: feature_extractor is required to encode images (if they are in PIL format),
     # we should give a descriptive message if the pipeline doesn't have one.
     _optional_components = ["safety_checker"]
+    model_cpu_offload_seq = "image_encoder->unet->vae"
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
@@ -390,6 +393,8 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        self.maybe_free_model_hooks()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
