@@ -541,7 +541,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
         if image_latents.dtype != self.vae.dtype:
             image_latents = image_latents.to(dtype=self.vae.dtype)
 
-        print(f"image_latents: {image_latents.dtype}, vae: {self.vae.dtype}, {self.vae.config.force_upcast}")
         return image_latents
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
@@ -855,8 +854,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
             )
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
             timesteps = timesteps[:num_inference_steps]
-        
-        print(f"latents: {latents.dtype}, image_latents: {image_latents.dtype}")
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -864,12 +861,10 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 # The latents are expanded 3 times because for pix2pix the guidance
                 # is applied for both the text and the input image.
                 latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
-                print(f"latent_model_input: {latent_model_input.dtype}")
 
                 # concat latents, image_latents in the channel dimension
                 scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 scaled_latent_model_input = torch.cat([scaled_latent_model_input, image_latents], dim=1)
-                print(f"scaled_latent_model_input: {scaled_latent_model_input.dtype}")
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
