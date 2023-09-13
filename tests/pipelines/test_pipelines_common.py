@@ -395,6 +395,7 @@ class PipelineTesterMixin:
         batched_inputs = []
         for batch_size in batch_sizes:
             batched_input = {}
+            batched_input.update(inputs)
 
             for name in self.batch_params:
                 value = inputs[name]
@@ -416,7 +417,7 @@ class PipelineTesterMixin:
 
             batched_inputs.append(batched_input)
 
-        for batched_input in zip(batch_sizes, batched_inputs):
+        for batch_size, batched_input in zip(batch_sizes, batched_inputs):
             output = pipe(**batched_input)
             assert len(output[0]) == batch_size
 
@@ -452,6 +453,7 @@ class PipelineTesterMixin:
 
         # batchify inputs
         batched_inputs = {}
+        batched_inputs.update(inputs)
         batch_size = batch_size
         for name in self.batch_params:
             value = inputs[name]
@@ -474,9 +476,6 @@ class PipelineTesterMixin:
 
         for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]
-
-        if "output_type" in inputs:
-            batched_inputs.update({"output_type": inputs["output_type"]})
 
         output_batch = pipe(**batched_inputs)
         assert output_batch[0].shape[0] == batch_size

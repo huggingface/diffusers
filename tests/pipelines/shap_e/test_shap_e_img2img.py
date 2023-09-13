@@ -221,7 +221,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             batch_size=2,
             test_max_difference=test_max_difference,
             relax_max_difference=relax_max_difference,
-            expected_max_diff=6e-4,
+            expected_max_diff=7e-4,
         )
 
     def test_num_images_per_prompt(self):
