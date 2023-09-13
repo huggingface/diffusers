@@ -113,6 +113,7 @@ else:
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_diffusion"].extend(
         [
+            "CLIPImageProjection",
             "CycleDiffusionPipeline",
             "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionDepth2ImgPipeline",
@@ -323,6 +324,7 @@ if TYPE_CHECKING:
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_diffusion import (
+            CLIPImageProjection,
             CycleDiffusionPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionDepth2ImgPipeline,
