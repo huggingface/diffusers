@@ -361,7 +361,7 @@ pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 pipe.fuse_lora()
 
 # Then save.
-pipe.save_pretrained("my-pipeline-with-fused-lora", safe_serialization=True)
+pipe.save_pretrained("my-pipeline-with-fused-lora")
 ```
 
 Now, you can load the pipeline and directly perform inference without having to load the LoRA parameters again:
