@@ -78,13 +78,15 @@ For more information and different options about `torch.compile`, refer to the [
 
 ## Benchmark
 
-We conducted a comprehensive benchmark with PyTorch 2.0's efficient attention implementation and `torch.compile` across different GPUs and batch sizes for five of our most used pipelines. We used `diffusers 0.17.0.dev0`, which [makes sure `torch.compile()` is leveraged optimally](https://github.com/huggingface/diffusers/pull/3313).
+We conducted a comprehensive benchmark with PyTorch 2.0's efficient attention implementation and `torch.compile` across different GPUs and batch sizes for five of our most used pipelines. The code is benchmarked on 🤗 Diffusers v0.17.0.dev0 to optimize `torch.compile` usage (see [here](https://github.com/huggingface/diffusers/pull/3313) for more details).
 
-### Benchmarking code 
+Expand the dropdown below to find the code used to benchmark each pipeline:
 
-#### Stable Diffusion text-to-image 
+<details>
 
-```python 
+### Stable Diffusion text-to-image
+
+```python
 from diffusers import DiffusionPipeline
 import torch
 
@@ -106,7 +108,7 @@ for _ in range(3):
     images = pipe(prompt=prompt).images
 ```
 
-#### Stable Diffusion image-to-image 
+### Stable Diffusion image-to-image
 
 ```python 
 from diffusers import StableDiffusionImg2ImgPipeline
@@ -139,7 +141,7 @@ for _ in range(3):
     image = pipe(prompt=prompt, image=init_image).images[0]
 ```
 
-#### Stable Diffusion - inpainting
+### Stable Diffusion inpainting
 
 ```python 
 from diffusers import StableDiffusionInpaintPipeline
@@ -179,7 +181,7 @@ for _ in range(3):
     image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
-#### ControlNet 
+### ControlNet
 
 ```python 
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
@@ -217,7 +219,7 @@ for _ in range(3):
     image = pipe(prompt=prompt, image=init_image).images[0]
 ```
 
-#### IF text-to-image + upscaling
+### DeepFloyd IF text-to-image + upscaling
 
 ```python 
 from diffusers import DiffusionPipeline
@@ -252,24 +254,18 @@ for _ in range(3):
     image_2 = pipe_2(image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=neg_prompt_embeds, output_type="pt").images
     image_3 = pipe_3(prompt=prompt, image=image, noise_level=100).images
 ```
+</details>
 
-To give you a pictorial overview of the possible speed-ups that can be obtained with PyTorch 2.0 and `torch.compile()`,
-here is a plot that shows relative speed-ups for the [Stable Diffusion text-to-image pipeline](StableDiffusionPipeline) across five
-different GPU families (with a batch size of 4):
+The graph below highlights the relative speed-ups for the [`StableDiffusionPipeline`] across five GPU families with PyTorch 2.0 and `torch.compile` enabled. The benchmarks for the following graphs are measured in *number of iterations/second*.
 
 ![t2i_speedup](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/pt2_benchmarks/t2i_speedup.png)
 
-To give you an even better idea of how this speed-up holds for the other pipelines presented above, consider the following 
-plot that shows the benchmarking numbers from an A100 across three different batch sizes
-(with PyTorch 2.0 nightly and `torch.compile()`):
+To give you an even better idea of how this speed-up holds for the other pipelines, consider the following
+graph for an A100 with PyTorch 2.0 and `torch.compile`:
 
 ![a100_numbers](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/pt2_benchmarks/a100_numbers.png)
 
-_(Our benchmarking metric for the plots above is **number of iterations/second**)_
-
-But we reveal all the benchmarking numbers in the interest of transparency! 
-
-In the following tables, we report our findings in terms of the number of **_iterations processed per second_**. 
+In the following tables, we report our findings in terms of the *number of iterations/second*.
 
 ### A100 (batch size: 1)
 
@@ -423,7 +419,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 
 ## Notes 
 
-* Follow [this PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks. 
-* For the IF pipeline and batch sizes > 1, we only used a batch size of >1 in the first IF pipeline for text-to-image generation and NOT for upscaling. So, that means the two upscaling pipelines received a batch size of 1. 
+* Follow this [PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks. 
+* For the DeepFloyd IF pipeline where batch sizes > 1, we only used a batch size of > 1 in the first IF pipeline for text-to-image generation and NOT for upscaling. That means the two upscaling pipelines received a batch size of 1.
 
 *Thanks to [Horace He](https://github.com/Chillee) from the PyTorch team for their support in improving our support of `torch.compile()` in Diffusers.*
