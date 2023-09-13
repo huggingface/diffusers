@@ -536,6 +536,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
         if image_latents.dtype != self.vae.dtype:
             image_latents = image_latents.to(dtype=self.vae.dtype)
 
+        print(f"image_latents: {image_latents.dtype}")
         return image_latents
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
