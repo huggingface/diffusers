@@ -74,7 +74,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, PipelineLatentTesterMixi
             subfolder="image_encoder",
         )
         # From the Stable Diffusion Image Variation pipeline tests
-        image_processor = CLIPImageProcessor(crop_size=32, size=32)
+        clip_image_processor = CLIPImageProcessor(crop_size=32, size=32)
         # image_processor = CLIPImageProcessor.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         text_tokenizer = GPT2Tokenizer.from_pretrained(
@@ -90,7 +90,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, PipelineLatentTesterMixi
             "vae": vae,
             "text_encoder": text_encoder,
             "image_encoder": image_encoder,
-            "image_processor": image_processor,
+            "clip_image_processor": clip_image_processor,
             "clip_tokenizer": clip_tokenizer,
             "text_decoder": text_decoder,
             "text_tokenizer": text_tokenizer,
