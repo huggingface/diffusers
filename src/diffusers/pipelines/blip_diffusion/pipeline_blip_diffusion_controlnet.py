@@ -28,9 +28,9 @@ from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ...utils.pil_utils import PIL_INTERPOLATION
 from torch import nn
 from transformers.activations import QuickGELUActivation as QuickGELU
