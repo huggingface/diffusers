@@ -40,8 +40,7 @@ from diffusers import (
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import CaptureLogger
+from diffusers.utils.testing_utils import CaptureLogger, torch_device
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
@@ -485,8 +484,8 @@ class SchedulerCommonTest(unittest.TestCase):
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
-        timestep_0 = 0
-        timestep_1 = 1
+        timestep_0 = 1
+        timestep_1 = 0
 
         for scheduler_class in self.scheduler_classes:
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):

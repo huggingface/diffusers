@@ -27,10 +27,11 @@ from diffusers import (
     StableDiffusionParadigmsPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     require_torch_gpu,
+    slow,
+    torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS

@@ -1,0 +1,8 @@
+transformers>=4.25.1
+accelerate>=0.16.0
+safetensors
+datasets
+torchvision
+ftfy
+tensorboard
+wandb

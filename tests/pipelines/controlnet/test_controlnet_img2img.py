@@ -33,9 +33,17 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, randn_tensor, slow, torch_device
+from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_numpy,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -402,15 +410,6 @@ class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
 
         assert np.abs(expected_image - image).max() < 9e-2
 
-
-@nightly
-@require_torch_gpu
-class ControlNetImg2ImgPipelineNightlyTests(unittest.TestCase):
-    def tearDown(self):
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
     def test_load_local(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
         pipe_1 = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
@@ -455,4 +454,4 @@ class ControlNetImg2ImgPipelineNightlyTests(unittest.TestCase):
             gc.collect()
             torch.cuda.empty_cache()
 
-        assert np.abs(images[0] - images[1]).sum() < 1e-3
+        assert np.abs(images[0] - images[1]).max() < 1e-3
