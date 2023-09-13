@@ -270,8 +270,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                            In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
             )
 
-        return prompt, negative_prompt, num_inference_steps
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -365,7 +363,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # 1. Check inputs. Raise error if not correct
-        prompt, negative_prompt, num_inference_steps = self.check_inputs(
+        self.check_inputs(
             prompt,
             negative_prompt,
             num_inference_steps,
