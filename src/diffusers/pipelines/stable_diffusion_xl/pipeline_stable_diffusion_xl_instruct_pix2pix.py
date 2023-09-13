@@ -855,10 +855,12 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 # The latents are expanded 3 times because for pix2pix the guidance
                 # is applied for both the text and the input image.
                 latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
+                print(f"latent_model_input: {latent_model_input.dtype}")
 
                 # concat latents, image_latents in the channel dimension
                 scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 scaled_latent_model_input = torch.cat([scaled_latent_model_input, image_latents], dim=1)
+                print(f"scaled_latent_model_input: {scaled_latent_model_input.dtype}")
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
