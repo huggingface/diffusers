@@ -121,7 +121,7 @@ class PatchedLoraProjection(nn.Module):
         self.lora_scale = lora_scale
 
     def _unfuse_lora(self):
-        if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
+        if not (getattr(self, "w_up", None) is not None and getattr(self, "w_down", None) is not None):
             return
 
         fused_weight = self.regular_linear_layer.weight.data
