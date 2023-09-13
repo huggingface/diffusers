@@ -181,8 +181,8 @@ class StableDiffusionLatentUpscalePipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=7e-3)
 
-    def test_cpu_offload_forward_pass(self):
-        super().test_cpu_offload_forward_pass(expected_max_diff=3e-3)
+    def test_sequential_cpu_offload_forward_pass(self):
+        super().test_sequential_cpu_offload_forward_pass(expected_max_diff=3e-3)
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=3e-3)

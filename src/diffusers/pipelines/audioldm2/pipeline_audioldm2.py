@@ -947,6 +947,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
+        self.maybe_free_model_hooks()
+
         # 8. Post-processing
         if not output_type == "latent":
             latents = 1 / self.vae.config.scaling_factor * latents
