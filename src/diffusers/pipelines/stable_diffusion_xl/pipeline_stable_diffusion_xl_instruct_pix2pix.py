@@ -495,11 +495,9 @@ class StableDiffusionXLInstructPix2PixPipeline(
             image_latents = image
         else:
             # make sure the VAE is in float32 mode, as it overflows in float16
-            print(self.vae.dtype, self.vae.config.force_upcast)
             if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
                 self.upcast_vae()
                 image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-                print(f"Within upcasting block: {self.vae.dtype}, {image.dtype}")
 
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
@@ -513,7 +511,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
             else:
                 image_latents = self.vae.encode(image).latent_dist.mode()
 
-        print(f"image_latents: {image_latents.dtype}")
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
             deprecation_message = (
@@ -535,6 +532,9 @@ class StableDiffusionXLInstructPix2PixPipeline(
         if do_classifier_free_guidance:
             uncond_image_latents = torch.zeros_like(image_latents)
             image_latents = torch.cat([image_latents, image_latents, uncond_image_latents], dim=0)
+
+        if image_latents.dtype != self.vae.dtype:
+            image_latents = image_latents.to(dtype=self.vae.dtype)
 
         return image_latents
 
