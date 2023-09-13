@@ -496,8 +496,9 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_dummy_inputs(torch_device))[0]
-        output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
+        generator_device = "cpu"
+        output = pipe(**self.get_dummy_inputs(generator_device))[0]
+        output_tuple = pipe(**self.get_dummy_inputs(generator_device), return_dict=False)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
