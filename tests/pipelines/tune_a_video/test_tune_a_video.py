@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, TuneAVideoPipeline, UNet3DConditionModel
-from diffusers.utils import load_numpy, skip_mps, slow
+from diffusers.utils.testing_utils import load_numpy, skip_mps, slow
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -69,7 +69,6 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             mid_block_type="UNetMidBlockInflated3DCrossAttn",
             cross_attention_dim=32,
             attention_head_dim=4,
-            use_linear_projection=False,
             use_temporal_transformer=False,
         )
         scheduler = DDIMScheduler(
