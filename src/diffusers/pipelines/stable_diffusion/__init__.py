@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -12,15 +14,12 @@ from ...utils import (
 )
 
 
-_import_structure = {}
-_additional_imports = {}
 _dummy_objects = {}
-
-_import_structure["pipeline_output"] = ["StableDiffusionPipelineOutput"]
+_additional_imports = {}
+_import_structure = {"pipeline_output": ["StableDiffusionPipelineOutput"]}
 
 if is_transformers_available() and is_flax_available():
     _import_structure["pipeline_output"].extend(["FlaxStableDiffusionPipelineOutput"])
-
 try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
@@ -28,12 +27,14 @@ except OptionalDependencyNotAvailable:
     from ...utils import dummy_torch_and_transformers_objects  # noqa F403
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
-
 else:
+    _import_structure["clip_image_project_model"] = ["CLIPImageProjection"]
     _import_structure["pipeline_cycle_diffusion"] = ["CycleDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion"] = ["StableDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["pipeline_stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
+    _import_structure["pipeline_stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
+    _import_structure["pipeline_stable_diffusion_gligen_text_image"] = ["StableDiffusionGLIGENTextImagePipeline"]
     _import_structure["pipeline_stable_diffusion_img2img"] = ["StableDiffusionImg2ImgPipeline"]
     _import_structure["pipeline_stable_diffusion_inpaint"] = ["StableDiffusionInpaintPipeline"]
     _import_structure["pipeline_stable_diffusion_inpaint_legacy"] = ["StableDiffusionInpaintPipelineLegacy"]
@@ -49,10 +50,6 @@ else:
     _import_structure["pipeline_stable_unclip_img2img"] = ["StableUnCLIPImg2ImgPipeline"]
     _import_structure["safety_checker"] = ["StableDiffusionSafetyChecker"]
     _import_structure["stable_unclip_image_normalizer"] = ["StableUnCLIPImageNormalizer"]
-    _import_structure["pipeline_stable_diffusion_gligen_text_image"] = ["StableDiffusionGLIGENTextImagePipeline"]
-    _import_structure["pipeline_stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
-    _import_structure["clip_image_project_model"] = ["CLIPImageProjection"]
-
 try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
         raise OptionalDependencyNotAvailable()
@@ -62,8 +59,6 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update({"StableDiffusionImageVariationPipeline": StableDiffusionImageVariationPipeline})
 else:
     _import_structure["pipeline_stable_diffusion_image_variation"] = ["StableDiffusionImageVariationPipeline"]
-
-
 try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
         raise OptionalDependencyNotAvailable()
@@ -85,8 +80,6 @@ else:
     _import_structure["pipeline_stable_diffusion_depth2img"] = ["StableDiffusionDepth2ImgPipeline"]
     _import_structure["pipeline_stable_diffusion_diffedit"] = ["StableDiffusionDiffEditPipeline"]
     _import_structure["pipeline_stable_diffusion_pix2pix_zero"] = ["StableDiffusionPix2PixZeroPipeline"]
-
-
 try:
     if not (
         is_torch_available()
@@ -99,10 +92,8 @@ except OptionalDependencyNotAvailable:
     from ...utils import dummy_torch_and_transformers_and_k_diffusion_objects  # noqa F403
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
-
 else:
     _import_structure["pipeline_stable_diffusion_k_diffusion"] = ["StableDiffusionKDiffusionPipeline"]
-
 try:
     if not (is_transformers_available() and is_onnx_available()):
         raise OptionalDependencyNotAvailable()
@@ -110,7 +101,6 @@ except OptionalDependencyNotAvailable:
     from ...utils import dummy_onnx_objects  # noqa F403
 
     _dummy_objects.update(get_objects_from_module(dummy_onnx_objects))
-
 else:
     _import_structure["pipeline_onnx_stable_diffusion"] = [
         "OnnxStableDiffusionPipeline",
@@ -125,23 +115,120 @@ if is_transformers_available() and is_flax_available():
     from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
 
     _additional_imports.update({"PNDMSchedulerState": PNDMSchedulerState})
-
     _import_structure["pipeline_flax_stable_diffusion"] = ["FlaxStableDiffusionPipeline"]
     _import_structure["pipeline_flax_stable_diffusion_img2img"] = ["FlaxStableDiffusionImg2ImgPipeline"]
     _import_structure["pipeline_flax_stable_diffusion_inpaint"] = ["FlaxStableDiffusionInpaintPipeline"]
     _import_structure["safety_checker_flax"] = ["FlaxStableDiffusionSafetyChecker"]
 
-import sys
+if TYPE_CHECKING:
+    try:
+        if not (is_transformers_available() and is_torch_available()):
+            raise OptionalDependencyNotAvailable()
 
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_transformers_objects import *
 
-sys.modules[__name__] = _LazyModule(
-    __name__,
-    globals()["__file__"],
-    _import_structure,
-    module_spec=__spec__,
-)
+    else:
+        from .clip_image_project_model import CLIPImageProjection
+        from .pipeline_stable_diffusion import (
+            StableDiffusionPipeline,
+            StableDiffusionPipelineOutput,
+            StableDiffusionSafetyChecker,
+        )
+        from .pipeline_stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
+        from .pipeline_stable_diffusion_gligen import StableDiffusionGLIGENPipeline
+        from .pipeline_stable_diffusion_gligen_text_image import StableDiffusionGLIGENTextImagePipeline
+        from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
+        from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
+        from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
+        from .pipeline_stable_diffusion_instruct_pix2pix import StableDiffusionInstructPix2PixPipeline
+        from .pipeline_stable_diffusion_latent_upscale import StableDiffusionLatentUpscalePipeline
+        from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
+        from .pipeline_stable_diffusion_model_editing import StableDiffusionModelEditingPipeline
+        from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
+        from .pipeline_stable_diffusion_paradigms import StableDiffusionParadigmsPipeline
+        from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
+        from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
+        from .pipeline_stable_unclip import StableUnCLIPPipeline
+        from .pipeline_stable_unclip_img2img import StableUnCLIPImg2ImgPipeline
+        from .safety_checker import StableDiffusionSafetyChecker
+        from .stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
-for name, value in _dummy_objects.items():
-    setattr(sys.modules[__name__], name, value)
-for name, value in _additional_imports.items():
-    setattr(sys.modules[__name__], name, value)
+    try:
+        if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_transformers_objects import StableDiffusionImageVariationPipeline
+    else:
+        from .pipeline_stable_diffusion_image_variation import StableDiffusionImageVariationPipeline
+
+    try:
+        if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_transformers_objects import (
+            StableDiffusionDepth2ImgPipeline,
+            StableDiffusionDiffEditPipeline,
+            StableDiffusionPix2PixZeroPipeline,
+        )
+    else:
+        from .pipeline_stable_diffusion_depth2img import StableDiffusionDepth2ImgPipeline
+        from .pipeline_stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
+        from .pipeline_stable_diffusion_pix2pix_zero import StableDiffusionPix2PixZeroPipeline
+
+    try:
+        if not (
+            is_torch_available()
+            and is_transformers_available()
+            and is_k_diffusion_available()
+            and is_k_diffusion_version(">=", "0.0.12")
+        ):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
+    else:
+        from .pipeline_stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
+
+    try:
+        if not (is_transformers_available() and is_onnx_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_onnx_objects import *
+    else:
+        from .pipeline_onnx_stable_diffusion import (
+            OnnxStableDiffusionImg2ImgPipeline,
+            OnnxStableDiffusionInpaintPipeline,
+            OnnxStableDiffusionInpaintPipelineLegacy,
+            OnnxStableDiffusionPipeline,
+            OnnxStableDiffusionUpscalePipeline,
+            StableDiffusionOnnxPipeline,
+        )
+
+    try:
+        if not (is_transformers_available() and is_flax_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_flax_objects import *
+    else:
+        from .pipeline_flax_stable_diffusion import (
+            FlaxStableDiffusionImg2ImgPipeline,
+            FlaxStableDiffusionInpaintPipeline,
+            FlaxStableDiffusionPipeline,
+            FlaxStableDiffusionSafetyChecker,
+        )
+        from .pipeline_output import FlaxStableDiffusionPipelineOutput
+
+else:
+    import sys
+
+    sys.modules[__name__] = _LazyModule(
+        __name__,
+        globals()["__file__"],
+        _import_structure,
+        module_spec=__spec__,
+    )
+
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)
+    for name, value in _additional_imports.items():
+        setattr(sys.modules[__name__], name, value)
