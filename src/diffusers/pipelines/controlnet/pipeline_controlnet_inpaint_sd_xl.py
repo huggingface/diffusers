@@ -35,8 +35,6 @@ from ...models.attention_processor import (
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     is_invisible_watermark_available,
     logging,
     replace_example_docstring,

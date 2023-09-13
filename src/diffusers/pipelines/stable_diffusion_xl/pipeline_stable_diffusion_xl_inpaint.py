@@ -33,8 +33,6 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
     is_invisible_watermark_available,
     logging,
     replace_example_docstring,
@@ -229,7 +227,9 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
     return mask, masked_image
 
 
-class StableDiffusionXLInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin, FromSingleFileMixin):
+class StableDiffusionXLInpaintPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
 
