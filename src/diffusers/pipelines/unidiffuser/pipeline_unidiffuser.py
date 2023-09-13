@@ -1,5 +1,4 @@
 import inspect
-import warnings
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
@@ -16,15 +15,9 @@ from transformers import (
 
 from ...models import AutoencoderKL
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    PIL_INTERPOLATION,
-    deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
-    logging,
-    randn_tensor,
-)
+from ...utils import PIL_INTERPOLATION, deprecate, is_accelerate_available, is_accelerate_version, logging
 from ...utils.outputs import BaseOutput
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_text_decoder import UniDiffuserTextDecoder
 from .modeling_uvit import UniDiffuserModel
@@ -35,11 +28,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def preprocess(image):
-    warnings.warn(
-        "The preprocess method is deprecated and will be removed in a future version. Please"
-        " use VaeImageProcessor.preprocess instead",
-        FutureWarning,
-    )
+    deprecation_message = "The preprocess method is deprecated and will be removed in diffusers 1.0.0. Please use VaeImageProcessor.preprocess(...) instead"
+    deprecate("preprocess", "1.0.0", deprecation_message, standard_warn=False)
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -113,6 +103,9 @@ class UniDiffuserPipeline(DiffusionPipeline):
             original UniDiffuser paper uses the [`DPMSolverMultistepScheduler`] scheduler.
     """
 
+    # TODO: support for moving submodules for components with enable_model_cpu_offload
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae->text_decoder"
+
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -183,7 +176,15 @@ class UniDiffuserPipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae, self.image_encoder, self.text_decoder]:
+        for cpu_offloaded_model in [
+            self.text_encoder.text_model,
+            self.image_encoder,
+            self.unet,
+            self.vae,
+            self.text_decoder.encode_prefix,
+            self.text_decoder.decode_prefix,
+            self.text_decoder,
+        ]:
             _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
 
         if self.safety_checker is not None:
@@ -1353,6 +1354,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
                 for output, length in zip(output_list, seq_lengths)
             ]
+
+        self.maybe_free_model_hooks()
 
         # 10. Convert to PIL
         if output_type == "pil" and gen_image is not None:

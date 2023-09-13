@@ -19,7 +19,8 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, logging, randn_tensor
+from ..utils import BaseOutput, logging
+from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 
@@ -96,6 +97,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps)
         self.custom_timesteps = False
         self.is_scale_input_called = False
+        self._step_index = None
 
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
@@ -103,6 +105,13 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
 
         indices = (schedule_timesteps == timestep).nonzero()
         return indices.item()
+
+    @property
+    def step_index(self):
+        """
+        The index counter for current timestep. It will increae 1 after each scheduler step.
+        """
+        return self._step_index
 
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
@@ -121,10 +130,10 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 A scaled input sample.
         """
         # Get sigma corresponding to timestep
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-        step_idx = self.index_for_timestep(timestep)
-        sigma = self.sigmas[step_idx]
+        if self.step_index is None:
+            self._init_step_index(timestep)
+
+        sigma = self.sigmas[self.step_index]
 
         sample = sample / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
 
@@ -220,6 +229,8 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         else:
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
+        self._step_index = None
+
     # Modified _convert_to_karras implementation that takes in ramp as argument
     def _convert_to_karras(self, ramp):
         """Constructs the noise schedule of Karras et al. (2022)."""
@@ -266,6 +277,24 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         c_skip = sigma_data**2 / ((sigma - sigma_min) ** 2 + sigma_data**2)
         c_out = (sigma - sigma_min) * sigma_data / (sigma**2 + sigma_data**2) ** 0.5
         return c_skip, c_out
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+
+        index_candidates = (self.timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        if len(index_candidates) > 1:
+            step_index = index_candidates[1]
+        else:
+            step_index = index_candidates[0]
+
+        self._step_index = step_index.item()
 
     def step(
         self,
@@ -318,18 +347,16 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
                 "See `StableDiffusionPipeline` for a usage example."
             )
 
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-
         sigma_min = self.config.sigma_min
         sigma_max = self.config.sigma_max
 
-        step_index = self.index_for_timestep(timestep)
+        if self.step_index is None:
+            self._init_step_index(timestep)
 
         # sigma_next corresponds to next_t in original implementation
-        sigma = self.sigmas[step_index]
-        if step_index + 1 < self.config.num_train_timesteps:
-            sigma_next = self.sigmas[step_index + 1]
+        sigma = self.sigmas[self.step_index]
+        if self.step_index + 1 < self.config.num_train_timesteps:
+            sigma_next = self.sigmas[self.step_index + 1]
         else:
             # Set sigma_next to sigma_min
             sigma_next = self.sigmas[-1]
@@ -357,6 +384,9 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         # 3. Return noisy sample
         # tau = sigma_hat, eps = sigma_min
         prev_sample = denoised + z * (sigma_hat**2 - sigma_min**2) ** 0.5
+
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)

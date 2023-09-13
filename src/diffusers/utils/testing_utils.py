@@ -19,6 +19,7 @@ import numpy as np
 import PIL.Image
 import PIL.ImageOps
 import requests
+from numpy.linalg import norm
 from packaging import version
 
 from .import_utils import (
@@ -44,13 +45,13 @@ if is_torch_available():
 
     if "DIFFUSERS_TEST_DEVICE" in os.environ:
         torch_device = os.environ["DIFFUSERS_TEST_DEVICE"]
-
-        available_backends = ["cuda", "cpu", "mps"]
-        if torch_device not in available_backends:
-            raise ValueError(
-                f"unknown torch backend for diffusers tests: {torch_device}. Available backends are:"
-                f" {available_backends}"
-            )
+        try:
+            # try creating device to see if provided device is valid
+            _ = torch.device(torch_device)
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Unknown testing device specified by environment variable `DIFFUSERS_TEST_DEVICE`: {torch_device}"
+            ) from e
         logger.info(f"torch_device overrode to {torch_device}")
     else:
         torch_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -70,6 +71,13 @@ def torch_all_close(a, b, *args, **kwargs):
     if not torch.allclose(a, b, *args, **kwargs):
         assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
     return True
+
+
+def numpy_cosine_similarity_distance(a, b):
+    similarity = np.dot(a, b) / (norm(a) * norm(b))
+    distance = 1.0 - similarity.mean()
+
+    return distance
 
 
 def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):

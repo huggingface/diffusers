@@ -19,7 +19,8 @@ from typing import Tuple, Union
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, apply_forward_hook
+from ..utils import BaseOutput
+from ..utils.accelerate_utils import apply_forward_hook
 from .modeling_utils import ModelMixin
 from .vae import DecoderOutput, DecoderTiny, EncoderTiny
 
@@ -312,9 +313,6 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
             output = torch.cat(output)
         else:
             output = self._tiled_decode(x) if self.use_tiling else self.decoder(x)
-        # Refer to the following discussion to know why this is needed.
-        # https://github.com/huggingface/diffusers/pull/4384#discussion_r1279401854
-        output = output.mul_(2).sub_(1)
 
         if not return_dict:
             return (output,)
@@ -333,8 +331,15 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
         enc = self.encode(sample).latents
+
+        # scale latents to be in [0, 1], then quantize latents to a byte tensor,
+        # as if we were storing the latents in an RGBA uint8 image.
         scaled_enc = self.scale_latents(enc).mul_(255).round_().byte()
-        unscaled_enc = self.unscale_latents(scaled_enc)
+
+        # unquantize latents back into [0, 1], then unscale latents back to their original range,
+        # as if we were loading the latents from an RGBA uint8 image.
+        unscaled_enc = self.unscale_latents(scaled_enc / 255.0)
+
         dec = self.decode(unscaled_enc)
 
         if not return_dict:

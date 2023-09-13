@@ -46,6 +46,5 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 	- all
 	- __call__
 
-## StableDiffusionPipelineOutput
-
-[[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
+## AudioPipelineOutput
+[[autodoc]] pipelines.AudioPipelineOutput

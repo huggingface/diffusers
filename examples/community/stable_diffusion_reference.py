@@ -10,7 +10,8 @@ from diffusers.models.attention import BasicTransformerBlock
 from diffusers.models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
-from diffusers.utils import PIL_INTERPOLATION, logging, randn_tensor
+from diffusers.utils import PIL_INTERPOLATION, logging
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

@@ -22,7 +22,8 @@ from transformers import ClapTextModelWithProjection, RobertaTokenizer, RobertaT
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import logging, randn_tensor, replace_example_docstring
+from ...utils import logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
@@ -71,6 +72,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         vocoder ([`~transformers.SpeechT5HifiGan`]):
             Vocoder of class `SpeechT5HifiGan`.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(
         self,
@@ -418,8 +420,7 @@ class AudioLDMPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
                 following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -436,9 +437,9 @@ class AudioLDMPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is a list with the generated audio.
+            [`~pipelines.AudioPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.AudioPipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated audio.
         """
         # 0. Convert audio input length from seconds to spectrogram height
         vocoder_upsample_factor = np.prod(self.vocoder.config.upsample_rates) / self.vocoder.config.sampling_rate
