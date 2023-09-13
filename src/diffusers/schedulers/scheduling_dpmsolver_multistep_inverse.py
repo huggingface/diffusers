@@ -260,8 +260,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             timesteps = timesteps.copy().astype(np.int64)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-        
-        sigma_max = ((1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]) ** 0.5
+
+        sigma_max = (
+            (1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]
+        ) ** 0.5
         sigmas = np.concatenate([sigmas, [sigma_max]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
@@ -470,16 +472,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         """
 
         sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
-        print(f" 1st order update")
-        print(f" index: {self.step_index +1, self.step_index}")
-        print(f" - sigmas: {sigma_t},{sigma_s}")
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s, sigma_s = self._sigma_to_alpha_sigma_t(sigma_s)
         lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
         lambda_s = torch.log(alpha_s) - torch.log(sigma_s)
-        print(f" - sigmas: {sigma_t},{sigma_s}")
-        print(f" - alphas: {alpha_t},{alpha_s}")
-        print(f" - lambdas: {lambda_t},{lambda_s}")
         h = lambda_t - lambda_s
         if self.config.algorithm_type == "dpmsolver++":
             x_t = (sigma_t / sigma_s) * sample - (alpha_t * (torch.exp(-h) - 1.0)) * model_output
@@ -499,8 +495,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 - 2.0 * (sigma_t * (torch.exp(h) - 1.0)) * model_output
                 + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
             )
-        print(" 1st order update")
-        print(f" x_t: {x_t[0,0,:3,:3]}")
         return x_t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.multistep_dpm_solver_second_order_update
@@ -607,8 +601,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                     - 2.0 * (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
                     + sigma_t * torch.sqrt(torch.exp(2 * h) - 1.0) * noise
                 )
-        print(f" 2nd order update")
-        print(f" - x_t :{x_t[0,0,:3,:3]}")
         return x_t
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.multistep_dpm_solver_third_order_update
