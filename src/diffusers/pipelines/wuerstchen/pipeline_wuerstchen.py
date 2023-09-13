@@ -187,7 +187,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
         return text_encoder_hidden_states, uncond_text_encoder_hidden_states
 
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(

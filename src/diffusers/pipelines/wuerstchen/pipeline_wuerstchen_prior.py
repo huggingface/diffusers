@@ -362,7 +362,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                     raise TypeError(
                         f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
                     )
-                    
+
         self.check_inputs(
             prompt,
             negative_prompt,
