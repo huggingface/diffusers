@@ -679,6 +679,11 @@ if __name__ == "__main__":
         type=int,
         help="The UniDiffuser model type to convert to. Should be 0 for UniDiffuser-v0 and 1 for UniDiffuser-v1.",
     )
+    parser.add_argument(
+        "--safe_serialization",
+        action="store_true",
+        help="Whether to use safetensors/safe seialization when saving the pipeline.",
+    )
 
     args = parser.parse_args()
 
@@ -778,4 +783,4 @@ if __name__ == "__main__":
         unet=unet,
         scheduler=scheduler,
     )
-    pipeline.save_pretrained(args.pipeline_output_path)
+    pipeline.save_pretrained(args.pipeline_output_path, safe_serialization=args.safe_serialization)
