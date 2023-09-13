@@ -258,13 +258,13 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = timesteps.copy().astype(np.int64)
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-
-        sigma_max = (
-            (1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]
-        ) ** 0.5
-        sigmas = np.concatenate([sigmas, [sigma_max]]).astype(np.float32)
+            sigma_max = (
+                (1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]
+            ) ** 0.5
+            sigmas = np.concatenate([sigmas, [sigma_max]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
 
