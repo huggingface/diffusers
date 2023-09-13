@@ -495,6 +495,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
             image_latents = image
         else:
             # make sure the VAE is in float32 mode, as it overflows in float16
+            print(self.vae.dtype, self.vae.config.force_upcast)
             if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
                 self.upcast_vae()
                 image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
