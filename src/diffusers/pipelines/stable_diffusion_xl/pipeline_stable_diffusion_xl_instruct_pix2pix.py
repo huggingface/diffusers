@@ -860,6 +860,9 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                print(self.unet.dtype, scaled_latent_model_input.dtype, t.dtype, prompt_embeds.dtype)
+                for k in added_cond_kwargs:
+                    print(k, added_cond_kwargs[k].dtype)
                 noise_pred = self.unet(
                     scaled_latent_model_input,
                     t,
