@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2022 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ if is_vision_available():
 logger = logging.get_logger(__name__)
 
 
+# We needed some extra functions on top of the ones in transformers.image_processing_utils.BaseImageProcessor, namely center crop
 # Copy-pasted from transformers.models.blip.image_processing_blip.BlipImageProcessor
 class BlipImageProcessor(BaseImageProcessor):
     r"""
