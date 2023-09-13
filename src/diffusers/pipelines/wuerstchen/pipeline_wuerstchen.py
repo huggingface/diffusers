@@ -72,7 +72,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             width=int(24*10.67)=256 in order to match the training conditions.
     """
 
-    model_cpu_offload_seq = "text_encoder->decoder-vqgan"
+    model_cpu_offload_seq = "text_encoder->decoder->vqgan"
 
     def __init__(
         self,
@@ -187,45 +187,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
         return text_encoder_hidden_states, uncond_text_encoder_hidden_states
 
-    def check_inputs(
-        self,
-        image_embeddings,
-        prompt,
-        negative_prompt,
-        num_inference_steps,
-        do_classifier_free_guidance,
-        device,
-        dtype,
-    ):
-        if not isinstance(prompt, list):
-            if isinstance(prompt, str):
-                prompt = [prompt]
-            else:
-                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
-
-        if do_classifier_free_guidance:
-            if negative_prompt is not None and not isinstance(negative_prompt, list):
-                if isinstance(negative_prompt, str):
-                    negative_prompt = [negative_prompt]
-                else:
-                    raise TypeError(
-                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
-                    )
-
-        if isinstance(image_embeddings, list):
-            image_embeddings = torch.cat(image_embeddings, dim=0)
-        if isinstance(image_embeddings, np.ndarray):
-            image_embeddings = torch.Tensor(image_embeddings, device=device).to(dtype=dtype)
-        if not isinstance(image_embeddings, torch.Tensor):
-            raise TypeError(
-                f"'image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(image_embeddings)}."
-            )
-
-        if not isinstance(num_inference_steps, int):
-            raise TypeError(
-                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
-                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
-            )
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -295,9 +256,35 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            image_embeddings, prompt, negative_prompt, num_inference_steps, do_classifier_free_guidance, device, dtype
-        )
+        if not isinstance(prompt, list):
+            if isinstance(prompt, str):
+                prompt = [prompt]
+            else:
+                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
+
+        if do_classifier_free_guidance:
+            if negative_prompt is not None and not isinstance(negative_prompt, list):
+                if isinstance(negative_prompt, str):
+                    negative_prompt = [negative_prompt]
+                else:
+                    raise TypeError(
+                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
+                    )
+
+        if isinstance(image_embeddings, list):
+            image_embeddings = torch.cat(image_embeddings, dim=0)
+        if isinstance(image_embeddings, np.ndarray):
+            image_embeddings = torch.Tensor(image_embeddings, device=device).to(dtype=dtype)
+        if not isinstance(image_embeddings, torch.Tensor):
+            raise TypeError(
+                f"'image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(image_embeddings)}."
+            )
+
+        if not isinstance(num_inference_steps, int):
+            raise TypeError(
+                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
+                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
+            )
 
         # 2. Encode caption
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(

@@ -249,21 +249,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-        if prompt is not None and not isinstance(prompt, list):
-            if isinstance(prompt, str):
-                prompt = [prompt]
-            else:
-                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
-
-        if do_classifier_free_guidance:
-            if negative_prompt is not None and not isinstance(negative_prompt, list):
-                if isinstance(negative_prompt, str):
-                    negative_prompt = [negative_prompt]
-                else:
-                    raise TypeError(
-                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
-                    )
-
         if not isinstance(num_inference_steps, int):
             raise TypeError(
                 f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
@@ -363,6 +348,21 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # 1. Check inputs. Raise error if not correct
+        if prompt is not None and not isinstance(prompt, list):
+            if isinstance(prompt, str):
+                prompt = [prompt]
+            else:
+                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
+
+        if do_classifier_free_guidance:
+            if negative_prompt is not None and not isinstance(negative_prompt, list):
+                if isinstance(negative_prompt, str):
+                    negative_prompt = [negative_prompt]
+                else:
+                    raise TypeError(
+                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
+                    )
+                    
         self.check_inputs(
             prompt,
             negative_prompt,
