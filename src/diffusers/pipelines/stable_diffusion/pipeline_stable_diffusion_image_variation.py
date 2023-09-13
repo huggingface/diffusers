@@ -66,6 +66,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     # we should give a descriptive message if the pipeline doesn't have one.
     _optional_components = ["safety_checker"]
     model_cpu_offload_seq = "image_encoder->unet->vae"
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
