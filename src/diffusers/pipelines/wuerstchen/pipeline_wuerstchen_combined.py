@@ -144,7 +144,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt:  Optional[Union[str, List[str]]] = "",
+        prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
@@ -153,7 +153,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         num_inference_steps: int = 12,
         decoder_timesteps: Optional[List[float]] = None,
         decoder_guidance_scale: float = 0.0,
-        negative_prompt: Optional[Union[str, List[str]]] = "",
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: int = 1,
@@ -249,7 +249,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
-            prompt=prompt,
+            prompt=prompt if prompt is not None else "",
             num_inference_steps=num_inference_steps,
             timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
