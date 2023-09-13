@@ -43,7 +43,7 @@ from diffusers.models.attention_processor import (
     LoRAAttnProcessor2_0,
     XFormersAttnProcessor,
 )
-from diffusers.utils.testing_utils import floats_tensor, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import floats_tensor, nightly, require_torch_gpu, slow, torch_device
 
 
 def create_unet_lora_layers(unet: nn.Module):
@@ -965,15 +965,11 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
-        # sd_pipe.unet.set_default_attn_processor()
         sd_pipe.set_progress_bar_config(disable=None)
 
         _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
 
-        images = sd_pipe(
-            **pipeline_inputs,
-            generator=torch.manual_seed(0),
-        ).images
+        images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         images_slice = images[0, -3:, -3:, -1]
 
         # Emulate training.
@@ -993,9 +989,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
         lora_images_scale_0_5 = sd_pipe(
-            **pipeline_inputs,
-            generator=torch.manual_seed(0),
-            cross_attention_kwargs={"scale": 0.5},
+            **pipeline_inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
         ).images
         lora_image_slice_scale_0_5 = lora_images_scale_0_5[0, -3:, -3:, -1]
 
@@ -1016,6 +1010,45 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         assert not np.allclose(
             images_slice, lora_image_slice_scale_0_5, atol=1e-03
         ), "0.5 scale and no scale shouldn't match"
+
+    def test_save_load_fused_lora_modules(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True, var=0.1)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True, var=0.1)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True, var=0.1)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        sd_pipe.fuse_lora()
+        lora_images_fusion = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice_fusion = lora_images_fusion[0, -3:, -3:, -1]
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd_pipe.save_pretrained(tmpdirname)
+            sd_pipe_loaded = StableDiffusionXLPipeline.from_pretrained(tmpdirname)
+
+        loaded_lora_images = sd_pipe_loaded(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        loaded_lora_image_slice = loaded_lora_images[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            lora_image_slice_fusion, loaded_lora_image_slice, atol=1e-03
+        ), "The pipeline was serialized with LoRA parameters fused inside of the respected modules. The loaded pipeline should yield proper outputs, henceforth."
 
 
 @slow
@@ -1464,3 +1497,41 @@ class LoraIntegrationTests(unittest.TestCase):
         expected = np.array([0.4468, 0.4087, 0.4134, 0.366, 0.3202, 0.3505, 0.3786, 0.387, 0.3535])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
+
+    @nightly
+    def test_sequential_fuse_unfuse(self):
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+
+        # 1. round
+        pipe.load_lora_weights("Pclanglais/TintinIA")
+        pipe.fuse_lora()
+
+        generator = torch.Generator().manual_seed(0)
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+        image_slice = images[0, -3:, -3:, -1].flatten()
+
+        pipe.unfuse_lora()
+
+        # 2. round
+        pipe.load_lora_weights("ProomptEngineer/pe-balloon-diffusion-style")
+        pipe.fuse_lora()
+        pipe.unfuse_lora()
+
+        # 3. round
+        pipe.load_lora_weights("ostris/crayon_style_lora_sdxl")
+        pipe.fuse_lora()
+        pipe.unfuse_lora()
+
+        # 4. back to 1st round
+        pipe.load_lora_weights("Pclanglais/TintinIA")
+        pipe.fuse_lora()
+
+        generator = torch.Generator().manual_seed(0)
+        images_2 = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+        image_slice_2 = images_2[0, -3:, -3:, -1].flatten()
+
+        self.assertTrue(np.allclose(image_slice, image_slice_2, atol=1e-3))
