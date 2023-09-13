@@ -511,6 +511,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
             else:
                 image_latents = self.vae.encode(image).latent_dist.mode()
 
+        print(f"image_latents: {image_latents.dtype}")
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
             deprecation_message = (
@@ -864,9 +865,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                print(self.unet.dtype, scaled_latent_model_input.dtype, t.dtype, prompt_embeds.dtype)
-                for k in added_cond_kwargs:
-                    print(k, added_cond_kwargs[k].dtype)
+                # print(self.unet.dtype, scaled_latent_model_input.dtype, t.dtype, prompt_embeds.dtype)
                 noise_pred = self.unet(
                     scaled_latent_model_input,
                     t,
