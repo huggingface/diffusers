@@ -920,12 +920,13 @@ def main(args):
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
-        for model in models:
-            sub_dir = "unet" if isinstance(model, type(accelerator.unwrap_model(unet))) else "text_encoder"
-            model.save_pretrained(os.path.join(output_dir, sub_dir))
+        if accelerator.is_main_process:
+            for model in models:
+                sub_dir = "unet" if isinstance(model, type(accelerator.unwrap_model(unet))) else "text_encoder"
+                model.save_pretrained(os.path.join(output_dir, sub_dir))
 
-            # make sure to pop weight so that corresponding model is not saved again
-            weights.pop()
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
 
     def load_model_hook(models, input_dir):
         while len(models) > 0:

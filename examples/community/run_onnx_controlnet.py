@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL.Image
 import torch
+from diffuser.utils.torch_utils import randn_tensor
 from PIL import Image
 from transformers import CLIPTokenizer
 
@@ -19,7 +20,6 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
 

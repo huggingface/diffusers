@@ -91,12 +91,12 @@ prior_pipeline = WuerstchenPriorPipeline(
     prior=prior_model, text_encoder=text_encoder, tokenizer=tokenizer, scheduler=scheduler
 )
 
-prior_pipeline.save_pretrained("warp-diffusion/wuerstchen-prior")
+prior_pipeline.save_pretrained("warp-ai/wuerstchen-prior")
 
 decoder_pipeline = WuerstchenDecoderPipeline(
     text_encoder=gen_text_encoder, tokenizer=gen_tokenizer, vqgan=vqmodel, decoder=deocder, scheduler=scheduler
 )
-decoder_pipeline.save_pretrained("warp-diffusion/wuerstchen")
+decoder_pipeline.save_pretrained("warp-ai/wuerstchen")
 
 # Wuerstchen pipeline
 wuerstchen_pipeline = WuerstchenCombinedPipeline(
@@ -112,4 +112,4 @@ wuerstchen_pipeline = WuerstchenCombinedPipeline(
     prior=prior_model,
     prior_scheduler=scheduler,
 )
-wuerstchen_pipeline.save_pretrained("warp-diffusion/WuerstchenCombinedPipeline")
+wuerstchen_pipeline.save_pretrained("warp-ai/WuerstchenCombinedPipeline")

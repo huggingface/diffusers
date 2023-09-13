@@ -30,12 +30,13 @@ from requests.exceptions import HTTPError
 from diffusers.models import UNet2DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.training_utils import EMAModel
-from diffusers.utils import logging, torch_device
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    torch_device,
 )
 
 from ..others.test_utils import TOKEN, USER, is_staging_test

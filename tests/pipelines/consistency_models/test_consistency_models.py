@@ -10,8 +10,14 @@ from diffusers import (
     ConsistencyModelPipeline,
     UNet2DModel,
 )
-from diffusers.utils import nightly, randn_tensor, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_2, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    nightly,
+    require_torch_2,
+    require_torch_gpu,
+    torch_device,
+)
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -187,7 +193,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, seed=0, device="cpu", dtype=torch.float32, shape=(1, 3, 64, 64)):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         generator = torch.Generator(device=device).manual_seed(seed)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)

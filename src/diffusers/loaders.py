@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import copy
 import os
 import re
 import warnings
@@ -27,12 +26,14 @@ import torch
 from huggingface_hub import hf_hub_download, model_info
 from torch import nn
 
+from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     _get_model_file,
     deprecate,
     is_accelerate_available,
+    is_accelerate_version,
     is_omegaconf_available,
     is_transformers_available,
     logging,
@@ -46,7 +47,6 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
     from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
-    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)
 
@@ -121,7 +121,7 @@ class PatchedLoraProjection(nn.Module):
         self.lora_scale = lora_scale
 
     def _unfuse_lora(self):
-        if not (hasattr(self, "w_up") and hasattr(self, "w_down")):
+        if not (getattr(self, "w_up", None) is not None and getattr(self, "w_down", None) is not None):
             return
 
         fused_weight = self.regular_linear_layer.weight.data
@@ -137,7 +137,6 @@ class PatchedLoraProjection(nn.Module):
         self.w_down = None
 
     def forward(self, input):
-        # print(f"{self.__class__.__name__} has a lora_scale of {self.lora_scale}")
         if self.lora_scale is None:
             self.lora_scale = 1.0
         if self.lora_linear_layer is None:
@@ -274,6 +273,11 @@ class UNet2DConditionLoadersMixin:
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
@@ -300,6 +304,7 @@ class UNet2DConditionLoadersMixin:
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
         # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
         network_alphas = kwargs.pop("network_alphas", None)
@@ -315,6 +320,15 @@ class UNet2DConditionLoadersMixin:
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
         }
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -370,6 +384,10 @@ class UNet2DConditionLoadersMixin:
             # correct keys
             state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
 
+            if network_alphas is not None:
+                network_alphas_keys = list(network_alphas.keys())
+                used_network_alphas_keys = set()
+
             lora_grouped_dict = defaultdict(dict)
             mapped_network_alphas = {}
 
@@ -381,13 +399,13 @@ class UNet2DConditionLoadersMixin:
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
                 if network_alphas is not None:
-                    network_alphas_ = copy.deepcopy(network_alphas)
-                    for k in network_alphas_:
+                    for k in network_alphas_keys:
                         if k.replace(".alpha", "") in key:
-                            mapped_network_alphas.update({attn_processor_key: network_alphas.pop(k)})
+                            mapped_network_alphas.update({attn_processor_key: network_alphas.get(k)})
+                            used_network_alphas_keys.add(k)
 
             if not is_network_alphas_none:
-                if len(network_alphas) > 0:
+                if len(set(network_alphas_keys) - used_network_alphas_keys) > 0:
                     raise ValueError(
                         f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
                     )
@@ -411,29 +429,38 @@ class UNet2DConditionLoadersMixin:
                     out_features = attn_processor.out_channels
                     kernel_size = attn_processor.kernel_size
 
-                    lora = LoRAConv2dLayer(
-                        in_features=in_features,
-                        out_features=out_features,
-                        rank=rank,
-                        kernel_size=kernel_size,
-                        stride=attn_processor.stride,
-                        padding=attn_processor.padding,
-                        network_alpha=mapped_network_alphas.get(key),
-                    )
+                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+                    with ctx():
+                        lora = LoRAConv2dLayer(
+                            in_features=in_features,
+                            out_features=out_features,
+                            rank=rank,
+                            kernel_size=kernel_size,
+                            stride=attn_processor.stride,
+                            padding=attn_processor.padding,
+                            network_alpha=mapped_network_alphas.get(key),
+                        )
                 elif isinstance(attn_processor, LoRACompatibleLinear):
-                    lora = LoRALinearLayer(
-                        attn_processor.in_features,
-                        attn_processor.out_features,
-                        rank,
-                        mapped_network_alphas.get(key),
-                    )
+                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+                    with ctx():
+                        lora = LoRALinearLayer(
+                            attn_processor.in_features,
+                            attn_processor.out_features,
+                            rank,
+                            mapped_network_alphas.get(key),
+                        )
                 else:
                     raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
 
                 value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
-                lora.load_state_dict(value_dict)
                 lora_layers_list.append((attn_processor, lora))
 
+                if low_cpu_mem_usage:
+                    device = next(iter(value_dict.values())).device
+                    dtype = next(iter(value_dict.values())).dtype
+                    load_model_dict_into_meta(lora, value_dict, device=device, dtype=dtype)
+                else:
+                    lora.load_state_dict(value_dict)
         elif is_custom_diffusion:
             attn_processors = {}
             custom_diffusion_grouped_dict = defaultdict(dict)
@@ -470,12 +497,11 @@ class UNet2DConditionLoadersMixin:
                 f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
             )
 
-        # set correct dtype & device
-        lora_layers_list = [(t, l.to(device=self.device, dtype=self.dtype)) for t, l in lora_layers_list]
-
         # set lora layers
         for target_module, lora_layer in lora_layers_list:
             target_module.set_lora_layer(lora_layer)
+
+        self.to(dtype=self.dtype, device=self.device)
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
@@ -999,13 +1025,18 @@ class LoraLoaderMixin:
                     recurive = is_sequential_cpu_offload
                     remove_hook_from_module(component, recurse=recurive)
 
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
-        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
+        self.load_lora_into_unet(
+            state_dict, network_alphas=network_alphas, unet=self.unet, low_cpu_mem_usage=low_cpu_mem_usage
+        )
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
+            low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
         # Offload back.
@@ -1065,6 +1096,11 @@ class LoraLoaderMixin:
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
             mirror (`str`, *optional*):
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
@@ -1305,7 +1341,7 @@ class LoraLoaderMixin:
         return new_state_dict
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet):
+    def load_lora_into_unet(cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -1318,7 +1354,13 @@ class LoraLoaderMixin:
                 See `LoRALinearLayer` for more details.
             unet (`UNet2DConditionModel`):
                 The UNet model to load the LoRA layers into.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
         """
+        low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
@@ -1343,11 +1385,12 @@ class LoraLoaderMixin:
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
             warnings.warn(warn_message)
 
-        # load loras into unet
-        unet.load_attn_procs(state_dict, network_alphas=network_alphas)
+        unet.load_attn_procs(state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage)
 
     @classmethod
-    def load_lora_into_text_encoder(cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0):
+    def load_lora_into_text_encoder(
+        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
 
@@ -1364,7 +1407,13 @@ class LoraLoaderMixin:
             lora_scale (`float`):
                 How much to scale the output of the lora linear layer before it is added with the output of the regular
                 lora layer.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
         """
+        low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
 
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
@@ -1447,6 +1496,7 @@ class LoraLoaderMixin:
                     network_alphas,
                     rank=rank,
                     patch_mlp=patch_mlp,
+                    low_cpu_mem_usage=low_cpu_mem_usage,
                 )
 
                 # set correct dtype & device
@@ -1454,11 +1504,22 @@ class LoraLoaderMixin:
                     k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
                     for k, v in text_encoder_lora_state_dict.items()
                 }
-                load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
-                if len(load_state_dict_results.unexpected_keys) != 0:
+                if low_cpu_mem_usage:
+                    device = next(iter(text_encoder_lora_state_dict.values())).device
+                    dtype = next(iter(text_encoder_lora_state_dict.values())).dtype
+                    unexpected_keys = load_model_dict_into_meta(
+                        text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype
+                    )
+                else:
+                    load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
+                    unexpected_keys = load_state_dict_results.unexpected_keys
+
+                if len(unexpected_keys) != 0:
                     raise ValueError(
                         f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
                     )
+
+                text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
 
     @property
     def lora_scale(self) -> float:
@@ -1492,10 +1553,20 @@ class LoraLoaderMixin:
         rank: Union[Dict[str, int], int] = 4,
         dtype=None,
         patch_mlp=False,
+        low_cpu_mem_usage=False,
     ):
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
+
+        def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
+            linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
+            ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+            with ctx():
+                model = PatchedLoraProjection(linear_layer, lora_scale, network_alpha, rank, dtype=dtype)
+
+            lora_parameters.extend(model.lora_linear_layer.parameters())
+            return model
 
         # First, remove any monkey-patch that might have been applied before
         cls._remove_text_encoder_monkey_patch_classmethod(text_encoder)
@@ -1515,45 +1586,18 @@ class LoraLoaderMixin:
             else:
                 current_rank = rank
 
-            q_linear_layer = (
-                attn_module.q_proj.regular_linear_layer
-                if isinstance(attn_module.q_proj, PatchedLoraProjection)
-                else attn_module.q_proj
+            attn_module.q_proj = create_patched_linear_lora(
+                attn_module.q_proj, query_alpha, current_rank, dtype, lora_parameters
             )
-            attn_module.q_proj = PatchedLoraProjection(
-                q_linear_layer, lora_scale, network_alpha=query_alpha, rank=current_rank, dtype=dtype
+            attn_module.k_proj = create_patched_linear_lora(
+                attn_module.k_proj, key_alpha, current_rank, dtype, lora_parameters
             )
-            lora_parameters.extend(attn_module.q_proj.lora_linear_layer.parameters())
-
-            k_linear_layer = (
-                attn_module.k_proj.regular_linear_layer
-                if isinstance(attn_module.k_proj, PatchedLoraProjection)
-                else attn_module.k_proj
+            attn_module.v_proj = create_patched_linear_lora(
+                attn_module.v_proj, value_alpha, current_rank, dtype, lora_parameters
             )
-            attn_module.k_proj = PatchedLoraProjection(
-                k_linear_layer, lora_scale, network_alpha=key_alpha, rank=current_rank, dtype=dtype
+            attn_module.out_proj = create_patched_linear_lora(
+                attn_module.out_proj, out_alpha, current_rank, dtype, lora_parameters
             )
-            lora_parameters.extend(attn_module.k_proj.lora_linear_layer.parameters())
-
-            v_linear_layer = (
-                attn_module.v_proj.regular_linear_layer
-                if isinstance(attn_module.v_proj, PatchedLoraProjection)
-                else attn_module.v_proj
-            )
-            attn_module.v_proj = PatchedLoraProjection(
-                v_linear_layer, lora_scale, network_alpha=value_alpha, rank=current_rank, dtype=dtype
-            )
-            lora_parameters.extend(attn_module.v_proj.lora_linear_layer.parameters())
-
-            out_linear_layer = (
-                attn_module.out_proj.regular_linear_layer
-                if isinstance(attn_module.out_proj, PatchedLoraProjection)
-                else attn_module.out_proj
-            )
-            attn_module.out_proj = PatchedLoraProjection(
-                out_linear_layer, lora_scale, network_alpha=out_alpha, rank=current_rank, dtype=dtype
-            )
-            lora_parameters.extend(attn_module.out_proj.lora_linear_layer.parameters())
 
         if patch_mlp:
             for name, mlp_module in text_encoder_mlp_modules(text_encoder):
@@ -1563,25 +1607,12 @@ class LoraLoaderMixin:
                 current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
                 current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
 
-                fc1_linear_layer = (
-                    mlp_module.fc1.regular_linear_layer
-                    if isinstance(mlp_module.fc1, PatchedLoraProjection)
-                    else mlp_module.fc1
+                mlp_module.fc1 = create_patched_linear_lora(
+                    mlp_module.fc1, fc1_alpha, current_rank_fc1, dtype, lora_parameters
                 )
-                mlp_module.fc1 = PatchedLoraProjection(
-                    fc1_linear_layer, lora_scale, network_alpha=fc1_alpha, rank=current_rank_fc1, dtype=dtype
+                mlp_module.fc2 = create_patched_linear_lora(
+                    mlp_module.fc2, fc2_alpha, current_rank_fc2, dtype, lora_parameters
                 )
-                lora_parameters.extend(mlp_module.fc1.lora_linear_layer.parameters())
-
-                fc2_linear_layer = (
-                    mlp_module.fc2.regular_linear_layer
-                    if isinstance(mlp_module.fc2, PatchedLoraProjection)
-                    else mlp_module.fc2
-                )
-                mlp_module.fc2 = PatchedLoraProjection(
-                    fc2_linear_layer, lora_scale, network_alpha=fc2_alpha, rank=current_rank_fc2, dtype=dtype
-                )
-                lora_parameters.extend(mlp_module.fc2.lora_linear_layer.parameters())
 
         if is_network_alphas_populated and len(network_alphas) > 0:
             raise ValueError(
@@ -2375,13 +2406,12 @@ class FromOriginalVAEMixin:
             vae = AutoencoderKL(**vae_config)
 
         if is_accelerate_available():
-            for param_name, param in converted_vae_checkpoint.items():
-                set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+            load_model_dict_into_meta(vae, converted_vae_checkpoint, device="cpu")
         else:
             vae.load_state_dict(converted_vae_checkpoint)
 
         if torch_dtype is not None:
-            vae.to(torch_dtype=torch_dtype)
+            vae.to(dtype=torch_dtype)
 
         return vae
 
@@ -2527,3 +2557,151 @@ class FromOriginalControlnetMixin:
             controlnet.to(torch_dtype=torch_dtype)
 
         return controlnet
+
+
+class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
+    """This class overrides `LoraLoaderMixin` with LoRA loading/saving code that's specific to SDXL"""
+
+    # Overrride to properly handle the loading and unloading of the additional text encoder.
+    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+        """
+        Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
+        `self.text_encoder`.
+
+        All kwargs are forwarded to `self.lora_state_dict`.
+
+        See [`~loaders.LoraLoaderMixin.lora_state_dict`] for more details on how the state dict is loaded.
+
+        See [`~loaders.LoraLoaderMixin.load_lora_into_unet`] for more details on how the state dict is loaded into
+        `self.unet`.
+
+        See [`~loaders.LoraLoaderMixin.load_lora_into_text_encoder`] for more details on how the state dict is loaded
+        into `self.text_encoder`.
+
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+            kwargs (`dict`, *optional*):
+                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+        """
+        # We could have accessed the unet config from `lora_state_dict()` too. We pass
+        # it here explicitly to be able to tell that it's coming from an SDXL
+        # pipeline.
+
+        # Remove any existing hooks.
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
+        else:
+            raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
+
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        recursive = False
+        for _, component in self.components.items():
+            if isinstance(component, torch.nn.Module):
+                if hasattr(component, "_hf_hook"):
+                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    recursive = is_sequential_cpu_offload
+                    remove_hook_from_module(component, recurse=recursive)
+        state_dict, network_alphas = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict,
+            unet_config=self.unet.config,
+            **kwargs,
+        )
+        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
+
+        text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
+        if len(text_encoder_state_dict) > 0:
+            self.load_lora_into_text_encoder(
+                text_encoder_state_dict,
+                network_alphas=network_alphas,
+                text_encoder=self.text_encoder,
+                prefix="text_encoder",
+                lora_scale=self.lora_scale,
+            )
+
+        text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
+        if len(text_encoder_2_state_dict) > 0:
+            self.load_lora_into_text_encoder(
+                text_encoder_2_state_dict,
+                network_alphas=network_alphas,
+                text_encoder=self.text_encoder_2,
+                prefix="text_encoder_2",
+                lora_scale=self.lora_scale,
+            )
+
+        # Offload back.
+        if is_model_cpu_offload:
+            self.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            self.enable_sequential_cpu_offload()
+
+    @classmethod
+    def save_lora_weights(
+        self,
+        save_directory: Union[str, os.PathLike],
+        unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        is_main_process: bool = True,
+        weight_name: str = None,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+    ):
+        r"""
+        Save the LoRA parameters corresponding to the UNet and text encoder.
+
+        Arguments:
+            save_directory (`str` or `os.PathLike`):
+                Directory to save LoRA parameters to. Will be created if it doesn't exist.
+            unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `unet`.
+            text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
+                State dict of the LoRA layers corresponding to the `text_encoder`. Must explicitly pass the text
+                encoder LoRA state dict because it comes from 🤗 Transformers.
+            is_main_process (`bool`, *optional*, defaults to `True`):
+                Whether the process calling this is the main process or not. Useful during distributed training and you
+                need to call this function on all processes. In this case, set `is_main_process=True` only on the main
+                process to avoid race conditions.
+            save_function (`Callable`):
+                The function to use to save the state dictionary. Useful during distributed training when you need to
+                replace `torch.save` with another method. Can be configured with the environment variable
+                `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+        """
+        state_dict = {}
+
+        def pack_weights(layers, prefix):
+            layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
+            layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
+            return layers_state_dict
+
+        if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
+            raise ValueError(
+                "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers` or `text_encoder_2_lora_layers`."
+            )
+
+        if unet_lora_layers:
+            state_dict.update(pack_weights(unet_lora_layers, "unet"))
+
+        if text_encoder_lora_layers and text_encoder_2_lora_layers:
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+            state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
+
+        self.write_lora_layers(
+            state_dict=state_dict,
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            weight_name=weight_name,
+            save_function=save_function,
+            safe_serialization=safe_serialization,
+        )
+
+    def _remove_text_encoder_monkey_patch(self):
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)
