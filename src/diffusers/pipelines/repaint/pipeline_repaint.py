@@ -89,6 +89,7 @@ class RePaintPipeline(DiffusionPipeline):
 
     unet: UNet2DModel
     scheduler: RePaintScheduler
+    model_cpu_offload_seq = "unet"
 
     def __init__(self, unet, scheduler):
         super().__init__()
