@@ -14,11 +14,11 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Image-to-image is similar to [text-to-image](conditional_image_generation), but in addition to a prompt, you can also pass an initial image to use as a starting point for the diffusion process. The initial image is encoded to latent space and noise is added to it. Then the latent diffusion model takes a prompt and the noisy latent image, predicts the added noise, and then removes the predicted noise from the initial latent image to get the new latent image. Lastly, a decoder decodes the new latent image back into an image.
+Image-to-image is similar to [text-to-image](conditional_image_generation), but in addition to a prompt, you can also pass an initial image as a starting point for the diffusion process. The initial image is encoded to latent space and noise is added to it. Then the latent diffusion model takes a prompt and the noisy latent image, predicts the added noise, and removes the predicted noise from the initial latent image to get the new latent image. Lastly, a decoder decodes the new latent image back into an image.
 
 With 🤗 Diffusers, this is as easy as 1-2-3:
 
-1. Load a checkpoint into the [`AutoPipelineForImage2Image`] class; this pipeline automatically handles loading the correct pipeline class to use based on the checkpoint:
+1. Load a checkpoint into the [`AutoPipelineForImage2Image`] class; this pipeline automatically handles loading the correct pipeline class  based on the checkpoint:
 
 ```py
 from diffusers import AutoPipelineForImage2Image
@@ -31,7 +31,13 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 ```
 
-2. Prepare an image to pass to the pipeline:
+<Tip>
+
+You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, then you don't need to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](/optimization/torch2.0#scaled-dot-product-attention).
+
+</Tip>
+
+2. Load an image to pass to the pipeline:
 
 ```py
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
@@ -52,13 +58,13 @@ image
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Kandinsky 2.2</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
   </div>
 </div>
 
 ## Popular models
 
-The most popular image-to-image models are [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](sdxl), and Kandinsky 2.2. The results from the Stable Diffusion and Kandinsky models are different because of their architecture and training process, and you can generally expect SDXL to produce higher quality images than Stable Diffusion v1.5. Let's take a quick look at how to use each of these models and compare their results.
+The most popular image-to-image models are [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder). The results from the Stable Diffusion and Kandinsky models vary due to their architecture differences and training process; you can generally expect SDXL to produce higher quality images than Stable Diffusion v1.5. Let's take a quick look at how to use each of these models and compare their results.
 
 ### Stable Diffusion v1.5
 
@@ -102,7 +108,7 @@ image
 
 ### Stable Diffusion XL (SDXL)
 
-SDXL is a more powerful version of the Stable Diffusion model. It uses a larger base model, and an additional refiner model to increase the quality of the generated image from the base model. Read the [SDXL](sdxl) guide for a more detailed walkthrough of how to use this model, and other techniques it uses to produce high quality images.
+SDXL is a more powerful version of the Stable Diffusion model. It uses a larger base model, and an additional refiner model to increase the quality of the base model's output. Read the [SDXL](sdxl) guide for a more detailed walkthrough of how to use this model, and other techniques it uses to produce high quality images.
 
 ```py
 import torch
@@ -118,31 +124,31 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
-url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
+url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png"
 response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
 # pass prompt and image to pipeline
-image = pipeline(prompt, image=init_image).images[0]
+image = pipeline(prompt, image=init_image, strength=).images[0]
 image
 ```
 
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">initial image</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
   </div>
 </div>
 
 ### Kandinsky 2.2
 
-The Kandinsky model usage is different from the Stable Diffusion models because it uses an image prior model to create image embeddings. The embeddings help create a better alignment between text and images, allowing the latent diffusion model to generate higher quality images. For more details about how to use this model, take a look at the more comprehensive [Kandinsky]() guide.
+The Kandinsky model is different from the Stable Diffusion models because it uses an image prior model to create image embeddings. The embeddings help create a better alignment between text and images, allowing the latent diffusion model to generate better images.
 
 The simplest way to use Kandinsky 2.2 is:
 
@@ -184,11 +190,11 @@ image
 
 ## Configure pipeline parameters
 
-There are several important parameters you can configure in the pipeline that'll affect the image generation process and image quality. Let's take a look at some of these parameters.
+There are several important parameters you can configure in the pipeline that'll affect the image generation process and image quality. Let's take a closer look at what these parameters do and how changing them affects the output.
 
 ### Strength
 
-The `strength` parameter is one of the most important ones in the pipeline. It determines how much the generated image resembles the initial image. In other words:
+`strength` is one of the most important parameters to consider and it'll have a huge impact on your generated image. It determines how much the generated image resembles the initial image. In other words:
 
 - 📈 a higher `strength` value gives the model more "creativity" to generate an image that's different from the initial image; a `strength` value of 1.0 means the initial image is more or less ignored
 - 📉 a lower `strength` value means the generated image is more similar to the initial image
@@ -238,9 +244,9 @@ image
 
 ### Guidance scale
 
-The `guidance_scale` parameter is used to control how closely the generated image resembles the text prompt. A higher `guidance_scale` value means your generated image is more faithful to the prompt, while a lower `guidance_scale` value means your generated image has more freedom to deviate from the prompt.
+The `guidance_scale` parameter is used to control how closely aligned the generated image and text prompt are. A higher `guidance_scale` value means your generated image is more aligned with the prompt, while a lower `guidance_scale` value means your generated image has more space to deviate from the prompt.
 
-You can combine this with the `strength` parameter for even more fine-grained control on how expressive the model is. For example, combine a high `strength + guidance_scale` for maximum creativity or use a combination of low `strength` and low `guidance_scale` to generate an image that more closely resembles the initial image but is not as strictly bound to the prompt.
+You can combine `guidance_scale` with `strength` for even more precise control over how expressive the model is. For example, combine a high `strength + guidance_scale` for maximum creativity or use a combination of low `strength` and low `guidance_scale` to generate an image that resembles the initial image but is not as strictly bound to the prompt.
 
 ```py
 import torch
@@ -325,11 +331,11 @@ image
 
 ## Chained image-to-image pipelines
 
-There are some interesting ways you can use an image-to-image pipeline aside from just generating an image (although that is pretty cool too). You can take it a step further and chain it after a text-to-image or another image-to-image pipeline. The key is to keep all the outputs in *latent* space to avoid an unnecessary decode-encode step. You can do this by specifying `output_type="latent"` in a pipeline.
+There are some other interesting ways you can use an image-to-image pipeline aside from just generating an image (although that is pretty cool too). You can take it a step further and chain it with other pipelines.
 
 ### Text-to-image-to-image
 
-Chaining a text-to-image and image-to-image pipeline allows you to generate an image from text, and then use that image as the initial image for the image-to-image pipeline. This is useful if you want to generate an image entirely from scratch. For example, let's chain a Stable Diffusion model and a Kandinsky model.
+Chaining a text-to-image and image-to-image pipeline allows you to generate an image from text and use the generated image as the initial image for the image-to-image pipeline. This is useful if you want to generate an image entirely from scratch. For example, let's chain a Stable Diffusion and a Kandinsky model.
 
 Start by generating an image with the text-to-image pipeline:
 
@@ -343,7 +349,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
-image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", output_type="latent").images
+image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
 ```
 
 Now you can pass this generated image to the image-to-image pipeline:
@@ -361,7 +367,7 @@ image
 
 ### Image-to-image-to-image
 
-You can also chain multiple image-to-image pipelines together to create more interesting images. For example, you can load checkpoints finetuned on a specific style in each pipeline to create an image that is a combination of several styles.
+You can also chain multiple image-to-image pipelines together to create more interesting images. This can be useful for iteratively performing style transfer on an image, generate short GIFs, restore color to an image, or restore missing areas of an image.
 
 Start by generating an image:
 
@@ -389,28 +395,36 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipeline(prompt, image=init_image, output_type="latent").images[0]
 ```
 
-Pass the latent output from this pipeline to the next pipeline:
+<Tip>
+
+It is important to specify `output_type="latent"` in the pipeline to keep all the outputs in latent space to avoid an unnecessary decode-encode step. This only works if the chained pipelines are using the same VAE.
+
+</Tip>
+
+Pass the latent output from this pipeline to the next pipeline to generate an image in a [comic book art style](https://huggingface.co/ogkalu/Comic-Diffusion):
 
 ```py
 pipelne = AutoPipelineForImage2Image.from_pretrained(
-    "nerijs/pixel-art-xl", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
-pipeline.enable_model_cpu_offload()
-pipeline.enable_xformers_memory_efficient_attention()
-
-image = pipeline(prompt, image=image, output_type="latent").images[0]
-```
-
-Repeat one more time to generate the final image:
-
-```py
-pipeline = AutoPipelineForImage2Image.from_pretrained(
     "ogkalu/Comic-Diffusion", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
-image = pipeline(prompt, image=image).images[0]
+# need to include the token "charliebo artstyle" in the prompt to use this checkpoint
+image = pipeline("Astronaut in a jungle, charliebo artstyle", image=image, output_type="latent").images[0]
+```
+
+Repeat one more time to generate the final image in a [pixel art style](https://huggingface.co/kohbanye/pixel-art-style):
+
+```py
+pipeline = AutoPipelineForImage2Image.from_pretrained(
+    "kohbanye/pixel-art-style", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+pipeline.enable_xformers_memory_efficient_attention()
+
+# need to include the token "pixelartstyle" in the prompt to use this checkpoint
+image = pipeline("Astronaut in a jungle, pixelartstyle", image=image).images[0]
 image
 ```
 
@@ -444,6 +458,12 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image_1 = pipeline(prompt, image=init_image, output_type="latent").images[0]
 ```
 
+<Tip>
+
+It is important to specify `output_type="latent"` in the pipeline to keep all the outputs in *latent* space to avoid an unnecessary decode-encode step. This only works if the chained pipelines are using the same VAE.
+
+</Tip>
+
 Chain it to an upscaler pipeline to increase the image resolution:
 
 ```py
@@ -471,13 +491,13 @@ image_3
 
 ## Control image generation
 
-Trying to generate an image that looks exactly the way you want can be difficult which is why controlled generation techniques and models are so useful. While you can use the `negative_prompt` to partially control image generation, there are more robust methods like prompt weighting and ControlNets.
+Trying to generate an image that looks exactly the way you want can be difficult, which is why controlled generation techniques and models are so useful. While you can use the `negative_prompt` to partially control image generation, there are more robust methods like prompt weighting and ControlNets.
 
 ### Prompt weighting
 
 Prompt weighting allows you to scale the representation of each concept in a prompt. For example, in a prompt like "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", you can choose to increase or decrease the embeddings of "astronaut" and "jungle". The [Compel](https://github.com/damian0815/compel) library provides a simple syntax for adjusting prompt weights and generating the embeddings. You can learn how to create the embeddings in the [Prompt weighting](weighted_prompts) guide.
 
-The [`AutoPipelineForImage2Image`] has a `prompt_embeds` (and `negative_prompt_embeds` if you're using a negative prompt) parameter where you can pass the embeddings which replaces the `prompt` parameter.
+[`AutoPipelineForImage2Image`] has a `prompt_embeds` (and `negative_prompt_embeds` if you're using a negative prompt) parameter where you can pass the embeddings which replaces the `prompt` parameter.
 
 ```py
 from diffusers import AutoPipelineForImage2Image
@@ -510,7 +530,7 @@ init_image = init_image.resize((958, 960)) # resize to depth image dimensions
 depth_image = load_image("https://huggingface.co/lllyasviel/control_v11f1p_sd15_depth/resolve/main/images/control.png")
 ```
 
-Load the ControlNet model conditioned on depth maps and the [`AutoPipelineForImage2Image`]:
+Load a ControlNet model conditioned on depth maps and the [`AutoPipelineForImage2Image`]:
 
 ```py
 from diffusers import ControlNetModel, AutoPipelineForImage2Image
@@ -525,7 +545,7 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 ```
 
-Generate a new image conditioned on the depth map, initial image, and prompt:
+Now generate a new image conditioned on the depth map, initial image, and prompt:
 
 ```py
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
@@ -548,4 +568,33 @@ image
   </div>
 </div>
 
+Let's apply a new [style](https://huggingface.co/nitrosocke/elden-ring-diffusion) to the image generated from the ControlNet by chaining it with an image-to-image pipeline:
+
+```py
+pipeline = AutoPipelineForImage2Image.from_pretrained(
+    "nitrosocke/elden-ring-diffusion", torch_dtype=torch.float16,
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+pipeline.enable_xformers_memory_efficient_attention()
+
+prompt = "elden ring style astronaut in a jungle" # include the token "elden ring style" in the prompt
+negative_prompt = "ugly, deformed, disfigured, poor details, bad anatomy"
+
+image = pipeline(prompt, negative_prompt=negative_prompt, image=init_image, strength=0.45, guidance_scale=10.5).images[0]
+image
+```
+
+<div class="flex justify-center">
+  <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-elden-ring.png">
+</div>
+
 ## Optimize
+
+Running diffusion models is computationally expensive and intensive, but with a few optimization tricks, it is entirely possible to run them on consumer and free-tier GPUs. For example, you can use a more memory-efficient form of attention such as PyTorch 2.0's [scaled-dot product attention](optimization/torch2.0#scaled-dot-product-attention) or [xFormers](optimization/xformers) (you can use one or the other, but there's no need to use both). You can also offload the model to the GPU while the other pipeline components wait on the CPU.
+
+```diff
++ pipeline.enable_model_cpu_offload()
++ pipeline.enable_xformers_memory_efficient_attention()
+```
+
+To learn more, take a look at the [Reduce memory usage](optimization/memory) and [Torch 2.0](optimization/torch2.0) guides.
