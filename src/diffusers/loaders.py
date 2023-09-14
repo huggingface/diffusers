@@ -42,7 +42,7 @@ from .utils.import_utils import BACKENDS_MAPPING
 
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -628,7 +628,7 @@ class TextualInversionLoaderMixin:
     Load textual inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
-    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):
+    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
         r"""
         Processes prompts that include a special token corresponding to a multi-vector textual inversion embedding to
         be replaced with multiple special tokens each corresponding to one of the vectors. If the prompt has no textual
@@ -655,7 +655,7 @@ class TextualInversionLoaderMixin:
 
         return prompts
 
-    def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):
+    def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):  # noqa: F821
         r"""
         Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that corresponds
         to a multi-vector textual inversion embedding, this function will process the prompt so that the special token
@@ -689,8 +689,8 @@ class TextualInversionLoaderMixin:
         self,
         pretrained_model_name_or_path: Union[str, List[str], Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]],
         token: Optional[Union[str, List[str]]] = None,
-        tokenizer: Optional[PreTrainedTokenizer] = None,
-        text_encoder: Optional[PreTrainedModel] = None,
+        tokenizer: Optional["PreTrainedTokenizer"] = None,  # noqa: F821
+        text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
         **kwargs,
     ):
         r"""
