@@ -999,8 +999,11 @@ class StableDiffusionInpaintPipeline(
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if num_channels_unet == 4:
-                    init_latents_proper = image_latents[:1]
-                    init_mask = mask[:1]
+                    init_latents_proper = image_latents
+                    if do_classifier_free_guidance:
+                        init_mask, _ = mask.chunk(2)
+                    else:
+                        init_mask = mask
 
                     if i < len(timesteps) - 1:
                         noise_timestep = timesteps[i + 1]
