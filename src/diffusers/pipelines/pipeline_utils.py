@@ -1079,7 +1079,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         from diffusers import pipelines
 
         # 6. Load each module in the pipeline
-        for name, (library_name, class_name) in tqdm(init_dict.items(), desc="Loading pipeline components..."):
+        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
