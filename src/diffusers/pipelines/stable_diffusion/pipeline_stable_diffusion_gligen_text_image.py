@@ -182,6 +182,7 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
     """
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
@@ -581,6 +582,8 @@ class StableDiffusionGLIGENTextImagePipeline(DiffusionPipeline):
             if input is None:
                 return None
             inputs = self.processor(images=[input], return_tensors="pt").to(device)
+            inputs["pixel_values"] = inputs["pixel_values"].to(self.image_encoder.dtype)
+
             outputs = self.image_encoder(**inputs)
             feature = outputs.image_embeds
             feature = self.image_project(feature).squeeze(0)

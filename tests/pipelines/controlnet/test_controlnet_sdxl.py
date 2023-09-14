@@ -27,7 +27,7 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
+from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
 from diffusers.utils.torch_utils import randn_tensor

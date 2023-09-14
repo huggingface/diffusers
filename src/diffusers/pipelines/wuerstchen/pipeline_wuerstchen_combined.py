@@ -62,7 +62,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             The prior tokenizer to be used for text inputs.
         prior_text_encoder (`CLIPTextModel`):
             The prior text encoder to be used for text inputs.
-        prior (`WuerstchenPrior`):
+        prior_prior (`WuerstchenPrior`):
             The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
@@ -119,8 +119,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
         `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
         """
-        self.prior_pipe.enable_model_cpu_offload()
-        self.decoder_pipe.enable_model_cpu_offload()
+        self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
+        self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -144,7 +144,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
@@ -154,6 +154,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         decoder_timesteps: Optional[List[float]] = None,
         decoder_guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -165,10 +167,17 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+                The prompt or prompts to guide the image generation for the prior and decoder.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             height (`int`, *optional*, defaults to 512):
@@ -221,13 +230,15 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
         prior_outputs = self.prior_pipe(
-            prompt=prompt,
+            prompt=prompt if prompt_embeds is None else None,
             height=height,
             width=width,
             num_inference_steps=prior_num_inference_steps,
             timesteps=prior_timesteps,
             guidance_scale=prior_guidance_scale,
-            negative_prompt=negative_prompt,
+            negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
             num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             latents=latents,
@@ -238,7 +249,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
-            prompt=prompt,
+            prompt=prompt if prompt is not None else "",
             num_inference_steps=num_inference_steps,
             timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
@@ -247,4 +258,5 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             output_type=output_type,
             return_dict=return_dict,
         )
+
         return outputs

@@ -42,7 +42,7 @@ Check out the [AutoPipeline](/tutorials/autopipeline) tutorial to learn how to u
 `AutoPipeline` supports text-to-image, image-to-image, and inpainting for the following diffusion models:
 
 - [Stable Diffusion](./stable_diffusion)
-- [ControlNet](./api/pipelines/controlnet)
+- [ControlNet](./controlnet)
 - [Stable Diffusion XL (SDXL)](./stable_diffusion/stable_diffusion_xl)
 - [DeepFloyd IF](./if) 
 - [Kandinsky](./kandinsky)

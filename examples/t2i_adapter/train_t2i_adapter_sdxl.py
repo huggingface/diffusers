@@ -58,7 +58,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.21.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1060,7 +1060,9 @@ def main(args):
     )
 
     # Prepare everything with our `accelerator`.
-    t2iadapter, optimizer, lr_scheduler = accelerator.prepare(t2iadapter, optimizer, lr_scheduler)
+    t2iadapter, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        t2iadapter, optimizer, train_dataloader, lr_scheduler
+    )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
