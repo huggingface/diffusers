@@ -397,7 +397,7 @@ image = pipeline(prompt=prompt, prompt_2=prompt_2).images[0]
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-double-prompt.png" alt="generated image of an astronaut in a jungle in the style of a van gogh painting"/>
 </div>
 
-SDXL can be enhanced with textual inversion embeddings, in a similar way to Stable Diffusion 1 and 2 as explained [here](https://huggingface.co/docs/diffusers/v0.21.0/en/using-diffusers/textual_inversion_inference#textual-inversion)
+SDXL can be enhanced with textual inversion embeddings, in a similar way to Stable Diffusion 1 and 2 as explained [here](textual_inversion_inference#stable-diffusion-xl)
 
 ## Optimizations
 
