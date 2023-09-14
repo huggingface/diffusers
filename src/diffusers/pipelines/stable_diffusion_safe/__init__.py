@@ -50,6 +50,7 @@ class SafetyConfig(object):
 
 _dummy_objects = {}
 _additional_imports = {}
+_import_structure = {}
 
 _additional_imports.update({"SafetyConfig": SafetyConfig})
 
@@ -61,11 +62,13 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure = {
-        "pipeline_output": ["StableDiffusionSafePipelineOutput"],
-        "pipeline_stable_diffusion_safe": ["StableDiffusionPipelineSafe"],
-        "safety_checker": ["StableDiffusionSafetyChecker"],
-    }
+    _import_structure.update(
+        {
+            "pipeline_output": ["StableDiffusionSafePipelineOutput"],
+            "pipeline_stable_diffusion_safe": ["StableDiffusionPipelineSafe"],
+            "safety_checker": ["StableDiffusionSafetyChecker"],
+        }
+    )
 
 
 if TYPE_CHECKING:
