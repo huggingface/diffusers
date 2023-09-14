@@ -17,42 +17,62 @@ import inspect
 from collections import OrderedDict
 
 from ..configuration_utils import ConfigMixin
-from ..utils import DIFFUSERS_CACHE
-from .controlnet import (
-    StableDiffusionControlNetImg2ImgPipeline,
-    StableDiffusionControlNetInpaintPipeline,
-    StableDiffusionControlNetPipeline,
-    StableDiffusionXLControlNetImg2ImgPipeline,
-    StableDiffusionXLControlNetPipeline,
+from ..utils import (
+    DIFFUSERS_CACHE,
+    OptionalDependencyNotAvailable,
+    is_torch_available,
+    is_transformers_available,
 )
-from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
-from .kandinsky import (
-    KandinskyCombinedPipeline,
-    KandinskyImg2ImgCombinedPipeline,
-    KandinskyImg2ImgPipeline,
-    KandinskyInpaintCombinedPipeline,
-    KandinskyInpaintPipeline,
-    KandinskyPipeline,
-)
-from .kandinsky2_2 import (
-    KandinskyV22CombinedPipeline,
-    KandinskyV22Img2ImgCombinedPipeline,
-    KandinskyV22Img2ImgPipeline,
-    KandinskyV22InpaintCombinedPipeline,
-    KandinskyV22InpaintPipeline,
-    KandinskyV22Pipeline,
-)
-from .stable_diffusion import (
-    StableDiffusionImg2ImgPipeline,
-    StableDiffusionInpaintPipeline,
-    StableDiffusionPipeline,
-)
-from .stable_diffusion_xl import (
-    StableDiffusionXLImg2ImgPipeline,
-    StableDiffusionXLInpaintPipeline,
-    StableDiffusionXLPipeline,
-)
-from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
+
+
+try:
+    if not (is_torch_available() and is_transformers_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils.dummy_torch_and_transformers_objects import *  # noqa F403
+else:
+    from .controlnet import (
+        StableDiffusionControlNetImg2ImgPipeline,
+        StableDiffusionControlNetInpaintPipeline,
+        StableDiffusionControlNetPipeline,
+        StableDiffusionXLControlNetImg2ImgPipeline,
+        StableDiffusionXLControlNetPipeline,
+    )
+    from .deepfloyd_if import (
+        IFImg2ImgPipeline,
+        IFInpaintingPipeline,
+        IFPipeline,
+    )
+    from .kandinsky import (
+        KandinskyCombinedPipeline,
+        KandinskyImg2ImgCombinedPipeline,
+        KandinskyImg2ImgPipeline,
+        KandinskyInpaintCombinedPipeline,
+        KandinskyInpaintPipeline,
+        KandinskyPipeline,
+    )
+    from .kandinsky2_2 import (
+        KandinskyV22CombinedPipeline,
+        KandinskyV22Img2ImgCombinedPipeline,
+        KandinskyV22Img2ImgPipeline,
+        KandinskyV22InpaintCombinedPipeline,
+        KandinskyV22InpaintPipeline,
+        KandinskyV22Pipeline,
+    )
+    from .stable_diffusion import (
+        StableDiffusionImg2ImgPipeline,
+        StableDiffusionInpaintPipeline,
+        StableDiffusionPipeline,
+    )
+    from .stable_diffusion_xl import (
+        StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLPipeline,
+    )
+    from .wuerstchen import (
+        WuerstchenCombinedPipeline,
+        WuerstchenDecoderPipeline,
+    )
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
