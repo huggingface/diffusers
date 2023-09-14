@@ -1,4 +1,4 @@
-__version__ = "0.21.0.dev0"
+__version__ = "0.22.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -197,6 +197,7 @@ else:
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
             "AudioLDMPipeline",
+            "CLIPImageProjection",
             "CycleDiffusionPipeline",
             "IFImg2ImgPipeline",
             "IFImg2ImgSuperResolutionPipeline",
@@ -235,7 +236,6 @@ else:
             "StableDiffusionControlNetPipeline",
             "StableDiffusionDepth2ImgPipeline",
             "StableDiffusionDiffEditPipeline",
-            "StableDiffusionGLIGENPipeline",
             "StableDiffusionGLIGENPipeline",
             "StableDiffusionGLIGENTextImagePipeline",
             "StableDiffusionImageVariationPipeline",
@@ -531,6 +531,7 @@ if TYPE_CHECKING:
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
+            CLIPImageProjection,
             CycleDiffusionPipeline,
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,

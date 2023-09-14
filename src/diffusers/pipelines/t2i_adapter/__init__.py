@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -7,8 +9,8 @@ from ...utils import (
 )
 
 
-_import_structure = {}
 _dummy_objects = {}
+_import_structure = {}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -21,14 +23,24 @@ else:
     _import_structure["pipeline_stable_diffusion_adapter"] = ["StableDiffusionAdapterPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_adapter"] = ["StableDiffusionXLAdapterPipeline"]
 
-import sys
 
+if TYPE_CHECKING:
+    try:
+        if not (is_transformers_available() and is_torch_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+    else:
+        from .pipeline_stable_diffusion_adapter import StableDiffusionAdapterPipeline
+        from .pipeline_stable_diffusion_xl_adapter import StableDiffusionXLAdapterPipeline
+else:
+    import sys
 
-sys.modules[__name__] = _LazyModule(
-    __name__,
-    globals()["__file__"],
-    _import_structure,
-    module_spec=__spec__,
-)
-for name, value in _dummy_objects.items():
-    setattr(sys.modules[__name__], name, value)
+    sys.modules[__name__] = _LazyModule(
+        __name__,
+        globals()["__file__"],
+        _import_structure,
+        module_spec=__spec__,
+    )
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)

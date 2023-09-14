@@ -281,3 +281,8 @@ image.save("yoda-pokemon.png")
 
 * We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
 * We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
+
+
+## Kandinsky 2.2
+
+* We support fine-tuning both the decoder and prior in Kandinsky2.2 with the `train_text_to_image_prior.py` and `train_text_to_image_decoder.py` scripts. LoRA support is also included. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/README_sdxl.md).

@@ -1,15 +1,18 @@
+from typing import TYPE_CHECKING
+
 from ...utils import _LazyModule
 
 
-_import_structure = {}
-_import_structure["pipeline_ddim"] = ["DDIMPipeline"]
+_import_structure = {"pipeline_ddim": ["DDIMPipeline"]}
 
-import sys
+if TYPE_CHECKING:
+    from .pipeline_ddim import DDIMPipeline
+else:
+    import sys
 
-
-sys.modules[__name__] = _LazyModule(
-    __name__,
-    globals()["__file__"],
-    _import_structure,
-    module_spec=__spec__,
-)
+    sys.modules[__name__] = _LazyModule(
+        __name__,
+        globals()["__file__"],
+        _import_structure,
+        module_spec=__spec__,
+    )

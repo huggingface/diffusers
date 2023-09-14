@@ -164,7 +164,7 @@ class UniDiffuserPipelineFastTests(
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         generator = torch.Generator(device=device).manual_seed(seed)
         # Hardcode the shapes for now.
@@ -600,7 +600,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         latent_device = torch.device("cpu")
         generator = torch.Generator(device=latent_device).manual_seed(seed)
@@ -715,7 +715,7 @@ class UniDiffuserPipelineNightlyTests(unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         latent_device = torch.device("cpu")
         generator = torch.Generator(device=latent_device).manual_seed(seed)
