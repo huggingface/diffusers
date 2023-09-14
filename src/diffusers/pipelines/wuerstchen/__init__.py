@@ -41,7 +41,6 @@ if TYPE_CHECKING:
         from .pipeline_wuerstchen import WuerstchenDecoderPipeline
         from .pipeline_wuerstchen_combined import WuerstchenCombinedPipeline
         from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
-
 else:
     import sys
 
@@ -51,3 +50,6 @@ else:
         _import_structure,
         module_spec=__spec__,
     )
+
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)

@@ -1252,7 +1252,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._all_hooks = []
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
-            model = all_model_components.pop(model_str)
+            model = all_model_components.pop(model_str, None)
             if not isinstance(model, torch.nn.Module):
                 continue
 
