@@ -29,7 +29,6 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    print_tensor_test,
     require_torch_gpu,
     torch_device,
 )
@@ -453,7 +452,6 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
 
         assert image.shape == (1, 32, 32, 3)
 
