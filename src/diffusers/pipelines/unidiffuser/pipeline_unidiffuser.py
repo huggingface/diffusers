@@ -1235,8 +1235,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 negative_prompt_embeds=negative_prompt_embeds,
             )
 
-            if do_classifier_free_guidance:
-                prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            # if do_classifier_free_guidance:
+            #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
         else:
             # 3.2. Prepare text latent variables, if input not available
             prompt_embeds = self.prepare_text_latents(
