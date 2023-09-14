@@ -37,6 +37,9 @@ from .utils import (
     is_omegaconf_available,
     is_transformers_available,
     logging,
+    convert_old_state_dict_to_peft,
+    convert_diffusers_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
