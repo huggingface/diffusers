@@ -42,7 +42,7 @@ from .utils.import_utils import BACKENDS_MAPPING
 
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -689,8 +689,8 @@ class TextualInversionLoaderMixin:
         self,
         pretrained_model_name_or_path: Union[str, List[str], Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]],
         token: Optional[Union[str, List[str]]] = None,
-        tokenizer: Optional[PreTrainedTokenizer] = None,
-        text_encoder: Optional[PreTrainedModel] = None,
+        tokenizer: Optional["PreTrainedTokenizer"] = None,
+        text_encoder: Optional["PreTrainedModel"] = None,
         **kwargs,
     ):
         r"""
