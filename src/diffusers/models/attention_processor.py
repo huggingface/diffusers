@@ -542,6 +542,11 @@ class AttnProcessor:
     ):
         residual = hidden_states
 
+        if scale != 1.0:
+            for module in attn.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.add_scale(scale)
+
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -559,15 +564,15 @@ class AttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, scale=scale)
+        query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, scale=scale)
-        value = attn.to_v(encoder_hidden_states, scale=scale)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
 
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
@@ -578,7 +583,7 @@ class AttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, scale=scale)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -589,6 +594,11 @@ class AttnProcessor:
             hidden_states = hidden_states + residual
 
         hidden_states = hidden_states / attn.rescale_output_factor
+
+        if scale != 1.0:
+            for module in attn.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.remove_scale(scale)
 
         return hidden_states
 
@@ -698,6 +708,11 @@ class AttnAddedKVProcessor:
     """
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
+        if scale != 1.0:
+            for module in attn.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.add_scale(scale)
+
         residual = hidden_states
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
@@ -711,17 +726,17 @@ class AttnAddedKVProcessor:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, scale=scale)
+        query = attn.to_q(hidden_states)
         query = attn.head_to_batch_dim(query)
 
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states, scale=scale)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states, scale=scale)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states, scale=scale)
-            value = attn.to_v(hidden_states, scale=scale)
+            key = attn.to_k(hidden_states)
+            value = attn.to_v(hidden_states)
             key = attn.head_to_batch_dim(key)
             value = attn.head_to_batch_dim(value)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
@@ -735,12 +750,17 @@ class AttnAddedKVProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, scale=scale)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
         hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
         hidden_states = hidden_states + residual
+
+        if scale != 1.0:
+            for module in attn.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.remove_scale(scale)
 
         return hidden_states
 
@@ -762,6 +782,11 @@ class AttnAddedKVProcessor2_0:
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
 
+        if scale != 1.0:
+            for module in attn.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.add_scale(scale)
+
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size, out_dim=4)
 
         if encoder_hidden_states is None:
@@ -771,7 +796,7 @@ class AttnAddedKVProcessor2_0:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, scale=scale)
+        query = attn.to_q(hidden_states)
         query = attn.head_to_batch_dim(query, out_dim=4)
 
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
@@ -780,8 +805,8 @@ class AttnAddedKVProcessor2_0:
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj, out_dim=4)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states, scale=scale)
-            value = attn.to_v(hidden_states, scale=scale)
+            key = attn.to_k(hidden_states)
+            value = attn.to_v(hidden_states)
             key = attn.head_to_batch_dim(key, out_dim=4)
             value = attn.head_to_batch_dim(value, out_dim=4)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
@@ -798,12 +823,17 @@ class AttnAddedKVProcessor2_0:
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, residual.shape[1])
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, scale=scale)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
         hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
         hidden_states = hidden_states + residual
+
+        if scale != 1.0:
+            for module in attn.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.remove_scale(scale)
 
         return hidden_states
 
@@ -899,6 +929,11 @@ class XFormersAttnProcessor:
     ):
         residual = hidden_states
 
+        if scale != 1.0:
+            for module in attn.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.add_scale(scale)
+
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -926,15 +961,15 @@ class XFormersAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, scale=scale)
+        query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, scale=scale)
-        value = attn.to_v(encoder_hidden_states, scale=scale)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
 
         query = attn.head_to_batch_dim(query).contiguous()
         key = attn.head_to_batch_dim(key).contiguous()
@@ -947,7 +982,7 @@ class XFormersAttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, scale=scale)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -958,6 +993,11 @@ class XFormersAttnProcessor:
             hidden_states = hidden_states + residual
 
         hidden_states = hidden_states / attn.rescale_output_factor
+
+        if scale != 1.0:
+            for module in attn.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.remove_scale(scale)
 
         return hidden_states
 
@@ -983,7 +1023,7 @@ class AttnProcessor2_0:
         residual = hidden_states
 
         if scale != 1.0:
-            for module in self.modules():
+            for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.add_scale(scale)
 
@@ -1050,7 +1090,7 @@ class AttnProcessor2_0:
         hidden_states = hidden_states / attn.rescale_output_factor
 
         if scale != 1.0:
-            for module in self.modules():
+            for module in attn.modules():
                 if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
                     module.remove_scale(scale)
 
