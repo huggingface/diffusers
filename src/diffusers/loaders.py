@@ -39,7 +39,8 @@ from .utils import (
     is_peft_available,
     logging,
     convert_old_state_dict_to_peft,
-    convert_diffusers_state_dict_to_peft
+    convert_diffusers_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
@@ -1213,7 +1214,18 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
         # load loras into unet
-        unet.load_attn_procs(state_dict, network_alphas=network_alphas)
+        # unet.load_attn_procs(state_dict, network_alphas=network_alphas)
+        from peft import inject_adapter_in_model, LoraConfig, set_peft_model_state_dict
+
+        lora_config = LoraConfig(
+            r=4,
+            target_modules=["to_q", "to_k", "to_o"],
+        )
+
+        inject_adapter_in_model(lora_config, unet)
+        state_dict = convert_unet_state_dict_to_peft(state_dict)
+
+        load_results = set_peft_model_state_dict(unet, state_dict)
 
     @classmethod
     def load_lora_into_text_encoder(cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0):

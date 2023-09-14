@@ -123,3 +123,25 @@ def convert_diffusers_state_dict_to_peft(attention_modules, state_dict):
         ] = state_dict.pop(f"{name}.out_proj.lora_linear_layer.down.weight")
     
     return converted_state_dict
+
+
+def convert_unet_state_dict_to_peft(state_dict):
+    converted_state_dict = {}
+
+    patterns = {
+        ".to_out_lora": ".to_o",
+        ".down": ".lora_A",
+        ".up": ".lora_B",
+        ".to_q_lora": ".to_q",
+        ".to_k_lora": ".to_k",
+        ".to_v_lora": ".to_v",
+    }
+
+    for k, v in state_dict.items():
+        if any(pattern in k for pattern in patterns.keys()):
+            for old, new in patterns.items():
+                k = k.replace(old, new)
+        
+        converted_state_dict[k] = v
+    
+    return converted_state_dict
