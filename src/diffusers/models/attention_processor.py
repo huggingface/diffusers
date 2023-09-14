@@ -477,19 +477,7 @@ class Attention(nn.Module):
 
         return attention_probs
 
-    def prepare_attention_mask(self, attention_mask, target_length, batch_size=None, out_dim=3):
-        if batch_size is None:
-            deprecate(
-                "batch_size=None",
-                "0.22.0",
-                (
-                    "Not passing the `batch_size` parameter to `prepare_attention_mask` can lead to incorrect"
-                    " attention mask preparation and is deprecated behavior. Please make sure to pass `batch_size` to"
-                    " `prepare_attention_mask` when preparing the attention_mask."
-                ),
-            )
-            batch_size = 1
-
+    def prepare_attention_mask(self, attention_mask, target_length, batch_size, out_dim=3):
         head_size = self.heads
         if attention_mask is None:
             return attention_mask
