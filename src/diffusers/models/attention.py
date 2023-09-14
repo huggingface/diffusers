@@ -303,8 +303,12 @@ class FeedForward(nn.Module):
 
     def forward(self, hidden_states, scale: float = 1.0):
         for module in self.net:
-            if isinstance(module, (LoRACompatibleLinear, GEGLU)):
+            if isinstance(module, (GEGLU)):
                 hidden_states = module(hidden_states, scale)
+            elif isinstance(module, (LoRACompatibleLinear)) and scale != 1.0:
+                module.add_scale(scale)
+                hidden_states = module(hidden_states)
+                module.remove_scale(scale)
             else:
                 hidden_states = module(hidden_states)
         return hidden_states
