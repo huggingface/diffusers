@@ -49,7 +49,9 @@ class SafetyConfig(object):
 
 
 _dummy_objects = {}
-_additional_imports = {"SafetyConfig": SafetyConfig}
+_additional_imports = {}
+
+_additional_imports.update({"SafetyConfig": SafetyConfig})
 
 try:
     if not (is_transformers_available() and is_torch_available()):
