@@ -27,10 +27,10 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
-from diffusers.utils import load_image, randn_tensor, torch_device
+from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow
+from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -160,7 +160,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
         }
 
@@ -299,6 +299,28 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+    def test_controlnet_sdxl_guess(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(device)
+
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["guess_mode"] = True
+
+        output = sd_pipe(**inputs)
+        image_slice = output.images[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.7330834, 0.590667, 0.5667336, 0.6029023, 0.5679491, 0.5968194, 0.4032986, 0.47612396, 0.5089609]
+        )
+
+        # make sure that it's equal
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
 
 
 class StableDiffusionXLMultiControlNetPipelineFastTests(
@@ -679,6 +701,25 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+    def test_negative_conditions(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        image = pipe(**inputs).images
+        image_slice_without_neg_cond = image[0, -3:, -3:, -1]
+
+        image = pipe(
+            **inputs,
+            negative_original_size=(512, 512),
+            negative_crops_coords_top_left=(0, 0),
+            negative_target_size=(1024, 1024),
+        ).images
+        image_slice_with_neg_cond = image[0, -3:, -3:, -1]
+
+        self.assertTrue(np.abs(image_slice_without_neg_cond - image_slice_with_neg_cond).max() > 1e-2)
 
 
 @slow

@@ -79,7 +79,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.21.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -887,7 +887,12 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
-                    save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
+                    weight_name = (
+                        f"learned_embeds-steps-{global_step}.bin"
+                        if args.no_safe_serialization
+                        else f"learned_embeds-steps-{global_step}.safetensors"
+                    )
+                    save_path = os.path.join(args.output_dir, weight_name)
                     save_progress(
                         text_encoder,
                         placeholder_token_ids,
@@ -952,7 +957,8 @@ def main():
             )
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings
-        save_path = os.path.join(args.output_dir, "learned_embeds.bin")
+        weight_name = "learned_embeds.bin" if args.no_safe_serialization else "learned_embeds.safetensors"
+        save_path = os.path.join(args.output_dir, weight_name)
         save_progress(
             text_encoder,
             placeholder_token_ids,

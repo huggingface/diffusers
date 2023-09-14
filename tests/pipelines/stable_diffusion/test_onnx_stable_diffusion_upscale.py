@@ -17,7 +17,6 @@ import random
 import unittest
 
 import numpy as np
-import torch
 
 from diffusers import (
     DPMSolverMultistepScheduler,
@@ -27,8 +26,8 @@ from diffusers import (
     OnnxStableDiffusionUpscalePipeline,
     PNDMScheduler,
 )
-from diffusers.utils import floats_tensor
 from diffusers.utils.testing_utils import (
+    floats_tensor,
     is_onnx_available,
     load_image,
     nightly,
@@ -49,7 +48,7 @@ class OnnxStableDiffusionUpscalePipelineFastTests(OnnxPipelineTesterMixin, unitt
 
     def get_dummy_inputs(self, seed=0):
         image = floats_tensor((1, 3, 128, 128), rng=random.Random(seed))
-        generator = torch.manual_seed(seed)
+        generator = np.random.RandomState(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": image,
@@ -70,9 +69,7 @@ class OnnxStableDiffusionUpscalePipelineFastTests(OnnxPipelineTesterMixin, unitt
 
         # started as 128, should now be 512
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array(
-            [0.6974782, 0.68902093, 0.70135885, 0.7583618, 0.7804545, 0.7854912, 0.78667426, 0.78743863, 0.78070223]
-        )
+        expected_slice = np.array([0.6957, 0.7002, 0.7186, 0.6881, 0.6693, 0.6910, 0.7445, 0.7274, 0.7056])
         assert np.abs(image_slice - expected_slice).max() < 1e-1
 
     def test_pipeline_pndm(self):
@@ -85,9 +82,7 @@ class OnnxStableDiffusionUpscalePipelineFastTests(OnnxPipelineTesterMixin, unitt
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array(
-            [0.6898892, 0.59240556, 0.52499527, 0.58866215, 0.52258235, 0.52572715, 0.62414473, 0.6174387, 0.6214964]
-        )
+        expected_slice = np.array([0.7349, 0.7347, 0.7034, 0.7696, 0.7876, 0.7597, 0.7916, 0.8085, 0.8036])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
     def test_pipeline_dpm_multistep(self):
@@ -174,7 +169,7 @@ class OnnxStableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "A fantasy landscape, trending on artstation"
 
-        generator = torch.manual_seed(0)
+        generator = np.random.RandomState(0)
         output = pipe(
             prompt=prompt,
             image=init_image,
@@ -211,7 +206,7 @@ class OnnxStableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
 
         prompt = "A fantasy landscape, trending on artstation"
 
-        generator = torch.manual_seed(0)
+        generator = np.random.RandomState(0)
         output = pipe(
             prompt=prompt,
             image=init_image,

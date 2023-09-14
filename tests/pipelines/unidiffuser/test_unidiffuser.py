@@ -20,8 +20,8 @@ from diffusers import (
     UniDiffuserPipeline,
     UniDiffuserTextDecoder,
 )
-from diffusers.utils import floats_tensor, load_image, nightly, randn_tensor, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import floats_tensor, load_image, nightly, require_torch_gpu, slow, torch_device
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -109,7 +109,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         generator = torch.Generator(device=device).manual_seed(seed)
         # Hardcode the shapes for now.
@@ -545,7 +545,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         latent_device = torch.device("cpu")
         generator = torch.Generator(device=latent_device).manual_seed(seed)
@@ -648,7 +648,7 @@ class UniDiffuserPipelineNightlyTests(unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         latent_device = torch.device("cpu")
         generator = torch.Generator(device=latent_device).manual_seed(seed)
