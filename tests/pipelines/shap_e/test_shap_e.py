@@ -44,11 +44,11 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def text_embedder_hidden_size(self):
-        return 32
+        return 16
 
     @property
     def time_input_dim(self):
-        return 32
+        return 16
 
     @property
     def time_embed_dim(self):
@@ -201,14 +201,7 @@ class ShapEPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_consistent(batch_sizes=[1, 2])
 
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
-
-        self._test_inference_batch_single_identical(
-            batch_size=2,
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
-        )
+        self._test_inference_batch_single_identical(batch_size=2, expected_max_diff=6e-3)
 
     def test_num_images_per_prompt(self):
         components = self.get_dummy_components()

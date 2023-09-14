@@ -33,6 +33,7 @@ from diffusers.utils.testing_utils import (
     skip_mps,
     slow,
     torch_device,
+    print_tensor_test,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -87,7 +88,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             down_block_types=["DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D"],
             latent_channels=4,
-            sample_size=128,
+            sample_size=32,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
@@ -141,8 +142,8 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         frames = sd_pipe(**inputs).frames
         image_slice = frames[0][-3:, -3:, -1]
 
-        assert frames[0].shape == (64, 64, 3)
-        expected_slice = np.array([158.0, 160.0, 153.0, 125.0, 100.0, 121.0, 111.0, 93.0, 113.0])
+        assert frames[0].shape == (32, 32, 3)
+        expected_slice = np.array([79.0, 157.0, 67.0, 188.0, 104.0, 116.0, 96.0, 132.0, 159.0])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

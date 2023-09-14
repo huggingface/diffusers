@@ -398,6 +398,9 @@ class PipelineTesterMixin:
             batched_input.update(inputs)
 
             for name in self.batch_params:
+                if name not in inputs:
+                    continue
+
                 value = inputs[name]
                 if name == "prompt":
                     len_prompt = len(value)
@@ -417,32 +420,27 @@ class PipelineTesterMixin:
 
             batched_inputs.append(batched_input)
 
+        logger.setLevel(level=diffusers.logging.WARNING)
         for batch_size, batched_input in zip(batch_sizes, batched_inputs):
             output = pipe(**batched_input)
             assert len(output[0]) == batch_size
-
-        logger.setLevel(level=diffusers.logging.WARNING)
 
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
         self._test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def _test_inference_batch_single_identical(
         self,
-        batch_size=3,
-        test_max_difference=None,
-        test_mean_pixel_difference=None,
-        relax_max_difference=False,
+        batch_size=2,
         expected_max_diff=1e-4,
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
-        if test_max_difference is None:
-            # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
-            # make sure that batched and non-batched is identical
-            test_max_difference = torch_device != "mps"
-
         generator_device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for components in pipe.components.values():
+            if hasattr(components, "set_default_attn_processor"):
+                components.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -454,8 +452,11 @@ class PipelineTesterMixin:
         # batchify inputs
         batched_inputs = {}
         batched_inputs.update(inputs)
-        batch_size = batch_size
+
         for name in self.batch_params:
+            if name not in inputs:
+                continue
+
             value = inputs[name]
             if name == "prompt":
                 len_prompt = len(value)
@@ -668,11 +669,12 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output_without_slicing = pipe(**inputs)[0]
 
         pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(generator_device)
         output_with_slicing = pipe(**inputs)[0]
 
         if test_max_difference:

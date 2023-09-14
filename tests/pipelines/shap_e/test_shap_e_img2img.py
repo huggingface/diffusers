@@ -215,12 +215,8 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_consistent(batch_sizes=[2])
 
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
         self._test_inference_batch_single_identical(
             batch_size=2,
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
             expected_max_diff=7e-4,
         )
 
