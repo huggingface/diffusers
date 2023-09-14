@@ -99,7 +99,7 @@ state_dict
          [ 0.0475, -0.0508, -0.0145,  ...,  0.0070, -0.0089, -0.0163]],
 ```
 
-As we can see we have indeed two tensors one for "clip-g" and one for "clip-l". 
+As we can see we have indeed two tensors, one for `"clip-g"` and one for `"clip-l"`.
 `"clip-g"` corresponds to the bigger text encoder in Stable Diffusion XL and refers to 
 `pipe.text_encoder_2` whereas `"clip-l"` refers to `pipe.text_encoder`.
 
@@ -111,9 +111,12 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipe = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", variant="fp16", torch_dtype=torch.float16)
+pipe.to("cuda")
+
 pipe.load_textual_inversion(state_dict["clip_g"], token="unaestheticXLv31", text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
 pipe.load_textual_inversion(state_dict["clip_l"], token="unaestheticXLv31", text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
 
 # the embedding should be used as a negative embedding, so we pass it as a negative prompt
-image = pipe("a woman standing in front of a mountain", negative_prompt="unaestheticXLv31").images[0]
+generator = torch.Generator().manual_seed(33)
+image = pipe("a woman standing in front of a mountain", negative_prompt="unaestheticXLv31", generator=generator).images[0]
 ```
