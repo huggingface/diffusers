@@ -21,7 +21,7 @@ from torch import nn
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
-from .lora import LoRACompatibleLinear, LoRALinearLayer
+from .lora import LoRACompatibleConv, LoRACompatibleLinear, LoRALinearLayer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -994,6 +994,11 @@ class AttnProcessor2_0:
     ):
         residual = hidden_states
 
+        if scale != 1.0:
+            for module in self.modules():
+                if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
+                    module.add_scale(scale)
+
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -1016,15 +1021,15 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, scale=scale)
+        query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, scale=scale)
-        value = attn.to_v(encoder_hidden_states, scale=scale)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -1044,7 +1049,7 @@ class AttnProcessor2_0:
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, scale=scale)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1055,6 +1060,11 @@ class AttnProcessor2_0:
             hidden_states = hidden_states + residual
 
         hidden_states = hidden_states / attn.rescale_output_factor
+
+        if scale != 1.0:
+            for module in self.modules():
+                if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
+                    module.remove_scale(scale)
 
         return hidden_states
 
