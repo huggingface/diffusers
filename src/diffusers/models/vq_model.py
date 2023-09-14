@@ -18,7 +18,8 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, apply_forward_hook
+from ..utils import BaseOutput
+from ..utils.accelerate_utils import apply_forward_hook
 from .modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, Encoder, VectorQuantizer
 
@@ -132,7 +133,7 @@ class VQModel(ModelMixin, ConfigMixin):
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         # also go through quantization layer
         if not force_not_quantize:
-            quant, emb_loss, info = self.quantize(h)
+            quant, _, _ = self.quantize(h)
         else:
             quant = h
         quant2 = self.post_quant_conv(quant)

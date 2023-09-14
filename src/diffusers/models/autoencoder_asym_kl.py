@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import apply_forward_hook
+from ..utils.accelerate_utils import apply_forward_hook
 from .autoencoder_kl import AutoencoderKLOutput
 from .modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder, MaskConditionDecoder

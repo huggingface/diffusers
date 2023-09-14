@@ -102,6 +102,8 @@
       title: InstructPix2Pix Training
     - local: training/custom_diffusion
       title: Custom Diffusion
+    - local: training/t2i_adapters
+      title: T2I-Adapters
     title: Training
   - sections:
     - local: using-diffusers/other-modalities
@@ -111,27 +113,35 @@
 - sections:
   - local: optimization/opt_overview
     title: Overview
-  - local: optimization/fp16
-    title: Memory and Speed
-  - local: optimization/torch2.0
-    title: Torch2.0 support
-  - local: using-diffusers/stable_diffusion_jax_how_to
-    title: Stable Diffusion in JAX/Flax
-  - local: optimization/xformers
-    title: xFormers
-  - local: optimization/onnx
-    title: ONNX
-  - local: optimization/open_vino
-    title: OpenVINO
-  - local: optimization/coreml
-    title: Core ML
-  - local: optimization/mps
-    title: MPS
-  - local: optimization/habana
-    title: Habana Gaudi
-  - local: optimization/tome
-    title: Token Merging
-  title: Optimization/Special Hardware
+  - sections:
+    - local: optimization/fp16
+      title: Speed up inference
+    - local: optimization/memory
+      title: Reduce memory usage
+    - local: optimization/torch2.0
+      title: Torch 2.0
+    - local: optimization/xformers
+      title: xFormers
+    - local: optimization/tome
+      title: Token merging
+    title: General optimizations
+  - sections:
+    - local: using-diffusers/stable_diffusion_jax_how_to
+      title: JAX/Flax
+    - local: optimization/onnx
+      title: ONNX
+    - local: optimization/open_vino
+      title: OpenVINO
+    - local: optimization/coreml
+      title: Core ML
+    title: Optimized model types
+  - sections:
+    - local: optimization/mps
+      title: Metal Performance Shaders (MPS)
+    - local: optimization/habana
+      title: Habana Gaudi
+    title: Optimized hardware
+  title: Optimization
 - sections:
   - local: conceptual/philosophy
     title: Philosophy
@@ -310,6 +320,8 @@
       title: Versatile Diffusion
     - local: api/pipelines/vq_diffusion
       title: VQ Diffusion
+    - local: api/pipelines/wuerstchen
+      title: Wuerstchen
     title: Pipelines
   - sections:
     - local: api/schedulers/overview

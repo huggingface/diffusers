@@ -34,7 +34,7 @@ the attention layers of a language model is sufficient to obtain good downstream
 
 [cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository. 🧨 Diffusers now supports finetuning with LoRA for [text-to-image generation](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image#training-with-lora) and [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#training-with-low-rank-adaptation-of-large-language-models-lora). This guide will show you how to do both.
 
-If you'd like to store or share your model with the community, login to your Hugging Face account (create [one](hf.co/join) if you don't have one already):
+If you'd like to store or share your model with the community, login to your Hugging Face account (create [one](https://hf.co/join) if you don't have one already):
 
 ```bash
 huggingface-cli login
@@ -300,6 +300,83 @@ You can call [`~diffusers.loaders.LoraLoaderMixin.fuse_lora`] on a pipeline to m
 ## Unfusing LoRA parameters
 
 To undo `fuse_lora`, call [`~diffusers.loaders.LoraLoaderMixin.unfuse_lora`] on a pipeline.
+
+## Working with different LoRA scales when using LoRA fusion
+
+If you need to use `scale` when working with `fuse_lora()` to control the influence of the LoRA parameters on the outputs, you should specify `lora_scale` within `fuse_lora()`. Passing the `scale` parameter to `cross_attention_kwargs` when you call the pipeline won't work.  
+
+To use a different `lora_scale` with `fuse_lora()`, you should first call `unfuse_lora()` on the corresponding pipeline and call `fuse_lora()` again with the expected `lora_scale`.
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+# This uses a default `lora_scale` of 1.0.
+pipe.fuse_lora()
+
+generator = torch.manual_seed(0)
+images_fusion = pipe(
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
+).images
+
+# To work with a different `lora_scale`, first reverse the effects of `fuse_lora()`.
+pipe.unfuse_lora()
+
+# Then proceed as follows.
+pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+pipe.fuse_lora(lora_scale=0.5)
+
+generator = torch.manual_seed(0)
+images_fusion = pipe(
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
+).images
+```
+
+## Serializing pipelines with fused LoRA parameters
+
+Let's say you want to load the pipeline above that has its UNet fused with the LoRA parameters. You can easily do so by simply calling the `save_pretrained()` method on `pipe`. 
+
+After loading the LoRA parameters into a pipeline, if you want to serialize the pipeline such that the affected model components are already fused with the LoRA parameters, you should:
+
+* call `fuse_lora()` on the pipeline with the desired `lora_scale`, given you've already loaded the LoRA parameters into it.
+* call `save_pretrained()` on the pipeline. 
+
+Here is a complete example:
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+# First, fuse the LoRA parameters.
+pipe.fuse_lora()
+
+# Then save.
+pipe.save_pretrained("my-pipeline-with-fused-lora")
+```
+
+Now, you can load the pipeline and directly perform inference without having to load the LoRA parameters again:
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+pipe = DiffusionPipeline.from_pretrained("my-pipeline-with-fused-lora", torch_dtype=torch.float16).to("cuda")
+
+generator = torch.manual_seed(0)
+images_fusion = pipe(
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
+).images
+```
 
 ## Supporting different LoRA checkpoints from Diffusers
 
