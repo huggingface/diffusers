@@ -75,10 +75,9 @@ grid
 
 ## Stable Diffusion XL
 
-Stable Diffusion XL can also use textual inversion vectors for inference. In contrast to Stable Diffusion 1 or 2, Stable Diffusion XL has two text encoders. Therefore textual inversion embeddings for SDXL tend to also have two embedding vectors - one for each text encoder model.
+Stable Diffusion XL (SDXL) can also use textual inversion vectors for inference. In contrast to Stable Diffusion 1 and 2, SDXL has two text encoders so you'll need two textual inversion embeddings - one for each text encoder model.
 
-In order to use a textual inversion embedding for Stable Diffusion XL, first make sure to download the file 
-and load it as a dict to have a look at the structure.
+Let's download the SDXL textual inversion embeddings and have a closer look at it's structure:
 
 ```py
 from huggingface_hub import hf_hub_download
@@ -89,7 +88,6 @@ state_dict = load_file(file)
 state_dict
 ```
 
-**Output**:
 ```
 {'clip_g': tensor([[ 0.0077, -0.0112,  0.0065,  ...,  0.0195,  0.0159,  0.0275],
          ...,
@@ -99,11 +97,11 @@ state_dict
          [ 0.0475, -0.0508, -0.0145,  ...,  0.0070, -0.0089, -0.0163]],
 ```
 
-As we can see we have indeed two tensors, one for `"clip-g"` and one for `"clip-l"`.
-`"clip-g"` corresponds to the bigger text encoder in Stable Diffusion XL and refers to 
-`pipe.text_encoder_2` whereas `"clip-l"` refers to `pipe.text_encoder`.
+There are two tensors, `"clip-g"` and `"clip-l"`.
+`"clip-g"` corresponds to the bigger text encoder in SDXL and refers to 
+`pipe.text_encoder_2` and `"clip-l"` refers to `pipe.text_encoder`.
 
-Now we can load each tensors separately by passing the correct text encoder and tokenizer 
+Now you can load each tensor separately by passing them along with the correct text encoder and tokenizer
 to [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`]:
 
 ```py
