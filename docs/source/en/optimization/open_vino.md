@@ -11,26 +11,21 @@ specific language governing permissions and limitations under the License.
 -->
 
 
-# How to use OpenVINO for inference
+# OpenVINO
 
-🤗 [Optimum](https://github.com/huggingface/optimum-intel) provides Stable Diffusion pipelines compatible with OpenVINO. You can now easily perform inference with OpenVINO Runtime on a variety of Intel processors ([see](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_Supported_Devices.html) the full list of supported devices).
+🤗 [Optimum](https://github.com/huggingface/optimum-intel) provides Stable Diffusion pipelines compatible with OpenVINO to perform inference on a variety of Intel processors (see the [full list]((https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_Supported_Devices.html)) of supported devices).
 
-## Installation
-
-Install 🤗 Optimum Intel with the following command:
+You'll need to install 🤗 Optimum Intel with the `--upgrade-strategy eager` option to ensure [`optimum-intel`](https://github.com/huggingface/optimum-intel) is using the latest version:
 
 ```
 pip install --upgrade-strategy eager optimum["openvino"]
 ```
 
-The `--upgrade-strategy eager` option is needed to ensure [`optimum-intel`](https://github.com/huggingface/optimum-intel) is upgraded to its latest version.
-
+This guide will show you how to use the Stable Diffusion and Stable Diffusion XL (SDXL) pipelines with OpenVINO.
 
 ## Stable Diffusion
 
-### Inference
-
-To load an OpenVINO model and run inference with OpenVINO Runtime, you need to replace `StableDiffusionPipeline` with `OVStableDiffusionPipeline`. In case you want to load a PyTorch model and convert it to the OpenVINO format on-the-fly, you can set `export=True`.
+To load and run inference, use the [`~optimum.intel.OVStableDiffusionPipeline`]. If you want to load a PyTorch model and convert it to the OpenVINO format on-the-fly, set `export=True`:
 
 ```python
 from optimum.intel import OVStableDiffusionPipeline
@@ -44,7 +39,7 @@ image = pipeline(prompt).images[0]
 pipeline.save_pretrained("openvino-sd-v1-5")
 ```
 
-To further speed up inference, the model can be statically reshaped :
+To further speed-up inference, statically reshape the model. If you change any parameters such as the outputs height or width, you’ll need to statically reshape your model again.
 
 ```python
 # Define the shapes related to the inputs and desired outputs
@@ -62,30 +57,15 @@ image = pipeline(
     num_images_per_prompt=num_images,
 ).images[0]
 ```
-
-In case you want to change any parameters such as the outputs height or width, you’ll need to statically reshape your model once again.
-
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/optimum/documentation-images/resolve/main/intel/openvino/stable_diffusion_v1_5_sail_boat_rembrandt.png">
 </div>
 
-
-### Supported tasks
-
-| Task                                 | Loading Class                        |
-|--------------------------------------|--------------------------------------|
-| `text-to-image`                      | `OVStableDiffusionPipeline`          |
-| `image-to-image`                     | `OVStableDiffusionImg2ImgPipeline`   |
-| `inpaint`                            | `OVStableDiffusionInpaintPipeline`   |
-
-You can find more examples in the optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion).
-
+You can find more examples in the 🤗 Optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion), and Stable Diffusion is supported for text-to-image, image-to-image, and inpainting.
 
 ## Stable Diffusion XL
 
-### Inference
-
-Here is an example of how you can load a SDXL OpenVINO model from [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and run inference with OpenVINO Runtime :
+To load and run inference with SDXL, use the [`~optimum.intel.OVStableDiffusionXLPipeline`]:
 
 ```python
 from optimum.intel import OVStableDiffusionXLPipeline
@@ -96,15 +76,6 @@ prompt = "sailing ship in storm by Rembrandt"
 image = pipeline(prompt).images[0]
 ```
 
-To further speed up inference, the model can be statically reshaped as showed above.
-You can find more examples in the optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion-xl).
+To further speed-up inference, [statically reshape](#stable-diffusion) the model as shown in the Stable Diffusion section.
 
-### Supported tasks
-
-| Task                                 | Loading Class                        |
-|--------------------------------------|--------------------------------------|
-| `text-to-image`                      | `OVStableDiffusionXLPipeline`        |
-| `image-to-image`                     | `OVStableDiffusionXLImg2ImgPipeline` |
-
-
-
+You can find more examples in the 🤗 Optimum [documentation](https://huggingface.co/docs/optimum/intel/inference#stable-diffusion-xl), and running SDXL in OpenVINO is supported for text-to-image and image-to-image.

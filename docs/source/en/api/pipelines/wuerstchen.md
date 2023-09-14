@@ -8,9 +8,12 @@ The abstract from the paper is:
 
 *We introduce Würstchen, a novel technique for text-to-image synthesis that unites competitive performance with unprecedented cost-effectiveness and ease of training on constrained hardware. Building on recent advancements in machine learning, our approach, which utilizes latent diffusion strategies at strong latent image compression rates, significantly reduces the computational burden, typically associated with state-of-the-art models, while preserving, if not enhancing, the quality of generated images. Wuerstchen achieves notable speed improvements at inference time, thereby rendering real-time applications more viable. One of the key advantages of our method lies in its modest training requirements of only 9,200 GPU hours, slashing the usual costs significantly without compromising the end performance. In a comparison against the state-of-the-art, we found the approach to yield strong competitiveness. This paper opens the door to a new line of research that prioritizes both performance and computational accessibility, hence democratizing the use of sophisticated AI technologies. Through Wuerstchen, we demonstrate a compelling stride forward in the realm of text-to-image synthesis, offering an innovative path to explore in future research.*
 
+## Würstchen Overview
+Würstchen is a diffusion model, whose text-conditional model works in a highly compressed latent space of images. Why is this important? Compressing data can reduce computational costs for both training and inference by magnitudes. Training on 1024x1024 images is way more expensive than training on 32x32. Usually, other works make use of a relatively small compression, in the range of 4x - 8x spatial compression. Würstchen takes this to an extreme. Through its novel design, we achieve a 42x spatial compression. This was unseen before because common methods fail to faithfully reconstruct detailed images after 16x spatial compression. Würstchen employs a two-stage compression, what we call Stage A and Stage B. Stage A is a VQGAN, and Stage B is a Diffusion Autoencoder (more details can be found in the [paper](https://huggingface.co/papers/2306.00637)). A third model, Stage C, is learned in that highly compressed latent space. This training requires fractions of the compute used for current top-performing models, while also allowing cheaper and faster inference.
+
 ## Würstchen v2 comes to Diffusers
 
-After the initial paper release, we have improved numerous things in the architecture, training and sampling, making Würstchen competetive to current state-of-the-art models in many ways. We are excited to release this new version together with Diffusers. Here is a list of the improvements.
+After the initial paper release, we have improved numerous things in the architecture, training and sampling, making Würstchen competitive to current state-of-the-art models in many ways. We are excited to release this new version together with Diffusers. Here is a list of the improvements.
 
 - Higher resolution (1024x1024 up to 2048x2048)
 - Faster inference
@@ -22,16 +25,16 @@ We are releasing 3 checkpoints for the text-conditional image generation model (
 
 - v2-base
 - v2-aesthetic
-- v2-interpolated (50% interpolation between v2-base and v2-aesthetic)
+- **(default)** v2-interpolated (50% interpolation between v2-base and v2-aesthetic)
 
-We recommend to use v2-interpolated, as it has a nice touch of both photorealism and aesthetic. Use v2-base for finetunings as it does not have a style bias and use v2-aesthetic for very artistic generations.
+We recommend using v2-interpolated, as it has a nice touch of both photorealism and aesthetics. Use v2-base for finetunings as it does not have a style bias and use v2-aesthetic for very artistic generations.
 A comparison can be seen here:
 
 <img src="https://github.com/dome272/Wuerstchen/assets/61938694/2914830f-cbd3-461c-be64-d50734f4b49d" width=500>
 
 ## Text-to-Image Generation
 
-For the sake of usability Würstchen can be used with a single pipeline. This pipeline is called `WuerstchenCombinedPipeline` and can be used as follows:
+For the sake of usability, Würstchen can be used with a single pipeline. This pipeline can be used as follows:
 
 ```python
 import torch
@@ -85,7 +88,6 @@ decoder_output = decoder_pipeline(
     image_embeddings=prior_output.image_embeddings,
     prompt=caption,
     negative_prompt=negative_prompt,
-    num_images_per_prompt=num_images_per_prompt,
     guidance_scale=0.0,
     output_type="pil",
 ).images
@@ -95,8 +97,8 @@ decoder_output = decoder_pipeline(
 You can make use of `torch.compile` function and gain a speed-up of about 2-3x:
 
 ```python
-pipeline.prior = torch.compile(pipeline.prior, mode="reduce-overhead", fullgraph=True)
-pipeline.decoder = torch.compile(pipeline.decoder, mode="reduce-overhead", fullgraph=True)
+prior_pipeline.prior = torch.compile(prior_pipeline.prior, mode="reduce-overhead", fullgraph=True)
+decoder_pipeline.decoder = torch.compile(decoder_pipeline.decoder, mode="reduce-overhead", fullgraph=True)
 ```
 
 ## Limitations
