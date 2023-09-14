@@ -26,14 +26,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
 import torch
+
+import diffusers
+import PIL
 from huggingface_hub import ModelCard, create_repo, hf_hub_download, model_info, snapshot_download
 from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
-
-import diffusers
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
@@ -1252,7 +1252,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._all_hooks = []
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
-            model = all_model_components.pop(model_str)
+            model = all_model_components.pop(model_str, None)
             if not isinstance(model, torch.nn.Module):
                 continue
 
