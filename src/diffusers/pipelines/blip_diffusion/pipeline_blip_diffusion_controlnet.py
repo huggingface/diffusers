@@ -12,38 +12,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import List, Optional, Union
 
-import numpy as np
 import PIL
-from ...models import AutoencoderKL, UNet2DConditionModel, ControlNetModel
-from .modeling_ctx_clip import ContextCLIPTextModel
-from transformers import CLIPTokenizer
-from .. import DiffusionPipeline
 import torch
+from transformers import CLIPTokenizer
+
+from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from ...schedulers import PNDMScheduler
 from ...utils import (
-    BaseOutput,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ...utils.pil_utils import PIL_INTERPOLATION
-from torch import nn
-from transformers.activations import QuickGELUActivation as QuickGELU
-from .modeling_blip2 import Blip2QFormerModel
-import tqdm
-from torchvision import transforms
-from torchvision.transforms.functional import InterpolationMode
-from .blip_image_processing import BlipImageProcessor
-from PIL import Image
+from .. import DiffusionPipeline
 from ..pipeline_utils import ImagePipelineOutput
+from .blip_image_processing import BlipImageProcessor
+from .modeling_blip2 import Blip2QFormerModel
+from .modeling_ctx_clip import ContextCLIPTextModel
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-import re
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -73,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> num_inference_steps = 50
         >>> negative_prompt = "over-exposure, under-exposure, saturated, duplicate, out of frame, lowres, cropped, worst quality, low quality, jpeg artifacts, morbid, mutilated, out of frame, ugly, bad anatomy, bad proportions, deformed, blurry, duplicate"
 
-        
+
         >>> output = blip_diffusion_pipe(
         ...     text_prompt,
         ...     style_image,
@@ -315,11 +304,11 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         )["pixel_values"]
         reference_image = reference_image.to(self.device)
 
-        if type(prompt) == str:
+        if isinstance(prompt, str):
             prompt = [prompt]
-        if type(source_subject_category) == str:
+        if isinstance(source_subject_category, str):
             source_subject_category = [source_subject_category]
-        if type(target_subject_category) == str:
+        if isinstance(target_subject_category, str):
             target_subject_category = [target_subject_category]
 
         batch_size = len(prompt)
@@ -365,7 +354,6 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         # set timesteps
         extra_set_kwargs = {}
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
-
 
         cond_image = self.prepare_control_image(
             image=condtioning_image,

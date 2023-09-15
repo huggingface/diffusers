@@ -285,7 +285,7 @@ if TYPE_CHECKING:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
-        from .blip_diffusion import BlipDiffusionPipeline, BlipDiffusionControlNetPipeline
+        from .blip_diffusion import BlipDiffusionControlNetPipeline, BlipDiffusionPipeline
         from .controlnet import (
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,

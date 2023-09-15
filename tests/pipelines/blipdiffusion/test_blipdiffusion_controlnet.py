@@ -12,29 +12,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import gc
-import random
 import unittest
 
 import numpy as np
 import torch
+from PIL import Image
+from transformers import CLIPTokenizer
+from transformers.models.blip_2.configuration_blip_2 import Blip2Config
+from transformers.models.clip.configuration_clip import CLIPTextConfig
 
 from diffusers import (
+    AutoencoderKL,
     BlipDiffusionControlNetPipeline,
+    ControlNetModel,
     PNDMScheduler,
     UNet2DConditionModel,
-    AutoencoderKL,
-    ControlNetModel,
 )
-from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2QFormerConfig, Blip2VisionConfig
-from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from diffusers.utils.testing_utils import enable_full_determinism
 from src.diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
-from transformers import CLIPTokenizer
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
-from transformers.models.clip.configuration_clip import CLIPTextConfig
+from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
 from src.diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
-from PIL import Image
+
+from ..test_pipelines_common import PipelineTesterMixin
+
 
 enable_full_determinism()
 
@@ -205,7 +205,7 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
         image_slice = image[0, -3:, -3:, 0]
 
         assert image.shape == (1, 16, 16, 4)
-        expected_slice = np.array([0.3344,  0.4576, 0.5196, 0.4993, 0.1701, 0.4882, 0.3943,  0.2944, 0.3825])
+        expected_slice = np.array([0.3344, 0.4576, 0.5196, 0.4993, 0.1701, 0.4882, 0.3943, 0.2944, 0.3825])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

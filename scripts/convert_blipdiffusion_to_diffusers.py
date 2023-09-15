@@ -2,23 +2,24 @@
 This script requires you to build `LAVIS` from source, since the pip version doesn't have BLIP Diffusion. Follow instructions here: https://github.com/salesforce/LAVIS/tree/main.
 """
 
+import argparse
+import os
+import tempfile
+
+import torch
+from transformers import CLIPTokenizer
+from transformers.models.blip_2.configuration_blip_2 import Blip2Config
+
 from diffusers import (
     AutoencoderKL,
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from transformers import CLIPTokenizer
-from diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
-from diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
-from diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
-from transformers.models.blip_2.configuration_blip_2 import Blip2Config
 from diffusers.pipelines import BlipDiffusionPipeline
-import tempfile
-from accelerate import load_checkpoint_and_dispatch
+from diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
+from diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 from lavis.models import load_model_and_preprocess
-import torch
-import argparse
-import os
 
 
 BLIP2_CONFIG = {

@@ -12,23 +12,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import gc
-import random
 import unittest
 
 import numpy as np
 import torch
-
-from diffusers import BlipDiffusionPipeline, PNDMScheduler, UNet2DConditionModel, AutoencoderKL
-from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2QFormerConfig, Blip2VisionConfig
-from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
-from src.diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
-from transformers import CLIPTokenizer
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
-from transformers.models.clip.configuration_clip import CLIPTextConfig
-from src.diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 from PIL import Image
+from transformers import CLIPTokenizer
+from transformers.models.blip_2.configuration_blip_2 import Blip2Config
+from transformers.models.clip.configuration_clip import CLIPTextConfig
+
+from diffusers import AutoencoderKL, BlipDiffusionPipeline, PNDMScheduler, UNet2DConditionModel
+from diffusers.utils.testing_utils import enable_full_determinism
+from src.diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
+from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from src.diffusers.pipelines.blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
+
+from ..test_pipelines_common import PipelineTesterMixin
+
 
 enable_full_determinism()
 
@@ -185,7 +185,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 8, 8, 4)
 
-        expected_slice = np.array([0.2808,  0.3089,  0.6179, 0.1152, 0.1667,  0.4566, 0.4847, 0.3899, 0.4509])
+        expected_slice = np.array([0.2808, 0.3089, 0.6179, 0.1152, 0.1667, 0.4566, 0.4847, 0.3899, 0.4509])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

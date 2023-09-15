@@ -16,9 +16,9 @@ from typing import Optional, Tuple, Union
 
 import torch
 from torch import nn
+from transformers import CLIPPreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.clip.configuration_clip import CLIPTextConfig
-from transformers import CLIPPreTrainedModel
 from transformers.models.clip.modeling_clip import (
     CLIPEncoder,
     _expand_mask,

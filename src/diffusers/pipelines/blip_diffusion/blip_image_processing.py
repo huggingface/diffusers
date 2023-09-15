@@ -17,6 +17,7 @@
 from typing import Dict, List, Optional, Union
 
 import numpy as np
+import torch
 from transformers.image_processing_utils import BaseImageProcessor, BatchFeature, get_size_dict
 from transformers.image_transforms import convert_to_rgb, resize, to_channel_dimension_format
 from transformers.image_utils import (
@@ -31,11 +32,10 @@ from transformers.image_utils import (
     to_numpy_array,
     valid_images,
 )
-from diffusers.utils import numpy_to_pil
-from PIL import Image
 from transformers.utils import TensorType, is_vision_available, logging
-import torch
-import cv2
+
+from diffusers.utils import numpy_to_pil
+
 
 if is_vision_available():
     import PIL

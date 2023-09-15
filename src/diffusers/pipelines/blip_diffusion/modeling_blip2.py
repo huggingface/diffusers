@@ -11,44 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import math
-from dataclasses import dataclass
-from typing import Any, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from torch.nn import CrossEntropyLoss
-
-from transformers.activations import ACT2FN
+from transformers import BertTokenizer
+from transformers.activations import QuickGELUActivation as QuickGELU
 from transformers.modeling_outputs import (
-    BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
     BaseModelOutputWithPooling,
     BaseModelOutputWithPoolingAndCrossAttentions,
 )
-from transformers.modeling_utils import PreTrainedModel
-from transformers.pytorch_utils import apply_chunking_to_forward, find_pruneable_heads_and_indices, prune_linear_layer
-from transformers.utils import (
-    ModelOutput,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-    logging,
-    replace_return_docstrings,
-)
-from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2Config, Blip2VisionConfig
-from transformers import BertTokenizer
-from transformers.activations import QuickGELUActivation as QuickGELU
+from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2VisionConfig
 from transformers.models.blip_2.modeling_blip_2 import (
-    Blip2Attention,
-    Blip2MLP,
-    Blip2EncoderLayer,
     Blip2Encoder,
+    Blip2PreTrainedModel,
     Blip2QFormerAttention,
     Blip2QFormerIntermediate,
     Blip2QFormerOutput,
-    Blip2PreTrainedModel,
 )
+from transformers.pytorch_utils import apply_chunking_to_forward
+from transformers.utils import (
+    logging,
+    replace_return_docstrings,
+)
+
 
 logger = logging.get_logger(__name__)
 
@@ -600,13 +588,13 @@ class Blip2QFormerModel(Blip2PreTrainedModel):
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
         if encoder_hidden_states is not None:
-            if type(encoder_hidden_states) == list:
+            if isinstance(encoder_hidden_states, list):
                 encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states[0].size()
             else:
                 encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
 
-            if type(encoder_attention_mask) == list:
+            if isinstance(encoder_attention_mask, list):
                 encoder_extended_attention_mask = [self.invert_attention_mask(mask) for mask in encoder_attention_mask]
             elif encoder_attention_mask is None:
                 encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
