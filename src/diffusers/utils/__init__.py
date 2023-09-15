@@ -67,6 +67,7 @@ from .import_utils import (
     is_note_seq_available,
     is_omegaconf_available,
     is_onnx_available,
+    is_peft_available,
     is_scipy_available,
     is_tensorboard_available,
     is_torch_available,
@@ -77,7 +78,6 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
-    is_peft_available,
     requires_backends,
 )
 from .loading_utils import load_image
