@@ -20,7 +20,7 @@ from torchvision import transforms
 
 from diffusers.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from diffusers.schedulers import DDIMScheduler
-from diffusers.utils import randn_tensor
+from diffusers.utils.torch_utils import randn_tensor
 
 
 trans = transforms.Compose(

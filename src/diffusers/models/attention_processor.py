@@ -18,8 +18,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import deprecate, logging, maybe_allow_in_graph
+from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
+from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 
@@ -188,7 +189,7 @@ class Attention(nn.Module):
         if use_memory_efficient_attention_xformers:
             if is_added_kv_processor and (is_lora or is_custom_diffusion):
                 raise NotImplementedError(
-                    f"Memory efficient attention is currently not supported for LoRA or custom diffuson for attention processor type {self.processor}"
+                    f"Memory efficient attention is currently not supported for LoRA or custom diffusion for attention processor type {self.processor}"
                 )
             if not is_xformers_available():
                 raise ModuleNotFoundError(
@@ -476,19 +477,7 @@ class Attention(nn.Module):
 
         return attention_probs
 
-    def prepare_attention_mask(self, attention_mask, target_length, batch_size=None, out_dim=3):
-        if batch_size is None:
-            deprecate(
-                "batch_size=None",
-                "0.22.0",
-                (
-                    "Not passing the `batch_size` parameter to `prepare_attention_mask` can lead to incorrect"
-                    " attention mask preparation and is deprecated behavior. Please make sure to pass `batch_size` to"
-                    " `prepare_attention_mask` when preparing the attention_mask."
-                ),
-            )
-            batch_size = 1
-
+    def prepare_attention_mask(self, attention_mask, target_length, batch_size, out_dim=3):
         head_size = self.heads
         if attention_mask is None:
             return attention_mask
