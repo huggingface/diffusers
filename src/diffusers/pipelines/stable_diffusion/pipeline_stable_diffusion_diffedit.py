@@ -26,17 +26,16 @@ from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import DDIMInverseScheduler, KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
     BaseOutput,
     deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -246,34 +245,34 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
-    In addition the pipeline inherits the following loading methods:
-        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
-        - *LoRA*: [`loaders.LoraLoaderMixin.load_lora_weights`]
-
-    as well as the following saving methods:
-        - *LoRA*: [`loaders.LoraLoaderMixin.save_lora_weights`]
+    The pipeline also inherits the following loading and saving methods:
+        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
+        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
+        text_encoder ([`~transformers.CLIPTextModel`]):
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
-        tokenizer (`CLIPTokenizer`):
-            A [`~transformers.CLIPTokenizer`] to tokenize text.
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
         unet ([`UNet2DConditionModel`]):
-            A [`UNet2DConditionModel`] to denoise the encoded image latents.
+            A `UNet2DConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
-        inverse_scheduler (`[DDIMInverseScheduler]`):
+        inverse_scheduler ([`DDIMInverseScheduler`]):
             A scheduler to be used in combination with `unet` to fill in the unmasked part of the input latents.
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
             about a model's potential harms.
-        feature_extractor ([`CLIPImageProcessor`]):
-            A [`CLIPImageProcessor`] to extract features from generated images; used as inputs to the `safety_checker`.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor", "inverse_scheduler"]
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
@@ -401,35 +400,6 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
-        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
-        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
-        iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
@@ -503,6 +473,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -928,7 +901,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
+                A kwargs dictionary that if specified is passed along to the
+                [`~models.attention_processor.AttnProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
 
         Examples:
@@ -1067,9 +1041,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         if output_type == "pil":
             mask_image = self.image_processor.numpy_to_pil(mask_image)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         return mask_image
 
@@ -1107,9 +1080,9 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
                 `Image` or tensor representing an image batch to produce the inverted latents guided by `prompt`.
             inpaint_strength (`float`, *optional*, defaults to 0.8):
                 Indicates extent of the noising process to run latent inversion. Must be between 0 and 1. When
-                `strength` is 1, the inversion process iss ru for the full number of iterations specified in
-                `num_inference_steps`. `image` is used as a reference for the inversion process, adding more noise the
-                larger the `strength`. If `strength` is 0, no inpainting occurs.
+                `inpaint_strength` is 1, the inversion process is run for the full number of iterations specified in
+                `num_inference_steps`. `image` is used as a reference for the inversion process, and adding more noise
+                increases `inpaint_strength`. If `inpaint_strength` is 0, no inpainting occurs.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1143,12 +1116,13 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
+                A kwargs dictionary that if specified is passed along to the
+                [`~models.attention_processor.AttnProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             lambda_auto_corr (`float`, *optional*, defaults to 20.0):
                 Lambda parameter to control auto correction.
             lambda_kl (`float`, *optional*, defaults to 20.0):
-                Lambda parameter to control Kullback–Leibler divergence output.
+                Lambda parameter to control Kullback-Leibler divergence output.
             num_reg_steps (`int`, *optional*, defaults to 0):
                 Number of regularization loss steps.
             num_auto_corr_rolls (`int`, *optional*, defaults to 5):
@@ -1301,9 +1275,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
         if decode_latents and output_type == "pil":
             image = self.image_processor.numpy_to_pil(image)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (latents, image)
@@ -1347,10 +1320,10 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
             image_latents (`PIL.Image.Image` or `torch.FloatTensor`):
                 Partially noised image latents from the inversion process to be used as inputs for image generation.
             inpaint_strength (`float`, *optional*, defaults to 0.8):
-                Indicates extent to inpaint the masked area. Must be between 0 and 1. When `strength` is 1, the
+                Indicates extent to inpaint the masked area. Must be between 0 and 1. When `inpaint_strength` is 1, the
                 denoising process is run on the masked area for the full number of iterations specified in
-                `num_inference_steps`. `image_latents` is used as a reference for the masked area, adding more noise to
-                that region the larger the `strength`. If `strength` is 0, no inpainting occurs.
+                `num_inference_steps`. `image_latents` is used as a reference for the masked area, and adding more
+                noise to a region increases `inpaint_strength`. If `inpaint_strength` is 0, no inpainting occurs.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -1544,9 +1517,8 @@ class StableDiffusionDiffEditPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image, has_nsfw_concept)

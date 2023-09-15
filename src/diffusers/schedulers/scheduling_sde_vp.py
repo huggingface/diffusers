@@ -20,7 +20,7 @@ from typing import Union
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import randn_tensor
+from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import SchedulerMixin
 
 

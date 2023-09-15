@@ -51,12 +51,12 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
-    is_compiled_module,
     is_torch_version,
     is_transformers_available,
     logging,
     numpy_to_pil,
 )
+from ..utils.torch_utils import is_compiled_module
 
 
 if is_transformers_available():
@@ -342,7 +342,10 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    pipeline_cls = getattr(diffusers_module, config["_class_name"])
+    class_name = config["_class_name"]
+    class_name = class_name[4:] if class_name.startswith("Flax") else class_name
+
+    pipeline_cls = getattr(diffusers_module, class_name)
 
     if load_connected_pipeline:
         from .auto_pipeline import _get_connected_pipeline
@@ -490,6 +493,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
           pipeline to function (should be overridden by subclasses).
     """
     config_name = "model_index.json"
+    model_cpu_offload_seq = None
     _optional_components = []
     _exclude_from_cpu_offload = []
     _load_connected_pipes = False
@@ -1075,10 +1079,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         from diffusers import pipelines
 
         # 6. Load each module in the pipeline
-        for name, (library_name, class_name) in tqdm(init_dict.items(), desc="Loading pipeline components..."):
+        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
-            if class_name.startswith("Flax"):
-                class_name = class_name[4:]
+            class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
             # 6.2 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
@@ -1147,8 +1150,22 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "variant": variant,
                 "use_safetensors": use_safetensors,
             }
+
+            def get_connected_passed_kwargs(prefix):
+                connected_passed_class_obj = {
+                    k.replace(f"{prefix}_", ""): w for k, w in passed_class_obj.items() if k.split("_")[0] == prefix
+                }
+                connected_passed_pipe_kwargs = {
+                    k.replace(f"{prefix}_", ""): w for k, w in passed_pipe_kwargs.items() if k.split("_")[0] == prefix
+                }
+
+                connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
+                return connected_passed_kwargs
+
             connected_pipes = {
-                prefix: DiffusionPipeline.from_pretrained(repo_id, **load_kwargs.copy())
+                prefix: DiffusionPipeline.from_pretrained(
+                    repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix)
+                )
                 for prefix, repo_id in connected_pipes.items()
                 if repo_id is not None
             }
@@ -1205,12 +1222,78 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    def enable_model_cpu_offload(self, gpu_id: int = 0, device: Union[torch.device, str] = "cuda"):
+        r"""
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        """
+        if self.model_cpu_offload_seq is None:
+            raise ValueError(
+                "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set."
+            )
+
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        device = torch.device(f"cuda:{gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            device_mod = getattr(torch, self.device.type, None)
+            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
+
+        self._all_hooks = []
+        hook = None
+        for model_str in self.model_cpu_offload_seq.split("->"):
+            model = all_model_components.pop(model_str, None)
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
+            self._all_hooks.append(hook)
+
+        # CPU offload models that are not in the seq chain unless they are explicitly excluded
+        # these models will stay on CPU until maybe_free_model_hooks is called
+        # some models cannot be in the seq chain because they are iteratively called, such as controlnet
+        for name, model in all_model_components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            if name in self._exclude_from_cpu_offload:
+                model.to(device)
+            else:
+                _, hook = cpu_offload_with_hook(model, device)
+                self._all_hooks.append(hook)
+
+    def maybe_free_model_hooks(self):
+        r"""
+        TODO: Better doc string
+        """
+        if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
+            # `enable_model_cpu_offload` has not be called, so silently do nothing
+            return
+
+        for hook in self._all_hooks:
+            # offload model and remove hook from model
+            hook.offload()
+            hook.remove()
+
+        # make sure the model is in the same state as before calling it
+        self.enable_model_cpu_offload()
+
     def enable_sequential_cpu_offload(self, gpu_id: int = 0, device: Union[torch.device, str] = "cuda"):
         r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
+        dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
+        and then moved to `torch.device('meta')` and loaded to GPU only when their specific submodule has its `forward`
+        method called. Offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
         """
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
@@ -1388,10 +1471,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 deprecation_message = (
                     f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
                     f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
-                    "if such variant modeling files are not available. Doing so will lead to an error in v0.22.0 as defaulting to non-variant"
+                    "if such variant modeling files are not available. Doing so will lead to an error in v0.24.0 as defaulting to non-variant"
                     "modeling files is deprecated."
                 )
-                deprecate("no variant default", "0.22.0", deprecation_message, standard_warn=False)
+                deprecate("no variant default", "0.24.0", deprecation_message, standard_warn=False)
 
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
@@ -1525,6 +1608,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # retrieve pipeline class from local file
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
+            cls_name = cls_name[4:] if cls_name.startswith("Flax") else cls_name
+
             pipeline_class = getattr(diffusers, cls_name, None)
 
             if pipeline_class is not None and pipeline_class._load_connected_pipes:

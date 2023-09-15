@@ -24,7 +24,8 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import EulerDiscreteScheduler
-from ...utils import deprecate, logging, randn_tensor
+from ...utils import deprecate, logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -77,6 +78,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A [`EulerDiscreteScheduler`] to be used in combination with `unet` to denoise the encoded image latents.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(
         self,
