@@ -41,4 +41,5 @@ deps = {
     "torchvision": "torchvision",
     "transformers": "transformers>=4.25.1",
     "urllib3": "urllib3<=2.0.0",
+    "peft": "peft>=0.5.0",
 }

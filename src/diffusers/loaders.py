@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
 import os
 import re
 import warnings
@@ -24,6 +25,7 @@ import requests
 import safetensors
 import torch
 from huggingface_hub import hf_hub_download, model_info
+from packaging import version
 from torch import nn
 
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
@@ -31,16 +33,15 @@ from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     _get_model_file,
+    convert_diffusers_state_dict_to_peft,
+    convert_old_state_dict_to_peft,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_omegaconf_available,
-    is_transformers_available,
     is_peft_available,
+    is_transformers_available,
     logging,
-    convert_old_state_dict_to_peft,
-    convert_diffusers_state_dict_to_peft,
-    convert_unet_state_dict_to_peft,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
@@ -1427,6 +1428,14 @@ class LoraLoaderMixin:
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
 
+        is_peft_lora_compatible = version.parse(importlib.metadata.version("transformers")) > version.parse("4.33.1")
+
+        if not is_peft_lora_compatible:
+            raise ValueError(
+                "You are using an older version of transformers. Please upgrade to transformers>=4.33.1 to load LoRA weights into"
+                " text encoder."
+            )
+
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
             # Load the layers corresponding to text encoder and make necessary adjustments.
@@ -1486,7 +1495,6 @@ class LoraLoaderMixin:
                 text_encoder.load_adapter(text_encoder_lora_state_dict, peft_config=lora_config)
 
                 text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
-
 
     @property
     def lora_scale(self) -> float:
