@@ -325,8 +325,10 @@ def is_k_diffusion_available():
 def is_note_seq_available():
     return _note_seq_available
 
+
 def is_peft_available():
     return _peft_available
+
 
 def is_wandb_available():
     return _wandb_available

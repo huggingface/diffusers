@@ -31,16 +31,16 @@ from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     _get_model_file,
+    convert_diffusers_state_dict_to_peft,
+    convert_old_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
     is_omegaconf_available,
-    is_transformers_available,
     is_peft_available,
+    is_transformers_available,
     logging,
-    convert_old_state_dict_to_peft,
-    convert_diffusers_state_dict_to_peft,
-    convert_unet_state_dict_to_peft,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
@@ -1394,17 +1394,28 @@ class LoraLoaderMixin:
 
         # load loras into unet
         # unet.load_attn_procs(state_dict, network_alphas=network_alphas)
-        from peft import inject_adapter_in_model, LoraConfig, set_peft_model_state_dict
+        # TODO: deal with network_alphas
+        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+
+        state_dict, target_modules = convert_unet_state_dict_to_peft(state_dict)
 
         lora_config = LoraConfig(
             r=4,
-            target_modules=["to_q", "to_k", "to_o"],
+            lora_alpha=4,
+            target_modules=target_modules,
         )
 
         inject_adapter_in_model(lora_config, unet)
-        state_dict = convert_unet_state_dict_to_peft(state_dict)
 
-        load_results = set_peft_model_state_dict(unet, state_dict)
+        incompatible_keys = set_peft_model_state_dict(unet, state_dict)
+
+        if incompatible_keys is not None:
+            # check only for unexpected keys
+            if hasattr(incompatible_keys, "unexpected_keys") and len(incompatible_keys.unexpected_keys) > 0:
+                logger.warning(
+                    f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                    f" {incompatible_keys.unexpected_keys}. "
+                )
 
     @classmethod
     def load_lora_into_text_encoder(
@@ -1454,11 +1465,15 @@ class LoraLoaderMixin:
                 # Old diffusers to PEFT
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
                     attention_modules = text_encoder_attn_modules(text_encoder)
-                    text_encoder_lora_state_dict = convert_old_state_dict_to_peft(attention_modules, text_encoder_lora_state_dict)
+                    text_encoder_lora_state_dict = convert_old_state_dict_to_peft(
+                        attention_modules, text_encoder_lora_state_dict
+                    )
                 # New diffusers format to PEFT
                 elif any("lora_linear_layer" in k for k in text_encoder_lora_state_dict.keys()):
                     attention_modules = text_encoder_attn_modules(text_encoder)
-                    text_encoder_lora_state_dict = convert_diffusers_state_dict_to_peft(attention_modules, text_encoder_lora_state_dict)
+                    text_encoder_lora_state_dict = convert_diffusers_state_dict_to_peft(
+                        attention_modules, text_encoder_lora_state_dict
+                    )
 
                 for name, _ in text_encoder_attn_modules(text_encoder):
                     rank_key = f"{name}.out_proj.lora_B.weight"
@@ -1472,8 +1487,8 @@ class LoraLoaderMixin:
                         rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
                         rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
 
-                # for diffusers format you always get the same rank everywhere 
-                # is it possible to load with PEFT 
+                # for diffusers format you always get the same rank everywhere
+                # is it possible to load with PEFT
                 if network_alphas is not None:
                     alpha_keys = [
                         k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix
@@ -1489,11 +1504,7 @@ class LoraLoaderMixin:
                 if patch_mlp:
                     target_modules += ["fc1", "fc2"]
 
-                lora_config = LoraConfig(
-                    r=lora_rank,
-                    target_modules=target_modules,
-                    lora_alpha=alpha
-                )
+                lora_config = LoraConfig(r=lora_rank, target_modules=target_modules, lora_alpha=alpha)
 
                 text_encoder.load_adapter(text_encoder_lora_state_dict, peft_config=lora_config)
 

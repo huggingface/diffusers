@@ -15,6 +15,21 @@
 PEFT utilities: Utilities related to peft library
 """
 
+
+class PeftAdapterMixin:
+    r"""
+    Mixin class that contains the useful methods for leveraging PEFT library to load and use adapters
+    """
+    _is_peft_adapter_loaded = False
+
+    def add_adapter(
+        self,
+        peft_config,
+    ):
+        if not getattr(self, "_is_peft_adapter_loaded", False):
+            pass
+
+
 def convert_old_state_dict_to_peft(attention_modules, state_dict):
     # Convert from the old naming convention to the new naming convention.
     #
@@ -26,122 +41,113 @@ def convert_old_state_dict_to_peft(attention_modules, state_dict):
     # existing module. We want to be able to load them via their actual state dict.
     # They're in `PatchedLoraProjection.lora_linear_layer` now.
     converted_state_dict = {}
-    
-    for name, _ in attention_modules:
-        converted_state_dict[
-            f"{name}.q_proj.lora_B.weight"
-        ] = state_dict.pop(f"{name}.to_q_lora.up.weight")
-        converted_state_dict[
-            f"{name}.k_proj.lora_B.weight"
-        ] = state_dict.pop(f"{name}.to_k_lora.up.weight")
-        converted_state_dict[
-            f"{name}.v_proj.lora_B.weight"
-        ] = state_dict.pop(f"{name}.to_v_lora.up.weight")
-        converted_state_dict[
-            f"{name}.out_proj.lora_B.weight"
-        ] = state_dict.pop(f"{name}.to_out_lora.up.weight")
 
-        converted_state_dict[
-            f"{name}.q_proj.lora_A.weight"
-        ] = state_dict.pop(f"{name}.to_q_lora.down.weight")
-        converted_state_dict[
-            f"{name}.k_proj.lora_A.weight"
-        ] = state_dict.pop(f"{name}.to_k_lora.down.weight")
-        converted_state_dict[
-            f"{name}.v_proj.lora_A.weight"
-        ] = state_dict.pop(f"{name}.to_v_lora.down.weight")
-        converted_state_dict[
-            f"{name}.out_proj.lora_A.weight"
-        ] = state_dict.pop(f"{name}.to_out_lora.down.weight")
-    
+    for name, _ in attention_modules:
+        converted_state_dict[f"{name}.q_proj.lora_B.weight"] = state_dict.pop(f"{name}.to_q_lora.up.weight")
+        converted_state_dict[f"{name}.k_proj.lora_B.weight"] = state_dict.pop(f"{name}.to_k_lora.up.weight")
+        converted_state_dict[f"{name}.v_proj.lora_B.weight"] = state_dict.pop(f"{name}.to_v_lora.up.weight")
+        converted_state_dict[f"{name}.out_proj.lora_B.weight"] = state_dict.pop(f"{name}.to_out_lora.up.weight")
+
+        converted_state_dict[f"{name}.q_proj.lora_A.weight"] = state_dict.pop(f"{name}.to_q_lora.down.weight")
+        converted_state_dict[f"{name}.k_proj.lora_A.weight"] = state_dict.pop(f"{name}.to_k_lora.down.weight")
+        converted_state_dict[f"{name}.v_proj.lora_A.weight"] = state_dict.pop(f"{name}.to_v_lora.down.weight")
+        converted_state_dict[f"{name}.out_proj.lora_A.weight"] = state_dict.pop(f"{name}.to_out_lora.down.weight")
+
     return converted_state_dict
 
 
 def convert_peft_state_dict_to_diffusers(attention_modules, state_dict, adapter_name):
     # Convert from the new naming convention to the diffusers naming convention.
     converted_state_dict = {}
-    
-    for name, _ in attention_modules:
-        converted_state_dict[
-            f"{name}.q_proj.lora_linear_layer.up.weight"
-        ] = state_dict.pop(f"{name}.q_proj.lora_B.{adapter_name}.weight")
-        converted_state_dict[
-            f"{name}.k_proj.lora_linear_layer.up.weight"
-        ] = state_dict.pop(f"{name}.k_proj.lora_B.{adapter_name}.weight")
-        converted_state_dict[
-            f"{name}.v_proj.lora_linear_layer.up.weight"
-        ] = state_dict.pop(f"{name}.v_proj.lora_B.{adapter_name}.weight")
-        converted_state_dict[
-            f"{name}.out_proj.lora_linear_layer.up.weight"
-        ] = state_dict.pop(f"{name}.out_proj.lora_B.{adapter_name}.weight")
 
-        converted_state_dict[
-            f"{name}.q_proj.lora_linear_layer.down.weight"
-        ] = state_dict.pop(f"{name}.q_proj.lora_A.{adapter_name}.weight")
-        converted_state_dict[
-            f"{name}.k_proj.lora_linear_layer.down.weight"
-        ] = state_dict.pop(f"{name}.k_proj.lora_A.{adapter_name}.weight")
-        converted_state_dict[
-            f"{name}.v_proj.lora_linear_layer.down.weight"
-        ] = state_dict.pop(f"{name}.v_proj.lora_A.{adapter_name}.weight")
-        converted_state_dict[
-            f"{name}.out_proj.lora_linear_layer.down.weight"
-        ] = state_dict.pop(f"{name}.out_proj.lora_A.{adapter_name}.weight")
-    
+    for name, _ in attention_modules:
+        converted_state_dict[f"{name}.q_proj.lora_linear_layer.up.weight"] = state_dict.pop(
+            f"{name}.q_proj.lora_B.{adapter_name}.weight"
+        )
+        converted_state_dict[f"{name}.k_proj.lora_linear_layer.up.weight"] = state_dict.pop(
+            f"{name}.k_proj.lora_B.{adapter_name}.weight"
+        )
+        converted_state_dict[f"{name}.v_proj.lora_linear_layer.up.weight"] = state_dict.pop(
+            f"{name}.v_proj.lora_B.{adapter_name}.weight"
+        )
+        converted_state_dict[f"{name}.out_proj.lora_linear_layer.up.weight"] = state_dict.pop(
+            f"{name}.out_proj.lora_B.{adapter_name}.weight"
+        )
+
+        converted_state_dict[f"{name}.q_proj.lora_linear_layer.down.weight"] = state_dict.pop(
+            f"{name}.q_proj.lora_A.{adapter_name}.weight"
+        )
+        converted_state_dict[f"{name}.k_proj.lora_linear_layer.down.weight"] = state_dict.pop(
+            f"{name}.k_proj.lora_A.{adapter_name}.weight"
+        )
+        converted_state_dict[f"{name}.v_proj.lora_linear_layer.down.weight"] = state_dict.pop(
+            f"{name}.v_proj.lora_A.{adapter_name}.weight"
+        )
+        converted_state_dict[f"{name}.out_proj.lora_linear_layer.down.weight"] = state_dict.pop(
+            f"{name}.out_proj.lora_A.{adapter_name}.weight"
+        )
+
     return converted_state_dict
 
 
 def convert_diffusers_state_dict_to_peft(attention_modules, state_dict):
     # Convert from the diffusers naming convention to the new naming convention.
     converted_state_dict = {}
-    
-    for name, _ in attention_modules:
-        converted_state_dict[
-            f"{name}.q_proj.lora_B.weight"
-        ] = state_dict.pop(f"{name}.q_proj.lora_linear_layer.up.weight")
-        converted_state_dict[
-            f"{name}.k_proj.lora_B.weight"
-        ] = state_dict.pop(f"{name}.k_proj.lora_linear_layer.up.weight")
-        converted_state_dict[
-            f"{name}.v_proj.lora_B.weight"
-        ] = state_dict.pop(f"{name}.v_proj.lora_linear_layer.up.weight")
-        converted_state_dict[
-            f"{name}.out_proj.lora_B.weight"
-        ] = state_dict.pop(f"{name}.out_proj.lora_linear_layer.up.weight")
 
-        converted_state_dict[
-            f"{name}.q_proj.lora_A.weight"
-        ] = state_dict.pop(f"{name}.q_proj.lora_linear_layer.down.weight")
-        converted_state_dict[
-            f"{name}.k_proj.lora_A.weight"
-        ] = state_dict.pop(f"{name}.k_proj.lora_linear_layer.down.weight")
-        converted_state_dict[
-            f"{name}.v_proj.lora_A.weight"
-        ] = state_dict.pop(f"{name}.v_proj.lora_linear_layer.down.weight")
-        converted_state_dict[
-            f"{name}.out_proj.lora_A.weight"
-        ] = state_dict.pop(f"{name}.out_proj.lora_linear_layer.down.weight")
-    
+    for name, _ in attention_modules:
+        converted_state_dict[f"{name}.q_proj.lora_B.weight"] = state_dict.pop(
+            f"{name}.q_proj.lora_linear_layer.up.weight"
+        )
+        converted_state_dict[f"{name}.k_proj.lora_B.weight"] = state_dict.pop(
+            f"{name}.k_proj.lora_linear_layer.up.weight"
+        )
+        converted_state_dict[f"{name}.v_proj.lora_B.weight"] = state_dict.pop(
+            f"{name}.v_proj.lora_linear_layer.up.weight"
+        )
+        converted_state_dict[f"{name}.out_proj.lora_B.weight"] = state_dict.pop(
+            f"{name}.out_proj.lora_linear_layer.up.weight"
+        )
+
+        converted_state_dict[f"{name}.q_proj.lora_A.weight"] = state_dict.pop(
+            f"{name}.q_proj.lora_linear_layer.down.weight"
+        )
+        converted_state_dict[f"{name}.k_proj.lora_A.weight"] = state_dict.pop(
+            f"{name}.k_proj.lora_linear_layer.down.weight"
+        )
+        converted_state_dict[f"{name}.v_proj.lora_A.weight"] = state_dict.pop(
+            f"{name}.v_proj.lora_linear_layer.down.weight"
+        )
+        converted_state_dict[f"{name}.out_proj.lora_A.weight"] = state_dict.pop(
+            f"{name}.out_proj.lora_linear_layer.down.weight"
+        )
+
     return converted_state_dict
 
 
 def convert_unet_state_dict_to_peft(state_dict):
     converted_state_dict = {}
+    target_modules = []
 
     patterns = {
-        ".to_out_lora": ".to_o",
+        ".to_out_lora": ".to_out.0",
         ".down": ".lora_A",
         ".up": ".lora_B",
         ".to_q_lora": ".to_q",
         ".to_k_lora": ".to_k",
         ".to_v_lora": ".to_v",
+        ".processor.": ".",
     }
 
     for k, v in state_dict.items():
+        pattern_found = False
+
         if any(pattern in k for pattern in patterns.keys()):
             for old, new in patterns.items():
                 k = k.replace(old, new)
-        
+                pattern_found = True
+
         converted_state_dict[k] = v
-    
-    return converted_state_dict
+        if pattern_found:
+            target_modules.append(".".join(k.split(".")[:-2]))
+
+    return converted_state_dict, target_modules

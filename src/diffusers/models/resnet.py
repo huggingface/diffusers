@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
-from .lora import LoRACompatibleConv, LoRACompatibleLinear
+from .lora import LoRACompatibleConv
 
 
 class Upsample1D(nn.Module):
@@ -544,13 +544,16 @@ class ResnetBlock2D(nn.Module):
         else:
             self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        self.conv1 = LoRACompatibleConv(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        # self.conv1 = LoRACompatibleConv(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
-                self.time_emb_proj = LoRACompatibleLinear(temb_channels, out_channels)
+                # self.time_emb_proj = LoRACompatibleLinear(temb_channels, out_channels)
+                self.time_emb_proj = nn.Linear(temb_channels, out_channels)
             elif self.time_embedding_norm == "scale_shift":
-                self.time_emb_proj = LoRACompatibleLinear(temb_channels, 2 * out_channels)
+                # self.time_emb_proj = LoRACompatibleLinear(temb_channels, out_channels)
+                self.time_emb_proj = nn.Linear(temb_channels, 2 * out_channels)
             elif self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
                 self.time_emb_proj = None
             else:
@@ -593,7 +596,10 @@ class ResnetBlock2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = LoRACompatibleConv(
+            # self.conv_shortcut = LoRACompatibleConv(
+            #     in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
+            # )
+            self.conv_shortcut = nn.Conv2d(
                 in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )
 
@@ -634,12 +640,12 @@ class ResnetBlock2D(nn.Module):
                 else self.downsample(hidden_states)
             )
 
-        hidden_states = self.conv1(hidden_states, scale)
+        hidden_states = self.conv1(hidden_states)
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
                 temb = self.nonlinearity(temb)
-            temb = self.time_emb_proj(temb, scale)[:, :, None, None]
+            temb = self.time_emb_proj(temb)[:, :, None, None]
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
@@ -656,10 +662,10 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states, scale)
+        hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            input_tensor = self.conv_shortcut(input_tensor, scale)
+            input_tensor = self.conv_shortcut(input_tensor)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 

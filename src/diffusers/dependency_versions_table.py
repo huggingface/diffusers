@@ -4,6 +4,7 @@
 deps = {
     "Pillow": "Pillow",
     "accelerate": "accelerate>=0.11.0",
+    "peft": "peft>=0.5.0",
     "compel": "compel==0.1.8",
     "black": "black~=23.1",
     "datasets": "datasets",

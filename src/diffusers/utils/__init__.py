@@ -67,6 +67,7 @@ from .import_utils import (
     is_note_seq_available,
     is_omegaconf_available,
     is_onnx_available,
+    is_peft_available,
     is_scipy_available,
     is_tensorboard_available,
     is_torch_available,
@@ -77,15 +78,18 @@ from .import_utils import (
     is_unidecode_available,
     is_wandb_available,
     is_xformers_available,
-    is_peft_available,
     requires_backends,
 )
 from .loading_utils import load_image
 from .logging import get_logger
 from .outputs import BaseOutput
+from .peft_utils import (
+    convert_diffusers_state_dict_to_peft,
+    convert_old_state_dict_to_peft,
+    convert_peft_state_dict_to_diffusers,
+    convert_unet_state_dict_to_peft,
+)
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
-from .peft_utils import convert_old_state_dict_to_peft, convert_peft_state_dict_to_diffusers, convert_diffusers_state_dict_to_peft, convert_unet_state_dict_to_peft
-
 
 
 logger = get_logger(__name__)
