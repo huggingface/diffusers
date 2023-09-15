@@ -378,6 +378,56 @@ images_fusion = pipe(
 ).images
 ```
 
+## Working with multiple LoRA checkpoints
+
+<Tip warning={true}>
+
+Our support for loading multiple LoRA checkpoints is currently limited and there might be rough edges involved.
+
+</Tip>
+
+With the `fuse_lora()` method as described above, it's possible to load multiple LoRA checkpoints. Let's work through a complete example. First we load the base pipeline:
+
+```python
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+import torch
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+)
+pipe.to("cuda")
+```
+
+Then let's two LoRA checkpoints and fuse them with specific `lora_scale` values:
+
+```python
+# LoRA one.
+pipe.load_lora_weights("goofyai/cyborg_style_xl")
+pipe.fuse_lora(lora_scale=0.5)
+
+# LoRA two.
+pipe.load_lora_weights("TheLastBen/Pikachu_SDXL")
+pipe.fuse_lora(lora_scale=0.5)
+```
+
+<Tip>
+
+Play with the `lora_scale` parameter when working with multiple LoRAs to control the amount of their influence on the final outputs.
+
+</Tip>
+
+Let's see them in action:
+
+```python
+prompt = "cyborg style pikachu"
+image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
+```
+
+![cyborg_pikachu](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/cyborg_pikachu.png)
+
 ## Supporting different LoRA checkpoints from Diffusers
 
 🤗 Diffusers supports loading checkpoints from popular LoRA trainers such as [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). In this section, we outline the current API's details and limitations. 
