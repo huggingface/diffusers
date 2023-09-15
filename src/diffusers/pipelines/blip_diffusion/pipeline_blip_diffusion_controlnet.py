@@ -142,6 +142,11 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             controlnet=controlnet,
             image_processor=image_processor,
         )
+        # self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+
+        # self.control_image_processor = VaeImageProcessor(
+        #     vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+        # )
         self.register_to_config(ctx_begin_pos=ctx_begin_pos, mean=mean, std=std)
 
     def get_query_embeddings(self, input_image, src_subject):
@@ -199,6 +204,43 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
 
         return text_embeddings
 
+    # Adapted from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
+    def prepare_control_image(
+        self,
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+    ):
+        image = self.image_processor.preprocess(
+            image,
+            size={"width": width, "height": height},
+            do_rescale=True,
+            do_center_crop=False,
+            do_normalize=False,
+            return_tensors="pt",
+        )["pixel_values"].to(self.device)
+        image_batch_size = image.shape[0]
+
+        if image_batch_size == 1:
+            repeat_by = batch_size
+        else:
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
+
+        image = image.repeat_interleave(repeat_by, dim=0)
+
+        image = image.to(device=device, dtype=dtype)
+
+        if do_classifier_free_guidance:
+            image = torch.cat([image] * 2)
+
+        return image
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -212,7 +254,6 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         guidance_scale: float = 7.5,
         height: int = 512,
         width: int = 512,
-        seed: int = 42,
         num_inference_steps: int = 50,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         neg_prompt: Optional[str] = "",
@@ -327,24 +368,28 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
         extra_set_kwargs = {}
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
+
+        cond_image = self.prepare_control_image(
+            image=condtioning_image,
+            width=width,
+            height=height,
+            batch_size=batch_size,
+            num_images_per_prompt=1,
+            device=self.device,
+            dtype=self.controlnet.dtype,
+            do_classifier_free_guidance=True,
+        )
+
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             do_classifier_free_guidance = guidance_scale > 1.0
 
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-
-            cond_image = self.image_processor.canny_preprocess(
-                condtioning_image,
-                size={"width": width, "height": height},
-                do_rescale=True,
-                do_classifier_free_guidance=do_classifier_free_guidance,
-            ).to(self.device)
             down_block_res_samples, mid_block_res_sample = self.controlnet(
                 latent_model_input,
                 t,
                 encoder_hidden_states=text_embeddings,
                 controlnet_cond=cond_image,
-                # conditioning_scale=controlnet_condition_scale,
                 return_dict=False,
             )
 
