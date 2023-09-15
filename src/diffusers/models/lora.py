@@ -42,7 +42,6 @@ def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
 class LoRALinearLayer(nn.Module):
     def __init__(self, in_features, out_features, rank=4, network_alpha=None, device=None, dtype=None):
         super().__init__()
-
         self.down = nn.Linear(in_features, rank, bias=False, device=device, dtype=dtype)
         self.up = nn.Linear(rank, out_features, bias=False, device=device, dtype=dtype)
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
@@ -62,7 +61,7 @@ class LoRALinearLayer(nn.Module):
         down_hidden_states = self.down(hidden_states.to(dtype))
         up_hidden_states = self.up(down_hidden_states)
 
-        if self.network_alpha is not None:
+        if self.network_alpha is not None and self.rank != 0:
             up_hidden_states *= self.network_alpha / self.rank
 
         return up_hidden_states.to(orig_dtype)
@@ -94,7 +93,7 @@ class LoRAConv2dLayer(nn.Module):
         down_hidden_states = self.down(hidden_states.to(dtype))
         up_hidden_states = self.up(down_hidden_states)
 
-        if self.network_alpha is not None:
+        if self.network_alpha is not None and self.rank != 0:
             up_hidden_states *= self.network_alpha / self.rank
 
         return up_hidden_states.to(orig_dtype)
@@ -166,7 +165,7 @@ class LoRACompatibleConv(nn.Conv2d):
 
     def remove_scale(self, scale: float = 1.0):
         if self.lora_layer is not None:
-            if self.lora_layer.network_alpha is not None:
+            if self.lora_layer.network_alpha is not None and scale != 0:
                 self.lora_layer.network_alpha /= scale
 
     def forward(self, hidden_states):
@@ -242,7 +241,7 @@ class LoRACompatibleLinear(nn.Linear):
 
     def remove_scale(self, scale: float = 1.0):
         if self.lora_layer is not None:
-            if self.lora_layer.network_alpha is not None:
+            if self.lora_layer.network_alpha is not None and scale != 0:
                 self.lora_layer.network_alpha /= scale
 
     def forward(self, hidden_states):

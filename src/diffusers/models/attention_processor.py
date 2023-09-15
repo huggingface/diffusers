@@ -542,7 +542,7 @@ class AttnProcessor:
     ):
         residual = hidden_states
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.add_scale(scale)
@@ -595,7 +595,7 @@ class AttnProcessor:
 
         hidden_states = hidden_states / attn.rescale_output_factor
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.remove_scale(scale)
@@ -708,7 +708,7 @@ class AttnAddedKVProcessor:
     """
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, scale=1.0):
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.add_scale(scale)
@@ -757,7 +757,7 @@ class AttnAddedKVProcessor:
         hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
         hidden_states = hidden_states + residual
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.remove_scale(scale)
@@ -782,7 +782,7 @@ class AttnAddedKVProcessor2_0:
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.add_scale(scale)
@@ -830,7 +830,7 @@ class AttnAddedKVProcessor2_0:
         hidden_states = hidden_states.transpose(-1, -2).reshape(residual.shape)
         hidden_states = hidden_states + residual
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.remove_scale(scale)
@@ -929,7 +929,7 @@ class XFormersAttnProcessor:
     ):
         residual = hidden_states
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.add_scale(scale)
@@ -994,7 +994,7 @@ class XFormersAttnProcessor:
 
         hidden_states = hidden_states / attn.rescale_output_factor
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.remove_scale(scale)
@@ -1022,7 +1022,7 @@ class AttnProcessor2_0:
     ):
         residual = hidden_states
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleLinear, LoRACompatibleConv)):
                     module.add_scale(scale)
@@ -1089,7 +1089,7 @@ class AttnProcessor2_0:
 
         hidden_states = hidden_states / attn.rescale_output_factor
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in attn.modules():
                 if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
                     module.remove_scale(scale)

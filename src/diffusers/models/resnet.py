@@ -165,7 +165,7 @@ class Upsample2D(nn.Module):
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
-            if scale != 1.0:
+            if isinstance(scale, float) and scale != 1.0:
                 for module in self.modules():
                     if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
                         module.add_scale(scale)
@@ -182,7 +182,7 @@ class Upsample2D(nn.Module):
                 else:
                     hidden_states = self.Conv2d_0(hidden_states)
 
-            if scale != 1.0:
+            if isinstance(scale, float) and scale != 1.0:
                 for module in self.modules():
                     if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
                         module.remove_scale(scale)
@@ -230,7 +230,7 @@ class Downsample2D(nn.Module):
     def forward(self, hidden_states, scale: float = 1.0):
         assert hidden_states.shape[1] == self.channels
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in self.modules():
                 if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
                     module.add_scale(scale)
@@ -616,7 +616,7 @@ class ResnetBlock2D(nn.Module):
     def forward(self, input_tensor, temb, scale: float = 1.0):
         hidden_states = input_tensor
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in self.modules():
                 if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
                     module.add_scale(scale)
@@ -684,7 +684,7 @@ class ResnetBlock2D(nn.Module):
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
-        if scale != 1.0:
+        if isinstance(scale, float) and scale != 1.0:
             for module in self.modules():
                 if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
                     module.remove_scale(scale)
