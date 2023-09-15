@@ -18,4 +18,3 @@ else:
     from .modeling_blip2 import Blip2QFormerModel
     from .modeling_ctx_clip import ContextCLIPTextModel
     from .pipeline_blip_diffusion import BlipDiffusionPipeline
-    from .pipeline_blip_diffusion_controlnet import BlipDiffusionControlNetPipeline

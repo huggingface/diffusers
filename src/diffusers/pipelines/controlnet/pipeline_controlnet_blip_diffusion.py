@@ -27,9 +27,9 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from .. import DiffusionPipeline
 from ..pipeline_utils import ImagePipelineOutput
-from .blip_image_processing import BlipImageProcessor
-from .modeling_blip2 import Blip2QFormerModel
-from .modeling_ctx_clip import ContextCLIPTextModel
+from ..blip_diffusion.blip_image_processing import BlipImageProcessor
+from ..blip_diffusion.modeling_blip2 import Blip2QFormerModel
+from ..blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

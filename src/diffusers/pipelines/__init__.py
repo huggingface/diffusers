@@ -69,7 +69,6 @@ else:
     ]
     _import_structure["blip_diffusion"] = [
         "BlipDiffusionPipeline",
-        "BlipDiffusionControlNetPipeline",
     ]
     _import_structure["controlnet"].extend(
         [
@@ -79,6 +78,7 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+            "BlipDiffusionControlNetPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -285,7 +285,7 @@ if TYPE_CHECKING:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
-        from .blip_diffusion import BlipDiffusionControlNetPipeline, BlipDiffusionPipeline
+        from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import (
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,
@@ -293,6 +293,7 @@ if TYPE_CHECKING:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+            BlipDiffusionControlNetPipeline,
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
