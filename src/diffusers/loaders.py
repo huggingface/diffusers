@@ -1394,7 +1394,7 @@ class LoraLoaderMixin:
 
         # load loras into unet
         # unet.load_attn_procs(state_dict, network_alphas=network_alphas)
-        # TODO: deal with network_alphas
+        # TODO: @younesbelkada deal with network_alphas
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
         state_dict, target_modules = convert_unet_state_dict_to_peft(state_dict)
