@@ -1,26 +1,28 @@
 import os
-import time
-import torch
-import torchvision
-from torch import nn, optim
-from torch.utils.data import DataLoader
-from warmup_scheduler import GradualWarmupScheduler
-from tqdm import tqdm
-import numpy as np
-import wandb
 import shutil
-from transformers import AutoTokenizer, CLIPTextModel
-import webdataset as wds
-from webdataset.handlers import warn_and_continue
-from torch.distributed import init_process_group, destroy_process_group
-from torch.nn.parallel import DistributedDataParallel as DDP
+import time
+
+import numpy as np
+import torch
 import torch.multiprocessing as mp
-from torchtools.utils import Diffuzz
-from diffnext_v2 import Prior
-from diffnext_v2_ldm import DiffNeXt, EfficientNetEncoder
-from vqgan import VQModel
-from utils import WebdatasetFilter
+import torchvision
 import transformers
+import wandb
+import webdataset as wds
+from diffnext_v2 import Prior
+from diffnext_v2_ldm import EfficientNetEncoder
+from torch import nn, optim
+from torch.distributed import destroy_process_group, init_process_group
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader
+from torchtools.utils import Diffuzz
+from tqdm import tqdm
+from transformers import AutoTokenizer, CLIPTextModel
+from warmup_scheduler import GradualWarmupScheduler
+from webdataset.handlers import warn_and_continue
+
+from utils import WebdatasetFilter
+
 
 transformers.utils.logging.set_verbosity_error()
 
@@ -69,9 +71,7 @@ effnet_preprocess = torchvision.transforms.Compose(
             antialias=True,
         ),
         torchvision.transforms.CenterCrop(384),
-        torchvision.transforms.Normalize(
-            mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
-        ),
+        torchvision.transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
     ]
 )
 
@@ -120,17 +120,13 @@ def train(gpu_id, world_size, n_nodes):
     )
 
     real_batch_size = batch_size // (world_size * n_nodes * grad_accum_steps)
-    dataloader = DataLoader(
-        dataset, batch_size=real_batch_size, num_workers=8, pin_memory=False
-    )
+    dataloader = DataLoader(dataset, batch_size=real_batch_size, num_workers=8, pin_memory=False)
 
     if main_node:
         print("REAL BATCH SIZE / DEVICE:", real_batch_size)
 
     # - EfficientNet -
-    pretrained_checkpoint = torch.load(
-        "models/text2img_wurstchen_b_v1_457k.pt", map_location=device
-    )
+    pretrained_checkpoint = torch.load("models/text2img_wurstchen_b_v1_457k.pt", map_location=device)
 
     effnet = EfficientNetEncoder().to(device)
     effnet.load_state_dict(pretrained_checkpoint["effnet_state_dict"])
@@ -152,11 +148,7 @@ def train(gpu_id, world_size, n_nodes):
 
     # --- PREPARE MODELS ---
     try:
-        checkpoint = (
-            torch.load(checkpoint_path, map_location=device)
-            if os.path.exists(checkpoint_path)
-            else None
-        )
+        checkpoint = torch.load(checkpoint_path, map_location=device) if os.path.exists(checkpoint_path) else None
     except RuntimeError as e:
         if os.path.exists(f"{checkpoint_path}.bak"):
             os.remove(checkpoint_path)
@@ -174,9 +166,7 @@ def train(gpu_id, world_size, n_nodes):
         .eval()
         .requires_grad_(False)
     )
-    clip_tokenizer = AutoTokenizer.from_pretrained(
-        "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-    )
+    clip_tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
     # - Diffusive Imagination Combinatrainer, a.k.a. Risotto -
     model = Prior(c_in=16, c=1536, c_cond=1280, c_r=64, depth=32, nhead=24).to(device)
@@ -185,11 +175,7 @@ def train(gpu_id, world_size, n_nodes):
         model.load_state_dict(checkpoint["state_dict"])
 
     if main_node:  # <--- DDP
-        model_ema = (
-            Prior(c_in=16, c=1536, c_cond=1280, c_r=64, depth=32, nhead=24)
-            .eval()
-            .requires_grad_(False)
-        )
+        model_ema = Prior(c_in=16, c=1536, c_cond=1280, c_r=64, depth=32, nhead=24).eval().requires_grad_(False)
         # model_ema = Prior(c_in=16, c=1536, c_cond=1024, c_r=64, depth=42, nhead=24).eval().requires_grad_(False)
 
     # load checkpoints & prepare ddp
@@ -226,9 +212,7 @@ def train(gpu_id, world_size, n_nodes):
     optimizer = optim.AdamW(model.parameters(), lr=lr)  # eps=1e-4
     # optimizer = StableAdamW(model.parameters(), lr=lr) # eps=1e-4
     # optimizer = Lion(model.parameters(), lr=lr / 3) # eps=1e-4
-    scheduler = GradualWarmupScheduler(
-        optimizer, multiplier=1, total_epoch=warmup_updates
-    )
+    scheduler = GradualWarmupScheduler(optimizer, multiplier=1, total_epoch=warmup_updates)
     if checkpoint is not None:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         scheduler.last_epoch = checkpoint["scheduler_last_step"]
@@ -253,27 +237,19 @@ def train(gpu_id, world_size, n_nodes):
     if main_node:
         print("Everything prepared, starting training now....")
     dataloader_iterator = iter(dataloader)
-    pbar = (
-        tqdm(range(start_iter, max_iters + 1))
-        if (main_node)
-        else range(start_iter, max_iters + 1)
-    )  # <--- DDP
+    pbar = tqdm(range(start_iter, max_iters + 1)) if (main_node) else range(start_iter, max_iters + 1)  # <--- DDP
     model.train()
     for it in pbar:
         bls = time.time()
         images, captions = next(dataloader_iterator)
-        ble = time.time() - bls
+        time.time() - bls
         images = images.to(device)
 
         with torch.no_grad():
             effnet_features = effnet(effnet_preprocess(images))
             with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-                if (
-                    np.random.rand() < 0.05
-                ):  # 90% of the time, drop the CLIP text embeddings (indepentently)
-                    clip_captions = [""] * len(
-                        captions
-                    )  # 5% of the time drop all the captions
+                if np.random.rand() < 0.05:  # 90% of the time, drop the CLIP text embeddings (indepentently)
+                    clip_captions = [""] * len(captions)  # 5% of the time drop all the captions
                 else:
                     clip_captions = captions
                 clip_tokens = clip_tokenizer(
@@ -285,20 +261,13 @@ def train(gpu_id, world_size, n_nodes):
                 ).to(device)
                 clip_text_embeddings = clip_model(**clip_tokens).last_hidden_state
 
-            t = (
-                (1 - torch.rand(images.size(0), device=device))
-                .mul(1.08)
-                .add(0.001)
-                .clamp(0.001, 1.0)
-            )
+            t = (1 - torch.rand(images.size(0), device=device)).mul(1.08).add(0.001).clamp(0.001, 1.0)
             noised_embeddings, noise = diffuzz.diffuse(effnet_features, t)
 
-            t_consistency = t - t * (1 - torch.rand(images.size(0), device=device)).mul(
-                1.08
-            ).add(0.001).clamp(0.001, 1.0)
-            noised_embeddings_consistency, _ = diffuzz.diffuse(
-                effnet_features, t_consistency, noise=noise
+            t_consistency = t - t * (1 - torch.rand(images.size(0), device=device)).mul(1.08).add(0.001).clamp(
+                0.001, 1.0
             )
+            noised_embeddings_consistency, _ = diffuzz.diffuse(effnet_features, t_consistency, noise=noise)
 
         with torch.cuda.amp.autocast(dtype=torch.bfloat16):
             pred_noise = model(noised_embeddings, t, clip_text_embeddings)
@@ -313,12 +282,10 @@ def train(gpu_id, world_size, n_nodes):
                     )
             model.train().requires_grad_(True)
 
-            loss = nn.functional.mse_loss(pred_noise, noise, reduction="none").mean(
+            loss = nn.functional.mse_loss(pred_noise, noise, reduction="none").mean(dim=[1, 2, 3])
+            consistency_loss = nn.functional.mse_loss(pred_noise, pred_noise_consistency, reduction="none").mean(
                 dim=[1, 2, 3]
             )
-            consistency_loss = nn.functional.mse_loss(
-                pred_noise, pred_noise_consistency, reduction="none"
-            ).mean(dim=[1, 2, 3])
             loss_adjusted = (
                 (loss + consistency_loss * consistency_weight) * diffuzz.p2_weight(t)
             ).mean() / grad_accum_steps
@@ -338,11 +305,7 @@ def train(gpu_id, world_size, n_nodes):
             with model.no_sync():
                 loss_adjusted.backward()
 
-        ema_loss = (
-            loss.mean().item()
-            if ema_loss is None
-            else ema_loss * 0.99 + loss.mean().item() * 0.01
-        )
+        ema_loss = loss.mean().item() if ema_loss is None else ema_loss * 0.99 + loss.mean().item() * 0.01
 
         if main_node:
             pbar.set_postfix(
@@ -375,9 +338,7 @@ def train(gpu_id, world_size, n_nodes):
                 }
             )
 
-        if main_node and (
-            it == 1 or it % print_every == 0 or it == max_iters
-        ):  # <--- DDP
+        if main_node and (it == 1 or it % print_every == 0 or it == max_iters):  # <--- DDP
             tqdm.write(f"ITER {it}/{max_iters} - loss {ema_loss}")
 
             try:
