@@ -410,13 +410,11 @@ class PipelineTesterMixin:
                     # make last batch super long
                     batched_input[name][-1] = 100 * "very long"
 
-                elif name == "image":
-                    batched_input[name] = batch_size * [value]
+                elif name == "generator":
+                    batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
 
-                elif name == "batch_size":
-                    batched_input[name] = batch_size
                 else:
-                    batched_input[name] = value
+                    batched_input[name] = batch_size * [value]
 
             batched_inputs.append(batched_input)
 
@@ -463,17 +461,11 @@ class PipelineTesterMixin:
                 batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
                 batched_inputs[name][-1] = 100 * "very long"
 
-            elif name == "image":
-                batched_inputs[name] = batch_size * [value]
-
-            elif name == "batch_size":
-                batched_inputs[name] = batch_size
-
             elif name == "generator":
                 batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
 
             else:
-                batched_inputs[name] = value
+                batched_inputs[name] = batch_size * [value]
 
         for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]
