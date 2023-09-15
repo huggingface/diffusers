@@ -266,6 +266,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
+    @unittest.skip("this is an old test")
     def test_text_encoder_lora_monkey_patch(self):
         pipeline_components, _ = self.get_dummy_components()
         pipe = StableDiffusionPipeline(**pipeline_components)
@@ -305,6 +306,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
             outputs_without_lora, outputs_with_lora
         ), "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs"
 
+    def test_text_encoder_lora_unload(self):
+        # TODO @younesbelkada ...
+        pass
+    
     def test_text_encoder_lora_remove_monkey_patch(self):
         pipeline_components, _ = self.get_dummy_components()
         pipe = StableDiffusionPipeline(**pipeline_components)

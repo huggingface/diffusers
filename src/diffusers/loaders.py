@@ -35,9 +35,9 @@ from .utils import (
     _get_model_file,
     convert_diffusers_state_dict_to_peft,
     convert_old_state_dict_to_peft,
+    recurse_replace_peft_layers,
     deprecate,
     is_accelerate_available,
-    is_accelerate_version,
     is_omegaconf_available,
     is_peft_available,
     is_transformers_available,
@@ -616,19 +616,20 @@ class UNet2DConditionLoadersMixin:
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
     def fuse_lora(self, lora_scale=1.0):
-        self.lora_scale = lora_scale
-        self.apply(self._fuse_lora_apply)
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
-    def _fuse_lora_apply(self, module):
-        if hasattr(module, "_fuse_lora"):
-            module._fuse_lora(self.lora_scale)
+        self.lora_scale = lora_scale
+
+        for module in self.modules():
+            if isinstance(module, BaseTunerLayer):
+                module.merge()
 
     def unfuse_lora(self):
-        self.apply(self._unfuse_lora_apply)
+        from peft.tuners.tuners_utils import BaseTunerLayer
 
-    def _unfuse_lora_apply(self, module):
-        if hasattr(module, "_unfuse_lora"):
-            module._unfuse_lora()
+        for module in self.modules():
+            if isinstance(module, BaseTunerLayer):
+                module.unmerge()
 
 
 class TextualInversionLoaderMixin:
@@ -1492,7 +1493,7 @@ class LoraLoaderMixin:
 
                 lora_config = LoraConfig(r=lora_rank, target_modules=target_modules, lora_alpha=alpha)
 
-                text_encoder.load_adapter(text_encoder_lora_state_dict, peft_config=lora_config)
+                text_encoder.load_adapter(adapter_state_dict=text_encoder_lora_state_dict, peft_config=lora_config)
 
                 text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
 
@@ -1502,99 +1503,6 @@ class LoraLoaderMixin:
         # if _lora_scale has not been set, return 1
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
-    def _remove_text_encoder_monkey_patch(self):
-        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
-
-    @classmethod
-    def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
-        for _, attn_module in text_encoder_attn_modules(text_encoder):
-            if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                attn_module.q_proj.lora_linear_layer = None
-                attn_module.k_proj.lora_linear_layer = None
-                attn_module.v_proj.lora_linear_layer = None
-                attn_module.out_proj.lora_linear_layer = None
-
-        for _, mlp_module in text_encoder_mlp_modules(text_encoder):
-            if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                mlp_module.fc1.lora_linear_layer = None
-                mlp_module.fc2.lora_linear_layer = None
-
-    @classmethod
-    def _modify_text_encoder(
-        cls,
-        text_encoder,
-        lora_scale=1,
-        network_alphas=None,
-        rank: Union[Dict[str, int], int] = 4,
-        dtype=None,
-        patch_mlp=False,
-        low_cpu_mem_usage=False,
-    ):
-        r"""
-        Monkey-patches the forward passes of attention modules of the text encoder.
-        """
-
-        def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
-            linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
-            ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
-            with ctx():
-                model = PatchedLoraProjection(linear_layer, lora_scale, network_alpha, rank, dtype=dtype)
-
-            lora_parameters.extend(model.lora_linear_layer.parameters())
-            return model
-
-        # First, remove any monkey-patch that might have been applied before
-        cls._remove_text_encoder_monkey_patch_classmethod(text_encoder)
-
-        lora_parameters = []
-        network_alphas = {} if network_alphas is None else network_alphas
-        is_network_alphas_populated = len(network_alphas) > 0
-
-        for name, attn_module in text_encoder_attn_modules(text_encoder):
-            query_alpha = network_alphas.pop(name + ".to_q_lora.down.weight.alpha", None)
-            key_alpha = network_alphas.pop(name + ".to_k_lora.down.weight.alpha", None)
-            value_alpha = network_alphas.pop(name + ".to_v_lora.down.weight.alpha", None)
-            out_alpha = network_alphas.pop(name + ".to_out_lora.down.weight.alpha", None)
-
-            if isinstance(rank, dict):
-                current_rank = rank.pop(f"{name}.out_proj.lora_linear_layer.up.weight")
-            else:
-                current_rank = rank
-
-            attn_module.q_proj = create_patched_linear_lora(
-                attn_module.q_proj, query_alpha, current_rank, dtype, lora_parameters
-            )
-            attn_module.k_proj = create_patched_linear_lora(
-                attn_module.k_proj, key_alpha, current_rank, dtype, lora_parameters
-            )
-            attn_module.v_proj = create_patched_linear_lora(
-                attn_module.v_proj, value_alpha, current_rank, dtype, lora_parameters
-            )
-            attn_module.out_proj = create_patched_linear_lora(
-                attn_module.out_proj, out_alpha, current_rank, dtype, lora_parameters
-            )
-
-        if patch_mlp:
-            for name, mlp_module in text_encoder_mlp_modules(text_encoder):
-                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha", None)
-                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha", None)
-
-                current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
-                current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
-
-                mlp_module.fc1 = create_patched_linear_lora(
-                    mlp_module.fc1, fc1_alpha, current_rank_fc1, dtype, lora_parameters
-                )
-                mlp_module.fc2 = create_patched_linear_lora(
-                    mlp_module.fc2, fc2_alpha, current_rank_fc2, dtype, lora_parameters
-                )
-
-        if is_network_alphas_populated and len(network_alphas) > 0:
-            raise ValueError(
-                f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
-            )
-
-        return lora_parameters
 
     @classmethod
     def save_lora_weights(
@@ -1870,7 +1778,10 @@ class LoraLoaderMixin:
                 module.set_lora_layer(None)
 
         # Safe to call the following regardless of LoRA.
-        self._remove_text_encoder_monkey_patch()
+        recurse_replace_peft_layers(self.text_encoder)
+
+    def _remove_text_encoder_monkey_patch(self):
+        recurse_replace_peft_layers(self.text_encoder)
 
     def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True, lora_scale: float = 1.0):
         r"""
@@ -1890,6 +1801,8 @@ class LoraLoaderMixin:
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
         """
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
             if self.num_fused_loras > 1:
@@ -1901,17 +1814,9 @@ class LoraLoaderMixin:
             self.unet.fuse_lora(lora_scale)
 
         def fuse_text_encoder_lora(text_encoder):
-            for _, attn_module in text_encoder_attn_modules(text_encoder):
-                if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                    attn_module.q_proj._fuse_lora(lora_scale)
-                    attn_module.k_proj._fuse_lora(lora_scale)
-                    attn_module.v_proj._fuse_lora(lora_scale)
-                    attn_module.out_proj._fuse_lora(lora_scale)
-
-            for _, mlp_module in text_encoder_mlp_modules(text_encoder):
-                if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                    mlp_module.fc1._fuse_lora(lora_scale)
-                    mlp_module.fc2._fuse_lora(lora_scale)
+            for module in text_encoder.modules():
+                if isinstance(module, BaseTunerLayer):
+                    module.merge()
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
@@ -1936,21 +1841,15 @@ class LoraLoaderMixin:
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
         if unfuse_unet:
             self.unet.unfuse_lora()
 
         def unfuse_text_encoder_lora(text_encoder):
-            for _, attn_module in text_encoder_attn_modules(text_encoder):
-                if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                    attn_module.q_proj._unfuse_lora()
-                    attn_module.k_proj._unfuse_lora()
-                    attn_module.v_proj._unfuse_lora()
-                    attn_module.out_proj._unfuse_lora()
-
-            for _, mlp_module in text_encoder_mlp_modules(text_encoder):
-                if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                    mlp_module.fc1._unfuse_lora()
-                    mlp_module.fc2._unfuse_lora()
+            for module in text_encoder.modules():
+                if isinstance(module, BaseTunerLayer):
+                    module.unmerge()
 
         if unfuse_text_encoder:
             if hasattr(self, "text_encoder"):
@@ -2566,7 +2465,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         # pipeline.
 
         # Remove any existing hooks.
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+        if is_accelerate_available() and version.parse(importlib.metadata.version("accelerate")) >= version.parse("0.17.0"):
             from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
         else:
             raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
@@ -2680,5 +2579,5 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         )
 
     def _remove_text_encoder_monkey_patch(self):
-        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
-        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)
+        recurse_replace_peft_layers(self.text_encoder)
+        recurse_replace_peft_layers(self.text_encoder_2)

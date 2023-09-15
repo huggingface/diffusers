@@ -88,6 +88,7 @@ from .peft_utils import (
     convert_old_state_dict_to_peft,
     convert_peft_state_dict_to_diffusers,
     convert_unet_state_dict_to_peft,
+    recurse_replace_peft_layers,
 )
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
 
