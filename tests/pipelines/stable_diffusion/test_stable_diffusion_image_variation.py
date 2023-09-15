@@ -29,8 +29,18 @@ from diffusers import (
     StableDiffusionImageVariationPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    nightly,
+    numpy_cosine_similarity_distance,
+    print_tensor_test,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
@@ -174,7 +184,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -185,13 +195,17 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_inputs(generator_device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.84491, 0.90789, 0.75708, 0.78734, 0.83485, 0.70099, 0.66938, 0.68727, 0.61379])
-        assert np.abs(image_slice - expected_slice).max() < 6e-3
+        expected_slice = np.array([0.8449, 0.9079, 0.7571, 0.7873, 0.8348, 0.7010, 0.6694, 0.6873, 0.6138])
+        print_tensor_test(image_slice)
+
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 1e-4
 
     def test_stable_diffusion_img_variation_intermediate_state(self):
         number_of_steps = 0
@@ -204,31 +218,36 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array(
-                    [-0.1621, 0.2837, -0.7979, -0.1221, -1.3057, 0.7681, -2.1191, 0.0464, 1.6309]
-                )
+                expected_slice = np.array([-0.7974, -0.4343, -1.087, 0.04785, -1.327, 0.855, -2.148, -0.1725, 1.439])
+                max_diff = numpy_cosine_similarity_distance(latents_slice.flatten(), expected_slice)
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
+                assert max_diff < 1e-3
+
             elif step == 2:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.6299, 1.7500, 1.1992, -2.1582, -1.8994, 0.7334, -0.7090, 1.0137, 1.5273])
+                expected_slice = np.array([0.3232, 0.004883, 0.913, -1.084, 0.6143, -1.6875, -2.463, -0.439, -0.419])
+                max_diff = numpy_cosine_similarity_distance(latents_slice.flatten(), expected_slice)
 
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
+                assert max_diff < 1e-3
 
         callback_fn.has_been_called = False
 
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
-            "fusing/sd-image-variations-diffusers",
+            "lambdalabs/sd-image-variations-diffusers",
             safety_checker=None,
             torch_dtype=torch.float16,
         )
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
 
-        inputs = self.get_inputs(torch_device, dtype=torch.float16)
+        generator_device = "cpu"
+        inputs = self.get_inputs(generator_device, dtype=torch.float16)
         pipe(**inputs, callback=callback_fn, callback_steps=1)
         assert callback_fn.has_been_called
         assert number_of_steps == inputs["num_inference_steps"]
@@ -238,9 +257,8 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        model_id = "fusing/sd-image-variations-diffusers"
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
-            model_id, safety_checker=None, torch_dtype=torch.float16
+            "lambdalabs/sd-image-variations-diffusers", safety_checker=None, torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

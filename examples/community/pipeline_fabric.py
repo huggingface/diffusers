@@ -14,6 +14,7 @@
 from typing import List, Optional, Union
 
 import torch
+from diffuser.utils.torch_utils import randn_tensor
 from packaging import version
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -30,7 +31,6 @@ from diffusers.schedulers import EulerAncestralDiscreteScheduler, KarrasDiffusio
 from diffusers.utils import (
     deprecate,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
 

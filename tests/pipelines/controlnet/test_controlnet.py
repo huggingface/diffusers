@@ -30,15 +30,19 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
-from diffusers.utils import load_image, load_numpy, randn_tensor, slow, torch_device
+from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    load_image,
+    load_numpy,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    slow,
+    torch_device,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
