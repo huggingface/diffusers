@@ -26,8 +26,14 @@ from diffusers import (
     UNet3DConditionModel,
     VideoToVideoSDPipeline,
 )
-from diffusers.utils import floats_tensor, is_xformers_available, skip_mps
-from diffusers.utils.testing_utils import enable_full_determinism, slow, torch_device
+from diffusers.utils import is_xformers_available
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    skip_mps,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
@@ -149,6 +155,9 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([106, 117, 113, 174, 137, 112, 148, 151, 131])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=0.001)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

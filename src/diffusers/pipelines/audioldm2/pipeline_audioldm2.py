@@ -36,9 +36,9 @@ from ...utils import (
     is_accelerate_version,
     is_librosa_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
@@ -208,12 +208,15 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         model_sequence = [
-            self.text_encoder,
+            self.text_encoder.text_model,
+            self.text_encoder.text_projection,
             self.text_encoder_2,
             self.projection_model,
             self.language_model,
             self.unet,
             self.vae,
+            self.vocoder,
+            self.text_encoder,
         ]
 
         hook = None
@@ -927,7 +930,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     encoder_hidden_states=generated_prompt_embeds,
                     encoder_hidden_states_1=prompt_embeds,
                     encoder_attention_mask_1=attention_mask,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -942,6 +946,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        self.maybe_free_model_hooks()
 
         # 8. Post-processing
         if not output_type == "latent":

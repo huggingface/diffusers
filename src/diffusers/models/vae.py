@@ -18,7 +18,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ..utils import BaseOutput, is_torch_version, randn_tensor
+from ..utils import BaseOutput, is_torch_version
+from ..utils.torch_utils import randn_tensor
 from .activations import get_activation
 from .attention_processor import SpatialNorm
 from .unet_2d_blocks import AutoencoderTinyBlock, UNetMidBlock2D, get_down_block, get_up_block
@@ -52,7 +53,7 @@ class Encoder(nn.Module):
         super().__init__()
         self.layers_per_block = layers_per_block
 
-        self.conv_in = torch.nn.Conv2d(
+        self.conv_in = nn.Conv2d(
             in_channels,
             block_out_channels[0],
             kernel_size=3,

@@ -30,8 +30,7 @@ from transformers import (
 )
 
 from diffusers import KandinskyV22PriorEmb2EmbPipeline, PriorTransformer, UnCLIPScheduler
-from diffusers.utils import floats_tensor, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, skip_mps, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -48,7 +47,6 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
         "strength",
         "generator",
         "num_inference_steps",
-        "latents",
         "negative_prompt",
         "guidance_scale",
         "output_type",

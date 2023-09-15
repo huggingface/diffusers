@@ -25,7 +25,7 @@ from diffusers.models.embeddings import get_timestep_embedding
 from diffusers.models.lora import LoRACompatibleLinear
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.models.transformer_2d import Transformer2DModel
-from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import torch_device
 
 
 class EmbeddingsTests(unittest.TestCase):
