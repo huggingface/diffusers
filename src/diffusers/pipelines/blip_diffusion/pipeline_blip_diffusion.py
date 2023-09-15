@@ -18,7 +18,7 @@ import torch
 from transformers import CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipelines import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline
 from ...schedulers import PNDMScheduler
 from ...utils import (
     logging,
