@@ -731,6 +731,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+
     def forward(
         self,
         sample: torch.FloatTensor,

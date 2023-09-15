@@ -21,7 +21,6 @@ from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import get_activation
 from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
-from .lora import LoRACompatibleLinear
 
 
 @maybe_allow_in_graph
@@ -296,17 +295,14 @@ class FeedForward(nn.Module):
         # project dropout
         self.net.append(nn.Dropout(dropout))
         # project out
-        self.net.append(LoRACompatibleLinear(inner_dim, dim_out))
+        self.net.append(nn.Linear(inner_dim, dim_out))
         # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
         if final_dropout:
             self.net.append(nn.Dropout(dropout))
 
     def forward(self, hidden_states, scale: float = 1.0):
         for module in self.net:
-            if isinstance(module, (LoRACompatibleLinear, GEGLU)):
-                hidden_states = module(hidden_states, scale)
-            else:
-                hidden_states = module(hidden_states)
+            hidden_states = module(hidden_states)
         return hidden_states
 
 
@@ -343,7 +339,7 @@ class GEGLU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
-        self.proj = LoRACompatibleLinear(dim_in, dim_out * 2)
+        self.proj = nn.Linear(dim_in, dim_out * 2)
 
     def gelu(self, gate):
         if gate.device.type != "mps":
@@ -351,8 +347,8 @@ class GEGLU(nn.Module):
         # mps: gelu is not implemented for float16
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
-    def forward(self, hidden_states, scale: float = 1.0):
-        hidden_states, gate = self.proj(hidden_states, scale).chunk(2, dim=-1)
+    def forward(self, hidden_states):
+        hidden_states, gate = self.proj(hidden_states).chunk(2, dim=-1)
         return hidden_states * self.gelu(gate)
 
 

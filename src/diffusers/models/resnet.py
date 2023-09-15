@@ -23,7 +23,6 @@ import torch.nn.functional as F
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
-from .lora import LoRACompatibleConv
 
 
 class Upsample1D(nn.Module):
@@ -127,7 +126,7 @@ class Upsample2D(nn.Module):
         if use_conv_transpose:
             conv = nn.ConvTranspose2d(channels, self.out_channels, 4, 2, 1)
         elif use_conv:
-            conv = LoRACompatibleConv(self.channels, self.out_channels, 3, padding=1)
+            conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
@@ -166,15 +165,9 @@ class Upsample2D(nn.Module):
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
-                if isinstance(self.conv, LoRACompatibleConv):
-                    hidden_states = self.conv(hidden_states, scale)
-                else:
-                    hidden_states = self.conv(hidden_states)
+                hidden_states = self.conv(hidden_states)
             else:
-                if isinstance(self.Conv2d_0, LoRACompatibleConv):
-                    hidden_states = self.Conv2d_0(hidden_states, scale)
-                else:
-                    hidden_states = self.Conv2d_0(hidden_states)
+                hidden_states = self.Conv2d_0(hidden_states)
 
         return hidden_states
 
@@ -203,7 +196,7 @@ class Downsample2D(nn.Module):
         self.name = name
 
         if use_conv:
-            conv = LoRACompatibleConv(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+            conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
         else:
             assert self.channels == self.out_channels
             conv = nn.AvgPool2d(kernel_size=stride, stride=stride)
@@ -219,16 +212,13 @@ class Downsample2D(nn.Module):
 
     def forward(self, hidden_states, scale: float = 1.0):
         assert hidden_states.shape[1] == self.channels
+
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)
             hidden_states = F.pad(hidden_states, pad, mode="constant", value=0)
 
         assert hidden_states.shape[1] == self.channels
-        if isinstance(self.conv, LoRACompatibleConv):
-            hidden_states = self.conv(hidden_states, scale)
-        else:
-            hidden_states = self.conv(hidden_states)
-
+        hidden_states = self.conv(hidden_states)
         return hidden_states
 
 
@@ -544,15 +534,12 @@ class ResnetBlock2D(nn.Module):
         else:
             self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        # self.conv1 = LoRACompatibleConv(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
-                # self.time_emb_proj = LoRACompatibleLinear(temb_channels, out_channels)
                 self.time_emb_proj = nn.Linear(temb_channels, out_channels)
             elif self.time_embedding_norm == "scale_shift":
-                # self.time_emb_proj = LoRACompatibleLinear(temb_channels, out_channels)
                 self.time_emb_proj = nn.Linear(temb_channels, 2 * out_channels)
             elif self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
                 self.time_emb_proj = None
@@ -570,7 +557,7 @@ class ResnetBlock2D(nn.Module):
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = LoRACompatibleConv(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -596,9 +583,6 @@ class ResnetBlock2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            # self.conv_shortcut = LoRACompatibleConv(
-            #     in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
-            # )
             self.conv_shortcut = nn.Conv2d(
                 in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )

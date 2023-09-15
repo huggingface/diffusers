@@ -1393,7 +1393,6 @@ class LoraLoaderMixin:
             warnings.warn(warn_message)
 
         # load loras into unet
-        # unet.load_attn_procs(state_dict, network_alphas=network_alphas)
         # TODO: @younesbelkada deal with network_alphas
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
@@ -1408,6 +1407,7 @@ class LoraLoaderMixin:
         inject_adapter_in_model(lora_config, unet)
 
         incompatible_keys = set_peft_model_state_dict(unet, state_dict)
+        unet._is_peft_loaded = True
 
         if incompatible_keys is not None:
             # check only for unexpected keys

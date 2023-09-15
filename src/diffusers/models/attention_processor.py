@@ -137,13 +137,10 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        # self.to_q = LoRACompatibleLinear(query_dim, self.inner_dim, bias=bias)
         self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            # self.to_k = LoRACompatibleLinear(self.cross_attention_dim, self.inner_dim, bias=bias)
-            # self.to_v = LoRACompatibleLinear(self.cross_attention_dim, self.inner_dim, bias=bias)
             self.to_k = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
             self.to_v = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
         else:
@@ -151,14 +148,11 @@ class Attention(nn.Module):
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            # self.add_k_proj = LoRACompatibleLinear(added_kv_proj_dim, self.inner_dim)
-            # self.add_v_proj = LoRACompatibleLinear(added_kv_proj_dim, self.inner_dim)
             self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
             self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
 
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(self.inner_dim, query_dim, bias=out_bias))
-        # self.to_out.append(LoRACompatibleLinear(self.inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -419,17 +413,43 @@ class Attention(nn.Module):
 
         return lora_processor
 
+    def scale_peft_lora_layers(self, scale: float = 1.0):
+        from peft.tuners.lora import LoraLayer
+
+        total_modules_to_scale = list(self.modules())
+
+        for module in total_modules_to_scale:
+            if isinstance(module, LoraLayer):
+                module.scale_layer(scale)
+
+    def unscale_peft_lora_layers(self, scale: float = 1.0):
+        from peft.tuners.lora import LoraLayer
+
+        total_modules_to_unscale = list(self.modules())
+
+        for module in total_modules_to_unscale:
+            if isinstance(module, LoraLayer):
+                module.unscale_layer(scale)
+
     def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, **cross_attention_kwargs):
+        # retrieve the scale of LoRA layers and optionnaly scale / unscale them
+        scale = cross_attention_kwargs.get("scale", 1.0)
+        self.scale_peft_lora_layers(scale)
+
         # The `Attention` class can call different attention processors / attention functions
         # here we simply pass along all tensors to the selected processor class
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
-        return self.processor(
+        output = self.processor(
             self,
             hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
+
+        # unscale operation in case
+        self.unscale_peft_lora_layers(scale)
+        return output
 
     def batch_to_head_dim(self, tensor):
         head_size = self.heads
