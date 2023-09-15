@@ -25,7 +25,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from .. import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline
 from ..pipeline_utils import ImagePipelineOutput
 from .blip_image_processing import BlipImageProcessor
 from .modeling_blip2 import Blip2QFormerModel
