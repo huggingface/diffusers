@@ -51,6 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import BlipDiffusionControlNetPipeline
         >>> from PIL import Image
         >>> from diffusers.utils import load_image
+        >>> from controlnet_aux import CannyDetector
 
         >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained('ayushtues/blipdiffusion-controlnet')
         >>> blip_diffusion_pipe.to('cuda')
@@ -60,7 +61,10 @@ EXAMPLE_DOC_STRING = """
         >>> text_prompt = ["on a marble table"]
         >>> cldm_cond_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/kettle.jpg"
-        ... )
+        ... ).resize(512, 512)
+        >>> canny = CannyDetector()
+        >>> cldm_cond_image = canny(cldm_cond_image, 30, 70, output_type='pil)
+        >>> cldm_cond_image = [cldm_cond_image]
         >>> style_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/flower.jpg"
         ... )
@@ -73,10 +77,9 @@ EXAMPLE_DOC_STRING = """
         >>> output = blip_diffusion_pipe(
         ...     text_prompt,
         ...     style_image,
+        ...     cldm_cond_image,
         ...     style_subject,
         ...     tgt_subject,
-        ...     cldm_cond_image,
-        ...     seed=iter_seed + i,
         ...     guidance_scale=guidance_scale,
         ...     num_inference_steps=num_inference_steps,
         ...     neg_prompt=negative_prompt,

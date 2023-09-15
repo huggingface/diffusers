@@ -74,7 +74,6 @@ EXAMPLE_DOC_STRING = """
         ...     cond_image,
         ...     cond_subject,
         ...     tgt_subject,
-        ...     seed=iter_seed + i,
         ...     guidance_scale=guidance_scale,
         ...     num_inference_steps=num_inference_steps,
         ...     neg_prompt=negative_prompt,
