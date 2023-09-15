@@ -142,11 +142,6 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             controlnet=controlnet,
             image_processor=image_processor,
         )
-        # self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-
-        # self.control_image_processor = VaeImageProcessor(
-        #     vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
-        # )
         self.register_to_config(ctx_begin_pos=ctx_begin_pos, mean=mean, std=std)
 
     def get_query_embeddings(self, input_image, src_subject):
@@ -377,7 +372,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             num_images_per_prompt=1,
             device=self.device,
             dtype=self.controlnet.dtype,
-            do_classifier_free_guidance=True,
+            do_classifier_free_guidance=do_classifier_free_guidance,
         )
 
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):

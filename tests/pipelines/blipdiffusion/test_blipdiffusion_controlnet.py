@@ -29,7 +29,6 @@ from diffusers import (
 from transformers.models.blip_2.configuration_blip_2 import Blip2Config, Blip2QFormerConfig, Blip2VisionConfig
 from src.diffusers.pipelines.blip_diffusion.modeling_blip2 import Blip2QFormerModel
 from src.diffusers.pipelines.blip_diffusion.blip_image_processing import BlipImageProcessor
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
 from transformers import CLIPTokenizer
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
@@ -72,9 +71,9 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
     def get_dummy_components(self):
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
-            hidden_size=32,
-            intermediate_size=32,
-            projection_dim=32,
+            hidden_size=16,
+            intermediate_size=16,
+            projection_dim=16,
             num_hidden_layers=1,
             num_attention_heads=1,
             max_position_embeddings=77,
@@ -86,17 +85,17 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
             out_channels=4,
             down_block_types=("DownEncoderBlock2D",),
             up_block_types=("UpDecoderBlock2D",),
-            block_out_channels=(64,),
+            block_out_channels=(32,),
             layers_per_block=1,
             act_fn="silu",
             latent_channels=4,
-            norm_num_groups=32,
-            sample_size=32,
+            norm_num_groups=16,
+            sample_size=16,
         )
 
         blip_vision_config = {
-            "hidden_size": 32,
-            "intermediate_size": 32,
+            "hidden_size": 16,
+            "intermediate_size": 16,
             "num_hidden_layers": 1,
             "num_attention_heads": 1,
             "image_size": 224,
@@ -106,13 +105,13 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
 
         blip_qformer_config = {
             "vocab_size": 30522,
-            "hidden_size": 32,
+            "hidden_size": 16,
             "num_hidden_layers": 1,
             "num_attention_heads": 1,
-            "intermediate_size": 32,
+            "intermediate_size": 16,
             "max_position_embeddings": 512,
             "cross_attention_frequency": 1,
-            "encoder_hidden_size": 32,
+            "encoder_hidden_size": 16,
         }
         qformer_config = Blip2Config(
             vision_config=blip_vision_config, qformer_config=blip_qformer_config, num_query_tokens=16
@@ -123,12 +122,12 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
             block_out_channels=(4, 8, 16, 16),
             layers_per_block=1,
             norm_num_groups=4,
-            sample_size=32,
+            sample_size=16,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+            cross_attention_dim=16,
         )
         tokenizer = CLIPTokenizer.from_pretrained("ayushtues/blipdiffusion", subfolder="tokenizer")
 
@@ -145,8 +144,8 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
             in_channels=4,
             norm_num_groups=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"),
-            cross_attention_dim=32,
-            conditioning_embedding_out_channels=(2, 4, 16, 32),
+            cross_attention_dim=16,
+            conditioning_embedding_out_channels=(2, 4, 16, 16),
         )
 
         vae.eval()
@@ -169,9 +168,9 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
 
     def get_dummy_inputs(self, device, seed=0):
         np.random.seed(seed)
-        reference_image = np.random.rand(224, 224, 3) * 255
+        reference_image = np.random.rand(128, 128, 3) * 255
         reference_image = Image.fromarray(reference_image.astype("uint8")).convert("RGBA")
-        cond_image = np.random.rand(224, 224, 3) * 255
+        cond_image = np.random.rand(128, 128, 3) * 255
         cond_image = Image.fromarray(cond_image.astype("uint8")).convert("RGBA")
 
         if str(device).startswith("mps"):
@@ -185,8 +184,8 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
             "condtioning_image": cond_image,
             "source_subject_category": "dog",
             "target_subject_category": "dog",
-            "height": 512,
-            "width": 512,
+            "height": 128,
+            "width": 128,
             "guidance_scale": 7.5,
             "num_inference_steps": 2,
             "output_type": "np",
@@ -205,8 +204,8 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
         image = pipe(**self.get_dummy_inputs(device))[0]
         image_slice = image[0, -3:, -3:, 0]
 
-        assert image.shape == (1, 64, 64, 4)
-        expected_slice = np.array([0.5335, 0.4102, 0.3712, 0.4849, 0.5340, 0.5453, 0.5626, 0.5199, 0.5452])
+        assert image.shape == (1, 16, 16, 4)
+        expected_slice = np.array([0.3344,  0.4576, 0.5196, 0.4993, 0.1701, 0.4882, 0.3943,  0.2944, 0.3825])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
