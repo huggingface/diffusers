@@ -36,6 +36,7 @@ from .utils import (
     is_accelerate_version,
     is_omegaconf_available,
     is_transformers_available,
+    is_peft_available,
     logging,
     convert_old_state_dict_to_peft,
     convert_diffusers_state_dict_to_peft,
@@ -50,6 +51,9 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
     from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
+
+if is_peft_available():
+    from peft import LoraConfig
 
 logger = logging.get_logger(__name__)
 
@@ -1417,7 +1421,6 @@ class LoraLoaderMixin:
                 argument to `True` will raise an error.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
-
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
@@ -1436,55 +1439,33 @@ class LoraLoaderMixin:
                 logger.info(f"Loading {prefix}.")
                 rank = {}
 
+                # Old diffusers to PEFT
                 if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
-                    # Convert from the old naming convention to the new naming convention.
-                    #
-                    # Previously, the old LoRA layers were stored on the state dict at the
-                    # same level as the attention block i.e.
-                    # `text_model.encoder.layers.11.self_attn.to_out_lora.up.weight`.
-                    #
-                    # This is no actual module at that point, they were monkey patched on to the
-                    # existing module. We want to be able to load them via their actual state dict.
-                    # They're in `PatchedLoraProjection.lora_linear_layer` now.
-                    for name, _ in text_encoder_attn_modules(text_encoder):
-                        text_encoder_lora_state_dict[
-                            f"{name}.q_proj.lora_linear_layer.up.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.up.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.k_proj.lora_linear_layer.up.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.up.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.v_proj.lora_linear_layer.up.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.up.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.out_proj.lora_linear_layer.up.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.up.weight")
-
-                        text_encoder_lora_state_dict[
-                            f"{name}.q_proj.lora_linear_layer.down.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.down.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.k_proj.lora_linear_layer.down.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.down.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.v_proj.lora_linear_layer.down.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.down.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.out_proj.lora_linear_layer.down.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
+                    attention_modules = text_encoder_attn_modules(text_encoder)
+                    text_encoder_lora_state_dict = convert_old_state_dict_to_peft(
+                        attention_modules, text_encoder_lora_state_dict
+                    )
+                # New diffusers format to PEFT
+                elif any("lora_linear_layer" in k for k in text_encoder_lora_state_dict.keys()):
+                    attention_modules = text_encoder_attn_modules(text_encoder)
+                    text_encoder_lora_state_dict = convert_diffusers_state_dict_to_peft(
+                        attention_modules, text_encoder_lora_state_dict
+                    )
 
                 for name, _ in text_encoder_attn_modules(text_encoder):
-                    rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
+                    rank_key = f"{name}.out_proj.lora_B.weight"
                     rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
 
                 patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
                 if patch_mlp:
                     for name, _ in text_encoder_mlp_modules(text_encoder):
-                        rank_key_fc1 = f"{name}.fc1.lora_linear_layer.up.weight"
-                        rank_key_fc2 = f"{name}.fc2.lora_linear_layer.up.weight"
+                        rank_key_fc1 = f"{name}.fc1.lora_B.weight"
+                        rank_key_fc2 = f"{name}.fc2.lora_B.weight"
                         rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
                         rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
 
+                # for diffusers format you always get the same rank everywhere
+                # is it possible to load with PEFT
                 if network_alphas is not None:
                     alpha_keys = [
                         k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix
@@ -1493,36 +1474,19 @@ class LoraLoaderMixin:
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                cls._modify_text_encoder(
-                    text_encoder,
-                    lora_scale,
-                    network_alphas,
-                    rank=rank,
-                    patch_mlp=patch_mlp,
-                    low_cpu_mem_usage=low_cpu_mem_usage,
-                )
+                lora_rank = list(rank.values())[0]
+                alpha = lora_scale * lora_rank
 
-                # set correct dtype & device
-                text_encoder_lora_state_dict = {
-                    k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
-                    for k, v in text_encoder_lora_state_dict.items()
-                }
-                if low_cpu_mem_usage:
-                    device = next(iter(text_encoder_lora_state_dict.values())).device
-                    dtype = next(iter(text_encoder_lora_state_dict.values())).dtype
-                    unexpected_keys = load_model_dict_into_meta(
-                        text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype
-                    )
-                else:
-                    load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
-                    unexpected_keys = load_state_dict_results.unexpected_keys
+                target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
+                if patch_mlp:
+                    target_modules += ["fc1", "fc2"]
 
-                if len(unexpected_keys) != 0:
-                    raise ValueError(
-                        f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
-                    )
+                lora_config = LoraConfig(r=lora_rank, target_modules=target_modules, lora_alpha=alpha)
+
+                text_encoder.load_adapter(text_encoder_lora_state_dict, peft_config=lora_config)
 
                 text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+
 
     @property
     def lora_scale(self) -> float:
