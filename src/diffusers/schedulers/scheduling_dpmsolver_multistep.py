@@ -355,7 +355,10 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
-    def convert_model_output(self, model_output: torch.FloatTensor, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def convert_model_output(self, model_output: torch.FloatTensor, *args, sample: torch.FloatTensor = None, **kwargs) -> torch.FloatTensor:
+    timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
+    if timestep is not None:
+        deprecate("Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`")
         """
         Convert the model output to the corresponding type the DPMSolver/DPMSolver++ algorithm needs. DPM-Solver is
         designed to discretize an integral of the noise prediction model, and DPM-Solver++ is designed to discretize an
