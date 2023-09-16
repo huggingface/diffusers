@@ -270,9 +270,9 @@ class StableDiffusionXLImg2ImgPipeline(
             adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
             adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
 
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
+        prompt = [prompt] if isinstance(prompt, str) else prompt
+
+        if prompt is not None:
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
@@ -285,6 +285,8 @@ class StableDiffusionXLImg2ImgPipeline(
 
         if prompt_embeds is None:
             prompt_2 = prompt_2 or prompt
+            prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
+
             # textual inversion: procecss multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
