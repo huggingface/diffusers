@@ -63,6 +63,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
+            vocab_size=1000,
             hidden_size=16,
             intermediate_size=16,
             projection_dim=16,
@@ -96,7 +97,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
 
         blip_qformer_config = {
-            "vocab_size": 30522,
+            "vocab_size": 1000,
             "hidden_size": 16,
             "num_hidden_layers": 1,
             "num_attention_heads": 1,
@@ -106,7 +107,10 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "encoder_hidden_size": 16,
         }
         qformer_config = Blip2Config(
-            vision_config=blip_vision_config, qformer_config=blip_qformer_config, num_query_tokens=16
+            vision_config=blip_vision_config,
+            qformer_config=blip_qformer_config,
+            num_query_tokens=16,
+            tokenizer="hf-internal-testing/tiny-random-bert",
         )
         qformer = Blip2QFormerModel(qformer_config)
 
@@ -121,7 +125,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=16,
         )
-        tokenizer = CLIPTokenizer.from_pretrained("ayushtues/blipdiffusion", subfolder="tokenizer")
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         scheduler = PNDMScheduler(
             beta_start=0.00085,
@@ -150,7 +154,7 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_inputs(self, device, seed=0):
         np.random.seed(seed)
-        reference_image = np.random.rand(64, 64, 3) * 255
+        reference_image = np.random.rand(32, 32, 3) * 255
         reference_image = Image.fromarray(reference_image.astype("uint8")).convert("RGBA")
 
         if str(device).startswith("mps"):
@@ -163,8 +167,8 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "reference_image": reference_image,
             "source_subject_category": "dog",
             "target_subject_category": "dog",
-            "height": 64,
-            "width": 64,
+            "height": 32,
+            "width": 32,
             "guidance_scale": 7.5,
             "num_inference_steps": 2,
             "output_type": "np",
@@ -183,9 +187,9 @@ class BlipDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = pipe(**self.get_dummy_inputs(device))[0]
         image_slice = image[0, -3:, -3:, 0]
 
-        assert image.shape == (1, 8, 8, 4)
+        assert image.shape == (1, 16, 16, 4)
 
-        expected_slice = np.array([0.2808, 0.3089, 0.6179, 0.1152, 0.1667, 0.4566, 0.4847, 0.3899, 0.4509])
+        expected_slice = np.array([0.7096, 0.5900, 0.6703, 0.4032, 0.7766, 0.3629, 0.5447, 0.4149, 0.8172])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

@@ -71,6 +71,7 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
     def get_dummy_components(self):
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
+            vocab_size=1000,
             hidden_size=16,
             intermediate_size=16,
             projection_dim=16,
@@ -104,7 +105,7 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
         }
 
         blip_qformer_config = {
-            "vocab_size": 30522,
+            "vocab_size": 1000,
             "hidden_size": 16,
             "num_hidden_layers": 1,
             "num_attention_heads": 1,
@@ -114,22 +115,25 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
             "encoder_hidden_size": 16,
         }
         qformer_config = Blip2Config(
-            vision_config=blip_vision_config, qformer_config=blip_qformer_config, num_query_tokens=16
+            vision_config=blip_vision_config,
+            qformer_config=blip_qformer_config,
+            num_query_tokens=16,
+            tokenizer="hf-internal-testing/tiny-random-bert",
         )
         qformer = Blip2QFormerModel(qformer_config)
 
         unet = UNet2DConditionModel(
-            block_out_channels=(4, 8, 16, 16),
+            block_out_channels=(4, 16),
             layers_per_block=1,
             norm_num_groups=4,
             sample_size=16,
             in_channels=4,
             out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D"),
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=16,
         )
-        tokenizer = CLIPTokenizer.from_pretrained("ayushtues/blipdiffusion", subfolder="tokenizer")
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         scheduler = PNDMScheduler(
             beta_start=0.00085,
@@ -139,13 +143,13 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
             skip_prk_steps=True,
         )
         controlnet = ControlNetModel(
-            block_out_channels=(4, 8, 16, 16),
+            block_out_channels=(4, 16),
             layers_per_block=1,
             in_channels=4,
             norm_num_groups=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"),
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             cross_attention_dim=16,
-            conditioning_embedding_out_channels=(2, 4, 16, 16),
+            conditioning_embedding_out_channels=(8, 16),
         )
 
         vae.eval()
@@ -168,9 +172,9 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
 
     def get_dummy_inputs(self, device, seed=0):
         np.random.seed(seed)
-        reference_image = np.random.rand(128, 128, 3) * 255
+        reference_image = np.random.rand(32, 32, 3) * 255
         reference_image = Image.fromarray(reference_image.astype("uint8")).convert("RGBA")
-        cond_image = np.random.rand(128, 128, 3) * 255
+        cond_image = np.random.rand(32, 32, 3) * 255
         cond_image = Image.fromarray(cond_image.astype("uint8")).convert("RGBA")
 
         if str(device).startswith("mps"):
@@ -184,8 +188,8 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
             "condtioning_image": cond_image,
             "source_subject_category": "dog",
             "target_subject_category": "dog",
-            "height": 128,
-            "width": 128,
+            "height": 32,
+            "width": 32,
             "guidance_scale": 7.5,
             "num_inference_steps": 2,
             "output_type": "np",
@@ -205,7 +209,7 @@ class BlipDiffusionControlNetPipelineFastTests(PipelineTesterMixin, unittest.Tes
         image_slice = image[0, -3:, -3:, 0]
 
         assert image.shape == (1, 16, 16, 4)
-        expected_slice = np.array([0.3344, 0.4576, 0.5196, 0.4993, 0.1701, 0.4882, 0.3943, 0.2944, 0.3825])
+        expected_slice = np.array([0.7953, 0.7136, 0.6597, 0.4779, 0.7389, 0.4111, 0.5826, 0.4150, 0.8422])
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
