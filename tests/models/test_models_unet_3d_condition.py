@@ -22,14 +22,9 @@ import torch
 
 from diffusers.models import ModelMixin, UNet3DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, LoRAAttnProcessor
-from diffusers.utils import (
-    floats_tensor,
-    logging,
-    skip_mps,
-    torch_device,
-)
+from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, skip_mps, torch_device
 
 from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -252,7 +247,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
+            model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
@@ -316,11 +311,11 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
             new_model.to(torch_device)
-            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.bin")
+            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.safetensors")
 
     def test_lora_save_torch_force_load_safetensors_error(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -335,7 +330,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model.set_attn_processor(lora_attn_procs)
         # Saving as torch, properly reloads with directly filename
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname)
+            model.save_attn_procs(tmpdirname, safe_serialization=False)
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)

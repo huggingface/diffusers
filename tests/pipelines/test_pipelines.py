@@ -57,28 +57,29 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.pipeline_utils import variant_compatible_siblings
+from diffusers.pipelines.pipeline_utils import _get_pipeline_class, variant_compatible_siblings
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
-    floats_tensor,
-    is_compiled_module,
-    nightly,
-    require_torch_2,
-    slow,
-    torch_device,
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    floats_tensor,
     get_tests_dir,
     load_numpy,
+    nightly,
     require_compel,
     require_flax,
+    require_onnxruntime,
+    require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    slow,
+    torch_device,
 )
+from diffusers.utils.torch_utils import is_compiled_module
 
 
 enable_full_determinism()
@@ -121,7 +122,7 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
     except Exception:
         error = f"{traceback.format_exc()}"
 
@@ -327,28 +328,30 @@ class DownloadTests(unittest.TestCase):
     def test_download_no_onnx_by_default(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmpdirname = DiffusionPipeline.download(
-                "hf-internal-testing/tiny-random-OnnxStableDiffusionPipeline",
+                "hf-internal-testing/tiny-stable-diffusion-xl-pipe",
                 cache_dir=tmpdirname,
+                use_safetensors=False,
             )
 
             all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
-            # make sure that by default no onnx weights are downloaded
+            # make sure that by default no onnx weights are downloaded for non-ONNX pipelines
             assert all((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
             assert not any((f.endswith(".onnx") or f.endswith(".pb")) for f in files)
 
+    @require_onnxruntime
+    def test_download_onnx_by_default_for_onnx_pipelines(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             tmpdirname = DiffusionPipeline.download(
                 "hf-internal-testing/tiny-random-OnnxStableDiffusionPipeline",
                 cache_dir=tmpdirname,
-                use_onnx=True,
             )
 
             all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname))]
             files = [item for sublist in all_root_files for item in sublist]
 
-            # if `use_onnx` is specified make sure weights are downloaded
+            # make sure that by default onnx weights are downloaded for ONNX pipelines
             assert any((f.endswith(".json") or f.endswith(".bin") or f.endswith(".txt")) for f in files)
             assert any((f.endswith(".onnx")) for f in files)
             assert any((f.endswith(".pb")) for f in files)
@@ -802,6 +805,14 @@ class DownloadTests(unittest.TestCase):
             assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
             assert len(files) == 14
 
+    def test_get_pipeline_class_from_flax(self):
+        flax_config = {"_class_name": "FlaxStableDiffusionPipeline"}
+        config = {"_class_name": "StableDiffusionPipeline"}
+
+        # when loading a PyTorch Pipeline from a FlaxPipeline `model_index.json`, e.g.: https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-lms-pipe/blob/7a9063578b325779f0f1967874a6771caa973cad/model_index.json#L2
+        # we need to make sure that we don't load the Flax Pipeline class, but instead the PyTorch pipeline class
+        assert _get_pipeline_class(DiffusionPipeline, flax_config) == _get_pipeline_class(DiffusionPipeline, config)
+
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
@@ -884,7 +895,7 @@ class CustomPipelineTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
-            pipe.save_pretrained(tmpdirname)
+            pipe.save_pretrained(tmpdirname, safe_serialization=False)
 
             pipe_new = CustomPipeline.from_pretrained(tmpdirname)
             pipe_new.save_pretrained(tmpdirname)
@@ -1540,7 +1551,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     @require_torch_2
     def test_from_save_pretrained_dynamo(self):
@@ -1565,7 +1576,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     def test_from_pretrained_hub_pass_model(self):
         model_path = "google/ddpm-cifar10-32"
@@ -1588,7 +1599,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"
