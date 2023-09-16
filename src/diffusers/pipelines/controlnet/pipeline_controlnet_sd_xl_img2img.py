@@ -387,7 +387,11 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
         elif do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
-            negative_prompt_2 = negative_prompt_2 or negative_prompt
+            negative_prompt_2 = negative_prompt_2 or ""
+
+            # normalize str to list
+            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+            negative_prompt_2 = batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
 
             uncond_tokens: List[str]
             if prompt is not None and type(prompt) is not type(negative_prompt):
@@ -395,8 +399,6 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
                 )
-            elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt, negative_prompt_2]
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
