@@ -351,7 +351,7 @@ class StableDiffusionXLAdapterPipeline(
             negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
         elif do_classifier_free_guidance and negative_prompt_embeds is None:
             negative_prompt = negative_prompt or ""
-            negative_prompt_2 = negative_prompt_2 or ""
+            negative_prompt_2 = negative_prompt_2 or negative_prompt
 
             # normalize str to list
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
