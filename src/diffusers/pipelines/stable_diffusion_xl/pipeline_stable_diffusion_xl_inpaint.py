@@ -485,7 +485,9 @@ class StableDiffusionXLInpaintPipeline(
 
             # normalize str to list
             negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
-            negative_prompt_2 = batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
+            negative_prompt_2 = (
+                batch_size * [negative_prompt_2] if isinstance(negative_prompt_2, str) else negative_prompt_2
+            )
 
             uncond_tokens: List[str]
             if prompt is not None and type(prompt) is not type(negative_prompt):
