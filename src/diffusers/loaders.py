@@ -634,12 +634,12 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
     subfolder = kwargs.pop("subfolder", None)
     weight_name = kwargs.pop("weight_name", None)
     use_safetensors = kwargs.pop("use_safetensors", None)
-    
+
     allow_pickle = False
     if use_safetensors is None:
         use_safetensors = True
         allow_pickle = True
-    
+
     user_agent = {
         "file_type": "text_inversion",
         "framework": "pytorch",
@@ -649,7 +649,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
         if not isinstance(pretrained_model_name_or_path, (dict, torch.Tensor)):
             # 3.1. Load textual inversion file
             model_file = None
-    
+
             # Let's first try to load .safetensors weights
             if (use_safetensors and weight_name is None) or (
                 weight_name is not None and weight_name.endswith(".safetensors")
@@ -672,7 +672,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                 except Exception as e:
                     if not allow_pickle:
                         raise e
-    
+
                     model_file = None
 
             if model_file is None:
@@ -692,10 +692,11 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                 state_dict = torch.load(model_file, map_location="cpu")
         else:
             state_dict = pretrained_model_name_or_path
-    
+
         state_dicts.append(state_dict)
-    
+
     return state_dicts
+
 
 class TextualInversionLoaderMixin:
     r"""
@@ -771,7 +772,6 @@ class TextualInversionLoaderMixin:
                 f"{self.__class__.__name__} requires `self.text_encoder` or passing a `text_encoder` of type `PreTrainedModel` for calling"
                 f" `{self.load_textual_inversion.__name__}`"
             )
-
 
         if len(pretrained_model_name_or_paths) != len(tokens):
             raise ValueError(
@@ -961,7 +961,11 @@ class TextualInversionLoaderMixin:
         text_encoder = text_encoder or getattr(self, "text_encoder", None)
 
         # 2. Normalize inputs
-        pretrained_model_name_or_paths = [pretrained_model_name_or_path] if not isinstance(pretrained_model_name_or_path, list) else pretrained_model_name_or_path
+        pretrained_model_name_or_paths = (
+            [pretrained_model_name_or_path]
+            if not isinstance(pretrained_model_name_or_path, list)
+            else pretrained_model_name_or_path
+        )
         tokens = len(pretrained_model_name_or_paths) * [token] if (isinstance(token, str) or token is None) else token
 
         # 3. Check inputs
@@ -976,11 +980,9 @@ class TextualInversionLoaderMixin:
         # 5. Extend tokens and embeddings for multi vector
         tokens, embeddings = self._extend_tokens_and_embeddings(tokens, embeddings, tokenizer)
 
-        # 6. Increase token embedding matrix
-        text_encoder.resize_token_embeddings(len(tokenizer) + len(tokens))
-        input_embeddings = text_encoder.get_input_embeddings().weight
-
-        if any(input_embeddings.shape[-1] != emb.shape[-1] for emb in embeddings):
+        # 6. Make sure all embeddings have the correct size
+        expected_emb_dim = text_encoder.get_input_embeddings().weight.shape[-1]
+        if any(expected_emb_dim != emb.shape[-1] for emb in embeddings):
             raise ValueError(
                 "Loaded embeddings are of incorrect shape. Expected each textual inversion embedding "
                 "to be of shape {input_embeddings.shape[-1]}, but are {embeddings.shape[-1]} "
@@ -988,6 +990,7 @@ class TextualInversionLoaderMixin:
 
         # 7. Now we can be sure that loading the embedding matrix works
         # < Unsafe code:
+
         # 7.1 Offload all hooks in case the pipeline was cpu offloaded before make sure, we offload and onload again
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
@@ -1001,9 +1004,15 @@ class TextualInversionLoaderMixin:
                     )
                     remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-        # 7.2 Load token and embedding
-        device = text_encoder.device if text_encoder.device.type != "meta" else "cpu"
+        # 7.2 save expected device and dtype
+        device = text_encoder.device
         dtype = text_encoder.dtype
+
+        # 7.3 Increase token embedding matrix
+        text_encoder.resize_token_embeddings(len(tokenizer) + len(tokens))
+        input_embeddings = text_encoder.get_input_embeddings().weight
+
+        # 7.4 Load token and embedding
         for token, embedding in zip(tokens, embeddings):
             # add tokens and get ids
             tokenizer.add_tokens(token)
@@ -1013,12 +1022,14 @@ class TextualInversionLoaderMixin:
 
         input_embeddings.to(dtype=dtype, device=device)
 
-        # 7.3 Offload the model again
+        # 7.5 Offload the model again
         if is_model_cpu_offload:
             self.enable_model_cpu_offload()
         elif is_sequential_cpu_offload:
             self.enable_sequential_cpu_offload()
+
         # / Unsafe Code >
+
 
 class LoraLoaderMixin:
     r"""
