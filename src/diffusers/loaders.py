@@ -1002,13 +1002,16 @@ class TextualInversionLoaderMixin:
                     remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
         # 7.2 Load token and embedding
+        device = text_encoder.device if text_encoder.device.type != "meta" else "cpu"
+        dtype = text_encoder.dtype
         for token, embedding in zip(tokens, embeddings):
             # add tokens and get ids
             tokenizer.add_tokens(token)
             token_id = tokenizer.convert_tokens_to_ids(token)
-            embedding = embedding.to(dtype=text_encoder.dtype, device=text_encoder.device)
             input_embeddings.data[token_id] = embedding
             logger.info(f"Loaded textual inversion embedding for {token}.")
+
+        input_embeddings.to(dtype=dtype, device=device)
 
         # 7.3 Offload the model again
         if is_model_cpu_offload:
