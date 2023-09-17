@@ -645,7 +645,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
         "framework": "pytorch",
     }
     state_dicts = []
-    for pretrained_model_name_or_path in zip(pretrained_model_name_or_paths):
+    for pretrained_model_name_or_path in pretrained_model_name_or_paths:
         if not isinstance(pretrained_model_name_or_path, (dict, torch.Tensor)):
             # 3.1. Load textual inversion file
             model_file = None
@@ -674,7 +674,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                         raise e
     
                     model_file = None
-    
+
             if model_file is None:
                 model_file = _get_model_file(
                     pretrained_model_name_or_path,
@@ -785,8 +785,8 @@ class TextualInversionLoaderMixin:
 
     @staticmethod
     def _retrieve_tokens_and_embeddings(tokens, state_dicts, tokenizer):
-        tokens = []
-        embeddings = []
+        all_tokens = []
+        all_embeddings = []
         for state_dict, token in zip(state_dicts, tokens):
             if isinstance(state_dict, torch.Tensor):
                 if token is None:
@@ -819,15 +819,15 @@ class TextualInversionLoaderMixin:
                     f"Token {token} already in tokenizer vocabulary. Please choose a different token name or remove {token} and embedding from the tokenizer and text encoder."
                 )
 
-            tokens.append(token)
-            embeddings.append(embedding)
+            all_tokens.append(token)
+            all_embeddings.append(embedding)
 
-        return tokens, embeddings
+        return all_tokens, all_embeddings
 
     @staticmethod
     def _extend_tokens_and_embeddings(tokens, embeddings, tokenizer):
-        tokens = []
-        embeddings = []
+        all_tokens = []
+        all_embeddings = []
 
         for embedding, token in zip(embeddings, tokens):
             if f"{token}_1" in tokenizer.get_vocab():
@@ -843,16 +843,13 @@ class TextualInversionLoaderMixin:
 
             is_multi_vector = len(embedding.shape) > 1 and embedding.shape[0] > 1
             if is_multi_vector:
-                tokens = [token] + [f"{token}_{i}" for i in range(1, embedding.shape[0])]
-                embeddings = [e for e in embedding]  # noqa: C416
+                all_tokens += [token] + [f"{token}_{i}" for i in range(1, embedding.shape[0])]
+                all_embeddings += [e for e in embedding]  # noqa: C416
             else:
-                tokens = [token]
-                embeddings = [embedding[0]] if len(embedding.shape) > 1 else [embedding]
+                all_tokens += [token]
+                all_embeddings += [embedding[0]] if len(embedding.shape) > 1 else [embedding]
 
-            tokens += tokens
-            embeddings += embeddings
-
-        return tokens, embeddings
+        return all_tokens, all_embeddings
 
     def load_textual_inversion(
         self,
