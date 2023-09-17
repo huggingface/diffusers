@@ -21,6 +21,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import deprecate
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
@@ -344,6 +345,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         t = t.reshape(sigma.shape)
         return t
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
     def _sigma_to_alpha_sigma_t(self, sigma):
         alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
         sigma_t = sigma * alpha_t
@@ -365,7 +367,13 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         return sigmas
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.convert_model_output
-    def convert_model_output(self, model_output: torch.FloatTensor, sample: torch.FloatTensor) -> torch.FloatTensor:
+    def convert_model_output(
+        self,
+        model_output: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
+        **kwargs,
+    ) -> torch.FloatTensor:
         """
         Convert the model output to the corresponding type the DPMSolver/DPMSolver++ algorithm needs. DPM-Solver is
         designed to discretize an integral of the noise prediction model, and DPM-Solver++ is designed to discretize an
@@ -388,6 +396,18 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 The converted model output.
         """
+        timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
+        if sample is None:
+            if len(args) > 1:
+                sample = args[1]
+            else:
+                raise ValueError("missing `sample` as a required keyward argument")
+        if timestep is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
 
         # DPM-Solver++ needs to solve an integral of the data prediction model.
         if self.config.algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
@@ -450,8 +470,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
     def dpm_solver_first_order_update(
         self,
         model_output: torch.FloatTensor,
-        sample: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
         noise: Optional[torch.FloatTensor] = None,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
         One step for the first-order DPMSolver (equivalent to DDIM).
@@ -459,10 +481,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.FloatTensor`):
                 The direct output from the learned diffusion model.
-            timestep (`int`):
-                The current discrete timestep in the diffusion chain.
-            prev_timestep (`int`):
-                The previous discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
 
@@ -470,6 +488,26 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 The sample tensor at the previous timestep.
         """
+        timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
+        prev_timestep = args[1] if len(args) > 1 else kwargs.pop("prev_timestep", None)
+        if sample is None:
+            if len(args) > 2:
+                sample = args[2]
+            else:
+                raise ValueError(" missing `sample` as a required keyward argument")
+        if timestep is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        if prev_timestep is not None:
+            deprecate(
+                "prev_timestep",
+                "1.0.0",
+                "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
 
         sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
@@ -502,8 +540,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
     def multistep_dpm_solver_second_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
-        sample: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
         noise: Optional[torch.FloatTensor] = None,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
         One step for the second-order multistep DPMSolver.
@@ -511,10 +551,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output_list (`List[torch.FloatTensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
-            timestep (`int`):
-                The current and latter discrete timestep in the diffusion chain.
-            prev_timestep (`int`):
-                The previous discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
 
@@ -522,6 +558,26 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 The sample tensor at the previous timestep.
         """
+        timestep_list = args[0] if len(args) > 0 else kwargs.pop("timestep_list", None)
+        prev_timestep = args[1] if len(args) > 1 else kwargs.pop("prev_timestep", None)
+        if sample is None:
+            if len(args) > 2:
+                sample = args[2]
+            else:
+                raise ValueError(" missing `sample` as a required keyward argument")
+        if timestep_list is not None:
+            deprecate(
+                "timestep_list",
+                "1.0.0",
+                "Passing `timestep_list` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        if prev_timestep is not None:
+            deprecate(
+                "prev_timestep",
+                "1.0.0",
+                "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
 
         sigma_t, sigma_s0, sigma_s1 = (
             self.sigmas[self.step_index + 1],
@@ -608,7 +664,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
     def multistep_dpm_solver_third_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
-        sample: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
         One step for the third-order multistep DPMSolver.
@@ -616,10 +674,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output_list (`List[torch.FloatTensor]`):
                 The direct outputs from learned diffusion model at current and latter timesteps.
-            timestep (`int`):
-                The current and latter discrete timestep in the diffusion chain.
-            prev_timestep (`int`):
-                The previous discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by diffusion process.
 
@@ -627,6 +681,27 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 The sample tensor at the previous timestep.
         """
+
+        timestep_list = args[0] if len(args) > 0 else kwargs.pop("timestep_list", None)
+        prev_timestep = args[1] if len(args) > 1 else kwargs.pop("prev_timestep", None)
+        if sample is None:
+            if len(args) > 2:
+                sample = args[2]
+            else:
+                raise ValueError(" missing`sample` as a required keyward argument")
+        if timestep_list is not None:
+            deprecate(
+                "timestep_list",
+                "1.0.0",
+                "Passing `timestep_list` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        if prev_timestep is not None:
+            deprecate(
+                "prev_timestep",
+                "1.0.0",
+                "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
 
         sigma_t, sigma_s0, sigma_s1, sigma_s2 = (
             self.sigmas[self.step_index + 1],
@@ -737,7 +812,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
         )
 
-        model_output = self.convert_model_output(model_output, sample)
+        model_output = self.convert_model_output(model_output, sample=sample)
         for i in range(self.config.solver_order - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
@@ -750,11 +825,11 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             noise = None
 
         if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
-            prev_sample = self.dpm_solver_first_order_update(model_output, sample, noise=noise)
+            prev_sample = self.dpm_solver_first_order_update(model_output, sample=sample, noise=noise)
         elif self.config.solver_order == 2 or self.lower_order_nums < 2 or lower_order_second:
-            prev_sample = self.multistep_dpm_solver_second_order_update(self.model_outputs, sample, noise=noise)
+            prev_sample = self.multistep_dpm_solver_second_order_update(self.model_outputs, sample=sample, noise=noise)
         else:
-            prev_sample = self.multistep_dpm_solver_third_order_update(self.model_outputs, sample)
+            prev_sample = self.multistep_dpm_solver_third_order_update(self.model_outputs, sample=sample)
 
         if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
