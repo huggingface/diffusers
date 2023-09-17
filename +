@@ -759,7 +759,7 @@ class TextualInversionLoaderMixin:
 
         return prompt
 
-    def _check_text_inv_inputs(self, tokenizer, text_encoder, pretrained_model_name_or_paths, tokens):
+    def check_inputs(self, tokenizer, text_encoder, pretrained_model_name_or_paths, tokens, state_dicts):
         if tokenizer is None:
             raise ValueError(
                 f"{self.__class__.__name__} requires `self.tokenizer` or passing a `tokenizer` of type `PreTrainedTokenizer` for calling"
@@ -775,7 +775,7 @@ class TextualInversionLoaderMixin:
 
         if len(pretrained_model_name_or_paths) != len(tokens):
             raise ValueError(
-                f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)} "
+                f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)}"
                 f"Make sure both lists have the same length."
             )
 
@@ -964,14 +964,14 @@ class TextualInversionLoaderMixin:
         text_encoder = text_encoder or getattr(self, "text_encoder", None)
 
         # 2. Normalize inputs
-        pretrained_model_name_or_paths = [pretrained_model_name_or_path] if not isinstance(pretrained_model_name_or_path, list) else pretrained_model_name_or_path
-        tokens = len(pretrained_model_name_or_paths) * [token] if (isinstance(token, str) or token is None) else token
+        pretrained_model_name_or_paths = [pretrained_model_name_or_path] if not isinstance(pretrained_model_name_or_path, list) eles pretrained_model_name_or_path
+        tokens = len(pretrained_model_name_or_path) * [token] if isinstance(token, (str, None)) else token
 
         # 3. Check inputs
-        self._check_text_inv_inputs(tokenizer, text_encoder, pretrained_model_name_or_paths, tokens)
+        self.check_inputs(tokenizer, text_encoder, pretrained_model_name_or_paths, tokens)
 
         # 4. Load state dicts of textual embeddings
-        state_dicts = load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
+        state_dicts = load_textual_inversion_state_dicts(pretrained_model_name_or_paths, kwargs)
 
         # 4. Retrieve tokens and embeddings
         tokens, embeddings = self._retrieve_tokens_and_embeddings(tokens, state_dicts, tokenizer)
@@ -990,6 +990,7 @@ class TextualInversionLoaderMixin:
             )
 
         # 7. Now we can be sure that loading the embedding matrix works
+
         # < Unsafe code:
         # 7.1 Offload all hooks in case the pipeline was cpu offloaded before make sure, we offload and onload again
         is_model_cpu_offload = False
@@ -1018,7 +1019,7 @@ class TextualInversionLoaderMixin:
             self.enable_model_cpu_offload()
         elif is_sequential_cpu_offload:
             self.enable_sequential_cpu_offload()
-        # / Unsafe Code >
+        # / >
 
 class LoraLoaderMixin:
     r"""
