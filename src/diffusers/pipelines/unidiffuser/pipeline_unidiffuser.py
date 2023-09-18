@@ -18,7 +18,7 @@ from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging
+from ...utils import deprecate, logging
 from ...utils.outputs import BaseOutput
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -1381,7 +1381,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         elif mode in ["img2text", "text"]:
             text_latents = latents
             text = self.decode_text_latents(text_latents, device)
-        
+
         self.maybe_free_model_hooks()
 
         # 10. Postprocess the image, if necessary
