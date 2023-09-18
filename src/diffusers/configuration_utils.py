@@ -26,7 +26,7 @@ from pathlib import PosixPath
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
-from huggingface_hub import hf_hub_download
+from huggingface_hub import create_repo, hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
@@ -144,6 +144,12 @@ class ConfigMixin:
         Args:
             save_directory (`str` or `os.PathLike`):
                 Directory where the configuration JSON file is saved (will be created if it does not exist).
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -155,6 +161,22 @@ class ConfigMixin:
 
         self.to_json_file(output_config_file)
         logger.info(f"Configuration saved in {output_config_file}")
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", False)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+
+            self._upload_folder(
+                save_directory,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
+            )
 
     @classmethod
     def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
@@ -423,6 +445,10 @@ class ConfigMixin:
 
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
+        # Skip keys that were not present in the original config, so default __init__ values were used
+        used_defaults = config_dict.get("_use_default_values", [])
+        config_dict = {k: v for k, v in config_dict.items() if k not in used_defaults and k != "_use_default_values"}
+
         # 0. Copy origin config dict
         original_dict = dict(config_dict.items())
 
@@ -544,8 +570,9 @@ class ConfigMixin:
             return value
 
         config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
-        # Don't save "_ignore_files"
+        # Don't save "_ignore_files" or "_use_default_values"
         config_dict.pop("_ignore_files", None)
+        config_dict.pop("_use_default_values", None)
 
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
@@ -599,6 +626,11 @@ def register_to_config(init):
                 if k not in ignore and k not in new_kwargs
             }
         )
+
+        # Take note of the parameters that were not present in the loaded config
+        if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
+            new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - set(init_kwargs))
+
         new_kwargs = {**config_init_kwargs, **new_kwargs}
         getattr(self, "register_to_config")(**new_kwargs)
         init(self, *args, **init_kwargs)
@@ -642,6 +674,10 @@ def flax_register_to_config(cls):
         for i, arg in enumerate(args):
             name = fields[i].name
             new_kwargs[name] = arg
+
+        # Take note of the parameters that were not present in the loaded config
+        if len(set(new_kwargs.keys()) - set(init_kwargs)) > 0:
+            new_kwargs["_use_default_values"] = list(set(new_kwargs.keys()) - set(init_kwargs))
 
         getattr(self, "register_to_config")(**new_kwargs)
         original_init(self, *args, **kwargs)

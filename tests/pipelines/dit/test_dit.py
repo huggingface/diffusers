@@ -20,8 +20,8 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import is_xformers_available, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import (
     CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
@@ -43,7 +43,6 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "callback_steps",
     }
     batch_params = CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS
-    test_cpu_offload = False
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -107,8 +106,8 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
 
+@nightly
 @require_torch_gpu
-@slow
 class DiTPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()

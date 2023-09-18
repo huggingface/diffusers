@@ -61,7 +61,9 @@ jobs:
 
     - name: Install dependencies
       run: |
+        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m pip install -e .[quality,test]
+        python -m pip install git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |

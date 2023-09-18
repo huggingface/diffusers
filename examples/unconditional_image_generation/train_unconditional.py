@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import shutil
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +12,7 @@ import accelerate
 import datasets
 import torch
 import torch.nn.functional as F
-from accelerate import Accelerator
+from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
@@ -29,7 +30,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -286,11 +287,13 @@ def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
+    kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))  # a big number for high resolution or big dataset
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.logger,
         project_config=accelerator_project_config,
+        kwargs_handlers=[kwargs],
     )
 
     if args.logger == "tensorboard":
@@ -306,14 +309,15 @@ def main(args):
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
-            if args.use_ema:
-                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
+            if accelerator.is_main_process:
+                if args.use_ema:
+                    ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
-            for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "unet"))
+                for i, model in enumerate(models):
+                    model.save_pretrained(os.path.join(output_dir, "unet"))
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                    # make sure to pop weight so that corresponding model is not saved again
+                    weights.pop()
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
@@ -557,7 +561,9 @@ def main(args):
 
             clean_images = batch["input"]
             # Sample noise that we'll add to the images
-            noise = torch.randn(clean_images.shape).to(clean_images.device)
+            noise = torch.randn(
+                clean_images.shape, dtype=(torch.float32 if args.mixed_precision == "no" else torch.float16)
+            ).to(clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(

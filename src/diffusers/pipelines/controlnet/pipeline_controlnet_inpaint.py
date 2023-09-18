@@ -15,7 +15,6 @@
 # This model implementation is heavily inspired by https://github.com/haofanwang/ControlNet-for-Diffusers/
 
 import inspect
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -24,18 +23,17 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
-    is_compiled_module,
+    deprecate,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -133,7 +131,12 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image=False
         tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
             dimensions: ``batch x channels x height x width``.
     """
-
+    deprecation_message = "The prepare_mask_and_masked_image method is deprecated and will be removed in a future version. Please use VaeImageProcessor.preprocess instead"
+    deprecate(
+        "prepare_mask_and_masked_image",
+        "0.30.0",
+        deprecation_message,
+    )
     if image is None:
         raise ValueError("`image` input cannot be undefined.")
 
@@ -222,52 +225,55 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image=False
     return mask, masked_image
 
 
-class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class StableDiffusionControlNetInpaintPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
+    Pipeline for image inpainting using Stable Diffusion with ControlNet guidance.
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
-    In addition the pipeline inherits the following loading methods:
-        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
 
     <Tip>
 
-    This pipeline can be used both with checkpoints that have been specifically fine-tuned for inpainting, such as
-    [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting)
-     as well as default text-to-image stable diffusion checkpoints, such as
-     [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5).
-    Default text-to-image stable diffusion checkpoints might be preferable for controlnets that have been fine-tuned on
-    those, such as [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
+    This pipeline can be used with checkpoints that have been specifically fine-tuned for inpainting
+    ([runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting)) as well as
+    default text-to-image Stable Diffusion checkpoints
+    ([runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)). Default text-to-image
+    Stable Diffusion checkpoints might be preferable for ControlNets that have been fine-tuned on those, such as
+    [lllyasviel/control_v11p_sd15_inpaint](https://huggingface.co/lllyasviel/control_v11p_sd15_inpaint).
 
     </Tip>
 
     Args:
         vae ([`AutoencoderKL`]):
-            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+            Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
+        text_encoder ([`~transformers.CLIPTextModel`]):
+            Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
+        tokenizer ([`~transformers.CLIPTokenizer`]):
+            A `CLIPTokenizer` to tokenize text.
+        unet ([`UNet2DConditionModel`]):
+            A `UNet2DConditionModel` to denoise the encoded image latents.
         controlnet ([`ControlNetModel`] or `List[ControlNetModel]`):
-            Provides additional conditioning to the unet during the denoising process. If you set multiple ControlNets
-            as a list, the outputs from each ControlNet are added together to create one combined additional
-            conditioning.
+            Provides additional conditioning to the `unet` during the denoising process. If you set multiple
+            ControlNets as a list, the outputs from each ControlNet are added together to create one combined
+            additional conditioning.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPImageProcessor`]):
-            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            about a model's potential harms.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
@@ -314,6 +320,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        )
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
@@ -322,17 +331,15 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_slicing()
@@ -340,91 +347,53 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
-        Enable tiled VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
-        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
         """
         self.vae.enable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_tiling()
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae, controlnet, and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.controlnet]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            # the safety checker can offload the vae again
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # control net hook has be manually offloaded as it alternates with unet
-        cpu_offload_with_hook(self.controlnet, device)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
+    ):
+        deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
+        deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
+
+        prompt_embeds_tuple = self.encode_prompt(
+            prompt=prompt,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=lora_scale,
+        )
+
+        # concatenate for backwards comp
+        prompt_embeds = torch.cat([prompt_embeds_tuple[1], prompt_embeds_tuple[0]])
+
+        return prompt_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
+    def encode_prompt(
         self,
         prompt,
         device,
@@ -439,7 +408,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         Encodes the prompt into text encoder hidden states.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
@@ -465,6 +434,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -510,7 +482,14 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             )
             prompt_embeds = prompt_embeds[0]
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        if self.text_encoder is not None:
+            prompt_embeds_dtype = self.text_encoder.dtype
+        elif self.unet is not None:
+            prompt_embeds_dtype = self.unet.dtype
+        else:
+            prompt_embeds_dtype = prompt_embeds.dtype
+
+        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -566,17 +545,12 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-
-        return prompt_embeds
+        return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
@@ -595,11 +569,9 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
-            FutureWarning,
-        )
+        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
+        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
+
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
@@ -645,10 +617,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
-        controlnet_conditioning_scale=1.0,
+        controlnet_conditioning_scale: Union[float, List[float]]=1.0,
         controlnet_guidance=None,
     ):
-        if height % 8 != 0 or width % 8 != 0:
+        if height is not None and height % 8 != 0 or width is not None and width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
@@ -869,7 +841,12 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
         if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
-            image_latents = self._encode_vae_image(image=image, generator=generator)
+
+            if image.shape[1] == 4:
+                image_latents = image
+            else:
+                image_latents = self._encode_vae_image(image=image, generator=generator)
+            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
 
         if latents is None:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -891,31 +868,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
 
         return outputs
 
-    def _default_height_width(self, height, width, image):
-        # NOTE: It is possible that a list of images have different
-        # dimensions for each image, so just checking the first image
-        # is not _exactly_ correct, but it is simple.
-        while isinstance(image, list):
-            image = image[0]
-
-        if height is None:
-            if isinstance(image, PIL.Image.Image):
-                height = image.height
-            elif isinstance(image, torch.Tensor):
-                height = image.shape[2]
-
-            height = (height // 8) * 8  # round down to nearest multiple of 8
-
-        if width is None:
-            if isinstance(image, PIL.Image.Image):
-                width = image.width
-            elif isinstance(image, torch.Tensor):
-                width = image.shape[3]
-
-            width = (width // 8) * 8  # round down to nearest multiple of 8
-
-        return height, width
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
@@ -929,7 +881,11 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         mask = mask.to(device=device, dtype=dtype)
 
         masked_image = masked_image.to(device=device, dtype=dtype)
-        masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
+
+        if masked_image.shape[1] == 4:
+            masked_image_latents = masked_image
+        else:
+            masked_image_latents = self._encode_vae_image(masked_image, generator=generator)
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         if mask.shape[0] < batch_size:
@@ -977,13 +933,14 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, List[str], None] = None,
         image: Union[torch.Tensor, PIL.Image.Image] = None,
         mask_image: Union[torch.Tensor, PIL.Image.Image] = None,
         control_image: Union[
             List[torch.FloatTensor],
             List[PIL.Image.Image],
             List[np.ndarray],
+            None
         ] = None,
         controlnet_image_transformers: Optional[List[Callable]] = None,
         height: Optional[int] = None,

@@ -14,6 +14,7 @@ RUN apt update && \
                    libsndfile1-dev \
                    python3.8 \
                    python3-pip \
+                   libgl1 \
                    python3.8-venv && \
     rm -rf /var/lib/apt/lists
 
@@ -27,6 +28,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         torch \
         torchvision \
         torchaudio \
+        invisible_watermark \
         --extra-index-url https://download.pytorch.org/whl/cpu && \
     python3 -m pip install --no-cache-dir \
         accelerate \

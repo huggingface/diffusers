@@ -1,6 +1,6 @@
 <p align="center">
     <br>
-    <img src="https://github.com/huggingface/diffusers/blob/main/docs/source/en/imgs/diffusers_library.jpg" width="400"/>
+    <img src="https://raw.githubusercontent.com/huggingface/diffusers/main/docs/source/en/imgs/diffusers_library.jpg" width="400"/>
     <br>
 <p>
 <p align="center">
@@ -9,6 +9,9 @@
     </a>
     <a href="https://github.com/huggingface/diffusers/releases">
         <img alt="GitHub release" src="https://img.shields.io/github/release/huggingface/diffusers.svg">
+    </a>
+    <a href="https://pepy.tech/project/diffusers">
+        <img alt="GitHub release" src="https://static.pepy.tech/badge/diffusers/month">
     </a>
     <a href="CODE_OF_CONDUCT.md">
         <img alt="Contributor Covenant" src="https://img.shields.io/badge/Contributor%20Covenant-2.0-4baaaa.svg">
@@ -143,8 +146,13 @@ just hang out ☕.
   </tr>
   <tr>
     <td>Text-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">if</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/if">DeepFloyd IF</a></td>
       <td><a href="https://huggingface.co/DeepFloyd/IF-I-XL-v1.0"> DeepFloyd/IF-I-XL-v1.0 </a></td>
+  </tr>
+  <tr>
+    <td>Text-to-Image</td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/kandinsky">Kandinsky</a></td>
+      <td><a href="https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder"> kandinsky-community/kandinsky-2-2-decoder </a></td>
   </tr>
   <tr style="border-top: 2px solid black">
     <td>Text-guided Image-to-Image</td>
@@ -153,7 +161,7 @@ just hang out ☕.
   </tr>
   <tr>
     <td>Text-guided Image-to-Image</td>
-    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/pix2pix">Instruct Pix2Pix</a></td>
+    <td><a href="https://huggingface.co/docs/diffusers/api/pipelines/pix2pix">Instruct Pix2Pix</a></td>
       <td><a href="https://huggingface.co/timbrooks/instruct-pix2pix"> timbrooks/instruct-pix2pix </a></td>
   </tr>
   <tr>

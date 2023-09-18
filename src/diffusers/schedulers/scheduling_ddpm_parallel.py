@@ -22,7 +22,8 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, randn_tensor
+from ..utils import BaseOutput
+from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 
 
@@ -30,14 +31,14 @@ from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput
 class DDPMParallelSchedulerOutput(BaseOutput):
     """
-    Output class for the scheduler's step function output.
+    Output class for the scheduler's `step` function output.
 
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
+            The predicted denoised sample `(x_{0})` based on the model output from the current timestep.
             `pred_original_sample` can be used to preview progress or for guidance.
     """
 
@@ -46,7 +47,11 @@ class DDPMParallelSchedulerOutput(BaseOutput):
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+def betas_for_alpha_bar(
+    num_diffusion_timesteps,
+    max_beta=0.999,
+    alpha_transform_type="cosine",
+):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -59,19 +64,30 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
         num_diffusion_timesteps (`int`): the number of betas to produce.
         max_beta (`float`): the maximum beta to use; use values lower than 1 to
                      prevent singularities.
+        alpha_transform_type (`str`, *optional*, default to `cosine`): the type of noise schedule for alpha_bar.
+                     Choose from `cosine` or `exp`
 
     Returns:
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
+    if alpha_transform_type == "cosine":
 
-    def alpha_bar(time_step):
-        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+        def alpha_bar_fn(t):
+            return math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    elif alpha_transform_type == "exp":
+
+        def alpha_bar_fn(t):
+            return math.exp(t * -12.0)
+
+    else:
+        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
-        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+        betas.append(min(1 - alpha_bar_fn(t2) / alpha_bar_fn(t1), max_beta))
     return torch.tensor(betas, dtype=torch.float32)
 
 
@@ -116,6 +132,13 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             (https://arxiv.org/abs/2205.11487). Valid only when `thresholding=True`.
         sample_max_value (`float`, default `1.0`):
             the threshold value for dynamic thresholding. Valid only when `thresholding=True`.
+        timestep_spacing (`str`, default `"leading"`):
+            The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
+            Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -138,6 +161,8 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         clip_sample_range: float = 1.0,
         sample_max_value: float = 1.0,
+        timestep_spacing: str = "leading",
+        steps_offset: int = 0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -179,11 +204,14 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.FloatTensor`):
+                The input sample.
+            timestep (`int`, *optional*):
+                The current timestep in the diffusion chain.
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `torch.FloatTensor`:
+                A scaled input sample.
         """
         return sample
 
@@ -195,18 +223,18 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         timesteps: Optional[List[int]] = None,
     ):
         """
-        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
-            num_inference_steps (`Optional[int]`):
-                the number of diffusion steps used when generating samples with a pre-trained model. If passed, then
+            num_inference_steps (`int`):
+                The number of diffusion steps used when generating samples with a pre-trained model. If used,
                 `timesteps` must be `None`.
-            device (`str` or `torch.device`, optional):
-                the device to which the timesteps are moved to.
-            custom_timesteps (`List[int]`, optional):
-                custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
-                timestep spacing strategy of equal spacing between timesteps is used. If passed, `num_inference_steps`
-                must be `None`.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of equal spacing between timesteps is used. If `timesteps` is passed,
+                `num_inference_steps` must be `None`.
 
         """
         if num_inference_steps is not None and timesteps is not None:
@@ -234,10 +262,32 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             self.num_inference_steps = num_inference_steps
-
-            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
             self.custom_timesteps = False
+
+            # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
+            if self.config.timestep_spacing == "linspace":
+                timesteps = (
+                    np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps)
+                    .round()[::-1]
+                    .copy()
+                    .astype(np.int64)
+                )
+            elif self.config.timestep_spacing == "leading":
+                step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+                # creates integer timesteps by multiplying by ratio
+                # casting to int to avoid issues when num_inference_step is power of 3
+                timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+                timesteps += self.config.steps_offset
+            elif self.config.timestep_spacing == "trailing":
+                step_ratio = self.config.num_train_timesteps / self.num_inference_steps
+                # creates integer timesteps by multiplying by ratio
+                # casting to int to avoid issues when num_inference_step is power of 3
+                timesteps = np.round(np.arange(self.config.num_train_timesteps, 0, -step_ratio)).astype(np.int64)
+                timesteps -= 1
+            else:
+                raise ValueError(
+                    f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
+                )
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 

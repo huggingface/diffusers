@@ -48,7 +48,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -343,6 +343,12 @@ def parse_args():
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
+    parser.add_argument(
+        "--rank",
+        type=int,
+        default=4,
+        help=("The dimension of the LoRA update matrices."),
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -464,7 +470,11 @@ def main():
             block_id = int(name[len("down_blocks.")])
             hidden_size = unet.config.block_out_channels[block_id]
 
-        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
+        lora_attn_procs[name] = LoRAAttnProcessor(
+            hidden_size=hidden_size,
+            cross_attention_dim=cross_attention_dim,
+            rank=args.rank,
+        )
 
     unet.set_attn_processor(lora_attn_procs)
 
@@ -549,6 +559,7 @@ def main():
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
+            data_dir=args.train_data_dir,
         )
     else:
         data_files = {}
@@ -652,8 +663,8 @@ def main():
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
     )
 
     # Prepare everything with our `accelerator`.

@@ -52,7 +52,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -485,14 +485,15 @@ def main():
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
-            if args.use_ema:
-                ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+            if accelerator.is_main_process:
+                if args.use_ema:
+                    ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
-            for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "unet"))
+                for i, model in enumerate(models):
+                    model.save_pretrained(os.path.join(output_dir, "unet"))
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                    # make sure to pop weight so that corresponding model is not saved again
+                    weights.pop()
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
@@ -690,8 +691,8 @@ def main():
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
     )
 
     # Prepare everything with our `accelerator`.

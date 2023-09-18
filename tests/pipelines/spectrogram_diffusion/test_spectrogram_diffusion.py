@@ -21,8 +21,15 @@ import torch
 
 from diffusers import DDPMScheduler, MidiProcessor, SpectrogramDiffusionPipeline
 from diffusers.pipelines.spectrogram_diffusion import SpectrogramContEncoder, SpectrogramNotesEncoder, T5FilmDecoder
-from diffusers.utils import require_torch_gpu, skip_mps, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_note_seq, require_onnxruntime
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    nightly,
+    require_note_seq,
+    require_onnxruntime,
+    require_torch_gpu,
+    skip_mps,
+    torch_device,
+)
 
 from ..pipeline_params import TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS, TOKENS_TO_AUDIO_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -48,7 +55,7 @@ class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         "num_images_per_prompt",
     }
     test_attention_slicing = False
-    test_cpu_offload = False
+
     batch_params = TOKENS_TO_AUDIO_GENERATION_PARAMS
     params = TOKENS_TO_AUDIO_GENERATION_BATCH_PARAMS
 
@@ -162,7 +169,7 @@ class SpectrogramDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         return super().test_progress_bar()
 
 
-@slow
+@nightly
 @require_torch_gpu
 @require_onnxruntime
 @require_note_seq

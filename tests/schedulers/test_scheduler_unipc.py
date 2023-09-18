@@ -23,7 +23,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "solver_order": 2,
-            "solver_type": "bh1",
+            "solver_type": "bh2",
         }
 
         config.update(**kwargs)
@@ -144,7 +144,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         sample = self.full_loop(scheduler=scheduler)
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.2521) < 1e-3
+        assert abs(result_mean.item() - 0.2464) < 1e-3
 
         scheduler = DPMSolverSinglestepScheduler.from_config(scheduler.config)
         scheduler = DEISMultistepScheduler.from_config(scheduler.config)
@@ -154,7 +154,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         sample = self.full_loop(scheduler=scheduler)
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.2521) < 1e-3
+        assert abs(result_mean.item() - 0.2464) < 1e-3
 
     def test_timesteps(self):
         for timesteps in [25, 50, 100, 999, 1000]:
@@ -206,13 +206,25 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         sample = self.full_loop()
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.2521) < 1e-3
+        assert abs(result_mean.item() - 0.2464) < 1e-3
+
+    def test_full_loop_with_karras(self):
+        sample = self.full_loop(use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2925) < 1e-3
 
     def test_full_loop_with_v_prediction(self):
         sample = self.full_loop(prediction_type="v_prediction")
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 0.1096) < 1e-3
+        assert abs(result_mean.item() - 0.1014) < 1e-3
+
+    def test_full_loop_with_karras_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.1966) < 1e-3
 
     def test_fp16_support(self):
         scheduler_class = self.scheduler_classes[0]

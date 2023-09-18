@@ -17,24 +17,32 @@ import json
 import os
 import tempfile
 import unittest
+import uuid
 from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
+from huggingface_hub import delete_repo
 
 import diffusers
 from diffusers import (
+    CMStochasticIterativeScheduler,
+    DDIMScheduler,
+    DEISMultistepScheduler,
+    DiffusionPipeline,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     IPNDMScheduler,
     LMSDiscreteScheduler,
+    UniPCMultistepScheduler,
     VQDiffusionScheduler,
     logging,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import CaptureLogger
+from diffusers.utils.testing_utils import CaptureLogger, torch_device
+
+from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -202,6 +210,44 @@ class SchedulerBaseTests(unittest.TestCase):
         assert cap_logger_2.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
         assert cap_logger_3.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
 
+    def test_default_arguments_not_in_config(self):
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-pipe", torch_dtype=torch.float16
+        )
+        assert pipe.scheduler.__class__ == DDIMScheduler
+
+        # Default for DDIMScheduler
+        assert pipe.scheduler.config.timestep_spacing == "leading"
+
+        # Switch to a different one, verify we use the default for that class
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.timestep_spacing == "linspace"
+
+        # Override with kwargs
+        pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config, timestep_spacing="trailing")
+        assert pipe.scheduler.config.timestep_spacing == "trailing"
+
+        # Verify overridden kwargs stick
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.timestep_spacing == "trailing"
+
+        # And stick
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.timestep_spacing == "trailing"
+
+    def test_default_solver_type_after_switch(self):
+        pipe = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-pipe", torch_dtype=torch.float16
+        )
+        assert pipe.scheduler.__class__ == DDIMScheduler
+
+        pipe.scheduler = DEISMultistepScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.solver_type == "logrho"
+
+        # Switch to UniPC, verify the solver is the default
+        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+        assert pipe.scheduler.config.solver_type == "bh2"
+
 
 class SchedulerCommonTest(unittest.TestCase):
     scheduler_classes = ()
@@ -261,6 +307,11 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
 
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
+                time_step = scaled_sigma_max
+
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
                 sample = self.dummy_sample(num_vec_classes)
@@ -281,7 +332,11 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Make sure `scale_model_input` is invoked to prevent a warning
-            if scheduler_class != VQDiffusionScheduler:
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                _ = scheduler.scale_model_input(sample, scaled_sigma_max)
+                _ = new_scheduler.scale_model_input(sample, scaled_sigma_max)
+            elif scheduler_class != VQDiffusionScheduler:
                 _ = scheduler.scale_model_input(sample, 0)
                 _ = new_scheduler.scale_model_input(sample, 0)
 
@@ -351,6 +406,10 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                timestep = scheduler.sigma_to_t(scheduler.config.sigma_max)
+
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
                 sample = self.dummy_sample(num_vec_classes)
@@ -414,15 +473,19 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.save_pretrained(tmpdirname)
                 new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
-            assert scheduler.config == new_scheduler.config
+            # `_use_default_values` should not exist for just saved & loaded scheduler
+            scheduler_config = dict(scheduler.config)
+            del scheduler_config["_use_default_values"]
+
+            assert scheduler_config == new_scheduler.config
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
-        timestep_0 = 0
-        timestep_1 = 1
+        timestep_0 = 1
+        timestep_1 = 0
 
         for scheduler_class in self.scheduler_classes:
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
@@ -493,6 +556,10 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                timestep = scheduler.sigma_to_t(scheduler.config.sigma_max)
+
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
                 sample = self.dummy_sample(num_vec_classes)
@@ -548,7 +615,12 @@ class SchedulerCommonTest(unittest.TestCase):
 
             if scheduler_class != VQDiffusionScheduler:
                 sample = self.dummy_sample
-                scaled_sample = scheduler.scale_model_input(sample, 0.0)
+                if scheduler_class == CMStochasticIterativeScheduler:
+                    # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                    scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
+                    scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
+                else:
+                    scaled_sample = scheduler.scale_model_input(sample, 0.0)
                 self.assertEqual(sample.shape, scaled_sample.shape)
 
     def test_add_noise_device(self):
@@ -560,7 +632,12 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler.set_timesteps(100)
 
             sample = self.dummy_sample.to(torch_device)
-            scaled_sample = scheduler.scale_model_input(sample, 0.0)
+            if scheduler_class == CMStochasticIterativeScheduler:
+                # Get valid timestep based on sigma_max, which should always be in timestep schedule.
+                scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
+                scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
+            else:
+                scaled_sample = scheduler.scale_model_input(sample, 0.0)
             self.assertEqual(sample.shape, scaled_sample.shape)
 
             noise = torch.randn_like(scaled_sample).to(torch_device)
@@ -591,7 +668,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
     def test_trained_betas(self):
         for scheduler_class in self.scheduler_classes:
-            if scheduler_class == VQDiffusionScheduler:
+            if scheduler_class in (VQDiffusionScheduler, CMStochasticIterativeScheduler):
                 continue
 
             scheduler_config = self.get_scheduler_config()
@@ -646,3 +723,64 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.does_not_exist
 
             assert str(error.exception) == f"'{type(scheduler).__name__}' object has no attribute 'does_not_exist'"
+
+
+@is_staging_test
+class SchedulerPushToHubTester(unittest.TestCase):
+    identifier = uuid.uuid4()
+    repo_id = f"test-scheduler-{identifier}"
+    org_repo_id = f"valid_org/{repo_id}-org"
+
+    def test_push_to_hub(self):
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        scheduler.push_to_hub(self.repo_id, token=TOKEN)
+        scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/{self.repo_id}")
+
+        assert type(scheduler) == type(scheduler_loaded)
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
+
+        # Push to hub via save_config
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scheduler.save_config(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
+
+        scheduler_loaded = DDIMScheduler.from_pretrained(f"{USER}/{self.repo_id}")
+
+        assert type(scheduler) == type(scheduler_loaded)
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
+
+    def test_push_to_hub_in_organization(self):
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        scheduler.push_to_hub(self.org_repo_id, token=TOKEN)
+        scheduler_loaded = DDIMScheduler.from_pretrained(self.org_repo_id)
+
+        assert type(scheduler) == type(scheduler_loaded)
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
+
+        # Push to hub via save_config
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scheduler.save_config(tmp_dir, repo_id=self.org_repo_id, push_to_hub=True, token=TOKEN)
+
+        scheduler_loaded = DDIMScheduler.from_pretrained(self.org_repo_id)
+
+        assert type(scheduler) == type(scheduler_loaded)
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)

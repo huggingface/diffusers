@@ -24,8 +24,14 @@ from transformers import CLIPImageProcessor, CLIPVisionConfig
 
 from diffusers import AutoencoderKL, PaintByExamplePipeline, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    nightly,
+    require_torch_gpu,
+    torch_device,
+)
 
 from ..pipeline_params import IMAGE_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, IMAGE_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -165,7 +171,7 @@ class PaintByExamplePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

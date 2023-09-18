@@ -32,22 +32,28 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
 class StableDiffusionInstructPix2PixPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionInstructPix2PixPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}

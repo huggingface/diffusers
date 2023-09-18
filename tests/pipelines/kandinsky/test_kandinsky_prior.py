@@ -28,8 +28,7 @@ from transformers import (
 )
 
 from diffusers import KandinskyPriorPipeline, PriorTransformer, UnCLIPScheduler
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -37,22 +36,7 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyPriorPipeline
-    params = ["prompt"]
-    batch_params = ["prompt", "negative_prompt"]
-    required_optional_params = [
-        "num_images_per_prompt",
-        "generator",
-        "num_inference_steps",
-        "latents",
-        "negative_prompt",
-        "guidance_scale",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
+class Dummies:
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -182,6 +166,31 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "output_type": "np",
         }
         return inputs
+
+
+class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyPriorPipeline
+    params = ["prompt"]
+    batch_params = ["prompt", "negative_prompt"]
+    required_optional_params = [
+        "num_images_per_prompt",
+        "generator",
+        "num_inference_steps",
+        "latents",
+        "negative_prompt",
+        "guidance_scale",
+        "output_type",
+        "return_dict",
+    ]
+    test_xformers_attention = False
+
+    def get_dummy_components(self):
+        dummy = Dummies()
+        return dummy.get_dummy_components()
+
+    def get_dummy_inputs(self, device, seed=0):
+        dummy = Dummies()
+        return dummy.get_dummy_inputs(device=device, seed=seed)
 
     def test_kandinsky_prior(self):
         device = "cpu"

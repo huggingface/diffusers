@@ -313,14 +313,15 @@ def main(args):
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
-            if args.use_ema:
-                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
+            if accelerator.is_main_process:
+                if args.use_ema:
+                    ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
-            for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "unet"))
+                for i, model in enumerate(models):
+                    model.save_pretrained(os.path.join(output_dir, "unet"))
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                    # make sure to pop weight so that corresponding model is not saved again
+                    weights.pop()
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
@@ -568,7 +569,9 @@ def main(args):
 
             clean_images = batch["input"]
             # Sample noise that we'll add to the images
-            noise = torch.randn(clean_images.shape).to(clean_images.device)
+            noise = torch.randn(
+                clean_images.shape, dtype=(torch.float32 if args.mixed_precision == "no" else torch.float16)
+            ).to(clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(

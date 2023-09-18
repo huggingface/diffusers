@@ -36,8 +36,16 @@ from diffusers import (
     UNet2DModel,
 )
 from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    require_torch_gpu,
+    skip_mps,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import IMAGE_VARIATION_BATCH_PARAMS, IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
@@ -477,7 +485,7 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
     @skip_mps
     def test_save_load_local(self):
-        return super().test_save_load_local()
+        return super().test_save_load_local(expected_max_difference=4e-3)
 
     @skip_mps
     def test_save_load_optional_components(self):

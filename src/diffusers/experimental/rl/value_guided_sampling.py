@@ -18,25 +18,27 @@ import tqdm
 
 from ...models.unet_1d import UNet1DModel
 from ...pipelines import DiffusionPipeline
-from ...utils import randn_tensor
 from ...utils.dummy_pt_objects import DDPMScheduler
+from ...utils.torch_utils import randn_tensor
 
 
 class ValueGuidedRLPipeline(DiffusionPipeline):
     r"""
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
-    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
-    Pipeline for sampling actions from a diffusion model trained to predict sequences of states.
+    Pipeline for value-guided sampling from a diffusion model trained to predict sequences of states.
 
-    Original implementation inspired by this repository: https://github.com/jannerm/diffuser.
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
+    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Parameters:
-        value_function ([`UNet1DModel`]): A specialized UNet for fine-tuning trajectories base on reward.
-        unet ([`UNet1DModel`]): U-Net architecture to denoise the encoded trajectories.
+        value_function ([`UNet1DModel`]):
+            A specialized UNet for fine-tuning trajectories base on reward.
+        unet ([`UNet1DModel`]):
+            UNet architecture to denoise the encoded trajectories.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded trajectories. Default for this
             application is [`DDPMScheduler`].
-        env: An environment following the OpenAI gym API to act in. For now only Hopper has pretrained models.
+        env ():
+            An environment following the OpenAI gym API to act in. For now only Hopper has pretrained models.
     """
 
     def __init__(
@@ -74,7 +76,7 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         return x_in * self.stds[key] + self.means[key]
 
     def to_torch(self, x_in):
-        if type(x_in) is dict:
+        if isinstance(x_in, dict):
             return {k: self.to_torch(v) for k, v in x_in.items()}
         elif torch.is_tensor(x_in):
             return x_in.to(self.unet.device)

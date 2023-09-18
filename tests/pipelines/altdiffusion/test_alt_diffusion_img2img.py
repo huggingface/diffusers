@@ -32,8 +32,15 @@ from diffusers.pipelines.alt_diffusion.modeling_roberta_series import (
     RobertaSeriesConfig,
     RobertaSeriesModelWithTransformation,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils import load_image
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_numpy,
+    nightly,
+    require_torch_gpu,
+    torch_device,
+)
 
 
 enable_full_determinism()
@@ -254,7 +261,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
-@slow
+@nightly
 @require_torch_gpu
 class AltDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
