@@ -51,7 +51,11 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor
+from diffusers.models.attention_processor import (
+    CustomDiffusionAttnProcessor,
+    CustomDiffusionAttnProcessor2_0,
+    CustomDiffusionXFormersAttnProcessor,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
@@ -870,7 +874,9 @@ def main(args):
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
-    attention_class = CustomDiffusionAttnProcessor
+    attention_class = (
+        CustomDiffusionAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else CustomDiffusionAttnProcessor
+    )
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
