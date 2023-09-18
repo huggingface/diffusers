@@ -8,7 +8,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 import PIL.Image
 import torch
-from diffusers.utils.torch_utils import randn_tensor
 from PIL import Image
 from transformers import CLIPTokenizer
 
@@ -22,6 +21,7 @@ from diffusers.utils import (
     logging,
     replace_example_docstring,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
