@@ -306,6 +306,9 @@ class UNet2DConditionLoadersMixin:
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
         # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
         network_alphas = kwargs.pop("network_alphas", None)
+
+        _pipeline = kwargs.pop("_pipeline", None)
+
         is_network_alphas_none = network_alphas is None
 
         allow_pickle = False
@@ -499,15 +502,16 @@ class UNet2DConditionLoadersMixin:
         # Now we remove any existing hooks to
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
-        for _, component in self.components.items():
-            if isinstance(component, nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+        if _pipeline is not None:
+            for _, component in _pipeline.components.items():
+                if isinstance(component, nn.Module):
+                    if hasattr(component, "_hf_hook"):
+                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                        logger.info(
+                            "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                        )
+                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
         # only custom diffusion needs to set attn processors
         if is_custom_diffusion:
@@ -521,9 +525,9 @@ class UNet2DConditionLoadersMixin:
 
         # Offload back.
         if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
+            _pipeline.enable_model_cpu_offload()
         elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
+            _pipeline.enable_sequential_cpu_offload()
         # Unsafe code />
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
@@ -1105,7 +1109,11 @@ class LoraLoaderMixin:
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
         self.load_lora_into_unet(
-            state_dict, network_alphas=network_alphas, unet=self.unet, low_cpu_mem_usage=low_cpu_mem_usage
+            state_dict,
+            network_alphas=network_alphas,
+            unet=self.unet,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            _pipeline=self,
         )
         self.load_lora_into_text_encoder(
             state_dict,
@@ -1113,7 +1121,7 @@ class LoraLoaderMixin:
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
-            pieline=self,
+            _pipeline=self,
         )
 
     @classmethod
@@ -1412,7 +1420,7 @@ class LoraLoaderMixin:
         return new_state_dict
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None):
+    def load_lora_into_unet(cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -1456,7 +1464,9 @@ class LoraLoaderMixin:
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
             logger.warn(warn_message)
 
-        unet.load_attn_procs(state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage)
+        unet.load_attn_procs(
+            state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage, _pipeline=_pipeline
+        )
 
     @classmethod
     def load_lora_into_text_encoder(
@@ -1467,7 +1477,7 @@ class LoraLoaderMixin:
         prefix=None,
         lora_scale=1.0,
         low_cpu_mem_usage=None,
-        pipeline=None,
+        _pipeline=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1603,8 +1613,8 @@ class LoraLoaderMixin:
                 # Now we remove any existing hooks to
                 is_model_cpu_offload = False
                 is_sequential_cpu_offload = False
-                if pipeline is not None:
-                    for _, component in pipeline.components.items():
+                if _pipeline is not None:
+                    for _, component in _pipeline.components.items():
                         if isinstance(component, torch.nn.Module):
                             if hasattr(component, "_hf_hook"):
                                 is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
@@ -1620,9 +1630,9 @@ class LoraLoaderMixin:
 
                 # Offload back.
                 if is_model_cpu_offload:
-                    pipeline.enable_model_cpu_offload()
+                    _pipeline.enable_model_cpu_offload()
                 elif is_sequential_cpu_offload:
-                    pipeline.enable_sequential_cpu_offload()
+                    _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
 
     @property
@@ -2704,7 +2714,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
+        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet, _pipeline=self)
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
@@ -2713,7 +2723,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder,
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
-                pipeline=self,
+                _pipeline=self,
             )
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
@@ -2724,7 +2734,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder_2,
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
-                pipeline=self,
+                _pipeline=self,
             )
 
     @classmethod
