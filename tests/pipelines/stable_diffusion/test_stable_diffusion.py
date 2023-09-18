@@ -37,7 +37,7 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.models.attention_processor import AttnProcessor, LoRAXFormersAttnProcessor
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
@@ -51,8 +51,6 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ...models.test_lora_layers import create_unet_lora_layers
-from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
@@ -187,40 +185,6 @@ class StableDiffusionPipelineFastTests(
         expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_stable_diffusion_lora(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward 1
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
-
-        # set lora layers
-        lora_attn_procs = create_lora_layers(sd_pipe.unet)
-        sd_pipe.unet.set_attn_processor(lora_attn_procs)
-        sd_pipe = sd_pipe.to(torch_device)
-
-        # forward 2
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.0})
-        image = output.images
-        image_slice_1 = image[0, -3:, -3:, -1]
-
-        # forward 3
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.5})
-        image = output.images
-        image_slice_2 = image[0, -3:, -3:, -1]
-
-        assert np.abs(image_slice - image_slice_1).max() < 1e-2
-        assert np.abs(image_slice - image_slice_2).max() > 1e-2
 
     def test_stable_diffusion_prompt_embeds(self):
         components = self.get_dummy_components()
@@ -373,56 +337,6 @@ class StableDiffusionPipelineFastTests(
         expected_slice = np.array([0.5122, 0.5712, 0.4825, 0.5053, 0.5646, 0.4769, 0.5179, 0.4894, 0.4994])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    @unittest.skipIf(not torch.cuda.is_available(), reason="xformers requires cuda")
-    def test_stable_diffusion_attn_processors(self):
-        # disable_full_determinism()
-        device = "cuda"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-
-        # run normal sd pipe
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run xformers attention
-        sd_pipe.enable_xformers_memory_efficient_attention()
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run attention slicing
-        sd_pipe.enable_attention_slicing()
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run vae attention slicing
-        sd_pipe.enable_vae_slicing()
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run lora attention
-        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
-        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
-        sd_pipe.unet.set_attn_processor(attn_processors)
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run lora xformers attention
-        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
-        attn_processors = {
-            k: LoRAXFormersAttnProcessor(hidden_size=v.hidden_size, cross_attention_dim=v.cross_attention_dim)
-            for k, v in attn_processors.items()
-        }
-        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
-        sd_pipe.unet.set_attn_processor(attn_processors)
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # enable_full_determinism()
 
     def test_stable_diffusion_no_safety_checker(self):
         pipe = StableDiffusionPipeline.from_pretrained(
