@@ -335,7 +335,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # enable_full_determinism()
 
     def test_stable_diffusion_lora(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components, _ = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
