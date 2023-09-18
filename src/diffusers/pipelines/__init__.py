@@ -257,6 +257,7 @@ if TYPE_CHECKING:
         from .ddim import DDIMPipeline
         from .ddpm import DDPMPipeline
         from .dit import DiTPipeline
+        from .edm import KarrasEDMPipeline
         from .latent_diffusion import LDMSuperResolutionPipeline
         from .latent_diffusion_uncond import LDMPipeline
         from .pipeline_utils import AudioPipelineOutput, DiffusionPipeline, ImagePipelineOutput
