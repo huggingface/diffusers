@@ -503,7 +503,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 "prev_timestep",
                 "1.0.0",
                 "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
-            )       
+            )
         sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s, sigma_s = self._sigma_to_alpha_sigma_t(sigma_s)
