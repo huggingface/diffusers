@@ -265,7 +265,6 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         # forward without prompt embeds
