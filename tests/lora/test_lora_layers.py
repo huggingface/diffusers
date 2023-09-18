@@ -293,7 +293,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
+        _, _, inputs = self.get_dummy_inputs()
 
         # run normal sd pipe
         image = sd_pipe(**inputs).images
@@ -343,7 +343,8 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         # forward 1
-        inputs = self.get_dummy_inputs(device)
+        _, _, inputs = self.get_dummy_inputs()
+
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
@@ -354,13 +355,15 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
 
         # forward 2
-        inputs = self.get_dummy_inputs(device)
+        _, _, inputs = self.get_dummy_inputs()
+
         output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.0})
         image = output.images
         image_slice_1 = image[0, -3:, -3:, -1]
 
         # forward 3
-        inputs = self.get_dummy_inputs(device)
+        _, _, inputs = self.get_dummy_inputs()
+
         output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.5})
         image = output.images
         image_slice_2 = image[0, -3:, -3:, -1]
