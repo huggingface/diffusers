@@ -162,7 +162,6 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
-        adapter_weights: Optional[List[float]] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -184,7 +183,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
             )
 
         if isinstance(adapter, (list, tuple)):
-            adapter = MultiAdapter(adapter, adapter_weights=adapter_weights)
+            adapter = MultiAdapter(adapter)
 
         self.register_modules(
             vae=vae,
