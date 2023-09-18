@@ -927,6 +927,9 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             lora_image_slice_scale_one, lora_image_slice_scale_0_5, atol=1e-03
         ), "Different LoRA scales should influence the outputs accordingly."
 
+    # TODO: @younesbelkada add save / load tests with text encoder
+    # TODO: @younesbelkada add public method to attach adapters in text encoder
+
     def test_with_different_scales(self):
         from peft import LoraConfig
 
