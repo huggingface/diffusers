@@ -18,7 +18,7 @@ from pathlib import Path
 
 import torch
 import datasets
-from transformers import CLIPTokenizer
+from transformers import CLIPTokenizer, CLIPTextModel
 from transformers.utils import ContextManagers
 from accelerate import Accelerator
 from accelerate.state import AcceleratorState, is_initialized
@@ -342,7 +342,7 @@ def main():
 
     # Load scheduler, effnet, tokenizer and models.
     noise_scheduler = DDPMWuerstchenScheduler()
-    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_decoder_model_name_or_path, subfolder="tokenizer")
+    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
 
     def deepspeed_zero_init_disabled_context_manager():
         """
@@ -353,15 +353,28 @@ def main():
             return []
 
         return [deepspeed_plugin.zero3_init_context_manager(enable=False)]
-    
+
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
-        image_encoder = EfficientNetEncoder.from_pretrained("warp-ai/EfficientNetEncoder").eval()
-        
+        image_encoder = EfficientNetEncoder.from_pretrained(
+            "warp-ai/EfficientNetEncoder", torch_dtype=weight_dtype
+        ).eval()
+        clip_model = CLIPTextModel.from_pretrained(
+            args.pretrained_prior_model_name_or_path, subfolder="text_encoder", torch_dtype=weight_dtype
+        ).eval()
+
+    # Freeze text_encoder and image_encoder
+    clip_model.requires_grad_(False)
+    image_encoder.requires_grad_(False)
+
+    # prior
+
+    # create EMA for the prior
+
 
 if __name__ == "__main__":
     main()
