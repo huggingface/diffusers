@@ -462,6 +462,7 @@ class UNet2DConditionLoadersMixin:
                     load_model_dict_into_meta(lora, value_dict, device=device, dtype=dtype)
                 else:
                     lora.load_state_dict(value_dict)
+
         elif is_custom_diffusion:
             attn_processors = {}
             custom_diffusion_grouped_dict = defaultdict(dict)
@@ -491,18 +492,42 @@ class UNet2DConditionLoadersMixin:
                         cross_attention_dim=cross_attention_dim,
                     )
                     attn_processors[key].load_state_dict(value_dict)
-
-            self.set_attn_processor(attn_processors)
         else:
             raise ValueError(
                 f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
             )
+
+        # <Unsafe code
+        # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
+        # Now we remove any existing hooks to 
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        for _, component in self.components.items():
+            if isinstance(component, nn.Module):
+                if hasattr(component, "_hf_hook"):
+                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+        # only custom diffusion needs to set attn processors
+        if is_custom_diffusion:
+            self.set_attn_processor(attn_processors)
 
         # set lora layers
         for target_module, lora_layer in lora_layers_list:
             target_module.set_lora_layer(lora_layer)
 
         self.to(dtype=self.dtype, device=self.device)
+
+        # Offload back.
+        if is_model_cpu_offload:
+            self.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            self.enable_sequential_cpu_offload()
+        # Unsafe code />
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
@@ -1075,25 +1100,11 @@ class LoraLoaderMixin:
         """
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
-        # print(state_dict.keys())
+
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        # Remove any existing hooks.
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        recurive = False
-        for _, component in self.components.items():
-            if isinstance(component, nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    recurive = is_sequential_cpu_offload
-                    remove_hook_from_module(component, recurse=recurive)
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
@@ -1106,13 +1117,8 @@ class LoraLoaderMixin:
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            pieline=self,
         )
-
-        # Offload back.
-        if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
 
     @classmethod
     def lora_state_dict(
@@ -1452,13 +1458,13 @@ class LoraLoaderMixin:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
-            warnings.warn(warn_message)
+            logger.warn(warn_message)
 
         unet.load_attn_procs(state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage)
 
     @classmethod
     def load_lora_into_text_encoder(
-        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None
+        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None, pipeline=None
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1573,6 +1579,7 @@ class LoraLoaderMixin:
                     k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
                     for k, v in text_encoder_lora_state_dict.items()
                 }
+
                 if low_cpu_mem_usage:
                     device = next(iter(text_encoder_lora_state_dict.values())).device
                     dtype = next(iter(text_encoder_lora_state_dict.values())).dtype
@@ -1588,7 +1595,30 @@ class LoraLoaderMixin:
                         f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
                     )
 
+                # <Unsafe code
+                # We can be sure that the following works as all we do is change the dtype and device of the text encoder
+                # Now we remove any existing hooks to
+                is_model_cpu_offload = False
+                is_sequential_cpu_offload = False
+                if pipeline is not None:
+                    for _, component in pipeline.components.items():
+                        if isinstance(component, torch.nn.Module):
+                            if hasattr(component, "_hf_hook"):
+                                is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                                is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                                logger.info(
+                                    "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                                )
+                                remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
                 text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+
+                # Offload back.
+                if is_model_cpu_offload:
+                    pipeline.enable_model_cpu_offload()
+                elif is_sequential_cpu_offload:
+                    pipeline.enable_sequential_cpu_offload()
+                # Unsafe code />
 
     @property
     def lora_scale(self) -> float:
@@ -2669,26 +2699,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        # Remove any existing hooks.
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
-        else:
-            raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
-
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        for _, component in self.components.items():
-            if isinstance(component, torch.nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
-
         self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
-
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
@@ -2697,6 +2708,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder,
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
+                pipeline=self,
             )
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
@@ -2707,13 +2719,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder_2,
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
+                pipeline=self,
             )
-
-        # Offload back.
-        if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
 
     @classmethod
     def save_lora_weights(
