@@ -15,6 +15,7 @@ body:
              *The community cannot solve your issue if it cannot reproduce it. If your bug is related to training, add your training script and make everything needed to train public. Otherwise, just add a simple Python code snippet.*
         - 3. Add the **minimum amount of code / context that is needed to understand, reproduce your issue**.
              *Make the life of maintainers easy. `diffusers` is getting many issues every day. Make sure your issue is about one bug and one bug only. Make sure you add only the context, code needed to understand your issues - nothing more. Generally, every issue is a way of documenting this library, try to make it a good documentation entry.*
+        - 4. For issues related to community pipelines (i.e., the pipelines located in the `examples/community` folder), please tag the author of the pipeline in your issue thread as those pipelines are not maintained.
   - type: markdown
     attributes:
       value: |
@@ -70,7 +71,7 @@ body:
 
         Questions on schedulers: @patrickvonplaten and @williamberman
 
-        Questions on models and pipelines: @patrickvonplaten, @sayakpaul, and @williamberman
+        Questions on models and pipelines: @patrickvonplaten, @sayakpaul, and @williamberman (for community pipelines, please tag the original author of the pipeline)
 
         Questions on JAX- and MPS-related things: @pcuenca
 
