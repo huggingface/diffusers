@@ -406,11 +406,11 @@ Then let's two LoRA checkpoints and fuse them with specific `lora_scale` values:
 ```python
 # LoRA one.
 pipe.load_lora_weights("goofyai/cyborg_style_xl")
-pipe.fuse_lora(lora_scale=0.5)
+pipe.fuse_lora(lora_scale=0.7)
 
 # LoRA two.
 pipe.load_lora_weights("TheLastBen/Pikachu_SDXL")
-pipe.fuse_lora(lora_scale=0.5)
+pipe.fuse_lora(lora_scale=0.7)
 ```
 
 <Tip>
@@ -427,7 +427,11 @@ image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
 ```
 
 ![cyborg_pikachu](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/cyborg_pikachu.png)
+<Tip warning={true}>
 
+Currently,unfusing multiple LoRA checkpoints is not possible. If multiple LoRAs are fused into the `unet`, the `pipe.unfuse_lora()` method doesn't work. 
+
+</Tip>
 ## Supporting different LoRA checkpoints from Diffusers
 
 🤗 Diffusers supports loading checkpoints from popular LoRA trainers such as [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). In this section, we outline the current API's details and limitations. 
