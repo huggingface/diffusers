@@ -1074,9 +1074,6 @@ class StableDiffusionControlNetInpaintPipeline(
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # 0. Default height and width to unet
-        height, width = self._default_height_width(height, width, image)
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
