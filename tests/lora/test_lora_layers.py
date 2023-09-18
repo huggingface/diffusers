@@ -14,32 +14,32 @@
 # limitations under the License.
 import copy
 import os
+import random
 import tempfile
 import time
 import unittest
 
 import numpy as np
-import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from PIL import Image
 from huggingface_hub.repocard import RepoCard
+from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    StableDiffusionXLControlNetPipeline,
     ControlNetModel,
-    UNet3DConditionModel,
     DDIMScheduler,
     DiffusionPipeline,
-    PNDMScheduler,
     EulerDiscreteScheduler,
-    StableDiffusionPipeline,
-    StableDiffusionXLPipeline,
+    PNDMScheduler,
     StableDiffusionInpaintPipeline,
+    StableDiffusionPipeline,
+    StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLPipeline,
     UNet2DConditionModel,
+    UNet3DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin, PatchedLoraProjection, text_encoder_attn_modules
 from diffusers.models.attention_processor import (
@@ -48,11 +48,11 @@ from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
-    XFormersAttnProcessor,
     LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import floats_tensor, nightly, require_torch_gpu, slow, torch_device, load_image
+from diffusers.utils.testing_utils import floats_tensor, load_image, nightly, require_torch_gpu, slow, torch_device
 
 
 def create_lora_layers(model, mock_weights: bool = True):
@@ -334,7 +334,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # enable_full_determinism()
 
-
     def test_stable_diffusion_lora(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -368,7 +367,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         assert np.abs(image_slice - image_slice_1).max() < 1e-2
         assert np.abs(image_slice - image_slice_2).max() > 1e-2
-
 
     def test_lora_save_load(self):
         pipeline_components, lora_components = self.get_dummy_components()
@@ -772,7 +770,6 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
 
         assert np.abs(image_slice - image_slice_1).max() < 1e-2
         assert np.abs(image_slice - image_slice_2).max() > 1e-2
-
 
 
 class SDXLLoraLoaderMixinTests(unittest.TestCase):
@@ -1575,7 +1572,6 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         assert max_diff_off_sample < expected_max_diff
 
 
-
 class UNet3DConditionModelTests(unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
@@ -1618,7 +1614,6 @@ class UNet3DConditionModelTests(unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-
 
     def test_lora_processors(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
