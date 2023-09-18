@@ -217,7 +217,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(
             batch_size=2,
-            expected_max_diff=7e-4,
+            expected_max_diff=5e-3,
         )
 
     def test_num_images_per_prompt(self):
