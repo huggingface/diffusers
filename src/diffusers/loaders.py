@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 import re
-import warnings
 from collections import defaultdict
 from contextlib import nullcontext
 from io import BytesIO
@@ -33,7 +32,6 @@ from .utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
-    is_accelerate_version,
     is_omegaconf_available,
     is_transformers_available,
     logging,
@@ -58,7 +56,6 @@ LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 TEXT_INVERSION_NAME = "learned_embeds.bin"
 TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
-TEXT_INVERSION_KEYS = {"string_to_token", "string_to_param", "name", "step", "sd_checkpoint", "sd_checkpoint_name"}
 
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
@@ -499,7 +496,7 @@ class UNet2DConditionLoadersMixin:
 
         # <Unsafe code
         # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
-        # Now we remove any existing hooks to 
+        # Now we remove any existing hooks to
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
         for _, component in self.components.items():
@@ -1105,7 +1102,6 @@ class LoraLoaderMixin:
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
         self.load_lora_into_unet(
@@ -1464,7 +1460,14 @@ class LoraLoaderMixin:
 
     @classmethod
     def load_lora_into_text_encoder(
-        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None, pipeline=None
+        cls,
+        state_dict,
+        network_alphas,
+        text_encoder,
+        prefix=None,
+        lora_scale=1.0,
+        low_cpu_mem_usage=None,
+        pipeline=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1605,7 +1608,9 @@ class LoraLoaderMixin:
                         if isinstance(component, torch.nn.Module):
                             if hasattr(component, "_hf_hook"):
                                 is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                                is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                                is_sequential_cpu_offload = isinstance(
+                                    getattr(component, "_hf_hook"), AlignDevicesHook
+                                )
                                 logger.info(
                                     "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                                 )
