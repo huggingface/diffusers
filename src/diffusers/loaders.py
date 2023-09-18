@@ -1025,7 +1025,7 @@ class LoraLoaderMixin:
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
             controlnet (`bool`, *optional*, defaults to False):
-                If we're convert a ControlNet LoRA checkpoint.
+                If we're converting a ControlNet LoRA checkpoint.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
