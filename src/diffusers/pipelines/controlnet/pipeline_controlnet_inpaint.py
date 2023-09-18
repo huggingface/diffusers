@@ -1265,6 +1265,10 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
                     " `pipeline.unet` or your `mask_image` or `image` input."
                 )
+            if mask_guidance[0] > 0.0 or mask_guidance[1] < 1.0:
+                raise ValueError(
+                    f"Mask guidance is not supported for the default configuration of `pipeline.unet` channels: {self.unet.config}."
+                )
         elif num_channels_unet != 4:
             raise ValueError(
                 f"The unet {self.unet.__class__} should have either 4 or 9 input channels, not {self.unet.config.in_channels}."
@@ -1277,11 +1281,15 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # Skip ControlNet inference if not in the guidance range
+                sampling_pct = i / len(timesteps)
+                controlnet_guidance_skip = [
+                    sampling_pct < cg[0] or sampling_pct >= cg[1] for cg in controlnet_guidance
+                ]
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                if num_channels_unet == 9:
-                    latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 # controlnet(s) inference
                 if guess_mode and do_classifier_free_guidance:
@@ -1312,12 +1320,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                         for i, _ in enumerate(control_image)
                     ]
 
-                # Skip ControlNet inference if not in the guidance range
-                sampling_pct = i / len(timesteps)
-                controlnet_guidance_skip = [
-                    sampling_pct < cg[0] or sampling_pct >= cg[1] for cg in controlnet_guidance
-                ]
-
                 down_block_res_samples = None
                 mid_block_res_sample = None
 
@@ -1345,7 +1347,7 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, TextualInversi
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
 
                 # predict the noise residual
-                if mask_image is not None and (mask_guidance[0] < sampling_pct <= mask_guidance[1]) and num_channels_unet == 9:
+                if num_channels_unet == 9:
                     latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 noise_pred = self.unet(
