@@ -418,6 +418,7 @@ class UNet2DConditionLoadersMixin:
             for key, value_dict in lora_grouped_dict.items():
                 if "time" in key: 
                     key = ".".join(key.split(".")[:3]) + "." + "_".join(key.split(".")[3:])
+                    print(f"Final key: {key}")
                 attn_processor = self
                 for sub_key in key.split("."):
                     attn_processor = getattr(attn_processor, sub_key)
