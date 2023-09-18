@@ -266,7 +266,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
-
     def test_text_encoder_lora(self):
         from peft import LoraConfig
 
@@ -279,10 +278,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
         self.assertTrue(outputs_without_lora.shape == (1, 77, 32))
 
-        lora_config = LoraConfig(
-            r=4,
-            target_modules=["k_proj", "q_proj", "v_proj"]
-        )
+        lora_config = LoraConfig(r=4, target_modules=["k_proj", "q_proj", "v_proj"])
 
         # 0-init the lora weights
         pipe.text_encoder.add_adapter(lora_config, adapter_name="default_O_init")
@@ -291,13 +287,12 @@ class LoraLoaderMixinTests(unittest.TestCase):
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
         self.assertTrue(outputs_with_lora.shape == (1, 77, 32))
 
-        self.assertTrue(torch.allclose(outputs_without_lora, outputs_with_lora), "lora_up_weight are all zero, so the lora outputs should be the same to without lora outputs")
-
-        lora_config = LoraConfig(
-            r=4,
-            target_modules=["k_proj", "q_proj", "v_proj"],
-            init_lora_weights=False
+        self.assertTrue(
+            torch.allclose(outputs_without_lora, outputs_with_lora),
+            "lora_up_weight are all zero, so the lora outputs should be the same to without lora outputs",
         )
+
+        lora_config = LoraConfig(r=4, target_modules=["k_proj", "q_proj", "v_proj"], init_lora_weights=False)
 
         # LoRA with no init
         pipe.text_encoder.add_adapter(lora_config, adapter_name="default_no_init")
@@ -308,9 +303,11 @@ class LoraLoaderMixinTests(unittest.TestCase):
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
         self.assertTrue(outputs_with_lora.shape == (1, 77, 32))
 
-        self.assertFalse(torch.allclose(outputs_without_lora, outputs_with_lora), "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs")
+        self.assertFalse(
+            torch.allclose(outputs_without_lora, outputs_with_lora),
+            "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs",
+        )
 
-    
     def test_text_encoder_lora_remove_monkey_patch(self):
         from peft import LoraConfig
 
@@ -327,7 +324,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
             r=4,
             target_modules=["k_proj", "q_proj", "v_proj"],
             # To randomly init LoRA weights
-            init_lora_weights=False
+            init_lora_weights=False,
         )
 
         # Inject adapters
@@ -806,11 +803,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
 
-        lora_config = LoraConfig(
-            r=8,
-            target_modules=["q_proj", "k_proj", "v_proj"],
-            init_lora_weights=False
-        )
+        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
 
         sd_pipe.text_encoder.add_adapter(lora_config)
         sd_pipe.text_encoder_2.add_adapter(lora_config)
@@ -844,7 +837,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         ), "Reversing LoRA fusion should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
 
     def test_lora_fusion_is_not_affected_by_unloading(self):
-        from peft import LoraConfig 
+        from peft import LoraConfig
 
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
@@ -858,11 +851,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
 
-        lora_config = LoraConfig(
-            r=8,
-            target_modules=["q_proj", "k_proj", "v_proj"],
-            init_lora_weights=False
-        )
+        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
 
         sd_pipe.text_encoder.add_adapter(lora_config)
         sd_pipe.text_encoder_2.add_adapter(lora_config)
@@ -876,7 +865,10 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         images_with_unloaded_lora = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         images_with_unloaded_lora_slice = images_with_unloaded_lora[0, -3:, -3:, -1]
 
-        self.assertTrue(np.allclose(lora_image_slice, images_with_unloaded_lora_slice), "`unload_lora_weights()` should have not effect on the semantics of the results as the LoRA parameters were fused.")
+        self.assertTrue(
+            np.allclose(lora_image_slice, images_with_unloaded_lora_slice),
+            "`unload_lora_weights()` should have not effect on the semantics of the results as the LoRA parameters were fused.",
+        )
 
     def test_fuse_lora_with_different_scales(self):
         from peft import LoraConfig
@@ -892,11 +884,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
-        lora_config = LoraConfig(
-            r=8,
-            target_modules=["q_proj", "k_proj", "v_proj"],
-            init_lora_weights=False
-        )
+        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
 
         sd_pipe.text_encoder.add_adapter(lora_config)
         sd_pipe.text_encoder_2.add_adapter(lora_config)
@@ -944,11 +932,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
-        lora_config = LoraConfig(
-            r=8,
-            target_modules=["q_proj", "k_proj", "v_proj"],
-            init_lora_weights=False
-        )
+        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
 
         sd_pipe.text_encoder.add_adapter(lora_config)
         sd_pipe.text_encoder_2.add_adapter(lora_config)
@@ -999,11 +983,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True, var=0.1)
 
-        lora_config = LoraConfig(
-            r=8,
-            target_modules=["q_proj", "k_proj", "v_proj"],
-            init_lora_weights=False
-        )
+        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
 
         sd_pipe.text_encoder.add_adapter(lora_config)
         sd_pipe.text_encoder_2.add_adapter(lora_config)
@@ -1494,6 +1474,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_sdxl_1_0_fuse_unfuse_all(self):
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+
         text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict())
         text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
         unet_sd = copy.deepcopy(pipe.unet.state_dict())

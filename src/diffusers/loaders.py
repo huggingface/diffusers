@@ -35,13 +35,13 @@ from .utils import (
     _get_model_file,
     convert_diffusers_state_dict_to_peft,
     convert_old_state_dict_to_peft,
-    recurse_replace_peft_layers,
     deprecate,
     is_accelerate_available,
     is_omegaconf_available,
     is_peft_available,
     is_transformers_available,
     logging,
+    recurse_replace_peft_layers,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
@@ -641,6 +641,7 @@ class UNet2DConditionLoadersMixin:
         if hasattr(module, "_unfuse_lora"):
             module._unfuse_lora()
 
+
 def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
     cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
     force_download = kwargs.pop("force_download", False)
@@ -714,6 +715,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
         state_dicts.append(state_dict)
 
     return state_dicts
+
 
 class TextualInversionLoaderMixin:
     r"""
@@ -1457,7 +1459,14 @@ class LoraLoaderMixin:
 
     @classmethod
     def load_lora_into_text_encoder(
-        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None, adapter_name="default"
+        cls,
+        state_dict,
+        network_alphas,
+        text_encoder,
+        prefix=None,
+        lora_scale=1.0,
+        low_cpu_mem_usage=None,
+        adapter_name="default",
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1564,7 +1573,6 @@ class LoraLoaderMixin:
         # property function that returns the lora scale which can be set at run time by the pipeline.
         # if _lora_scale has not been set, return 1
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
-
 
     @classmethod
     def save_lora_weights(
@@ -2533,7 +2541,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         # pipeline.
 
         # Remove any existing hooks.
-        if is_accelerate_available() and version.parse(importlib.metadata.version("accelerate")) >= version.parse("0.17.0"):
+        if is_accelerate_available() and version.parse(importlib.metadata.version("accelerate")) >= version.parse(
+            "0.17.0"
+        ):
             from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
         else:
             raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")

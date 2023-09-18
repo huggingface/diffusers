@@ -16,9 +16,9 @@ PEFT utilities: Utilities related to peft library
 """
 from .import_utils import is_torch_available
 
+
 if is_torch_available():
     import torch
-
 
 
 def recurse_replace_peft_layers(model):
@@ -31,9 +31,11 @@ def recurse_replace_peft_layers(model):
         if len(list(module.children())) > 0:
             ## compound module, go inside it
             recurse_replace_peft_layers(module)
-            
+
         if isinstance(module, LoraLayer) and isinstance(module, torch.nn.Linear):
-            new_module = torch.nn.Linear(module.in_features, module.out_features, bias=module.bias is not None).to(module.weight.device)
+            new_module = torch.nn.Linear(module.in_features, module.out_features, bias=module.bias is not None).to(
+                module.weight.device
+            )
             new_module.weight = module.weight
             if module.bias is not None:
                 new_module.bias = module.bias
@@ -44,8 +46,9 @@ def recurse_replace_peft_layers(model):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         # TODO: do it for Conv2d
-    
+
     return model
+
 
 def convert_old_state_dict_to_peft(attention_modules, state_dict):
     # Convert from the old naming convention to the new naming convention.

@@ -18,7 +18,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..loaders import PatchedLoraProjection, text_encoder_attn_modules, text_encoder_mlp_modules
 from ..utils import logging
 
 
