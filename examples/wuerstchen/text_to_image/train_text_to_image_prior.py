@@ -16,9 +16,12 @@ import logging
 import os
 from pathlib import Path
 
+import torch
 import datasets
-import transformers
+from transformers import CLIPTokenizer
+from transformers.utils import ContextManagers
 from accelerate import Accelerator
+from accelerate.state import AcceleratorState, is_initialized
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo
@@ -26,6 +29,8 @@ from huggingface_hub import create_repo
 from diffusers import DDPMWuerstchenScheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.logging import set_verbosity_info, set_verbosity_error
+
+from .modeling_efficient_net_encoder import EfficientNetEncoder
 
 
 if is_wandb_available():
@@ -337,7 +342,26 @@ def main():
 
     # Load scheduler, effnet, tokenizer and models.
     noise_scheduler = DDPMWuerstchenScheduler()
-    tokenizer = 
+    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_decoder_model_name_or_path, subfolder="tokenizer")
+
+    def deepspeed_zero_init_disabled_context_manager():
+        """
+        returns either a context list that includes one that will disable zero.Init or an empty context list
+        """
+        deepspeed_plugin = AcceleratorState().deepspeed_plugin if is_initialized() else None
+        if deepspeed_plugin is None:
+            return []
+
+        return [deepspeed_plugin.zero3_init_context_manager(enable=False)]
     
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+    with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
+        image_encoder = EfficientNetEncoder.from_pretrained("warp-ai/EfficientNetEncoder").eval()
+        
+
 if __name__ == "__main__":
     main()
