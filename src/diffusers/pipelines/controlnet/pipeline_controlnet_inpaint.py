@@ -1074,6 +1074,8 @@ class StableDiffusionControlNetInpaintPipeline(
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -1085,8 +1087,9 @@ class StableDiffusionControlNetInpaintPipeline(
             prompt_embeds,
             negative_prompt_embeds,
             controlnet_conditioning_scale,
-            controlnet_guidance,
+            controlnet_guidance=controlnet_guidance,
         )
+
         if mask_image is not None and mask_guidance is None:
             mask_guidance = (0.0, 1.0)
         if mask_image is None and mask_guidance is not None:
@@ -1106,18 +1109,13 @@ class StableDiffusionControlNetInpaintPipeline(
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
-
-        # Scale variable to fit number of CN nets
-        if isinstance(controlnet_conditioning_scale, float):
+        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
-        if len(controlnet_guidance) == 1:
-            controlnet_guidance = controlnet_guidance * len(controlnet.nets)
-        if len(control_image) == 1:
-            control_image = control_image * len(controlnet.nets)
 
         global_pool_conditions = (
-            controlnet.nets[0].config.global_pool_conditions
+            controlnet.config.global_pool_conditions
+            if isinstance(controlnet, ControlNetModel)
+            else controlnet.nets[0].config.global_pool_conditions
         )
         guess_mode = guess_mode or global_pool_conditions
 
@@ -1125,7 +1123,7 @@ class StableDiffusionControlNetInpaintPipeline(
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
-        prompt_embeds = self._encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
@@ -1135,11 +1133,16 @@ class StableDiffusionControlNetInpaintPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
         )
+        # For classifier free guidance, we need to do two forward passes.
+        # Here we concatenate the unconditional and text embeddings into a single batch
+        # to avoid doing two forward passes
+        if do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare image
-        control_image = [
-            self.prepare_control_image(
-                image=cn_image,
+        if isinstance(controlnet, ControlNetModel):
+            control_image = self.prepare_control_image(
+                image=control_image,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
@@ -1148,15 +1151,37 @@ class StableDiffusionControlNetInpaintPipeline(
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
-                controlnet_image_transform=controlnet_image_transformers[i] if controlnet_image_transformers is not None else None,
             )
-            for i, cn_image in enumerate(control_image)
-        ]
+        elif isinstance(controlnet, MultiControlNetModel):
+            control_images = []
+
+            for control_image_ in control_image:
+                control_image_ = self.prepare_control_image(
+                    image=control_image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+
+                control_images.append(control_image_)
+
+            control_image = control_images
+        else:
+            assert False
 
         # 4. Preprocess mask and image - resizes image and mask w.r.t height and width
-        mask, masked_image, init_image = prepare_mask_and_masked_image(
-            image, mask_image, height, width, return_image=True
-        )
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        init_image = init_image.to(dtype=torch.float32)
+
+        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+
+        masked_image = init_image * (mask < 0.5)
+        _, _, height, width = init_image.shape
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
