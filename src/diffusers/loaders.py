@@ -1075,6 +1075,7 @@ class LoraLoaderMixin:
         """
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        print(state_dict.keys())
         is_correct_format = all(
             key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
         )
