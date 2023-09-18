@@ -150,7 +150,7 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
                 - equalizer_strengths (`List[float]`, *optional*, default to `None`) Required for edit type `reweight`.
                   Determines which how much the words in `equalizer_words` should be enhanced.
 
-            guidance_rescale (`float`, *optional*, defaults to 0.7):
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR.
