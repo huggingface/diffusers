@@ -559,6 +559,7 @@ class UNet2DConditionLoadersMixin:
         """
         from .models.attention_processor import (
             CustomDiffusionAttnProcessor,
+            CustomDiffusionAttnProcessor2_0,
             CustomDiffusionXFormersAttnProcessor,
         )
 
@@ -578,7 +579,10 @@ class UNet2DConditionLoadersMixin:
         os.makedirs(save_directory, exist_ok=True)
 
         is_custom_diffusion = any(
-            isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor))
+            isinstance(
+                x,
+                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
+            )
             for (_, x) in self.attn_processors.items()
         )
         if is_custom_diffusion:
@@ -586,7 +590,14 @@ class UNet2DConditionLoadersMixin:
                 {
                     y: x
                     for (y, x) in self.attn_processors.items()
-                    if isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor))
+                    if isinstance(
+                        x,
+                        (
+                            CustomDiffusionAttnProcessor,
+                            CustomDiffusionAttnProcessor2_0,
+                            CustomDiffusionXFormersAttnProcessor,
+                        ),
+                    )
                 }
             )
             state_dict = model_to_save.state_dict()
