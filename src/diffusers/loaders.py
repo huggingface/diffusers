@@ -1587,11 +1587,14 @@ class LoraLoaderMixin:
                     low_cpu_mem_usage=low_cpu_mem_usage,
                 )
 
-                # set correct dtype & device
-                text_encoder_lora_state_dict = {
-                    k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
-                    for k, v in text_encoder_lora_state_dict.items()
-                }
+                is_pipeline_offloaded = _pipeline is not None and any(
+                    isinstance(c, torch.nn.Module) and hasattr(c, "_hf_hook") for c in _pipeline.components.values()
+                )
+                if is_pipeline_offloaded and low_cpu_mem_usage:
+                    low_cpu_mem_usage = True
+                    logger.info(
+                        f"Pipeline {_pipeline.__class__} is offloaded. Therefore low cpu mem usage loading is forced."
+                    )
 
                 if low_cpu_mem_usage:
                     device = next(iter(text_encoder_lora_state_dict.values())).device
