@@ -58,6 +58,7 @@ LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 TEXT_INVERSION_NAME = "learned_embeds.bin"
 TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
+TEXT_INVERSION_KEYS = {"string_to_token", "string_to_param", "name", "step", "sd_checkpoint", "sd_checkpoint_name"}
 
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
@@ -1072,6 +1073,14 @@ class LoraLoaderMixin:
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        is_correct_format = all(
+            key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
+        )
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint.")
+
         # Remove any existing hooks.
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
@@ -1089,7 +1098,6 @@ class LoraLoaderMixin:
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
-        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(
             state_dict, network_alphas=network_alphas, unet=self.unet, low_cpu_mem_usage=low_cpu_mem_usage
         )
@@ -2652,6 +2660,19 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.
 
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        state_dict, network_alphas = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict,
+            unet_config=self.unet.config,
+            **kwargs,
+        )
+        is_correct_format = all(
+            key.startswith(self.unet_name) or key.startswith("text_encoder") or key.startswith("text_encoder_2")
+            for key in state_dict.keys()
+        )
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint.")
+
         # Remove any existing hooks.
         if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
             from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
@@ -2670,11 +2691,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                     )
                     remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-        state_dict, network_alphas = self.lora_state_dict(
-            pretrained_model_name_or_path_or_dict,
-            unet_config=self.unet.config,
-            **kwargs,
-        )
         self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
 
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
