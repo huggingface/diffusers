@@ -32,7 +32,7 @@ from diffusers import (
     StableDiffusionControlNetInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_controlnet import MultiControlNetModel
+from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils import load_image
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (

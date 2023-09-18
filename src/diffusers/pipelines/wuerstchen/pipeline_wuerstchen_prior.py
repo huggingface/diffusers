@@ -23,8 +23,6 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import (
     BaseOutput,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     replace_example_docstring,
 )
@@ -86,6 +84,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
 
+    model_cpu_offload_seq = "text_encoder->prior"
+
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
@@ -107,35 +107,6 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             latent_mean=latent_mean, latent_std=latent_std, resolution_multiple=resolution_multiple
         )
 
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.prior_hook = hook
-
-        _, hook = cpu_offload_with_hook(self.prior, device, prev_module_hook=self.prior_hook)
-
-        self.final_offload_hook = hook
-
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -150,41 +121,57 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
     def encode_prompt(
         self,
-        prompt,
         device,
         num_images_per_prompt,
         do_classifier_free_guidance,
+        prompt=None,
         negative_prompt=None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
     ):
-        batch_size = len(prompt) if isinstance(prompt, list) else 1
-        # get prompt text embeddings
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-        attention_mask = text_inputs.attention_mask
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
 
-        untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+        if prompt_embeds is None:
+            # get prompt text embeddings
+            text_inputs = self.tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
             )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-            attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
+            text_input_ids = text_inputs.input_ids
+            attention_mask = text_inputs.attention_mask
 
-        text_encoder_output = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask.to(device))
-        text_encoder_hidden_states = text_encoder_output.last_hidden_state
-        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
-        uncond_text_encoder_hidden_states = None
-        if do_classifier_free_guidance:
+            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
+                text_input_ids, untruncated_ids
+            ):
+                removed_text = self.tokenizer.batch_decode(
+                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
+                )
+                logger.warning(
+                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+                )
+                text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+                attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
+
+            text_encoder_output = self.text_encoder(
+                text_input_ids.to(device), attention_mask=attention_mask.to(device)
+            )
+            prompt_embeds = text_encoder_output.last_hidden_state
+
+        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+
+        if negative_prompt_embeds is None and do_classifier_free_guidance:
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
@@ -215,17 +202,17 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                 uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device)
             )
 
-            uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
+            negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.last_hidden_state
 
+        if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_text_encoder_hidden_states.shape[1]
-            uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
-            uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.view(
-                batch_size * num_images_per_prompt, seq_len, -1
-            )
+            seq_len = negative_prompt_embeds.shape[1]
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
             # done duplicates
 
-        return text_encoder_hidden_states, uncond_text_encoder_hidden_states
+        return prompt_embeds, negative_prompt_embeds
 
     def check_inputs(
         self,
@@ -233,22 +220,34 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         negative_prompt,
         num_inference_steps,
         do_classifier_free_guidance,
-        batch_size,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
     ):
-        if not isinstance(prompt, list):
-            if isinstance(prompt, str):
-                prompt = [prompt]
-            else:
-                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-        if do_classifier_free_guidance:
-            if negative_prompt is not None and not isinstance(negative_prompt, list):
-                if isinstance(negative_prompt, str):
-                    negative_prompt = [negative_prompt]
-                else:
-                    raise TypeError(
-                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
-                    )
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
 
         if not isinstance(num_inference_steps, int):
             raise TypeError(
@@ -256,21 +255,19 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
                            In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
             )
 
-        batch_size = len(prompt) if isinstance(prompt, list) else 1
-
-        return prompt, negative_prompt, num_inference_steps, batch_size
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Optional[Union[str, List[str]]] = None,
         height: int = 1024,
         width: int = 1024,
         num_inference_steps: int = 60,
         timesteps: List[float] = None,
         guidance_scale: float = 8.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -304,6 +301,13 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `decoder_guidance_scale` is less than `1`).
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -336,16 +340,47 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
         # 0. Define commonly used variables
         device = self._execution_device
         do_classifier_free_guidance = guidance_scale > 1.0
-        batch_size = len(prompt) if isinstance(prompt, list) else 1
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
 
         # 1. Check inputs. Raise error if not correct
-        prompt, negative_prompt, num_inference_steps, batch_size = self.check_inputs(
-            prompt, negative_prompt, num_inference_steps, do_classifier_free_guidance, batch_size
+        if prompt is not None and not isinstance(prompt, list):
+            if isinstance(prompt, str):
+                prompt = [prompt]
+            else:
+                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
+
+        if do_classifier_free_guidance:
+            if negative_prompt is not None and not isinstance(negative_prompt, list):
+                if isinstance(negative_prompt, str):
+                    negative_prompt = [negative_prompt]
+                else:
+                    raise TypeError(
+                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
+                    )
+
+        self.check_inputs(
+            prompt,
+            negative_prompt,
+            num_inference_steps,
+            do_classifier_free_guidance,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
         )
 
         # 2. Encode caption
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt=prompt,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
         )
 
         # For classifier free guidance, we need to do two forward passes.
@@ -405,6 +440,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
 
         # 10. Denormalize the latents
         latents = latents * self.config.latent_mean - self.config.latent_std
+
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if output_type == "np":
             latents = latents.cpu().numpy()

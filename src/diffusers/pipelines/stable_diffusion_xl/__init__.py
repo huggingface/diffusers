@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -7,10 +9,8 @@ from ...utils import (
 )
 
 
-_import_structure = {}
 _dummy_objects = {}
-
-_import_structure["pipeline_output"] = ["StableDiffusionXLPipelineOutput"]
+_import_structure = {"pipeline_output": ["StableDiffusionXLPipelineOutput"]}
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -25,15 +25,28 @@ else:
     _import_structure["pipeline_stable_diffusion_xl_inpaint"] = ["StableDiffusionXLInpaintPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_instruct_pix2pix"] = ["StableDiffusionXLInstructPix2PixPipeline"]
 
-import sys
 
+if TYPE_CHECKING:
+    try:
+        if not (is_transformers_available() and is_torch_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
+    else:
+        from .pipeline_stable_diffusion_xl import StableDiffusionXLPipeline
+        from .pipeline_stable_diffusion_xl_img2img import StableDiffusionXLImg2ImgPipeline
+        from .pipeline_stable_diffusion_xl_inpaint import StableDiffusionXLInpaintPipeline
+        from .pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
 
-sys.modules[__name__] = _LazyModule(
-    __name__,
-    globals()["__file__"],
-    _import_structure,
-    module_spec=__spec__,
-)
+else:
+    import sys
 
-for name, value in _dummy_objects.items():
-    setattr(sys.modules[__name__], name, value)
+    sys.modules[__name__] = _LazyModule(
+        __name__,
+        globals()["__file__"],
+        _import_structure,
+        module_spec=__spec__,
+    )
+
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)
