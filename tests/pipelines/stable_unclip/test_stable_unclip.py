@@ -182,7 +182,7 @@ class StableUnCLIPPipelineFastTests(
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because UnCLIP undeterminism requires a looser check.
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_difference=1e-3)
+        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
 
 @slow

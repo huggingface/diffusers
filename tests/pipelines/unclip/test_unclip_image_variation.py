@@ -448,17 +448,12 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     # because UnCLIP undeterminism requires a looser check.
     @skip_mps
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
         additional_params_copy_to_batched_inputs = [
             "decoder_num_inference_steps",
             "super_res_num_inference_steps",
         ]
-
         self._test_inference_batch_single_identical(
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
-            additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs,
+            additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs, expected_max_diff=5e-3
         )
 
     def test_inference_batch_consistent(self):

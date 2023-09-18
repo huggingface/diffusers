@@ -385,8 +385,8 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["generator"] = self.get_generator(0)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
@@ -414,7 +414,10 @@ class PipelineTesterMixin:
                     batched_input[name] = batch_size * [value]
 
             if "generator" in inputs:
-                batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
+                batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+            if "batch_size" in inputs:
+                batched_input["batch_size"] = batch_size
 
             batched_inputs.append(batched_input)
 
@@ -441,6 +444,8 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is has been used in self.get_dummy_inputs
+        inputs["generator"] = self.get_generator(0)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
@@ -464,6 +469,9 @@ class PipelineTesterMixin:
 
         if "generator" in inputs:
             batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+        if "batch_size" in inputs:
+            batched_inputs["batch_size"] = batch_size
 
         for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]

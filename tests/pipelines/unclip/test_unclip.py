@@ -381,7 +381,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         ]
 
         self._test_inference_batch_single_identical(
-            additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs,
+            additional_params_copy_to_batched_inputs=additional_params_copy_to_batched_inputs, expected_max_diff=5e-3
         )
 
     def test_inference_batch_consistent(self):

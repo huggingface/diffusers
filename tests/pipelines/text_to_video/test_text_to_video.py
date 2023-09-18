@@ -33,7 +33,6 @@ from diffusers.utils.testing_utils import (
     skip_mps,
     slow,
     torch_device,
-    print_tensor_test,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
