@@ -2546,7 +2546,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         }
         converted_sd_keys = set(converted_state_dict.keys())
         # print(f"Differences in between the keys here: {converted_sd_keys.difference(set(load_state_dict_results.unexpected_keys))}")
-        print(f"Remaining state dict: {remaining_state_dict}")
+        print(f"Remaining state dict: {remaining_state_dict.keys()}")
 
         # Handle LoRA.
         lora_grouped_dict = defaultdict(dict)
