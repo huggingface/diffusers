@@ -616,20 +616,20 @@ class UNet2DConditionLoadersMixin:
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
     def fuse_lora(self, lora_scale=1.0):
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
         self.lora_scale = lora_scale
+        self.apply(self._fuse_lora_apply)
 
-        for module in self.modules():
-            if isinstance(module, BaseTunerLayer):
-                module.merge()
+    def _fuse_lora_apply(self, module):
+        if hasattr(module, "_fuse_lora"):
+            module._fuse_lora(self.lora_scale)
 
     def unfuse_lora(self):
-        from peft.tuners.tuners_utils import BaseTunerLayer
+        self.apply(self._unfuse_lora_apply)
 
-        for module in self.modules():
-            if isinstance(module, BaseTunerLayer):
-                module.unmerge()
+    def _unfuse_lora_apply(self, module):
+        if hasattr(module, "_unfuse_lora"):
+            module._unfuse_lora()
+
 
 
 class TextualInversionLoaderMixin:
@@ -1398,7 +1398,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def load_lora_into_text_encoder(
-        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None
+        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None, adapter_name="default"
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1421,6 +1421,9 @@ class LoraLoaderMixin:
                 tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
+            adapter_name (`str`, *optional*, defaults to `"default"`):
+                The name of the adapter to load the LoRA layers into, useful in the case of using multiple adapters
+                with the same model. Default to the default name used in PEFT library - `"default"`.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
@@ -1778,10 +1781,18 @@ class LoraLoaderMixin:
                 module.set_lora_layer(None)
 
         # Safe to call the following regardless of LoRA.
-        recurse_replace_peft_layers(self.text_encoder)
+        if hasattr(self, "text_encoder"):
+            recurse_replace_peft_layers(self.text_encoder)
+        if hasattr(self, "text_encoder_2"):
+            recurse_replace_peft_layers(self.text_encoder_2)
+
+        # import pdb; pdb.set_trace()
 
     def _remove_text_encoder_monkey_patch(self):
-        recurse_replace_peft_layers(self.text_encoder)
+        if hasattr(self, "text_encoder"):
+            recurse_replace_peft_layers(self.text_encoder)
+        if hasattr(self, "text_encoder_2"):
+            recurse_replace_peft_layers(self.text_encoder_2)
 
     def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True, lora_scale: float = 1.0):
         r"""
@@ -1819,6 +1830,8 @@ class LoraLoaderMixin:
                     module.merge()
 
         if fuse_text_encoder:
+            # import pdb; pdb.set_trace()
+
             if hasattr(self, "text_encoder"):
                 fuse_text_encoder_lora(self.text_encoder)
             if hasattr(self, "text_encoder_2"):
