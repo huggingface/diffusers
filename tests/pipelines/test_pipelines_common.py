@@ -410,11 +410,11 @@ class PipelineTesterMixin:
                     # make last batch super long
                     batched_input[name][-1] = 100 * "very long"
 
-                elif name == "generator":
-                    batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
-
                 else:
                     batched_input[name] = batch_size * [value]
+
+            if "generator" in inputs:
+                batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
 
             batched_inputs.append(batched_input)
 
@@ -432,7 +432,6 @@ class PipelineTesterMixin:
         expected_max_diff=1e-4,
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
-        generator_device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for components in pipe.components.values():
@@ -441,8 +440,7 @@ class PipelineTesterMixin:
 
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs(torch_device)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
@@ -461,20 +459,19 @@ class PipelineTesterMixin:
                 batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
                 batched_inputs[name][-1] = 100 * "very long"
 
-            elif name == "generator":
-                batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
-
             else:
                 batched_inputs[name] = batch_size * [value]
+
+        if "generator" in inputs:
+            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
         for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]
 
-        output_batch = pipe(**batched_inputs)
-        assert output_batch[0].shape[0] == batch_size
-
-        inputs = self.get_dummy_inputs(generator_device)
         output = pipe(**inputs)
+        output_batch = pipe(**batched_inputs)
+
+        assert output_batch[0].shape[0] == batch_size
 
         max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
         assert max_diff < expected_max_diff
