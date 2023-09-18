@@ -1889,16 +1889,19 @@ class LoraLoaderMixin:
         if fuse_unet:
             self.unet.fuse_lora(lora_scale)
 
-        def fuse_text_encoder_lora(text_encoder):
+        def fuse_text_encoder_lora(text_encoder, lora_scale=1.0):
             for module in text_encoder.modules():
                 if isinstance(module, BaseTunerLayer):
+                    if lora_scale != 1.0:
+                        module.scale_layer(lora_scale)
+
                     module.merge()
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
-                fuse_text_encoder_lora(self.text_encoder)
+                fuse_text_encoder_lora(self.text_encoder, lora_scale)
             if hasattr(self, "text_encoder_2"):
-                fuse_text_encoder_lora(self.text_encoder_2)
+                fuse_text_encoder_lora(self.text_encoder_2, lora_scale)
 
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
