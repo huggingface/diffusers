@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import logging, deprecate
+from ..utils import deprecate, logging
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
@@ -232,7 +232,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             elif order == 1:
                 orders = [1] * steps
         return orders
-    
+
     @property
     def step_index(self):
         """
@@ -287,7 +287,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             self.register_to_config(lower_order_final=True)
 
         self.order_list = self.get_order_list(num_inference_steps)
-        
+
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
 
@@ -349,8 +349,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         t = (1 - w) * low_idx + w * high_idx
         t = t.reshape(sigma.shape)
         return t
-    
-    # Copied from diffusers.schedulers.scheduler_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
     def _sigma_to_alpha_sigma_t(self, sigma):
         alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
         sigma_t = sigma * alpha_t
@@ -372,9 +372,9 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         return sigmas
 
     def convert_model_output(
-        self, 
-        model_output: torch.FloatTensor, 
-        *args, 
+        self,
+        model_output: torch.FloatTensor,
+        *args,
         sample: torch.FloatTensor = None,
         **kwargs,
     ) -> torch.FloatTensor:
@@ -491,6 +491,19 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 sample = args[2]
             else:
                 raise ValueError(" missing `sample` as a required keyward argument")
+        if timestep is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        if prev_timestep is not None:
+            deprecate(
+                "prev_timestep",
+                "1.0.0",
+                "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )       
         sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s, sigma_s = self._sigma_to_alpha_sigma_t(sigma_s)
@@ -661,7 +674,6 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         lambda_s1 = torch.log(alpha_s1) - torch.log(sigma_s1)
         lambda_s2 = torch.log(alpha_s2) - torch.log(sigma_s2)
 
-
         m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
 
         h, h_0, h_1 = lambda_t - lambda_s2, lambda_s0 - lambda_s2, lambda_s1 - lambda_s2
@@ -707,7 +719,6 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         model_output_list: List[torch.FloatTensor],
         *args,
         sample: torch.FloatTensor = None,
-
         order: int = None,
         **kwargs,
     ) -> torch.FloatTensor:
@@ -755,17 +766,13 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                 "1.0.0",
                 "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
             )
-       
+
         if order == 1:
             return self.dpm_solver_first_order_update(model_output_list[-1], sample=sample)
         elif order == 2:
-            return self.singlestep_dpm_solver_second_order_update(
-                model_output_list, sample=sample
-            )
+            return self.singlestep_dpm_solver_second_order_update(model_output_list, sample=sample)
         elif order == 3:
-            return self.singlestep_dpm_solver_third_order_update(
-                model_output_list, sample=sample
-            )
+            return self.singlestep_dpm_solver_third_order_update(model_output_list, sample=sample)
         else:
             raise ValueError(f"Order must be 1, 2, 3, got {order}")
 
@@ -839,9 +846,10 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         if order == 1:
             self.sample = sample
 
-        prev_sample = self.singlestep_dpm_solver_update(
-            self.model_outputs, sample= self.sample, order=order
-        )
+        prev_sample = self.singlestep_dpm_solver_update(self.model_outputs, sample=self.sample, order=order)
+
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
@@ -863,7 +871,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-# Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
