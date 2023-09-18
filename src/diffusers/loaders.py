@@ -1786,8 +1786,6 @@ class LoraLoaderMixin:
         if hasattr(self, "text_encoder_2"):
             recurse_replace_peft_layers(self.text_encoder_2)
 
-        # import pdb; pdb.set_trace()
-
     def _remove_text_encoder_monkey_patch(self):
         if hasattr(self, "text_encoder"):
             recurse_replace_peft_layers(self.text_encoder)
@@ -1830,8 +1828,6 @@ class LoraLoaderMixin:
                     module.merge()
 
         if fuse_text_encoder:
-            # import pdb; pdb.set_trace()
-
             if hasattr(self, "text_encoder"):
                 fuse_text_encoder_lora(self.text_encoder)
             if hasattr(self, "text_encoder_2"):
