@@ -74,6 +74,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
         norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for normalization.
+        attn_norm_num_groups (`int`, *optional*, defaults to `None`):
+            If set to an integer, a group norm layer will be created in the mid block's [`Attention`] layer with the
+            given number of groups. If left as `None`, the group norm layer will only be created if
+            `resnet_time_scale_shift` is set to `default`, and if created will have `norm_num_groups` groups.
         norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for normalization.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
@@ -107,6 +111,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         act_fn: str = "silu",
         attention_head_dim: Optional[int] = 8,
         norm_num_groups: int = 32,
+        attn_norm_num_groups: Optional[int] = None,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
         add_attention: bool = True,
@@ -192,6 +197,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             resnet_time_scale_shift=resnet_time_scale_shift,
             attention_head_dim=attention_head_dim if attention_head_dim is not None else block_out_channels[-1],
             resnet_groups=norm_num_groups,
+            attn_groups=attn_norm_num_groups,
             add_attention=add_attention,
         )
 

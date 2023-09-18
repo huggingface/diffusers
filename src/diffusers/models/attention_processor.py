@@ -382,7 +382,7 @@ class Attention(nn.Module):
             }
 
             if hasattr(self.processor, "attention_op"):
-                kwargs["attention_op"] = self.prcoessor.attention_op
+                kwargs["attention_op"] = self.processor.attention_op
 
             lora_processor = lora_processor_cls(hidden_size, **kwargs)
             lora_processor.to_q_lora.load_state_dict(self.to_q.lora_layer.state_dict())
