@@ -1,0 +1,1 @@
+from .pipeline_animate_diff import AnimateDiffPipeline
