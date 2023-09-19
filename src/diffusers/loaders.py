@@ -1142,11 +1142,11 @@ class LoraLoaderMixin:
         For PEFT is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
         """
         correct_peft_version = is_peft_available() and version.parse(
-            importlib.metadata.version("peft")
-        ) > version.parse("0.5.0")
-        correct_transformers_version = version.parse(importlib.metadata.version("transformers")) > version.parse(
-            "4.33.1"
-        )
+            version.parse(importlib.metadata.version("peft")).base_version
+        ) > version.parse("0.5")
+        correct_transformers_version = version.parse(
+            version.parse(importlib.metadata.version("transformers")).base_version
+        ) > version.parse("4.33")
         return correct_peft_version and correct_transformers_version
 
     @classmethod
