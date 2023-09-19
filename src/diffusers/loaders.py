@@ -41,7 +41,7 @@ from .utils import (
     is_peft_available,
     is_transformers_available,
     logging,
-    recurse_replace_peft_layers,
+    recurse_remove_peft_layers,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
@@ -1849,15 +1849,15 @@ class LoraLoaderMixin:
 
         # Safe to call the following regardless of LoRA.
         if hasattr(self, "text_encoder"):
-            recurse_replace_peft_layers(self.text_encoder)
+            recurse_remove_peft_layers(self.text_encoder)
         if hasattr(self, "text_encoder_2"):
-            recurse_replace_peft_layers(self.text_encoder_2)
+            recurse_remove_peft_layers(self.text_encoder_2)
 
     def _remove_text_encoder_monkey_patch(self):
         if hasattr(self, "text_encoder"):
-            recurse_replace_peft_layers(self.text_encoder)
+            recurse_remove_peft_layers(self.text_encoder)
         if hasattr(self, "text_encoder_2"):
-            recurse_replace_peft_layers(self.text_encoder_2)
+            recurse_remove_peft_layers(self.text_encoder_2)
 
     def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True, lora_scale: float = 1.0):
         r"""
@@ -2659,5 +2659,5 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         )
 
     def _remove_text_encoder_monkey_patch(self):
-        recurse_replace_peft_layers(self.text_encoder)
-        recurse_replace_peft_layers(self.text_encoder_2)
+        recurse_remove_peft_layers(self.text_encoder)
+        recurse_remove_peft_layers(self.text_encoder_2)

@@ -21,7 +21,7 @@ if is_torch_available():
     import torch
 
 
-def recurse_replace_peft_layers(model):
+def recurse_remove_peft_layers(model):
     r"""
     Recursively replace all instances of `LoraLayer` with corresponding new layers in `model`.
     """
@@ -30,7 +30,7 @@ def recurse_replace_peft_layers(model):
     for name, module in model.named_children():
         if len(list(module.children())) > 0:
             ## compound module, go inside it
-            recurse_replace_peft_layers(module)
+            recurse_remove_peft_layers(module)
 
         if isinstance(module, LoraLayer) and isinstance(module, torch.nn.Linear):
             new_module = torch.nn.Linear(module.in_features, module.out_features, bias=module.bias is not None).to(
