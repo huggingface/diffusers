@@ -124,6 +124,9 @@ def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
             original_type = StateDictType.DIFFUSERS_OLD
         elif any(f".lora_A{peft_adapter_name}.weight" in k for k in state_dict.keys()):
             original_type = StateDictType.PEFT
+        elif any("lora_linear_layer" in k for k in state_dict.keys()):
+            # nothing to do
+            return state_dict
         else:
             raise ValueError("Could not automatically infer state dict type")
 
