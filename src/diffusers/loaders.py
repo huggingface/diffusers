@@ -383,6 +383,8 @@ class UNet2DConditionLoadersMixin:
 
         if is_lora:
             # correct keys
+            for k in state_dict:
+                if "time" in k: print(k)
             state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
 
             if network_alphas is not None:
@@ -542,10 +544,6 @@ class UNet2DConditionLoadersMixin:
         )
         if is_new_lora_format:
             # Strip the `"unet"` prefix.
-            print("Yes new LoRA format.")
-            for k in state_dict:
-                if "time" in k:
-                    print(k)
             is_text_encoder_present = any(key.startswith(self.text_encoder_name) for key in state_dict.keys())
             if is_text_encoder_present:
                 warn_message = "The state_dict contains LoRA params corresponding to the text encoder which are not being used here. To use both UNet and text encoder related LoRA params, use [`pipe.load_lora_weights()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights)."
