@@ -1874,6 +1874,9 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
                 else:
                     diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+                
+                if "shortcut" in diffusers_name:
+                    print(f"Round 1: {diffusers_name} with key {key}")
     
                 diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
                 diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
@@ -1883,6 +1886,9 @@ class LoraLoaderMixin:
                 diffusers_name = diffusers_name.replace("proj.in", "proj_in")
                 diffusers_name = diffusers_name.replace("proj.out", "proj_out")
                 diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+
+                if "shortcut" in diffusers_name:
+                    print(f"Round 2: {diffusers_name} with key {key}")
 
                 # SDXL specificity.
                 if "emb" in diffusers_name and "time" not in diffusers_name:
@@ -1895,10 +1901,12 @@ class LoraLoaderMixin:
                 if "downsamplers" in diffusers_name or "upsamplers" in diffusers_name:
                     diffusers_name = diffusers_name.replace("op", "conv")
                 if "skip" in diffusers_name:
-                    print(f"Found with {diffusers_name} and key: {key}")
                     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
                 if "time" in diffusers_name:
                     diffusers_name = diffusers_name.replace("time.emb.proj", "time_emb_proj")
+
+                if "shortcut" in diffusers_name:
+                    print(f"Round 3: {diffusers_name} with key {key}")
 
                 if "transformer_blocks" in diffusers_name:
                     if "attn1" in diffusers_name or "attn2" in diffusers_name:
@@ -1915,6 +1923,9 @@ class LoraLoaderMixin:
                 else:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+
+                if "shortcut" in diffusers_name:
+                    print(f"Round 4: {diffusers_name} with key {key}")
 
             elif lora_name.startswith("lora_te_"):
                 diffusers_name = key.replace("lora_te_", "").replace("_", ".")
