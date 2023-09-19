@@ -106,6 +106,7 @@ CM_IMAGENET_64_UNET_CONFIG = {
     "attn_norm_num_groups": 32,
     "upsample_type": "resnet",
     "downsample_type": "resnet",
+    "dropout": 0.1,
 }
 
 CM_LSUN_256_UNET_CONFIG = {
@@ -135,6 +136,7 @@ CM_LSUN_256_UNET_CONFIG = {
     "resnet_time_scale_shift": "default",
     "upsample_type": "resnet",
     "downsample_type": "resnet",
+    "dropout": 0.1,
 }
 
 EDM_SCHEDULER_CONFIG = {
