@@ -1912,7 +1912,7 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
                 else:
                     if "time" in diffusers_name:
-                        print(key)
+                        print(f"diffusers_name: {diffusers_name}, key: {key}")
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
