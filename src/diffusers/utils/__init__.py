@@ -88,6 +88,7 @@ from .peft_utils import recurse_remove_peft_layers
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
 from .state_dict_utils import convert_state_dict_to_diffusers, convert_state_dict_to_peft
 
+from .lpw_sd import encode_prompt
 
 logger = get_logger(__name__)
 
