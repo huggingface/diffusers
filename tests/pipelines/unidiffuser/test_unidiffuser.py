@@ -20,7 +20,7 @@ from diffusers import (
     UniDiffuserPipeline,
     UniDiffuserTextDecoder,
 )
-from diffusers.utils.testing_utils import floats_tensor, load_image, nightly, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import floats_tensor, load_image, nightly, require_torch_gpu, torch_device
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
@@ -517,7 +517,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
 
-@slow
+@nightly
 @require_torch_gpu
 class UniDiffuserPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
