@@ -35,7 +35,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.logging import set_verbosity_error, set_verbosity_info
 
-from .modeling_efficient_net_encoder import EfficientNetEncoder
+from modeling_efficient_net_encoder import EfficientNetEncoder
 
 
 if is_wandb_available():
@@ -346,8 +346,8 @@ def main():
             ).repo_id
 
     # Load scheduler, effnet, tokenizer, clip_model
-    DDPMWuerstchenScheduler()
-    CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
+    noise_scheduler = DDPMWuerstchenScheduler()
+    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
 
     def deepspeed_zero_init_disabled_context_manager():
         """
