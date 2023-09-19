@@ -41,8 +41,8 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
         >>> from controlnet_aux import CannyDetector
 
-        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained('ayushtues/blipdiffusion-controlnet')
-        >>> blip_diffusion_pipe.to('cuda')
+        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained("ayushtues/blipdiffusion-controlnet")
+        >>> blip_diffusion_pipe.to("cuda")
 
         >>> style_subject = ["flower"]
         >>> tgt_subject = ["teapot"]
@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/kettle.jpg"
         ... ).resize(512, 512)
         >>> canny = CannyDetector()
-        >>> cldm_cond_image = canny(cldm_cond_image, 30, 70, output_type='pil)
+        >>> cldm_cond_image = canny(cldm_cond_image, 30, 70, output_type="pil")
         >>> cldm_cond_image = [cldm_cond_image]
         >>> style_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/flower.jpg"
@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
         ...     neg_prompt=negative_prompt,
         ...     height=512,
         ...     width=512,
-        ...     )
+        ... )
         >>> output[0][0].save("kettle_new.png")
         ```
 """

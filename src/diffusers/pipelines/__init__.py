@@ -67,18 +67,16 @@ else:
         "AudioLDM2ProjectionModel",
         "AudioLDM2UNet2DConditionModel",
     ]
-    _import_structure["blip_diffusion"] = [
-        "BlipDiffusionPipeline",
-    ]
+    _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
     _import_structure["controlnet"].extend(
         [
+            "BlipDiffusionControlNetPipeline",
             "StableDiffusionControlNetImg2ImgPipeline",
             "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionControlNetPipeline",
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
-            "BlipDiffusionControlNetPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [

@@ -23,12 +23,12 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["pipeline_controlnet"] = ["StableDiffusionControlNetPipeline"]
+    _import_structure["pipeline_controlnet_blip_diffusion"] = ["BlipDiffusionControlNetPipeline"]
     _import_structure["pipeline_controlnet_img2img"] = ["StableDiffusionControlNetImg2ImgPipeline"]
     _import_structure["pipeline_controlnet_inpaint"] = ["StableDiffusionControlNetInpaintPipeline"]
     _import_structure["pipeline_controlnet_inpaint_sd_xl"] = ["StableDiffusionXLControlNetInpaintPipeline"]
     _import_structure["pipeline_controlnet_sd_xl"] = ["StableDiffusionXLControlNetPipeline"]
     _import_structure["pipeline_controlnet_sd_xl_img2img"] = ["StableDiffusionXLControlNetImg2ImgPipeline"]
-    _import_structure["pipeline_controlnet_blip_diffusion"] = ["BlipDiffusionControlNetPipeline"]
 try:
     if not (is_transformers_available() and is_flax_available()):
         raise OptionalDependencyNotAvailable()

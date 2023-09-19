@@ -39,8 +39,8 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> from diffusers.utils import load_image
 
-        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained('ayushtues/blipdiffusion')
-        >>> blip_diffusion_pipe.to('cuda')
+        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained("ayushtues/blipdiffusion")
+        >>> blip_diffusion_pipe.to("cuda")
 
         >>> cond_subject = ["dog"]
         >>> tgt_subject = ["dog"]
@@ -66,7 +66,7 @@ EXAMPLE_DOC_STRING = """
         ...     neg_prompt=negative_prompt,
         ...     height=512,
         ...     width=512,
-        ...     )
+        ... )
         >>> output[0][0].save("dog.png")
         ```
 """
