@@ -51,6 +51,7 @@ class DEISMultistepSchedulerTest(SchedulerCommonTest):
 
             output, new_output = sample, sample
             for t in range(time_step, time_step + scheduler.config.solver_order + 1):
+                t = scheduler.timesteps[t]
                 output = scheduler.step(residual, t, output, **kwargs).prev_sample
                 new_output = new_scheduler.step(residual, t, new_output, **kwargs).prev_sample
 
