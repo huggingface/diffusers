@@ -1142,7 +1142,7 @@ class LoraLoaderMixin:
         """
         correct_peft_version = is_peft_available() and version.parse(
             importlib.metadata.version("peft")
-        ) > version.parse("0.6.0")
+        ) > version.parse("0.5.0")
         correct_transformers_version = version.parse(importlib.metadata.version("transformers")) > version.parse(
             "4.33.1"
         )
