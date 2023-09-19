@@ -5,8 +5,6 @@ import torch
 from ...models import UNet2DModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     replace_example_docstring,
 )
