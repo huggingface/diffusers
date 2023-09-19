@@ -18,14 +18,13 @@ import torch
 from transformers import CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ..pipeline_utils import DiffusionPipeline
 from ...schedulers import PNDMScheduler
 from ...utils import (
     logging,
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import ImagePipelineOutput
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .blip_image_processing import BlipImageProcessor
 from .modeling_blip2 import Blip2QFormerModel
 from .modeling_ctx_clip import ContextCLIPTextModel

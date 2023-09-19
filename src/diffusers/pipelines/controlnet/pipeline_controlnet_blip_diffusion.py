@@ -25,11 +25,10 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
-from ..pipeline_utils import ImagePipelineOutput
 from ..blip_diffusion.blip_image_processing import BlipImageProcessor
 from ..blip_diffusion.modeling_blip2 import Blip2QFormerModel
 from ..blip_diffusion.modeling_ctx_clip import ContextCLIPTextModel
+from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

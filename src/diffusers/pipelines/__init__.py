@@ -287,13 +287,13 @@ if TYPE_CHECKING:
         from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
         from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import (
+            BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionControlNetPipeline,
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
-            BlipDiffusionControlNetPipeline,
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,

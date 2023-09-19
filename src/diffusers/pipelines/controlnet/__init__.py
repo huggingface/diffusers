@@ -50,12 +50,12 @@ if TYPE_CHECKING:
     else:
         from .multicontrolnet import MultiControlNetModel
         from .pipeline_controlnet import StableDiffusionControlNetPipeline
+        from .pipeline_controlnet_blip_diffusion import BlipDiffusionControlNetPipeline
         from .pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
         from .pipeline_controlnet_inpaint import StableDiffusionControlNetInpaintPipeline
         from .pipeline_controlnet_inpaint_sd_xl import StableDiffusionXLControlNetInpaintPipeline
         from .pipeline_controlnet_sd_xl import StableDiffusionXLControlNetPipeline
         from .pipeline_controlnet_sd_xl_img2img import StableDiffusionXLControlNetImg2ImgPipeline
-        from .pipeline_controlnet_blip_diffusion import BlipDiffusionControlNetPipeline
 
     try:
         if not (is_transformers_available() and is_flax_available()):
