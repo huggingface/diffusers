@@ -184,9 +184,9 @@ class FlaxStableDiffusionXLImg2ImgPipeline(FlaxDiffusionPipeline):
             add_time_ids = list(original_size + crops_coords_top_left + target_size)
             add_neg_time_ids = list(original_size + crops_coords_top_left + target_size)
 
-        passed_add_embed_dim = (
-            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
-        )
+        # passed_add_embed_dim = (
+        #     self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+        # )
         # TODO: verify (params["unet"]["add_embedding"]["linear_1"]["kernel"].shape[0] ?)
         # expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
