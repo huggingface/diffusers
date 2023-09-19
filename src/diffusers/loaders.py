@@ -2001,6 +2001,9 @@ class LoraLoaderMixin:
             te_state_dict.update(te2_state_dict)
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
+        for k in unet_state_dict:
+            if "time" in k:
+                print(k)
         return new_state_dict, network_alphas
 
     def unload_lora_weights(self):
