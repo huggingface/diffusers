@@ -55,7 +55,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.21.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -103,7 +103,7 @@ def parse_args():
     )
     parser.add_argument(
         "--vae_precision",
-        type="choice",
+        type=str,
         choices=["fp32", "fp16", "bf16"],
         default="fp32",
         help=(

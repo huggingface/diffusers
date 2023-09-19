@@ -10,11 +10,11 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Installing xFormers
+# xFormers
 
-We recommend the use of [xFormers](https://github.com/facebookresearch/xformers) for both inference and training. In our tests, the optimizations performed in the attention blocks allow for both faster speed and reduced memory consumption.
+We recommend [xFormers](https://github.com/facebookresearch/xformers) for both inference and training. In our tests, the optimizations performed in the attention blocks allow for both faster speed and reduced memory consumption.
 
-Starting from version `0.0.16` of xFormers, released on January 2023, installation can be easily performed using pre-built pip wheels:
+Install xFormers from `pip`:
 
 ```bash
 pip install xformers
@@ -22,14 +22,14 @@ pip install xformers
 
 <Tip>
 
-The xFormers PIP package requires the latest version of PyTorch (1.13.1 as of xFormers 0.0.16). If you need to use a previous version of PyTorch, then we recommend you install xFormers from source using [the project instructions](https://github.com/facebookresearch/xformers#installing-xformers).
+The xFormers `pip` package requires the latest version of PyTorch. If you need to use a previous version of PyTorch, then we recommend [installing xFormers from the source](https://github.com/facebookresearch/xformers#installing-xformers).
 
 </Tip>
 
-After xFormers is installed, you can use `enable_xformers_memory_efficient_attention()` for faster inference and reduced memory consumption, as discussed [here](fp16#memory-efficient-attention).
+After xFormers is installed, you can use `enable_xformers_memory_efficient_attention()` for faster inference and reduced memory consumption as shown in this [section](memory#memory-efficient-attention).
 
 <Tip warning={true}>
 
-According to [this issue](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212), xFormers `v0.0.16` cannot be used for training (fine-tune or Dreambooth) in some GPUs. If you observe that problem, please install a development version as indicated in that comment.
+According to this [issue](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212), xFormers `v0.0.16` cannot be used for training (fine-tune or DreamBooth) in some GPUs. If you observe this problem, please install a development version as indicated in the issue comments.
 
 </Tip>
