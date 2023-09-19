@@ -1867,7 +1867,7 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
                 else:
                     diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
-    
+
                 diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
                 diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
                 diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
@@ -1889,7 +1889,7 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("op", "conv")
                 if "skip" in diffusers_name:
                     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
-                
+
                 # LyCORIS specificity.
                 if "time" in diffusers_name:
                     diffusers_name = diffusers_name.replace("time.emb.proj", "time_emb_proj")
@@ -1912,7 +1912,6 @@ class LoraLoaderMixin:
                 else:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-
 
             elif lora_name.startswith("lora_te_"):
                 diffusers_name = key.replace("lora_te_", "").replace("_", ".")
