@@ -1547,7 +1547,7 @@ class LoraLoaderMixin:
                 rank = {}
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
-                if cls.use_peft_backend:
+                if cls.use_peft_backend is True:
                     # convert state dict
                     text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
 
@@ -1583,7 +1583,7 @@ class LoraLoaderMixin:
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                if cls.use_peft_backend:
+                if cls.use_peft_backend is True:
                     from peft import LoraConfig
 
                     lora_rank = list(rank.values())[0]
