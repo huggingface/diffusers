@@ -1,3 +1,10 @@
+"""
+Implements encode_prompt with long-prompt weighting
+
+adopted from lpw_stable_diffusion by github.com/SkyTNT
+"""
+
+
 import re
 from typing import Any, Callable, Dict, List, Optional, Union
 
