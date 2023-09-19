@@ -52,11 +52,11 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @property
     def text_embedder_hidden_size(self):
-        return 32
+        return 16
 
     @property
     def time_input_dim(self):
-        return 32
+        return 16
 
     @property
     def time_embed_dim(self):
@@ -71,10 +71,10 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         config = CLIPVisionConfig(
             hidden_size=self.text_embedder_hidden_size,
-            image_size=64,
+            image_size=32,
             projection_dim=self.text_embedder_hidden_size,
-            intermediate_size=37,
-            num_attention_heads=4,
+            intermediate_size=24,
+            num_attention_heads=2,
             num_channels=3,
             num_hidden_layers=5,
             patch_size=1,
@@ -170,7 +170,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        input_image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+        input_image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -219,15 +219,12 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_consistent(self):
         # NOTE: Larger batch sizes cause this test to timeout, only test on smaller batches
-        self._test_inference_batch_consistent(batch_sizes=[1, 2])
+        self._test_inference_batch_consistent(batch_sizes=[2])
 
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
         self._test_inference_batch_single_identical(
             batch_size=2,
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
+            expected_max_diff=5e-3,
         )
 
     def test_num_images_per_prompt(self):
