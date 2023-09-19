@@ -13,29 +13,33 @@
 
 import argparse
 import logging
+import math
 import os
+import random
 from pathlib import Path
 
 import accelerate
 import datasets
+import numpy as np
 import torch
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.state import AcceleratorState, is_initialized
 from accelerate.utils import ProjectConfiguration, set_seed
+from datasets import load_dataset
 from huggingface_hub import create_repo
+from modeling_efficient_net_encoder import EFFNET_PREPROCESS, EfficientNetEncoder
 from packaging import version
 from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
 
 from diffusers import DDPMWuerstchenScheduler
+from diffusers.optimization import get_scheduler
 from diffusers.pipelines.wuerstchen import WuerstchenPrior
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.logging import set_verbosity_error, set_verbosity_info
-
-from modeling_efficient_net_encoder import EfficientNetEncoder
 
 
 if is_wandb_available():
@@ -346,7 +350,7 @@ def main():
             ).repo_id
 
     # Load scheduler, effnet, tokenizer, clip_model
-    noise_scheduler = DDPMWuerstchenScheduler()
+    DDPMWuerstchenScheduler()
     tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
 
     def deepspeed_zero_init_disabled_context_manager():
@@ -368,12 +372,12 @@ def main():
         image_encoder = EfficientNetEncoder.from_pretrained(
             "warp-ai/EfficientNetEncoder", torch_dtype=weight_dtype
         ).eval()
-        clip_model = CLIPTextModel.from_pretrained(
+        text_encoder = CLIPTextModel.from_pretrained(
             args.pretrained_prior_model_name_or_path, subfolder="text_encoder", torch_dtype=weight_dtype
         ).eval()
 
     # Freeze text_encoder and image_encoder
-    clip_model.requires_grad_(False)
+    text_encoder.requires_grad_(False)
     image_encoder.requires_grad_(False)
 
     # load prior model
@@ -440,6 +444,122 @@ def main():
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
+
+    # Get the datasets: you can either provide your own training and evaluation files (see below)
+    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
+
+    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
+    # download the dataset.
+    if args.dataset_name is not None:
+        # Downloading and loading a dataset from the hub.
+        dataset = load_dataset(
+            args.dataset_name,
+            args.dataset_config_name,
+            cache_dir=args.cache_dir,
+        )
+    else:
+        data_files = {}
+        if args.train_data_dir is not None:
+            data_files["train"] = os.path.join(args.train_data_dir, "**")
+        dataset = load_dataset(
+            "imagefolder",
+            data_files=data_files,
+            cache_dir=args.cache_dir,
+        )
+        # See more about loading custom images at
+        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
+
+    # Preprocessing the datasets.
+    # We need to tokenize inputs and targets.
+    column_names = dataset["train"].column_names
+
+    # Get the column names for input/target.
+    dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
+    if args.image_column is None:
+        image_column = dataset_columns[0] if dataset_columns is not None else column_names[0]
+    else:
+        image_column = args.image_column
+        if image_column not in column_names:
+            raise ValueError(
+                f"--image_column' value '{args.image_column}' needs to be one of: {', '.join(column_names)}"
+            )
+    if args.caption_column is None:
+        caption_column = dataset_columns[1] if dataset_columns is not None else column_names[1]
+    else:
+        caption_column = args.caption_column
+        if caption_column not in column_names:
+            raise ValueError(
+                f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
+            )
+
+    # Preprocessing the datasets.
+    # We need to tokenize input captions and transform the images.
+    def tokenize_captions(examples, is_train=True):
+        captions = []
+        for caption in examples[caption_column]:
+            if isinstance(caption, str):
+                captions.append(caption)
+            elif isinstance(caption, (list, np.ndarray)):
+                # take a random caption if there are multiple
+                captions.append(random.choice(caption) if is_train else caption[0])
+            else:
+                raise ValueError(
+                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                )
+        inputs = tokenizer(
+            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+        )
+        text_input_ids = inputs.input_ids
+        text_mask = inputs.attention_mask.bool()
+        return text_input_ids, text_mask
+
+
+    def preprocess_train(examples):
+        images = [image.convert("RGB") for image in examples[image_column]]
+        examples["effnet_pixel_values"] = EFFNET_PREPROCESS(images)
+        examples["text_input_ids"], examples["text_mask"] = tokenize_captions(examples)
+        return examples
+
+    with accelerator.main_process_first():
+        if args.max_train_samples is not None:
+            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+        # Set the training transforms
+        train_dataset = dataset["train"].with_transform(preprocess_train)
+
+    def collate_fn(examples):
+        effnet_pixel_values = torch.stack([example["effnet_pixel_values"] for example in examples])
+        effnet_pixel_values = effnet_pixel_values.to(memory_format=torch.contiguous_format).float()
+        text_input_ids = torch.stack([example["text_input_ids"] for example in examples])
+        text_mask = torch.stack([example["text_mask"] for example in examples])
+        return {"effnet_pixel_values": effnet_pixel_values, "text_input_ids": text_input_ids, "text_mask": text_mask}
+
+    # DataLoaders creation:
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset,
+        shuffle=True,
+        collate_fn=collate_fn,
+        batch_size=args.train_batch_size,
+        num_workers=args.dataloader_num_workers,
+    )
+
+    # Scheduler and math around the number of training steps.
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    if args.max_train_steps is None:
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+
+    lr_scheduler = get_scheduler(
+        args.lr_scheduler,
+        optimizer=optimizer,
+        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
+        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
+    )
+
+    prior, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        prior, optimizer, train_dataloader, lr_scheduler
+    )
+    image_encoder.to(accelerator.device)
+    text_encoder.to(accelerator.device)
+
 
 if __name__ == "__main__":
     main()
