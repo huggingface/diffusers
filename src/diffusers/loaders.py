@@ -1862,7 +1862,7 @@ class LoraLoaderMixin:
             if lora_name.startswith("lora_unet_"):
                 diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
                 if "time" in key:
-                    print(f"diffusers_name: {diffusers_name}, key: {key}")
+                    print(f"round 1: diffusers_name: {diffusers_name}, key: {key}")
 
                 if "input.blocks" in diffusers_name:
                     diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
@@ -1877,7 +1877,8 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
                 else:
                     diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
-
+                if "time" in key:
+                    print(f"round 2: diffusers_name: {diffusers_name}, key: {key}")
                 diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
                 diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
                 diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
@@ -1886,6 +1887,8 @@ class LoraLoaderMixin:
                 diffusers_name = diffusers_name.replace("proj.in", "proj_in")
                 diffusers_name = diffusers_name.replace("proj.out", "proj_out")
                 diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+                if "time" in key:
+                    print(f"round 3: diffusers_name: {diffusers_name}, key: {key}")
 
                 # SDXL specificity.
                 if "emb" in diffusers_name:
@@ -1900,6 +1903,9 @@ class LoraLoaderMixin:
                 if "skip" in diffusers_name:
                     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
 
+                if "time" in key:
+                    print(f"round 4: diffusers_name: {diffusers_name}, key: {key}")
+
                 if "transformer_blocks" in diffusers_name:
                     if "attn1" in diffusers_name or "attn2" in diffusers_name:
                         diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
@@ -1913,8 +1919,6 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
                 else:
-                    # if "time" in diffusers_name:
-                    #     print(f"diffusers_name: {diffusers_name}, key: {key}")
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
