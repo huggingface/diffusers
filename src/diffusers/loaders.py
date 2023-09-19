@@ -383,6 +383,9 @@ class UNet2DConditionLoadersMixin:
 
         if is_lora:
             # correct keys
+            for k in state_dict:
+                if "shortcut" in k:
+                    print(k)
             state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
 
             if network_alphas is not None:
