@@ -1896,6 +1896,8 @@ class LoraLoaderMixin:
                     diffusers_name = diffusers_name.replace("op", "conv")
                 if "skip" in diffusers_name:
                     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
+                if "time" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("time.emb.proj", "time_emb_proj")
 
                 if "time" in key:
                     print(f"round 4: diffusers_name: {diffusers_name}, key: {key}")
