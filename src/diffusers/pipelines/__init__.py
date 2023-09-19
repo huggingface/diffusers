@@ -125,6 +125,8 @@ else:
         VersatileDiffusionTextToImagePipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
+    from .animate_diff import AnimateDiffPipeline
+    from .animate_diff import UNet3DConditionModel as AnimateDiffUNet3DConditionModel
 
 
 try:

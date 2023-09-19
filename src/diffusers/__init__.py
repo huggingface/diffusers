@@ -206,6 +206,8 @@ else:
         VersatileDiffusionTextToImagePipeline,
         VideoToVideoSDPipeline,
         VQDiffusionPipeline,
+        AnimateDiffPipeline,
+        AnimateDiffUNet3DConditionModel,
     )
 
 try:
