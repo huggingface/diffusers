@@ -383,9 +383,6 @@ class UNet2DConditionLoadersMixin:
 
         if is_lora:
             # correct keys
-            for k in state_dict:
-                if "shortcut" in k:
-                    print(k)
             state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
 
             if network_alphas is not None:
@@ -399,8 +396,6 @@ class UNet2DConditionLoadersMixin:
             for key in all_keys:
                 value = state_dict.pop(key)
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
-                # if "time" in key:
-                #     print(f"key: {key}, attn_processor_key: {attn_processor_key}, sub_key: {sub_key}")
                 lora_grouped_dict[attn_processor_key][sub_key] = value
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
@@ -422,8 +417,6 @@ class UNet2DConditionLoadersMixin:
                 )
 
             for key, value_dict in lora_grouped_dict.items():
-                if "conv" in key:
-                    print(key)
                 attn_processor = self
                 for sub_key in key.split("."):
                     attn_processor = getattr(attn_processor, sub_key)
