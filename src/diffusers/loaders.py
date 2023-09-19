@@ -68,6 +68,19 @@ CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
 
 
+# Below should be `True` if the current version of `peft` and `transformers` are compatible with
+# PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
+# available.
+# For PEFT is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
+_correct_peft_version = is_peft_available() and version.parse(
+    version.parse(importlib.metadata.version("peft")).base_version
+) > version.parse("0.5")
+_correct_transformers_version = version.parse(
+    version.parse(importlib.metadata.version("transformers")).base_version
+) > version.parse("4.33")
+
+USE_PEFT_BACKEND = _correct_peft_version and _correct_transformers_version
+
 class PatchedLoraProjection(nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
         super().__init__()
@@ -1084,6 +1097,7 @@ class LoraLoaderMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
     num_fused_loras = 0
+    use_peft_backend = USE_PEFT_BACKEND
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
@@ -1130,24 +1144,6 @@ class LoraLoaderMixin:
             low_cpu_mem_usage=low_cpu_mem_usage,
             _pipeline=self,
         )
-
-    @classmethod
-    @property
-    def use_peft_backend(cls) -> bool:
-        """
-        A property method that returns `True` if the current version of `peft` and `transformers` are compatible with
-        PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
-        available.
-
-        For PEFT is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
-        """
-        correct_peft_version = is_peft_available() and version.parse(
-            version.parse(importlib.metadata.version("peft")).base_version
-        ) > version.parse("0.5")
-        correct_transformers_version = version.parse(
-            version.parse(importlib.metadata.version("transformers")).base_version
-        ) > version.parse("4.33")
-        return correct_peft_version and correct_transformers_version
 
     @classmethod
     def lora_state_dict(
@@ -1547,7 +1543,7 @@ class LoraLoaderMixin:
                 rank = {}
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
-                if cls.use_peft_backend is True:
+                if cls.use_peft_backend:
                     # convert state dict
                     text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
 
@@ -1583,7 +1579,7 @@ class LoraLoaderMixin:
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                if cls.use_peft_backend is True:
+                if cls.use_peft_backend:
                     from peft import LoraConfig
 
                     lora_rank = list(rank.values())[0]
@@ -1670,7 +1666,7 @@ class LoraLoaderMixin:
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
     def _remove_text_encoder_monkey_patch(self):
-        if self.use_peft_backend is True:
+        if self.use_peft_backend:
             remove_method = recurse_remove_peft_layers
         else:
             warnings.warn(
@@ -2080,7 +2076,7 @@ class LoraLoaderMixin:
         if fuse_unet:
             self.unet.fuse_lora(lora_scale)
 
-        if self.use_peft_backend is True:
+        if self.use_peft_backend:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0):
@@ -2137,7 +2133,7 @@ class LoraLoaderMixin:
         if unfuse_unet:
             self.unet.unfuse_lora()
 
-        if self.use_peft_backend is True:
+        if self.use_peft_backend:
             from peft.tuners.tuner_utils import BaseTunerLayer
 
             def unfuse_text_encoder_lora(text_encoder):
@@ -2872,7 +2868,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         )
 
     def _remove_text_encoder_monkey_patch(self):
-        if self.use_peft_backend is True:
+        if self.use_peft_backend:
             recurse_remove_peft_layers(self.text_encoder)
             recurse_remove_peft_layers(self.text_encoder_2)
         else:
