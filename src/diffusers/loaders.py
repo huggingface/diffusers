@@ -1876,9 +1876,6 @@ class LoraLoaderMixin:
                 else:
                     diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
 
-                if "time" in diffusers_name:
-                    print(diffusers_name)
-
                 diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
                 diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
                 diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
@@ -1914,6 +1911,8 @@ class LoraLoaderMixin:
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
                 else:
+                    if "time" in diffusers_name:
+                        print(key)
                     unet_state_dict[diffusers_name] = state_dict.pop(key)
                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
