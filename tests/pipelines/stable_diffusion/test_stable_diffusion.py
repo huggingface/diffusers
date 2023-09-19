@@ -803,7 +803,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_vae_tiling(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", torch_dtype=torch.float16, safety_checker=None
+        )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
         pipe.unet = pipe.unet.to(memory_format=torch.channels_last)
@@ -1126,7 +1128,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)

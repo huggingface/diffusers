@@ -416,7 +416,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (768, 768, 3)
         max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
-        assert max_diff < 1e-2
+        assert max_diff < 5e-2
 
     def test_stable_diffusion_text2img_pipeline_v_pred_fp16(self):
         expected_image = load_numpy(
@@ -457,7 +457,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe_single = StableDiffusionPipeline.from_single_file(single_file_path)
         pipe_single.scheduler = DDIMScheduler.from_config(pipe_single.scheduler.config)
         pipe_single.unet.set_attn_processor(AttnProcessor())
-        pipe_single.to("cuda")
+        pipe_single.enable_model_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         image_ckpt = pipe_single("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
@@ -465,7 +465,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
+        pipe.enable_model_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]

@@ -33,6 +33,7 @@ from diffusers.utils.testing_utils import (
     skip_mps,
     slow,
     torch_device,
+    numpy_cosine_similarity_distance,
 )
 
 from ..pipeline_params import (
