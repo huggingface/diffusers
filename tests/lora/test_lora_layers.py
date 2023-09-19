@@ -1879,9 +1879,9 @@ class LoraIntegrationTests(unittest.TestCase):
     def test_lycoris(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/Amixx", safety_checker=None).to(
-            torch_device
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/Amixx", safety_checker=None, use_safetensors=True, variant="fp16"
+        ).to(torch_device)
         lora_model_id = "hf-internal-testing/edgLycorisMugler-light"
         lora_filename = "edgLycorisMugler-light.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
