@@ -1670,7 +1670,7 @@ class LoraLoaderMixin:
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
     def _remove_text_encoder_monkey_patch(self):
-        if self.use_peft_backend:
+        if self.use_peft_backend is True:
             remove_method = recurse_remove_peft_layers
         else:
             warnings.warn(
@@ -2080,7 +2080,7 @@ class LoraLoaderMixin:
         if fuse_unet:
             self.unet.fuse_lora(lora_scale)
 
-        if self.use_peft_backend:
+        if self.use_peft_backend is True:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0):
@@ -2137,8 +2137,8 @@ class LoraLoaderMixin:
         if unfuse_unet:
             self.unet.unfuse_lora()
 
-        if self.use_peft_backend:
-            from peft.tuners.layers.tuner_utils import BaseTunerLayer
+        if self.use_peft_backend is True:
+            from peft.tuners.tuner_utils import BaseTunerLayer
 
             def unfuse_text_encoder_lora(text_encoder):
                 for module in text_encoder.modules():
@@ -2872,7 +2872,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         )
 
     def _remove_text_encoder_monkey_patch(self):
-        if self.use_peft_backend:
+        if self.use_peft_backend is True:
             recurse_remove_peft_layers(self.text_encoder)
             recurse_remove_peft_layers(self.text_encoder_2)
         else:
