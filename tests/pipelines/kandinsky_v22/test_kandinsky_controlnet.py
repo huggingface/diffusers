@@ -32,8 +32,8 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    nightly,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -219,7 +219,7 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
 
-@slow
+@nightly
 @require_torch_gpu
 class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
