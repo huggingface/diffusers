@@ -53,9 +53,6 @@ if is_accelerate_available():
     from accelerate import init_empty_weights
     from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
 
-if is_peft_available():
-    from peft import LoraConfig
-
 logger = logging.get_logger(__name__)
 
 TEXT_ENCODER_NAME = "text_encoder"
@@ -1134,22 +1131,21 @@ class LoraLoaderMixin:
             _pipeline=self,
         )
 
-        # Offload back.
-        if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
-
     @property
     def use_peft_backend(self) -> bool:
         """
         A property method that returns `True` if the current version of `peft` and `transformers` are compatible with
-        PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are available.
+        PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
+        available.
 
         For PEFT is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
         """
-        correct_peft_version = is_peft_available() and version.parse(importlib.metadata.version("peft")) > version.parse("0.6.0")
-        correct_transformers_version = version.parse(importlib.metadata.version("transformers")) > version.parse("4.33.1")
+        correct_peft_version = is_peft_available() and version.parse(
+            importlib.metadata.version("peft")
+        ) > version.parse("0.6.0")
+        correct_transformers_version = version.parse(importlib.metadata.version("transformers")) > version.parse(
+            "4.33.1"
+        )
         return correct_peft_version and correct_transformers_version
 
     @classmethod
@@ -1506,7 +1502,6 @@ class LoraLoaderMixin:
         lora_scale=1.0,
         low_cpu_mem_usage=None,
         _pipeline=None,
-        adapter_name="default",
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1529,24 +1524,14 @@ class LoraLoaderMixin:
                 tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
-            adapter_name (`str`, *optional*, defaults to `"default"`):
-                The name of the adapter to load the LoRA layers into, useful in the case of using multiple adapters
-                with the same model. Defaults to the default name used in PEFT library - `"default"`.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
+
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
         # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
         prefix = cls.text_encoder_name if prefix is None else prefix
-
-        is_peft_lora_compatible = version.parse(importlib.metadata.version("transformers")) > version.parse("4.33.1")
-
-        if not is_peft_lora_compatible:
-            raise ValueError(
-                "You are using an older version of transformers. Please upgrade to transformers>=4.33.1 to load LoRA weights into"
-                " text encoder."
-            )
 
         # Safe prefix to check with.
         if any(cls.text_encoder_name in key for key in keys):
@@ -1559,34 +1544,81 @@ class LoraLoaderMixin:
             if len(text_encoder_lora_state_dict) > 0:
                 logger.info(f"Loading {prefix}.")
                 rank = {}
+                if cls.use_peft_backend:
+                    # Old diffusers to PEFT
+                    if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
+                        attention_modules = text_encoder_attn_modules(text_encoder)
+                        text_encoder_lora_state_dict = convert_old_state_dict_to_peft(
+                            attention_modules, text_encoder_lora_state_dict
+                        )
+                    # New diffusers format to PEFT
+                    elif any("lora_linear_layer" in k for k in text_encoder_lora_state_dict.keys()):
+                        attention_modules = text_encoder_attn_modules(text_encoder)
+                        text_encoder_lora_state_dict = convert_diffusers_state_dict_to_peft(
+                            attention_modules, text_encoder_lora_state_dict
+                        )
 
-                # Old diffusers to PEFT
-                if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
-                    attention_modules = text_encoder_attn_modules(text_encoder)
-                    text_encoder_lora_state_dict = convert_old_state_dict_to_peft(
-                        attention_modules, text_encoder_lora_state_dict
-                    )
-                # New diffusers format to PEFT
-                elif any("lora_linear_layer" in k for k in text_encoder_lora_state_dict.keys()):
-                    attention_modules = text_encoder_attn_modules(text_encoder)
-                    text_encoder_lora_state_dict = convert_diffusers_state_dict_to_peft(
-                        attention_modules, text_encoder_lora_state_dict
-                    )
+                    for name, _ in text_encoder_attn_modules(text_encoder):
+                        rank_key = f"{name}.out_proj.lora_B.weight"
+                        rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
 
-                for name, _ in text_encoder_attn_modules(text_encoder):
-                    rank_key = f"{name}.out_proj.lora_B.weight"
-                    rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
+                    patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
+                    if patch_mlp:
+                        for name, _ in text_encoder_mlp_modules(text_encoder):
+                            rank_key_fc1 = f"{name}.fc1.lora_B.weight"
+                            rank_key_fc2 = f"{name}.fc2.lora_B.weight"
+                            rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
+                            rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
+                else:
+                    if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
+                        # Convert from the old naming convention to the new naming convention.
+                        #
+                        # Previously, the old LoRA layers were stored on the state dict at the
+                        # same level as the attention block i.e.
+                        # `text_model.encoder.layers.11.self_attn.to_out_lora.up.weight`.
+                        #
+                        # This is no actual module at that point, they were monkey patched on to the
+                        # existing module. We want to be able to load them via their actual state dict.
+                        # They're in `PatchedLoraProjection.lora_linear_layer` now.
+                        for name, _ in text_encoder_attn_modules(text_encoder):
+                            text_encoder_lora_state_dict[
+                                f"{name}.q_proj.lora_linear_layer.up.weight"
+                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.up.weight")
+                            text_encoder_lora_state_dict[
+                                f"{name}.k_proj.lora_linear_layer.up.weight"
+                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.up.weight")
+                            text_encoder_lora_state_dict[
+                                f"{name}.v_proj.lora_linear_layer.up.weight"
+                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.up.weight")
+                            text_encoder_lora_state_dict[
+                                f"{name}.out_proj.lora_linear_layer.up.weight"
+                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.up.weight")
 
-                patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
-                if patch_mlp:
-                    for name, _ in text_encoder_mlp_modules(text_encoder):
-                        rank_key_fc1 = f"{name}.fc1.lora_B.weight"
-                        rank_key_fc2 = f"{name}.fc2.lora_B.weight"
-                        rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
-                        rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
+                            text_encoder_lora_state_dict[
+                                f"{name}.q_proj.lora_linear_layer.down.weight"
+                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.down.weight")
+                            text_encoder_lora_state_dict[
+                                f"{name}.k_proj.lora_linear_layer.down.weight"
+                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.down.weight")
+                            text_encoder_lora_state_dict[
+                                f"{name}.v_proj.lora_linear_layer.down.weight"
+                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.down.weight")
+                            text_encoder_lora_state_dict[
+                                f"{name}.out_proj.lora_linear_layer.down.weight"
+                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
 
-                # for diffusers format you always get the same rank everywhere
-                # is it possible to load with PEFT
+                    for name, _ in text_encoder_attn_modules(text_encoder):
+                        rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
+                        rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
+
+                    patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
+                    if patch_mlp:
+                        for name, _ in text_encoder_mlp_modules(text_encoder):
+                            rank_key_fc1 = f"{name}.fc1.lora_linear_layer.up.weight"
+                            rank_key_fc2 = f"{name}.fc2.lora_linear_layer.up.weight"
+                            rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
+                            rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
+
                 if network_alphas is not None:
                     alpha_keys = [
                         k for k in network_alphas.keys() if k.startswith(prefix) and k.split(".")[0] == prefix
@@ -1596,20 +1628,21 @@ class LoraLoaderMixin:
                     }
 
                 if cls.use_peft_backend:
+                    from peft import LoraConfig
+
                     lora_rank = list(rank.values())[0]
                     alpha = lora_scale * lora_rank
 
+                    target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
+                    if patch_mlp:
+                        target_modules += ["fc1", "fc2"]
+
+                    lora_config = LoraConfig(r=lora_rank, target_modules=target_modules, lora_alpha=alpha)
+
                     text_encoder.load_adapter(adapter_state_dict=text_encoder_lora_state_dict, peft_config=lora_config)
-
-                    text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+                    is_model_cpu_offload = False
+                    is_sequential_cpu_offload = False
                 else:
-                    # raise deprecation warning
-                    warnings.warn(
-                        "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT"
-                        " make sure to install the latest PEFT and transformers packages in the future.",
-                        FutureWarning,
-                    )
-
                     cls._modify_text_encoder(
                         text_encoder,
                         lora_scale,
@@ -1620,7 +1653,8 @@ class LoraLoaderMixin:
                     )
 
                     is_pipeline_offloaded = _pipeline is not None and any(
-                        isinstance(c, torch.nn.Module) and hasattr(c, "_hf_hook") for c in _pipeline.components.values()
+                        isinstance(c, torch.nn.Module) and hasattr(c, "_hf_hook")
+                        for c in _pipeline.components.values()
                     )
                     if is_pipeline_offloaded and low_cpu_mem_usage:
                         low_cpu_mem_usage = True
@@ -1635,7 +1669,9 @@ class LoraLoaderMixin:
                             text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype
                         )
                     else:
-                        load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
+                        load_state_dict_results = text_encoder.load_state_dict(
+                            text_encoder_lora_state_dict, strict=False
+                        )
                         unexpected_keys = load_state_dict_results.unexpected_keys
 
                     if len(unexpected_keys) != 0:
@@ -1662,6 +1698,14 @@ class LoraLoaderMixin:
                                     remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
                 text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+
+                # Offload back.
+                if is_model_cpu_offload:
+                    _pipeline.enable_model_cpu_offload()
+                elif is_sequential_cpu_offload:
+                    _pipeline.enable_sequential_cpu_offload()
+                # Unsafe code />
+
     @property
     def lora_scale(self) -> float:
         # property function that returns the lora scale which can be set at run time by the pipeline.
@@ -1669,7 +1713,20 @@ class LoraLoaderMixin:
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
     def _remove_text_encoder_monkey_patch(self):
-        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+        if self.use_peft_backend:
+            remove_method = recurse_remove_peft_layers
+        else:
+            warnings.warn(
+                "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT"
+                " make sure to install the latest PEFT and transformers packages in the future.",
+                FutureWarning,
+            )
+            remove_method = self._remove_text_encoder_monkey_patch_classmethod
+
+        if hasattr(self, "text_encoder"):
+            remove_method(self.text_encoder)
+        if hasattr(self, "text_encoder_2"):
+            remove_method(self.text_encoder_2)
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
@@ -1759,92 +1816,6 @@ class LoraLoaderMixin:
             raise ValueError(
                 f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
             )
-
-        return lora_parameters
-
-
-
-
-    @property
-    def lora_scale(self) -> float:
-        # property function that returns the lora scale which can be set at run time by the pipeline.
-        # if _lora_scale has not been set, return 1
-        return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
-
-    @classmethod	
-    def _modify_text_encoder(	
-        cls,	
-        text_encoder,	
-        lora_scale=1,	
-        network_alphas=None,	
-        rank: Union[Dict[str, int], int] = 4,	
-        dtype=None,	
-        patch_mlp=False,	
-        low_cpu_mem_usage=False,	
-    ):	
-        r"""	
-        Monkey-patches the forward passes of attention modules of the text encoder.	
-        """	
-        
-        def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):	
-            linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model	
-            ctx = init_empty_weights if low_cpu_mem_usage else nullcontext	
-            with ctx():	
-                model = PatchedLoraProjection(linear_layer, lora_scale, network_alpha, rank, dtype=dtype)	
-
-            lora_parameters.extend(model.lora_linear_layer.parameters())	
-            return model	
-
-        # First, remove any monkey-patch that might have been applied before	
-        cls._remove_text_encoder_monkey_patch_classmethod(text_encoder)	
-
-        lora_parameters = []	
-        network_alphas = {} if network_alphas is None else network_alphas	
-        is_network_alphas_populated = len(network_alphas) > 0	
-
-        for name, attn_module in text_encoder_attn_modules(text_encoder):	
-            query_alpha = network_alphas.pop(name + ".to_q_lora.down.weight.alpha", None)	
-            key_alpha = network_alphas.pop(name + ".to_k_lora.down.weight.alpha", None)	
-            value_alpha = network_alphas.pop(name + ".to_v_lora.down.weight.alpha", None)	
-            out_alpha = network_alphas.pop(name + ".to_out_lora.down.weight.alpha", None)	
-
-            if isinstance(rank, dict):	
-                current_rank = rank.pop(f"{name}.out_proj.lora_linear_layer.up.weight")	
-            else:	
-                current_rank = rank	
-
-            attn_module.q_proj = create_patched_linear_lora(	
-                attn_module.q_proj, query_alpha, current_rank, dtype, lora_parameters	
-            )	
-            attn_module.k_proj = create_patched_linear_lora(	
-                attn_module.k_proj, key_alpha, current_rank, dtype, lora_parameters	
-            )	
-            attn_module.v_proj = create_patched_linear_lora(	
-                attn_module.v_proj, value_alpha, current_rank, dtype, lora_parameters	
-            )	
-            attn_module.out_proj = create_patched_linear_lora(	
-                attn_module.out_proj, out_alpha, current_rank, dtype, lora_parameters	
-            )	
-
-        if patch_mlp:	
-            for name, mlp_module in text_encoder_mlp_modules(text_encoder):	
-                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha", None)	
-                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha", None)	
-
-                current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")	
-                current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")	
-
-                mlp_module.fc1 = create_patched_linear_lora(	
-                    mlp_module.fc1, fc1_alpha, current_rank_fc1, dtype, lora_parameters	
-                )	
-                mlp_module.fc2 = create_patched_linear_lora(	
-                    mlp_module.fc2, fc2_alpha, current_rank_fc2, dtype, lora_parameters	
-                )	
-
-        if is_network_alphas_populated and len(network_alphas) > 0:	
-            raise ValueError(	
-                f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"	
-            )	
 
         return lora_parameters
 
@@ -2122,40 +2093,7 @@ class LoraLoaderMixin:
                 module.set_lora_layer(None)
 
         # Safe to call the following regardless of LoRA.
-        if hasattr(self, "text_encoder"):
-            recurse_remove_peft_layers(self.text_encoder)
-        if hasattr(self, "text_encoder_2"):
-            recurse_remove_peft_layers(self.text_encoder_2)
-
-    def _remove_text_encoder_monkey_patch(self):
-        if self.use_peft_backend:
-            remove_method = recurse_remove_peft_layers
-        else:
-            warnings.warn(
-                "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT"
-                " make sure to install the latest PEFT and transformers packages in the future.",
-                FutureWarning,
-            )
-            remove_method = self._remove_text_encoder_monkey_patch_classmethod
-
-        if hasattr(self, "text_encoder"):
-            remove_method(self.text_encoder)
-        if hasattr(self, "text_encoder_2"):
-            remove_method(self.text_encoder_2)
-    
-    @classmethod
-    def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
-        for _, attn_module in text_encoder_attn_modules(text_encoder):
-            if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                attn_module.q_proj.lora_linear_layer = None
-                attn_module.k_proj.lora_linear_layer = None
-                attn_module.v_proj.lora_linear_layer = None
-                attn_module.out_proj.lora_linear_layer = None
-
-        for _, mlp_module in text_encoder_mlp_modules(text_encoder):
-            if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                mlp_module.fc1.lora_linear_layer = None
-                mlp_module.fc2.lora_linear_layer = None
+        self._remove_text_encoder_monkey_patch()
 
     def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True, lora_scale: float = 1.0):
         r"""
@@ -2175,8 +2113,6 @@ class LoraLoaderMixin:
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
         """
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
             if self.num_fused_loras > 1:
@@ -2188,6 +2124,8 @@ class LoraLoaderMixin:
             self.unet.fuse_lora(lora_scale)
 
         if self.use_peft_backend:
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0):
                 for module in text_encoder.modules():
                     if isinstance(module, BaseTunerLayer):
@@ -2195,6 +2133,7 @@ class LoraLoaderMixin:
                             module.scale_layer(lora_scale)
 
                         module.merge()
+
         else:
             warnings.warn(
                 "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT"
@@ -2214,7 +2153,6 @@ class LoraLoaderMixin:
                     if isinstance(mlp_module.fc1, PatchedLoraProjection):
                         mlp_module.fc1._fuse_lora(lora_scale)
                         mlp_module.fc2._fuse_lora(lora_scale)
-
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
@@ -2239,22 +2177,24 @@ class LoraLoaderMixin:
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
         if unfuse_unet:
             self.unet.unfuse_lora()
 
         if self.use_peft_backend:
+            from peft.tuners.layers.tuner_utils import BaseTunerLayer
+
             def unfuse_text_encoder_lora(text_encoder):
                 for module in text_encoder.modules():
                     if isinstance(module, BaseTunerLayer):
                         module.unmerge()
+
         else:
             warnings.warn(
                 "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT"
                 " make sure to install the latest PEFT and transformers packages in the future.",
                 FutureWarning,
             )
+
             def unfuse_text_encoder_lora(text_encoder):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
                     if isinstance(attn_module.q_proj, PatchedLoraProjection):
@@ -2268,14 +2208,11 @@ class LoraLoaderMixin:
                         mlp_module.fc1._unfuse_lora()
                         mlp_module.fc2._unfuse_lora()
 
-
         if unfuse_text_encoder:
             if hasattr(self, "text_encoder"):
                 unfuse_text_encoder_lora(self.text_encoder)
             if hasattr(self, "text_encoder_2"):
                 unfuse_text_encoder_lora(self.text_encoder_2)
-
-        self.num_fused_loras -= 1
 
 
 class FromSingleFileMixin:
@@ -2882,26 +2819,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.
 
-        # Remove any existing hooks.
-        if is_accelerate_available() and version.parse(importlib.metadata.version("accelerate")) >= version.parse(
-            "0.17.0"
-        ):
-            from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
-        else:
-            raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
-
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        for _, component in self.components.items():
-            if isinstance(component, torch.nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
-
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
             unet_config=self.unet.config,

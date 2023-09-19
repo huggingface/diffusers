@@ -46,7 +46,6 @@ def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0, use_pe
                 mlp_module.fc2.lora_scale = lora_scale
 
 
-
 class LoRALinearLayer(nn.Module):
     def __init__(self, in_features, out_features, rank=4, network_alpha=None, device=None, dtype=None):
         super().__init__()
