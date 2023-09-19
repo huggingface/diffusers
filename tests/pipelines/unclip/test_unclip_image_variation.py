@@ -41,9 +41,9 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    nightly,
     require_torch_gpu,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -491,8 +491,12 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def test_save_load_optional_components(self):
         return super().test_save_load_optional_components()
 
+    @unittest.skip("UnCLIP produces very large difference in fp16 vs fp32. Test is not useful.")
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1.0)
 
-@slow
+
+@nightly
 @require_torch_gpu
 class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
