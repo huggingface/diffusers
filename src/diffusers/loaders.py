@@ -1116,7 +1116,7 @@ class LoraLoaderMixin:
             self.enable_sequential_cpu_offload()
 
     @property
-    def use_peft_backend(self):
+    def use_peft_backend(self) -> bool:
         """
         A property method that returns `True` if the current version of `peft` and `transformers` are compatible with
         PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are available.
