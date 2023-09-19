@@ -16,7 +16,6 @@ from ...models.attention_processor import Attention
 from ...models.attention import FeedForward
 from ...models.transformer_temporal import TransformerTemporalModel
 
-from einops import rearrange, repeat
 import math
 
 
