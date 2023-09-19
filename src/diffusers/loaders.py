@@ -383,8 +383,8 @@ class UNet2DConditionLoadersMixin:
 
         if is_lora:
             # correct keys
-            for k in state_dict:
-                if "time" in k: print(k)
+            # for k in state_dict:
+            #     if "time" in k: print(k)
             state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
 
             if network_alphas is not None:
@@ -1876,6 +1876,9 @@ class LoraLoaderMixin:
                 else:
                     diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
 
+                if "time" in diffusers_name:
+                    print(diffusers_name)
+
                 diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
                 diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
                 diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
@@ -2001,9 +2004,6 @@ class LoraLoaderMixin:
             te_state_dict.update(te2_state_dict)
 
         new_state_dict = {**unet_state_dict, **te_state_dict}
-        for k in unet_state_dict:
-            if "time" in k:
-                print(k)
         return new_state_dict, network_alphas
 
     def unload_lora_weights(self):
