@@ -217,11 +217,16 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     @property
     def init_noise_sigma(self):
-        # standard deviation of the initial noise distribution
-        if self.config.timestep_spacing in ["linspace", "trailing"]:
-            return self.sigmas.max()
+        if self.precondition_type is not None:
+            # Hack: we assume that we want to use custom timesteps and a specific sigma schedule parameterized by
+            # sigma_min and sigma_max if precondition_type is set
+            return self.config.sigma_max
+        else:
+            # standard deviation of the initial noise distribution
+            if self.config.timestep_spacing in ["linspace", "trailing"]:
+                return self.sigmas.max()
 
-        return (self.sigmas.max() ** 2 + self.config.sigma_data ** 2) ** 0.5
+            return (self.sigmas.max() ** 2 + self.config.sigma_data**2) ** 0.5
 
     @property
     def step_index(self):
@@ -229,13 +234,13 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         The index counter for current timestep. It will increae 1 after each scheduler step.
         """
         return self._step_index
-    
+
     def precondition_inputs(self, sample, sigma):
         # Always precondition inputs...?
         scaled_sample = sample / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
 
         return scaled_sample
-    
+
     def precondition_noise(self, sigma):
         if not isinstance(sigma, torch.Tensor):
             sigma = torch.tensor([sigma])
@@ -260,7 +265,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             # No output preconditioning
             denoised = model_output
-        
+
         return denoised
 
     def scale_model_input(
@@ -297,7 +302,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 self.sample_hat = sample
 
             # self.sample_hat = sample
-        
+
         sample = self.precondition_inputs(sample, sigma)
         # NOTE: the current implementation gets sample_hat after input preconditioning, but it seems like Algorithm
         # 2 wants to get sample_hat before preconditioning
@@ -398,7 +403,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 f"{self.config.interpolation_type} is not implemented. Please specify interpolation_type to either"
                 " 'linear' or 'log_linear'"
             )
-        
+
         # 3. Calculate the Karras sigmas, if necessary
         if self.config.use_karras_sigmas:
             if self.custom_timesteps:
@@ -411,14 +416,14 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 ramp = np.linspace(0, 1, self.num_inference_steps)
                 sigma_min: float = sigmas[-1].item()
                 sigma_max: float = sigmas[0].item()
-            
+
             # sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             sigmas = self._convert_to_karras(ramp, sigma_min, sigma_max)
 
             if not self.custom_timesteps:
                 # Map sigma schedule back into [0, num_inference_steps - 1] (???)
                 timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
-        
+
         # 4. Calculate sigma_hat schedule
         sigma_hats = self._get_sigma_hats(sigmas)
 
@@ -595,12 +600,12 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._index_counter[timestep_int] += 1
 
         if self.state_in_first_order:
-            sigma = self.sigmas[self.step_index]
+            # sigma = self.sigmas[self.step_index]
             sigma_hat = self.sigma_hats[self.step_index]
             sigma_next = self.sigmas[self.step_index + 1]
         else:
             # 2nd order / Heun's method
-            sigma = self.sigmas[self.step_index - 1]
+            # sigma = self.sigmas[self.step_index - 1]
             sigma_hat = self.sigma_hats[self.step_index - 1]
             sigma_next = self.sigmas[self.step_index]
 
