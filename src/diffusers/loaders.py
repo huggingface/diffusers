@@ -1131,8 +1131,9 @@ class LoraLoaderMixin:
             _pipeline=self,
         )
 
+    @classmethod
     @property
-    def use_peft_backend(self) -> bool:
+    def use_peft_backend(cls) -> bool:
         """
         A property method that returns `True` if the current version of `peft` and `transformers` are compatible with
         PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
@@ -1581,6 +1582,10 @@ class LoraLoaderMixin:
                     network_alphas = {
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
+
+                import pdb
+
+                pdb.set_trace()
 
                 if cls.use_peft_backend:
                     from peft import LoraConfig
