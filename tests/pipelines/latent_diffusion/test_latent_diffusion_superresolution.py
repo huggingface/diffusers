@@ -25,8 +25,8 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
+    nightly,
     require_torch,
-    slow,
     torch_device,
 )
 
@@ -114,7 +114,7 @@ class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
 
-@slow
+@nightly
 @require_torch
 class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
     def test_inference_superresolution(self):
