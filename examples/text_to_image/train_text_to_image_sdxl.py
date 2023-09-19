@@ -987,27 +987,15 @@ def main(args):
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(timesteps)
-                    if noise_scheduler.config.prediction_type == "epsilon":
-                        mse_loss_weights = (
-                            torch.stack(
-                                [snr, args.snr_gamma * torch.ones_like(timesteps)],
-                                dim=1,
-                            ).min(
-                                dim=1
-                            )[0]
-                            / snr
-                        )
-                    elif noise_scheduler.config.prediction_type == "v_prediction":
-                        mse_loss_weights = (
-                            torch.stack(
-                                [snr, args.snr_gamma * torch.ones_like(timesteps)],
-                                dim=1,
-                            ).min(
-                                dim=1
-                            )[0]
-                            / snr
-                            + 1
-                        )
+                    base_weight = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
+
+                    if noise_scheduler.config.prediction_type == "v_prediction":
+                        # Velocity objective needs to be floored to an SNR weight of one.
+                        mse_loss_weights = base_weight + 1
+                    else:
+                        # Epsilon and sample both use the same loss weights.
+                        mse_loss_weights = base_weight
+
                     # We first calculate the original loss. Then we mean over the non-batch dimensions and
                     # rebalance the sample-wise losses with their respective loss weights.
                     # Finally, we take the mean of the rebalanced loss.
