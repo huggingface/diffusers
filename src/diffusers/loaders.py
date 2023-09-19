@@ -2556,7 +2556,8 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         for key in all_keys:
             value = remaining_state_dict.pop(key)
             attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
-            print(f"key: {key}, attn_processor_key: {attn_processor_key}, sub_key: {sub_key}")
+            if "time" in key:
+                print(f"key: {key}, attn_processor_key: {attn_processor_key}, sub_key: {sub_key}")
             lora_grouped_dict[attn_processor_key][sub_key] = value
 
         if len(remaining_state_dict) > 0:
