@@ -409,6 +409,55 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--lr_power", type=float, default=1.0, help="Power factor of the polynomial scheduler.")
     parser.add_argument(
+        "--timestep_bias_strategy",
+        type=str,
+        default="none",
+        choices=["earlier", "later", "none"],
+        help=(
+            "The timestep bias strategy, which may help direct the model toward learning low or frequency details."
+            " Choices: ['earlier', 'later', 'none']."
+            " The default is 'none', which means no bias is applied, and training proceeds normally."
+            " The value of 'later' will prefer to generate samples for later timesteps."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_bias_multiplier",
+        type=float,
+        default=1.0,
+        help=(
+            "The multiplier for the bias. Defaults to 1.0, which means no bias is applied."
+            " A value of 2.0 will double the weight of the bias, and a value of 0.5 will halve it."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_bias_begin",
+        type=int,
+        default=0,
+        help=(
+            "When using `--timestep_bias_strategy=range`, the beginning timestep to bias."
+            " Defaults to zero, which equates to having no specific bias."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_bias_end",
+        type=int,
+        default=1000,
+        help=(
+            "When using `--timestep_bias_strategy=range`, the final timestep to bias."
+            " Defaults to 1000, which is the number of timesteps that SDXL Base and SD 2.x were trained on."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_bias_portion",
+        type=float,
+        default=0.25,
+        help=(
+            "The portion of timesteps to bias. Defaults to 0.25, which 25% of timesteps will be biased."
+            " A value of 0.5 will bias one half of the timesteps. The value provided for `--timestep_bias_strategy` determines"
+            " whether the biased portions are in the earlier or later timesteps."
+        ),
+    )
+    parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument(
@@ -786,6 +835,47 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
     prompt_embeds = prompt_embeds[0]
 
     return prompt_embeds
+
+
+def generate_timestep_weights(args, num_timesteps):
+    weights = torch.ones(num_timesteps)
+
+    # Determine the indices to bias
+    num_to_bias = int(args.timestep_bias_portion * num_timesteps)
+
+    if args.timestep_bias_strategy == "later":
+        bias_indices = slice(-num_to_bias, None)
+    elif args.timestep_bias_strategy == "earlier":
+        bias_indices = slice(0, num_to_bias)
+    elif args.timestep_bias_strategy == "range":
+        # Out of the possible 1000 timesteps, we might want to focus on eg. 200-500.
+        range_begin = args.timestep_bias_begin
+        range_end = args.timestep_bias_end
+        if range_begin < 0:
+            raise ValueError(
+                "When using the range strategy for timestep bias, you must provide a beginning timestep greater or equal to zero."
+            )
+        if range_end > num_timesteps:
+            raise ValueError(
+                "When using the range strategy for timestep bias, you must provide an ending timestep smaller than the number of timesteps."
+            )
+        bias_indices = slice(range_begin, range_end)
+    else:  # 'none' or any other string
+        return weights
+    if args.timestep_bias_multiplier <= 0:
+        return ValueError(
+            "The parameter --timestep_bias_multiplier is not intended to be used to disable the training of specific timesteps."
+            " If it was intended to disable timestep bias, use `--timestep_bias_strategy none` instead."
+            " A timestep bias multiplier less than or equal to 0 is not allowed."
+        )
+
+    # Apply the bias
+    weights[bias_indices] *= args.timestep_bias_multiplier
+
+    # Normalize
+    weights /= weights.sum()
+
+    return weights
 
 
 def main(args):
@@ -1212,11 +1302,12 @@ def main(args):
                 else:
                     noise = torch.randn_like(model_input)
                 bsz, channels, height, width = model_input.shape
-                # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
+                # Sample a random timestep for each image, potentially biased by the timestep weights.
+                # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
+                weights = generate_timestep_weights(args, noise_scheduler.config.num_train_timesteps).to(
+                    model_input.device
                 )
-                timesteps = timesteps.long()
+                timesteps = torch.multinomial(weights, bsz, replacement=True).long()
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
