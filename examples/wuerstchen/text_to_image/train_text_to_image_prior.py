@@ -16,19 +16,24 @@ import logging
 import os
 from pathlib import Path
 
-import torch
+import accelerate
 import datasets
-from transformers import CLIPTokenizer, CLIPTextModel
-from transformers.utils import ContextManagers
+import torch
+import transformers
 from accelerate import Accelerator
-from accelerate.state import AcceleratorState, is_initialized
 from accelerate.logging import get_logger
+from accelerate.state import AcceleratorState, is_initialized
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo
+from packaging import version
+from transformers import CLIPTextModel, CLIPTokenizer
+from transformers.utils import ContextManagers
 
 from diffusers import DDPMWuerstchenScheduler
+from diffusers.pipelines.wuerstchen import WuerstchenPrior
+from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available
-from diffusers.utils.logging import set_verbosity_info, set_verbosity_error
+from diffusers.utils.logging import set_verbosity_error, set_verbosity_info
 
 from .modeling_efficient_net_encoder import EfficientNetEncoder
 
@@ -340,9 +345,9 @@ def main():
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
-    # Load scheduler, effnet, tokenizer and models.
-    noise_scheduler = DDPMWuerstchenScheduler()
-    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
+    # Load scheduler, effnet, tokenizer, clip_model
+    DDPMWuerstchenScheduler()
+    CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
 
     def deepspeed_zero_init_disabled_context_manager():
         """
@@ -371,9 +376,48 @@ def main():
     clip_model.requires_grad_(False)
     image_encoder.requires_grad_(False)
 
-    # prior
+    # load prior model
+    WuerstchenPrior.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
 
-    # create EMA for the prior
+    # Create EMA for the prior
+    if args.use_ema:
+        ema_prior = WuerstchenPrior.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
+        ema_prior = EMAModel(ema_prior.parameters(), model_cls=WuerstchenPrior, model_config=ema_prior.config)
+        ema_prior.to(accelerator.device)
+
+    # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            if args.use_ema:
+                ema_prior.save_pretrained(os.path.join(output_dir, "prior_ema"))
+
+            for i, model in enumerate(models):
+                model.save_pretrained(os.path.join(output_dir, "prior"))
+
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
+
+        def load_model_hook(models, input_dir):
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "prior_ema"), WuerstchenPrior)
+                ema_prior.load_state_dict(load_model.state_dict())
+                ema_prior.to(accelerator.device)
+                del load_model
+
+            for i in range(len(models)):
+                # pop models so that they are not loaded again
+                model = models.pop()
+
+                # load diffusers style into model
+                load_model = WuerstchenPrior.from_pretrained(input_dir, subfolder="prior")
+                model.register_to_config(**load_model.config)
+
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
 
 
 if __name__ == "__main__":

@@ -1,11 +1,10 @@
-import os
-
-from torchvision.models import efficientnet_v2_l, efficientnet_v2_s
-from torchvision.transforms import Compose, Normalize, Resize, CenterCrop, InterpolationMode
 import torch.nn as nn
+from torchvision.models import efficientnet_v2_l, efficientnet_v2_s
+from torchvision.transforms import CenterCrop, Compose, InterpolationMode, Normalize, Resize
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models.modeling_utils import ModelMixin
+
 
 EFFNET_PREPROCESS = Compose(
     [
