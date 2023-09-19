@@ -20,7 +20,8 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .. utils import logging, randn_tensor
+from ..utils import logging
+from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
@@ -125,7 +126,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             The standard deviation of the data distribution. This is set to 0.5 in the EDM paper [1].
         s_churn (`float`, *optional*, defaults to 0.0):
             The parameter controlling the overall amount of stochasticity if we add noise during sampling. Defaults to
-            0.0; a reasonable range is [0, 100].
+            0.0 (deterministic sampling); a reasonable range is [0, 100].
         s_tmin (`float`, *optional*, defaults to 0.0):
             The start value of the sigma range where we add noise. Defaults to 0.0; a reasonable range is [0, 10].
         s_tmax (`float`, *optional*, defaults to `float('int')`):
@@ -136,8 +137,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             to 0.0; a reasonable range is [1.000, 1.011].
         rho (`float`, *optional*, defaults to 7.0):
             The rho parameter used for calculating the Karras sigma schedule, which is set to 7.0 in the EDM paper [1].
-        stochastic_sampling (`bool`, *optional*, defaults to `False`):
-            Whether to perform stochastic sampling according to Algorithm 2 in the EDM paper.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -167,7 +166,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_tmax: float = float("inf"),
         s_noise: float = 1.0,
         rho: float = 7.0,
-        stochastic_sampling: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -292,12 +290,12 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_hat = self.sigma_hats[self.step_index]
 
         if self.state_in_first_order:
-            if self.config.stochastic_sampling and sigma_hat > sigma:  # equivalent to gamma > 0
+            if sigma_hat > sigma:  # equivalent to gamma > 0
                 eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
                 sample = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
 
                 self.sample_hat = sample
-            
+
             # self.sample_hat = sample
         
         sample = self.precondition_inputs(sample, sigma)
@@ -406,6 +404,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             if self.custom_timesteps:
                 # timesteps is in decreasing order, but ramp should be in increasing order
                 ramp = timesteps[::-1].copy() / (self.config.num_train_timesteps - 1)
+                # Ignore sigmas from alpha/beta schedule
                 sigma_min = self.config.sigma_min
                 sigma_max = self.config.sigma_max
             else:
@@ -415,29 +414,30 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             
             # sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             sigmas = self._convert_to_karras(ramp, sigma_min, sigma_max)
-            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+
+            if not self.custom_timesteps:
+                # Map sigma schedule back into [0, num_inference_steps - 1] (???)
+                timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
         
         # 4. Calculate sigma_hat schedule
-        # TODO: vectorize this?
-        sigma_hats = []
-        for sigma in sigmas:
-            # Temporarily raise the noise level (see Line 5 of Algorithm 2 in the EDM paper)
-            if self.config.stochastic_sampling and (self.config.s_tmin <= sigma <= self.config.s_tmax):
-                gamma = min(self.config.s_churn / len(sigmas), 2**0.5 - 1)
-            else:
-                gamma = 0
-            sigma_hat = sigma * (gamma + 1)
-            sigma_hats.append(sigma_hat)
-        sigma_hats = np.asarray(sigma_hats, dtype=sigmas.dtype)
+        sigma_hats = self._get_sigma_hats(sigmas)
 
         # 5. Calculate timestep schedule from sigmas and sigma_hats
-        # TODO: fix the condition here (should also be applicable when we're not using custom timesteps?)
         if self.custom_timesteps:
             # In the sampling loop, we want to output timesteps in the following order:
-            # [sigma_hat_0, sigma_1, sigma_hat_1, sigma_2, ..., sigma_hat_{n - 1}, 0]
-            timesteps = np.empty((sigma_hats.size + sigmas.size - 1,), dtype=sigmas.dtype)
+            # [sigma_hat_0, sigma_1, sigma_hat_1, sigma_2, ..., sigma_{n - 1}, sigma_hat_{n - 1}]
+            # NOTE: when sigma_hat_i == sigma_i this reduces to the currently implemented timestep schedule
+            timesteps = np.empty((sigma_hats.size + sigmas.size - 1,), dtype=np.float32)
             timesteps[0::2] = sigma_hats
             timesteps[1::2] = sigmas[1:]
+        else:
+            # Also map sigma_hats to [0, num_inference_steps - 1] (not quite sure if correct)
+            # NOTE: self._sigma_to_t(sigma_hat) == timesteps when sigma_hats == sigmas (???)
+            timestep_hats = np.array([self._sigma_to_t(sigma_hat, log_sigmas) for sigma_hat in sigma_hats])
+            new_timesteps = np.empty((timestep_hats.size + timesteps.size - 1,), dtype=np.float32)
+            new_timesteps[0::2] = timestep_hats
+            new_timesteps[1::2] = timesteps[1:]
+            timesteps = new_timesteps
 
         # 6. Finish processing sigmas and timesteps
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
@@ -453,11 +453,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         timesteps = torch.from_numpy(timesteps)
         timesteps = self.precondition_noise(timesteps)
-        if not self.custom_timesteps:
-            # TODO: for now keep this in, need to figure out logic when timesteps are set with a beta schedule
-            # [t_0, t_1, t_2, ..., t_{n - 1}] -> [t_0, t_1, t_1, t_2, t_2, ..., t_{n - 1}, t_{n - 1}]
-            timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
-
         self.timesteps = timesteps.to(device=device)
 
         # 7. Empty dt and derivative to set scheduler to first order mode
@@ -519,6 +514,20 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
+
+    def _get_sigma_hats(self, sigmas: np.ndarray) -> np.ndarray:
+        # TODO: vectorize this?
+        sigma_hats = []
+        for sigma in sigmas:
+            # Temporarily raise the noise level (see Line 5 of Algorithm 2 in the EDM paper)
+            if self.config.s_tmin <= sigma <= self.config.s_tmax:
+                gamma = min(self.config.s_churn / len(sigmas), 2**0.5 - 1)
+            else:
+                gamma = 0
+            sigma_hat = sigma * (gamma + 1)
+            sigma_hats.append(sigma_hat)
+        sigma_hats = np.asarray(sigma_hats, dtype=sigmas.dtype)
+        return sigma_hats
 
     @property
     def state_in_first_order(self):
