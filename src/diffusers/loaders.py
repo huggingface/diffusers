@@ -81,6 +81,7 @@ _correct_transformers_version = version.parse(
 
 USE_PEFT_BACKEND = _correct_peft_version and _correct_transformers_version
 
+
 class PatchedLoraProjection(nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
         super().__init__()
