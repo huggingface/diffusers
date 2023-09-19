@@ -64,6 +64,7 @@ class KarrasEDMPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Currently only
             supports KarrasEDMScheduler.
     """
+    model_cpu_offload_seq = "unet"
 
     def __init__(self, unet: UNet2DModel, scheduler: KarrasDiffusionSchedulers) -> None:
         super().__init__()
