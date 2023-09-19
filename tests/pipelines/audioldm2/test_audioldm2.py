@@ -459,7 +459,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        self._test_inference_batch_single_identical(test_mean_pixel_difference=False, expected_max_diff=2e-4)
+        self._test_inference_batch_single_identical(expected_max_diff=2e-4)
 
     def test_save_load_local(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
