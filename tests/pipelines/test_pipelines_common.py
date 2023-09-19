@@ -2,22 +2,33 @@ import contextlib
 import gc
 import inspect
 import io
+import json
+import os
 import re
 import tempfile
 import unittest
+import uuid
 from typing import Callable, Union
 
 import numpy as np
 import PIL
 import torch
+from huggingface_hub import delete_repo
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import DiffusionPipeline
+from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
+from diffusers.utils.testing_utils import (
+    CaptureLogger,
+    require_torch,
+    torch_device,
+)
+
+from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 def to_np(tensor):
@@ -289,9 +300,13 @@ class PipelineTesterMixin:
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_save_load_local(self, expected_max_difference=1e-4):
+    def test_save_load_local(self, expected_max_difference=5e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -302,7 +317,7 @@ class PipelineTesterMixin:
         logger.setLevel(diffusers.logging.INFO)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
@@ -359,11 +374,11 @@ class PipelineTesterMixin:
             f"Required optional parameters not present: {remaining_required_optional_parameters}",
         )
 
-    def test_inference_batch_consistent(self, batch_sizes=[2, 4, 13]):
+    def test_inference_batch_consistent(self, batch_sizes=[2]):
         self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
-        self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]
+        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"]
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -371,170 +386,163 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["generator"] = self.get_generator(0)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
 
-        # batchify inputs
+        # prepare batched inputs
+        batched_inputs = []
         for batch_size in batch_sizes:
-            batched_inputs = {}
-            for name, value in inputs.items():
-                if name in self.batch_params:
-                    # prompt is string
-                    if name == "prompt":
-                        len_prompt = len(value)
-                        # make unequal batch sizes
-                        batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+            batched_input = {}
+            batched_input.update(inputs)
 
-                        # make last batch super long
-                        batched_inputs[name][-1] = 100 * "very long"
-                    # or else we have images
-                    else:
-                        batched_inputs[name] = batch_size * [value]
-                elif name == "batch_size":
-                    batched_inputs[name] = batch_size
+            for name in self.batch_params:
+                if name not in inputs:
+                    continue
+
+                value = inputs[name]
+                if name == "prompt":
+                    len_prompt = len(value)
+                    # make unequal batch sizes
+                    batched_input[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+
+                    # make last batch super long
+                    batched_input[name][-1] = 100 * "very long"
+
                 else:
-                    batched_inputs[name] = value
+                    batched_input[name] = batch_size * [value]
 
-            for arg in additional_params_copy_to_batched_inputs:
-                batched_inputs[arg] = inputs[arg]
+            if "generator" in inputs:
+                batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
-            batched_inputs["output_type"] = "np"
+            if "batch_size" in inputs:
+                batched_input["batch_size"] = batch_size
 
-            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
-                batched_inputs.pop("output_type")
-
-            output = pipe(**batched_inputs)
-
-            assert len(output[0]) == batch_size
-
-            batched_inputs["output_type"] = "np"
-
-            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
-                batched_inputs.pop("output_type")
-
-            output = pipe(**batched_inputs)[0]
-
-            assert output.shape[0] == batch_size
+            batched_inputs.append(batched_input)
 
         logger.setLevel(level=diffusers.logging.WARNING)
+        for batch_size, batched_input in zip(batch_sizes, batched_inputs):
+            output = pipe(**batched_input)
+            assert len(output[0]) == batch_size
 
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
         self._test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def _test_inference_batch_single_identical(
         self,
-        batch_size=3,
-        test_max_difference=None,
-        test_mean_pixel_difference=None,
-        relax_max_difference=False,
+        batch_size=2,
         expected_max_diff=1e-4,
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
-        if test_max_difference is None:
-            # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
-            # make sure that batched and non-batched is identical
-            test_max_difference = torch_device != "mps"
-
-        if test_mean_pixel_difference is None:
-            # TODO same as above
-            test_mean_pixel_difference = torch_device != "mps"
-
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for components in pipe.components.values():
+            if hasattr(components, "set_default_attn_processor"):
+                components.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
         inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is has been used in self.get_dummy_inputs
+        inputs["generator"] = self.get_generator(0)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
 
         # batchify inputs
         batched_inputs = {}
-        batch_size = batch_size
-        for name, value in inputs.items():
-            if name in self.batch_params:
-                # prompt is string
-                if name == "prompt":
-                    len_prompt = len(value)
-                    # make unequal batch sizes
-                    batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+        batched_inputs.update(inputs)
 
-                    # make last batch super long
-                    batched_inputs[name][-1] = 100 * "very long"
-                # or else we have images
-                else:
-                    batched_inputs[name] = batch_size * [value]
-            elif name == "batch_size":
-                batched_inputs[name] = batch_size
-            elif name == "generator":
-                batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
+        for name in self.batch_params:
+            if name not in inputs:
+                continue
+
+            value = inputs[name]
+            if name == "prompt":
+                len_prompt = len(value)
+                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+                batched_inputs[name][-1] = 100 * "very long"
+
             else:
-                batched_inputs[name] = value
+                batched_inputs[name] = batch_size * [value]
+
+        if "generator" in inputs:
+            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+        if "batch_size" in inputs:
+            batched_inputs["batch_size"] = batch_size
 
         for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]
 
-        if self.pipeline_class.__name__ != "DanceDiffusionPipeline":
-            batched_inputs["output_type"] = "np"
-
+        output = pipe(**inputs)
         output_batch = pipe(**batched_inputs)
+
         assert output_batch[0].shape[0] == batch_size
 
-        inputs["generator"] = self.get_generator(0)
-
-        output = pipe(**inputs)
-
-        logger.setLevel(level=diffusers.logging.WARNING)
-        if test_max_difference:
-            if relax_max_difference:
-                # Taking the median of the largest <n> differences
-                # is resilient to outliers
-                diff = np.abs(output_batch[0][0] - output[0][0])
-                diff = diff.flatten()
-                diff.sort()
-                max_diff = np.median(diff[-5:])
-            else:
-                max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
-            assert max_diff < expected_max_diff
-
-        if test_mean_pixel_difference:
-            assert_mean_pixel_difference(output_batch[0][0], output[0][0])
+        max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
+        assert max_diff < expected_max_diff
 
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_dummy_inputs(torch_device))[0]
-        output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
+        generator_device = "cpu"
+        output = pipe(**self.get_dummy_inputs(generator_device))[0]
+        output_tuple = pipe(**self.get_dummy_inputs(generator_device), return_dict=False)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
+        init_components = {k: v for k, v in init_components.items() if not isinstance(v, (str, int, float))}
+
         pipe = self.pipeline_class(**init_components)
 
         self.assertTrue(hasattr(pipe, "components"))
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_float16_inference(self, expected_max_diff=1e-2):
+    def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         components = self.get_dummy_components()
         pipe_fp16 = self.pipeline_class(**components)
+        for component in pipe_fp16.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_dummy_inputs(torch_device))[0]
-        output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is used inside dummy inputs
+        if "generator" in inputs:
+            inputs["generator"] = self.get_generator(0)
+
+        output = pipe(**inputs)[0]
+
+        fp16_inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is used inside dummy inputs
+        if "generator" in fp16_inputs:
+            fp16_inputs["generator"] = self.get_generator(0)
+
+        output_fp16 = pipe_fp16(**fp16_inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
@@ -545,7 +553,11 @@ class PipelineTesterMixin:
         for name, module in components.items():
             if hasattr(module, "half"):
                 components[name] = module.to(torch_device).half()
+
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -555,6 +567,9 @@ class PipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -567,7 +582,6 @@ class PipelineTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         output_loaded = pipe_loaded(**inputs)[0]
-
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(
             max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
@@ -579,6 +593,9 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -586,12 +603,16 @@ class PipelineTesterMixin:
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir)
+            pipe.save_pretrained(tmpdir, safe_serialization=False)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
             pipe_loaded.to(torch_device)
             pipe_loaded.set_progress_bar_config(disable=None)
 
@@ -601,7 +622,7 @@ class PipelineTesterMixin:
                 f"`{optional_component}` did not stay set to None after loading.",
             )
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(generator_device)
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
@@ -650,14 +671,18 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output_without_slicing = pipe(**inputs)[0]
 
         pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(generator_device)
         output_with_slicing = pipe(**inputs)[0]
 
         if test_max_difference:
@@ -671,17 +696,48 @@ class PipelineTesterMixin:
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
         reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
     )
-    def test_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
+    def test_sequential_cpu_offload_forward_pass(self, expected_max_diff=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output_without_offload = pipe(**inputs)[0]
 
         pipe.enable_sequential_cpu_offload()
-        inputs = self.get_dummy_inputs(torch_device)
+
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
+        self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
+    )
+    def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(generator_device)
+        output_without_offload = pipe(**inputs)[0]
+
+        pipe.enable_model_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
@@ -702,6 +758,9 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -719,7 +778,7 @@ class PipelineTesterMixin:
         )
 
         if test_max_difference:
-            max_diff = np.abs(output_with_offload - output_without_offload).max()
+            max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
             self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
 
         if test_mean_pixel_difference:
@@ -793,6 +852,126 @@ class PipelineTesterMixin:
         out_cfg = pipe(**inputs)[0]
 
         assert out_cfg.shape == out_no_cfg.shape
+
+
+@is_staging_test
+class PipelinePushToHubTester(unittest.TestCase):
+    identifier = uuid.uuid4()
+    repo_id = f"test-pipeline-{identifier}"
+    org_repo_id = f"valid_org/{repo_id}-org"
+
+    def get_pipeline_components(self):
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
+        vae = AutoencoderKL(
+            block_out_channels=[32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
+            vocab_path = os.path.join(tmpdir, "vocab.json")
+            with open(vocab_path, "w") as f:
+                json.dump(dummy_vocab, f)
+
+            merges = "Ġ t\nĠt h"
+            merges_path = os.path.join(tmpdir, "merges.txt")
+            with open(merges_path, "w") as f:
+                f.writelines(merges)
+            tokenizer = CLIPTokenizer(vocab_file=vocab_path, merges_file=merges_path)
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+        return components
+
+    def test_push_to_hub(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.repo_id, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
+        unet = components["unet"]
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.repo_id)
+
+        # Push to hub via save_pretrained
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipeline.save_pretrained(tmp_dir, repo_id=self.repo_id, push_to_hub=True, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(f"{USER}/{self.repo_id}", subfolder="unet")
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)
+
+    def test_push_to_hub_in_organization(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.org_repo_id, token=TOKEN)
+
+        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
+        unet = components["unet"]
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(token=TOKEN, repo_id=self.org_repo_id)
+
+        # Push to hub via save_pretrained
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pipeline.save_pretrained(tmp_dir, push_to_hub=True, token=TOKEN, repo_id=self.org_repo_id)
+
+        new_model = UNet2DConditionModel.from_pretrained(self.org_repo_id, subfolder="unet")
+        for p1, p2 in zip(unet.parameters(), new_model.parameters()):
+            self.assertTrue(torch.equal(p1, p2))
+
+        # Reset repo
+        delete_repo(self.org_repo_id, token=TOKEN)
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

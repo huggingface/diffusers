@@ -20,8 +20,15 @@ import numpy as np
 import torch
 
 from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQModel
-from diffusers.utils import PIL_INTERPOLATION, floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch
+from diffusers.utils import PIL_INTERPOLATION
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    nightly,
+    require_torch,
+    torch_device,
+)
 
 
 enable_full_determinism()
@@ -107,7 +114,7 @@ class LDMSuperResolutionPipelineFastTests(unittest.TestCase):
         assert image.shape == (1, 64, 64, 3)
 
 
-@slow
+@nightly
 @require_torch
 class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
     def test_inference_superresolution(self):

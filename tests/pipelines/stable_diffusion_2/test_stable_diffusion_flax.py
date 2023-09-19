@@ -17,8 +17,8 @@ import gc
 import unittest
 
 from diffusers import FlaxDPMSolverMultistepScheduler, FlaxStableDiffusionPipeline
-from diffusers.utils import is_flax_available, nightly, slow
-from diffusers.utils.testing_utils import require_flax
+from diffusers.utils import is_flax_available
+from diffusers.utils.testing_utils import nightly, require_flax
 
 
 if is_flax_available():
@@ -28,7 +28,7 @@ if is_flax_available():
     from flax.training.common_utils import shard
 
 
-@slow
+@nightly
 @require_flax
 class FlaxStableDiffusion2PipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

@@ -22,8 +22,7 @@ from diffusers import (
     KandinskyV22Img2ImgCombinedPipeline,
     KandinskyV22InpaintCombinedPipeline,
 )
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 from .test_kandinsky import Dummies
@@ -138,6 +137,15 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1e-1)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
+
+    def test_model_cpu_offload_forward_pass(self):
+        super().test_model_cpu_offload_forward_pass(expected_max_diff=5e-4)
+
 
 class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22Img2ImgCombinedPipeline
@@ -238,6 +246,15 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1e-1)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
+
+    def test_model_cpu_offload_forward_pass(self):
+        super().test_model_cpu_offload_forward_pass(expected_max_diff=5e-4)
+
 
 class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22InpaintCombinedPipeline
@@ -337,3 +354,12 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=5e-1)
+
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
+
+    def test_model_cpu_offload_forward_pass(self):
+        super().test_model_cpu_offload_forward_pass(expected_max_diff=5e-4)

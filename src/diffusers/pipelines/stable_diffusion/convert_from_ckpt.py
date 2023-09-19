@@ -17,7 +17,7 @@
 import re
 from contextlib import nullcontext
 from io import BytesIO
-from typing import Optional
+from typing import Dict, Optional, Union
 
 import requests
 import torch
@@ -50,7 +50,7 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-from ...utils import is_accelerate_available, is_omegaconf_available, is_safetensors_available, logging
+from ...utils import is_accelerate_available, is_omegaconf_available, logging
 from ...utils.import_utils import BACKENDS_MAPPING
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
@@ -783,6 +783,8 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():
             text_model = CLIPTextModel(config)
+    else:
+        text_model = text_encoder
 
     keys = list(checkpoint.keys())
 
@@ -1109,7 +1111,7 @@ def convert_controlnet_checkpoint(
 
 
 def download_from_original_stable_diffusion_ckpt(
-    checkpoint_path: str,
+    checkpoint_path_or_dict: Union[str, Dict[str, torch.Tensor]],
     original_config_file: str = None,
     image_size: Optional[int] = None,
     prediction_type: str = None,
@@ -1142,7 +1144,7 @@ def download_from_original_stable_diffusion_ckpt(
     recommended that you override the default values and/or supply an `original_config_file` wherever possible.
 
     Args:
-        checkpoint_path (`str`): Path to `.ckpt` file.
+        checkpoint_path_or_dict (`str` or `dict`): Path to `.ckpt` file, or the state dict.
         original_config_file (`str`):
             Path to `.yaml` config file corresponding to the original architecture. If `None`, will be automatically
             inferred by looking for a key that only exists in SD2.0 models.
@@ -1224,19 +1226,19 @@ def download_from_original_stable_diffusion_ckpt(
 
     from omegaconf import OmegaConf
 
-    if from_safetensors:
-        if not is_safetensors_available():
-            raise ValueError(BACKENDS_MAPPING["safetensors"][1])
+    if isinstance(checkpoint_path_or_dict, str):
+        if from_safetensors:
+            from safetensors.torch import load_file as safe_load
 
-        from safetensors.torch import load_file as safe_load
-
-        checkpoint = safe_load(checkpoint_path, device="cpu")
-    else:
-        if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            checkpoint = torch.load(checkpoint_path, map_location=device)
+            checkpoint = safe_load(checkpoint_path_or_dict, device="cpu")
         else:
-            checkpoint = torch.load(checkpoint_path, map_location=device)
+            if device is None:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                checkpoint = torch.load(checkpoint_path_or_dict, map_location=device)
+            else:
+                checkpoint = torch.load(checkpoint_path_or_dict, map_location=device)
+    elif isinstance(checkpoint_path_or_dict, dict):
+        checkpoint = checkpoint_path_or_dict
 
     # Sometimes models don't have the global_step item
     if "global_step" in checkpoint:
@@ -1254,25 +1256,37 @@ def download_from_original_stable_diffusion_ckpt(
         key_name_v2_1 = "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight"
         key_name_sd_xl_base = "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias"
         key_name_sd_xl_refiner = "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias"
+        config_url = None
 
         # model_type = "v1"
-        config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+        if config_files is not None and "v1" in config_files:
+            original_config_file = config_files["v1"]
+        else:
+            config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
 
         if key_name_v2_1 in checkpoint and checkpoint[key_name_v2_1].shape[-1] == 1024:
             # model_type = "v2"
-            config_url = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
-
+            if config_files is not None and "v2" in config_files:
+                original_config_file = config_files["v2"]
+            else:
+                config_url = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
             if global_step == 110000:
                 # v2.1 needs to upcast attention
                 upcast_attention = True
         elif key_name_sd_xl_base in checkpoint:
             # only base xl has two text embedders
-            config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
+            if config_files is not None and "xl" in config_files:
+                original_config_file = config_files["xl"]
+            else:
+                config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
         elif key_name_sd_xl_refiner in checkpoint:
             # only refiner xl has embedder and one text embedders
-            config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml"
-
-        original_config_file = BytesIO(requests.get(config_url).content)
+            if config_files is not None and "xl_refiner" in config_files:
+                original_config_file = config_files["xl_refiner"]
+            else:
+                config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml"
+        if config_url is not None:
+            original_config_file = BytesIO(requests.get(config_url).content)
 
     original_config = OmegaConf.load(original_config_file)
 
@@ -1319,8 +1333,9 @@ def download_from_original_stable_diffusion_ckpt(
             image_size = 512
 
     if controlnet is None and "control_stage_config" in original_config.model.params:
+        path = checkpoint_path_or_dict if isinstance(checkpoint_path_or_dict, str) else ""
         controlnet = convert_controlnet_checkpoint(
-            checkpoint, original_config, checkpoint_path, image_size, upcast_attention, extract_ema
+            checkpoint, original_config, path, image_size, upcast_attention, extract_ema
         )
 
     num_train_timesteps = getattr(original_config.model.params, "timesteps", None) or 1000
@@ -1379,8 +1394,9 @@ def download_from_original_stable_diffusion_ckpt(
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet_config["upcast_attention"] = upcast_attention
+    path = checkpoint_path_or_dict if isinstance(checkpoint_path_or_dict, str) else ""
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
-        checkpoint, unet_config, path=checkpoint_path, extract_ema=extract_ema
+        checkpoint, unet_config, path=path, extract_ema=extract_ema
     )
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
@@ -1388,8 +1404,9 @@ def download_from_original_stable_diffusion_ckpt(
         unet = UNet2DConditionModel(**unet_config)
 
     if is_accelerate_available():
-        for param_name, param in converted_unet_checkpoint.items():
-            set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+        if model_type not in ["SDXL", "SDXL-Refiner"]:  # SBM Delay this.
+            for param_name, param in converted_unet_checkpoint.items():
+                set_module_tensor_to_device(unet, param_name, "cpu", value=param)
     else:
         unet.load_state_dict(converted_unet_checkpoint)
 
@@ -1589,16 +1606,34 @@ def download_from_original_stable_diffusion_ckpt(
                 checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
             )
 
-            pipe = pipeline_class(
-                vae=vae,
-                text_encoder=text_encoder,
-                tokenizer=tokenizer,
-                text_encoder_2=text_encoder_2,
-                tokenizer_2=tokenizer_2,
-                unet=unet,
-                scheduler=scheduler,
-                force_zeros_for_empty_prompt=True,
-            )
+            if is_accelerate_available():  # SBM Now move model to cpu.
+                if model_type in ["SDXL", "SDXL-Refiner"]:
+                    for param_name, param in converted_unet_checkpoint.items():
+                        set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+
+            if controlnet:
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=text_encoder_2,
+                    tokenizer_2=tokenizer_2,
+                    unet=unet,
+                    controlnet=controlnet,
+                    scheduler=scheduler,
+                    force_zeros_for_empty_prompt=True,
+                )
+            else:
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=text_encoder_2,
+                    tokenizer_2=tokenizer_2,
+                    unet=unet,
+                    scheduler=scheduler,
+                    force_zeros_for_empty_prompt=True,
+                )
         else:
             tokenizer = None
             text_encoder = None
@@ -1611,6 +1646,11 @@ def download_from_original_stable_diffusion_ckpt(
             text_encoder_2 = convert_open_clip_checkpoint(
                 checkpoint, config_name, prefix="conditioner.embedders.0.model.", has_projection=True, **config_kwargs
             )
+
+            if is_accelerate_available():  # SBM Now move model to cpu.
+                if model_type in ["SDXL", "SDXL-Refiner"]:
+                    for param_name, param in converted_unet_checkpoint.items():
+                        set_module_tensor_to_device(unet, param_name, "cpu", value=param)
 
             pipe = StableDiffusionXLImg2ImgPipeline(
                 vae=vae,
@@ -1650,9 +1690,6 @@ def download_controlnet_from_original_ckpt(
     from omegaconf import OmegaConf
 
     if from_safetensors:
-        if not is_safetensors_available():
-            raise ValueError(BACKENDS_MAPPING["safetensors"][1])
-
         from safetensors import safe_open
 
         checkpoint = {}

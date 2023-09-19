@@ -22,8 +22,16 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, CycleDiffusionPipeline, DDIMScheduler, UNet2DConditionModel
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    nightly,
+    require_torch_gpu,
+    skip_mps,
+    torch_device,
+)
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -186,7 +194,7 @@ class CycleDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterM
         return super().test_attention_slicing_forward_pass()
 
 
-@slow
+@nightly
 @require_torch_gpu
 class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

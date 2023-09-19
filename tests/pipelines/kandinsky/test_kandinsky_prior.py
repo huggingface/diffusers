@@ -28,8 +28,7 @@ from transformers import (
 )
 
 from diffusers import KandinskyPriorPipeline, PriorTransformer, UnCLIPScheduler
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -225,15 +224,7 @@ class KandinskyPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @skip_mps
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
-        test_mean_pixel_difference = False
-
-        self._test_inference_batch_single_identical(
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
-            test_mean_pixel_difference=test_mean_pixel_difference,
-        )
+        self._test_inference_batch_single_identical(expected_max_diff=1e-2)
 
     @skip_mps
     def test_attention_slicing_forward_pass(self):

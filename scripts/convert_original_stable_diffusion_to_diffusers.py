@@ -147,12 +147,14 @@ if __name__ == "__main__":
     if args.pipeline_class_name is not None:
         library = importlib.import_module("diffusers")
         class_obj = getattr(library, args.pipeline_class_name)
+        pipeline_class = class_obj
     else:
         pipeline_class = None
 
     pipe = download_from_original_stable_diffusion_ckpt(
-        checkpoint_path=args.checkpoint_path,
+        checkpoint_path_or_dict=args.checkpoint_path,
         original_config_file=args.original_config_file,
+        config_files=args.config_files,
         image_size=args.image_size,
         prediction_type=args.prediction_type,
         model_type=args.pipeline_type,
