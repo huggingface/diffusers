@@ -22,6 +22,7 @@ import accelerate
 import datasets
 import numpy as np
 import torch
+import torch.nn.functional as F
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
@@ -351,7 +352,7 @@ def main():
             ).repo_id
 
     # Load scheduler, effnet, tokenizer, clip_model
-    DDPMWuerstchenScheduler()
+    noise_scheduler = DDPMWuerstchenScheduler()
     tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
 
     def deepspeed_zero_init_disabled_context_manager():
@@ -641,6 +642,35 @@ def main():
                     text_encoder_output = text_encoder(text_input_ids, attention_mask=text_mask)
                     prompt_embeds = text_encoder_output.last_hidden_state
                     image_embeds = image_encoder(effnet_images)
+
+                    # Sample noise that we'll add to the image_embeds
+                    noise = torch.randn_like(image_embeds)
+                    bsz = image_embeds.shape[0]
+
+                    # Sample a random timestep for each image
+                    timesteps = torch.rand((bsz,), device=image_embeds.device)
+
+                    # add noise to latent
+                    noisy_latents = noise_scheduler.add_noise(image_embeds, noise, timesteps)
+
+            # Predict the noise residual and compute loss
+            pred_noise = prior(noisy_latents, timesteps, prompt_embeds)
+
+            # TODO snr_gamma
+            loss = F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
+
+            # Gather the losses across all processes for logging (if we use distributed training).
+            avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
+            train_loss += avg_loss.item() / args.gradient_accumulation_steps
+
+            # Backpropagate
+            accelerator.backward(loss)
+            if accelerator.sync_gradients:
+                accelerator.clip_grad_norm_(prior.parameters(), args.max_grad_norm)
+            optimizer.step()
+            lr_scheduler.step()
+            optimizer.zero_grad()
+
 
 
 if __name__ == "__main__":

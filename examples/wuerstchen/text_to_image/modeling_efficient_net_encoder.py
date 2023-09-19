@@ -4,11 +4,11 @@ from torchvision.models import efficientnet_v2_l, efficientnet_v2_s
 from torchvision.transforms import (
     CenterCrop,
     Compose,
+    ConvertImageDtype,
     InterpolationMode,
     Normalize,
-    Resize,
     PILToTensor,
-    ConvertImageDtype,
+    Resize,
 )
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
