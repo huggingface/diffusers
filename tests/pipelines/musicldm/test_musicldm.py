@@ -373,7 +373,7 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(test_mean_pixel_difference=False)
+        self._test_inference_batch_single_identical()
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

@@ -254,6 +254,9 @@ class StableDiffusionImg2ImgPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=5e-1)
+
 
 @slow
 @require_torch_gpu

@@ -250,6 +250,7 @@ class StableDiffusion2PipelineFastTests(
         negative_prompt = None
         num_images_per_prompt = 1
         logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
+        logger.setLevel(logging.WARNING)
 
         prompt = 25 * "@"
         with CaptureLogger(logger) as cap_logger_3:

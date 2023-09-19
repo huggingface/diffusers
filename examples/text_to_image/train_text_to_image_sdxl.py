@@ -998,6 +998,11 @@ def main(args):
                     target = noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(model_input, noise, timesteps)
+                elif noise_scheduler.config.prediction_type == "sample":
+                    # We set the target to latents here, but the model_pred will return the noise sample prediction.
+                    target = model_input
+                    # We will have to subtract the noise residual from the prediction to get the target sample.
+                    model_pred = model_pred - noise
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
