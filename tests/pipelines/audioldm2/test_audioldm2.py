@@ -491,12 +491,6 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
-    def test_sequential_cpu_offload_forward_pass(self):
-        pass
-
-    def test_xformers_attention_forwardGenerator_pass(self):
-        pass
-
 
 @slow
 class AudioLDM2PipelineSlowTests(unittest.TestCase):
