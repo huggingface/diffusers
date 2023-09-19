@@ -584,8 +584,9 @@ class StableDiffusionPipelineFastTests(
         do_classifier_free_guidance = True
         negative_prompt = None
         num_images_per_prompt = 1
-
         logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
+        logger.setLevel(logging.WARNING)
+
         prompt = 100 * "@"
         with CaptureLogger(logger) as cap_logger:
             negative_text_embeddings, text_embeddings = sd_pipe.encode_prompt(
@@ -597,7 +598,6 @@ class StableDiffusionPipelineFastTests(
         # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
         assert cap_logger.out.count("@") == 25
 
-        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
         negative_prompt = "Hello"
         with CaptureLogger(logger) as cap_logger_2:
             negative_text_embeddings_2, text_embeddings_2 = sd_pipe.encode_prompt(
@@ -608,7 +608,6 @@ class StableDiffusionPipelineFastTests(
 
         assert cap_logger.out == cap_logger_2.out
 
-        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
         prompt = 25 * "@"
         with CaptureLogger(logger) as cap_logger_3:
             negative_text_embeddings_3, text_embeddings_3 = sd_pipe.encode_prompt(
