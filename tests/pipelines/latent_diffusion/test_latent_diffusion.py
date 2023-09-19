@@ -26,7 +26,6 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -136,7 +135,7 @@ class LDMTextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
 
-@slow
+@nightly
 @require_torch_gpu
 class LDMTextToImagePipelineSlowTests(unittest.TestCase):
     def tearDown(self):
