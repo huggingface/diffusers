@@ -316,6 +316,9 @@ class UNet2DConditionLoadersMixin:
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
         # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
         network_alphas = kwargs.pop("network_alphas", None)
+
+        _pipeline = kwargs.pop("_pipeline", None)
+
         is_network_alphas_none = network_alphas is None
 
         allow_pickle = False
@@ -469,6 +472,7 @@ class UNet2DConditionLoadersMixin:
                     load_model_dict_into_meta(lora, value_dict, device=device, dtype=dtype)
                 else:
                     lora.load_state_dict(value_dict)
+
         elif is_custom_diffusion:
             attn_processors = {}
             custom_diffusion_grouped_dict = defaultdict(dict)
@@ -498,18 +502,43 @@ class UNet2DConditionLoadersMixin:
                         cross_attention_dim=cross_attention_dim,
                     )
                     attn_processors[key].load_state_dict(value_dict)
-
-            self.set_attn_processor(attn_processors)
         else:
             raise ValueError(
                 f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
             )
+
+        # <Unsafe code
+        # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
+        # Now we remove any existing hooks to
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+        if _pipeline is not None:
+            for _, component in _pipeline.components.items():
+                if isinstance(component, nn.Module):
+                    if hasattr(component, "_hf_hook"):
+                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                        logger.info(
+                            "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                        )
+                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+        # only custom diffusion needs to set attn processors
+        if is_custom_diffusion:
+            self.set_attn_processor(attn_processors)
 
         # set lora layers
         for target_module, lora_layer in lora_layers_list:
             target_module.set_lora_layer(lora_layer)
 
         self.to(dtype=self.dtype, device=self.device)
+
+        # Offload back.
+        if is_model_cpu_offload:
+            _pipeline.enable_model_cpu_offload()
+        elif is_sequential_cpu_offload:
+            _pipeline.enable_sequential_cpu_offload()
+        # Unsafe code />
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
@@ -1080,26 +1109,21 @@ class LoraLoaderMixin:
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
-        # Remove any existing hooks.
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        recurive = False
-        for _, component in self.components.items():
-            if isinstance(component, nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    recurive = is_sequential_cpu_offload
-                    remove_hook_from_module(component, recurse=recurive)
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
-        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(
-            state_dict, network_alphas=network_alphas, unet=self.unet, low_cpu_mem_usage=low_cpu_mem_usage
+            state_dict,
+            network_alphas=network_alphas,
+            unet=self.unet,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            _pipeline=self,
         )
         self.load_lora_into_text_encoder(
             state_dict,
@@ -1107,6 +1131,7 @@ class LoraLoaderMixin:
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            _pipeline=self,
         )
 
         # Offload back.
@@ -1423,7 +1448,7 @@ class LoraLoaderMixin:
         return new_state_dict
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None):
+    def load_lora_into_unet(cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, _pipeline=None):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -1465,9 +1490,11 @@ class LoraLoaderMixin:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
-            warnings.warn(warn_message)
+            logger.warn(warn_message)
 
-        unet.load_attn_procs(state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage)
+        unet.load_attn_procs(
+            state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage, _pipeline=_pipeline
+        )
 
     @classmethod
     def load_lora_into_text_encoder(
@@ -1478,8 +1505,8 @@ class LoraLoaderMixin:
         prefix=None,
         lora_scale=1.0,
         low_cpu_mem_usage=None,
-        adapter_name="default",
         _pipeline=None,
+        adapter_name="default",
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1572,12 +1599,6 @@ class LoraLoaderMixin:
                     lora_rank = list(rank.values())[0]
                     alpha = lora_scale * lora_rank
 
-                    target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
-                    if patch_mlp:
-                        target_modules += ["fc1", "fc2"]
-
-                    lora_config = LoraConfig(r=lora_rank, target_modules=target_modules, lora_alpha=alpha)
-
                     text_encoder.load_adapter(adapter_state_dict=text_encoder_lora_state_dict, peft_config=lora_config)
 
                     text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
@@ -1641,6 +1662,107 @@ class LoraLoaderMixin:
                                     remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
                 text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+    @property
+    def lora_scale(self) -> float:
+        # property function that returns the lora scale which can be set at run time by the pipeline.
+        # if _lora_scale has not been set, return 1
+        return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
+
+    def _remove_text_encoder_monkey_patch(self):
+        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+
+    @classmethod
+    def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
+        for _, attn_module in text_encoder_attn_modules(text_encoder):
+            if isinstance(attn_module.q_proj, PatchedLoraProjection):
+                attn_module.q_proj.lora_linear_layer = None
+                attn_module.k_proj.lora_linear_layer = None
+                attn_module.v_proj.lora_linear_layer = None
+                attn_module.out_proj.lora_linear_layer = None
+
+        for _, mlp_module in text_encoder_mlp_modules(text_encoder):
+            if isinstance(mlp_module.fc1, PatchedLoraProjection):
+                mlp_module.fc1.lora_linear_layer = None
+                mlp_module.fc2.lora_linear_layer = None
+
+    @classmethod
+    def _modify_text_encoder(
+        cls,
+        text_encoder,
+        lora_scale=1,
+        network_alphas=None,
+        rank: Union[Dict[str, int], int] = 4,
+        dtype=None,
+        patch_mlp=False,
+        low_cpu_mem_usage=False,
+    ):
+        r"""
+        Monkey-patches the forward passes of attention modules of the text encoder.
+        """
+
+        def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
+            linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
+            ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+            with ctx():
+                model = PatchedLoraProjection(linear_layer, lora_scale, network_alpha, rank, dtype=dtype)
+
+            lora_parameters.extend(model.lora_linear_layer.parameters())
+            return model
+
+        # First, remove any monkey-patch that might have been applied before
+        cls._remove_text_encoder_monkey_patch_classmethod(text_encoder)
+
+        lora_parameters = []
+        network_alphas = {} if network_alphas is None else network_alphas
+        is_network_alphas_populated = len(network_alphas) > 0
+
+        for name, attn_module in text_encoder_attn_modules(text_encoder):
+            query_alpha = network_alphas.pop(name + ".to_q_lora.down.weight.alpha", None)
+            key_alpha = network_alphas.pop(name + ".to_k_lora.down.weight.alpha", None)
+            value_alpha = network_alphas.pop(name + ".to_v_lora.down.weight.alpha", None)
+            out_alpha = network_alphas.pop(name + ".to_out_lora.down.weight.alpha", None)
+
+            if isinstance(rank, dict):
+                current_rank = rank.pop(f"{name}.out_proj.lora_linear_layer.up.weight")
+            else:
+                current_rank = rank
+
+            attn_module.q_proj = create_patched_linear_lora(
+                attn_module.q_proj, query_alpha, current_rank, dtype, lora_parameters
+            )
+            attn_module.k_proj = create_patched_linear_lora(
+                attn_module.k_proj, key_alpha, current_rank, dtype, lora_parameters
+            )
+            attn_module.v_proj = create_patched_linear_lora(
+                attn_module.v_proj, value_alpha, current_rank, dtype, lora_parameters
+            )
+            attn_module.out_proj = create_patched_linear_lora(
+                attn_module.out_proj, out_alpha, current_rank, dtype, lora_parameters
+            )
+
+        if patch_mlp:
+            for name, mlp_module in text_encoder_mlp_modules(text_encoder):
+                fc1_alpha = network_alphas.pop(name + ".fc1.lora_linear_layer.down.weight.alpha", None)
+                fc2_alpha = network_alphas.pop(name + ".fc2.lora_linear_layer.down.weight.alpha", None)
+
+                current_rank_fc1 = rank.pop(f"{name}.fc1.lora_linear_layer.up.weight")
+                current_rank_fc2 = rank.pop(f"{name}.fc2.lora_linear_layer.up.weight")
+
+                mlp_module.fc1 = create_patched_linear_lora(
+                    mlp_module.fc1, fc1_alpha, current_rank_fc1, dtype, lora_parameters
+                )
+                mlp_module.fc2 = create_patched_linear_lora(
+                    mlp_module.fc2, fc2_alpha, current_rank_fc2, dtype, lora_parameters
+                )
+
+        if is_network_alphas_populated and len(network_alphas) > 0:
+            raise ValueError(
+                f"The `network_alphas` has to be empty at this point but has the following keys \n\n {', '.join(network_alphas.keys())}"
+            )
+
+        return lora_parameters
+
+
 
 
     @property
@@ -2785,8 +2907,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             unet_config=self.unet.config,
             **kwargs,
         )
-        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint.")
 
+        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet, _pipeline=self)
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
@@ -2795,6 +2920,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder,
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
+                _pipeline=self,
             )
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
@@ -2805,13 +2931,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder_2,
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
+                _pipeline=self,
             )
-
-        # Offload back.
-        if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
 
     @classmethod
     def save_lora_weights(
