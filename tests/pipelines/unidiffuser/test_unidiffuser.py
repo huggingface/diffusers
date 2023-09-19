@@ -29,7 +29,6 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
-    slow,
     torch_device,
 )
 from diffusers.utils.torch_utils import randn_tensor
@@ -572,7 +571,7 @@ class UniDiffuserPipelineFastTests(
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
 
-@slow
+@nightly
 @require_torch_gpu
 class UniDiffuserPipelineSlowTests(unittest.TestCase):
     def tearDown(self):

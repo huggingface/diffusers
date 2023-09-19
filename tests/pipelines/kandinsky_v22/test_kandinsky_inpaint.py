@@ -240,6 +240,15 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    def test_model_cpu_offload_forward_pass(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=5e-4)
+
+    def test_sequential_cpu_offload_forward_pass(self):
+        super().test_sequential_cpu_offload_forward_pass(expected_max_diff=5e-4)
+
 
 @slow
 @require_torch_gpu
