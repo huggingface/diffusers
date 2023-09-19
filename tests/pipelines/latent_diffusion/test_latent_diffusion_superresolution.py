@@ -20,8 +20,15 @@ import numpy as np
 import torch
 
 from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQModel
-from diffusers.utils import PIL_INTERPOLATION, floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch
+from diffusers.utils import PIL_INTERPOLATION
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    require_torch,
+    slow,
+    torch_device,
+)
 
 
 enable_full_determinism()

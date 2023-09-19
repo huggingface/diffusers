@@ -21,8 +21,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenDecoderPipeline
 from diffusers.pipelines.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 

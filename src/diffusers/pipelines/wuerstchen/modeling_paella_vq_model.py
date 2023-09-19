@@ -22,7 +22,7 @@ from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
 from ...models.vae import DecoderOutput, VectorQuantizer
 from ...models.vq_model import VQEncoderOutput
-from ...utils import apply_forward_hook
+from ...utils.accelerate_utils import apply_forward_hook
 
 
 class MixingResidualBlock(nn.Module):
