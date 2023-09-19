@@ -41,9 +41,9 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    nightly,
     require_torch_gpu,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -492,7 +492,7 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         return super().test_save_load_optional_components()
 
 
-@slow
+@nightly
 @require_torch_gpu
 class UnCLIPImageVariationPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

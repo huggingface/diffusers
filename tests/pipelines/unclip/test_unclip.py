@@ -28,7 +28,6 @@ from diffusers.utils.testing_utils import (
     nightly,
     require_torch_gpu,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -451,7 +450,7 @@ class UnCLIPPipelineCPUIntegrationTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 1e-1
 
 
-@slow
+@nightly
 @require_torch_gpu
 class UnCLIPPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
