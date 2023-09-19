@@ -1491,7 +1491,7 @@ class LoraLoaderMixin:
                 argument to `True` will raise an error.
             adapter_name (`str`, *optional*, defaults to `"default"`):
                 The name of the adapter to load the LoRA layers into, useful in the case of using multiple adapters
-                with the same model. Default to the default name used in PEFT library - `"default"`.
+                with the same model. Defaults to the default name used in PEFT library - `"default"`.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
