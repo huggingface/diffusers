@@ -135,6 +135,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # TODO: handle safety checking?
         self.safety_checker = None
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -142,6 +143,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         """
         self.vae.enable_slicing()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -149,6 +151,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         """
         self.vae.disable_slicing()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -157,6 +160,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         """
         self.vae.enable_tiling()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
@@ -1233,15 +1237,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
         if mode in ["text2img"]:
             # 3.1. Encode input prompt, if available
             assert prompt is not None or prompt_embeds is not None
-            # prompt_embeds = self._encode_prompt(
-            #     prompt=prompt,
-            #     device=device,
-            #     num_images_per_prompt=multiplier,
-            #     do_classifier_free_guidance=False,  # don't support standard classifier-free guidance for now
-            #     negative_prompt=negative_prompt,
-            #     prompt_embeds=prompt_embeds,
-            #     negative_prompt_embeds=negative_prompt_embeds,
-            # )
             prompt_embeds, negative_prompt_embeds = self.encode_prompt(
                 prompt=prompt,
                 device=device,

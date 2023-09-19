@@ -673,6 +673,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         expected_text_prefix = "An astronaut"
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
+    @unittest.skip(reason="Skip torch.compile test to speed up the slow test suite.")
     @require_torch_2
     def test_unidiffuser_compile(self, seed=0):
         inputs = self.get_inputs(torch_device, seed=seed, generate_latents=True)
