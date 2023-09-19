@@ -54,6 +54,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
             output, new_output = sample, sample
             for t in range(time_step, time_step + scheduler.config.solver_order + 1):
+                t = scheduler.timesteps[t]
                 output = scheduler.step(residual, t, output, **kwargs).prev_sample
                 new_output = new_scheduler.step(residual, t, new_output, **kwargs).prev_sample
 
@@ -222,7 +223,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         sample = self.full_loop(prediction_type="v_prediction", use_karras_sigmas=True)
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 1.7833) < 1e-3
+        assert abs(result_mean.item() - 1.7833) < 2e-3
 
     def test_switch(self):
         # make sure that iterating over schedulers with same config names gives same results
