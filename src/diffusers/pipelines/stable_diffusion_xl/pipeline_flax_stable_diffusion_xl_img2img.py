@@ -14,14 +14,12 @@
 
 from functools import partial
 from typing import Dict, List, Optional, Union
-from PIL import Image
 
 import jax
 import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
+from PIL import Image
 from transformers import CLIPTokenizer, FlaxCLIPTextModel
-
-from diffusers.utils import logging
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...schedulers import (
@@ -30,7 +28,7 @@ from ...schedulers import (
     FlaxLMSDiscreteScheduler,
     FlaxPNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION, logging, replace_example_docstring
+from ...utils import PIL_INTERPOLATION, logging
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
 from . import FlaxStableDiffusionXLPipelineOutput
 
