@@ -218,6 +218,9 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1e-1)
+
 
 @nightly
 @require_torch_gpu
