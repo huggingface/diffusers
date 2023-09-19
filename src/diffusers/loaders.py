@@ -1892,6 +1892,7 @@ class LoraLoaderMixin:
                 if "downsamplers" in diffusers_name or "upsamplers" in diffusers_name:
                     diffusers_name = diffusers_name.replace("op", "conv")
                 if "skip" in diffusers_name:
+                    print(f"Found with {diffusers_name} and key: {key}")
                     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
                 if "time" in diffusers_name:
                     diffusers_name = diffusers_name.replace("time.emb.proj", "time_emb_proj")
