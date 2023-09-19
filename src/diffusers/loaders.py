@@ -383,8 +383,6 @@ class UNet2DConditionLoadersMixin:
 
         if is_lora:
             # correct keys
-            # for k in state_dict:
-            #     if "time" in k: print(k)
             state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
 
             if network_alphas is not None:
@@ -421,10 +419,6 @@ class UNet2DConditionLoadersMixin:
                 )
 
             for key, value_dict in lora_grouped_dict.items():
-                if "time" in key: 
-                    print(f"Initial key: {key}")
-                    key = ".".join(key.split(".")[:3]) + "." + "_".join(key.split(".")[3:])
-                    print(f"Final key: {key}")
                 attn_processor = self
                 for sub_key in key.split("."):
                     attn_processor = getattr(attn_processor, sub_key)
