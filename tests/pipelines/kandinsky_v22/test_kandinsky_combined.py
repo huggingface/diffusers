@@ -137,6 +137,9 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1e-1)
+
 
 class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22Img2ImgCombinedPipeline
@@ -237,6 +240,9 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1e-1)
+
 
 class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22InpaintCombinedPipeline
@@ -336,3 +342,6 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=5e-1)

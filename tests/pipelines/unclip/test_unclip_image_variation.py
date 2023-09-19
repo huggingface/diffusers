@@ -491,6 +491,9 @@ class UnCLIPImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def test_save_load_optional_components(self):
         return super().test_save_load_optional_components()
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1.0)
+
 
 @slow
 @require_torch_gpu

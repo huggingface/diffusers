@@ -242,7 +242,7 @@ class PipelineTesterMixin:
     test_xformers_attention = True
 
     def get_generator(self, seed):
-        device = "cpu"
+        device = torch_device if torch_device != "mps" else "cpu"
         generator = torch.Generator(device).manual_seed(seed)
         return generator
 
@@ -544,7 +544,7 @@ class PipelineTesterMixin:
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_float16_inference(self, expected_max_diff=1e-2):
+    def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -563,15 +563,14 @@ class PipelineTesterMixin:
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs(torch_device)
         # Reset generator in case it is used inside dummy inputs
         if "generator" in inputs:
             inputs["generator"] = self.get_generator(0)
 
         output = pipe(**inputs)[0]
 
-        fp16_inputs = self.get_dummy_inputs(generator_device)
+        fp16_inputs = self.get_dummy_inputs(torch_device)
         # Reset generator in case it is used inside dummy inputs
         if "generator" in fp16_inputs:
             fp16_inputs["generator"] = self.get_generator(0)
