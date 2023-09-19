@@ -33,8 +33,8 @@ from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     _get_model_file,
-    convert_diffusers_state_dict_to_peft,
-    convert_old_state_dict_to_peft,
+    convert_state_dict_to_diffusers,
+    convert_state_dict_to_peft,
     deprecate,
     is_accelerate_available,
     is_omegaconf_available,
@@ -1544,19 +1544,11 @@ class LoraLoaderMixin:
             if len(text_encoder_lora_state_dict) > 0:
                 logger.info(f"Loading {prefix}.")
                 rank = {}
+                text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
+
                 if cls.use_peft_backend:
-                    # Old diffusers to PEFT
-                    if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
-                        attention_modules = text_encoder_attn_modules(text_encoder)
-                        text_encoder_lora_state_dict = convert_old_state_dict_to_peft(
-                            attention_modules, text_encoder_lora_state_dict
-                        )
-                    # New diffusers format to PEFT
-                    elif any("lora_linear_layer" in k for k in text_encoder_lora_state_dict.keys()):
-                        attention_modules = text_encoder_attn_modules(text_encoder)
-                        text_encoder_lora_state_dict = convert_diffusers_state_dict_to_peft(
-                            attention_modules, text_encoder_lora_state_dict
-                        )
+                    # convert state dict
+                    text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
 
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         rank_key = f"{name}.out_proj.lora_B.weight"
@@ -1570,43 +1562,6 @@ class LoraLoaderMixin:
                             rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
                             rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
                 else:
-                    if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
-                        # Convert from the old naming convention to the new naming convention.
-                        #
-                        # Previously, the old LoRA layers were stored on the state dict at the
-                        # same level as the attention block i.e.
-                        # `text_model.encoder.layers.11.self_attn.to_out_lora.up.weight`.
-                        #
-                        # This is no actual module at that point, they were monkey patched on to the
-                        # existing module. We want to be able to load them via their actual state dict.
-                        # They're in `PatchedLoraProjection.lora_linear_layer` now.
-                        for name, _ in text_encoder_attn_modules(text_encoder):
-                            text_encoder_lora_state_dict[
-                                f"{name}.q_proj.lora_linear_layer.up.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.up.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.k_proj.lora_linear_layer.up.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.up.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.v_proj.lora_linear_layer.up.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.up.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.out_proj.lora_linear_layer.up.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.up.weight")
-
-                            text_encoder_lora_state_dict[
-                                f"{name}.q_proj.lora_linear_layer.down.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.down.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.k_proj.lora_linear_layer.down.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.down.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.v_proj.lora_linear_layer.down.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.down.weight")
-                            text_encoder_lora_state_dict[
-                                f"{name}.out_proj.lora_linear_layer.down.weight"
-                            ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
-
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
                         rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
@@ -1640,6 +1595,7 @@ class LoraLoaderMixin:
                     lora_config = LoraConfig(r=lora_rank, target_modules=target_modules, lora_alpha=alpha)
 
                     text_encoder.load_adapter(adapter_state_dict=text_encoder_lora_state_dict, peft_config=lora_config)
+
                     is_model_cpu_offload = False
                     is_sequential_cpu_offload = False
                 else:
