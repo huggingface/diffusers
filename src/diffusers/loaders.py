@@ -396,8 +396,8 @@ class UNet2DConditionLoadersMixin:
             for key in all_keys:
                 value = state_dict.pop(key)
                 attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
-                if "time" in key:
-                    print(f"key: {key}, attn_processor_key: {attn_processor_key}, sub_key: {sub_key}")
+                # if "time" in key:
+                #     print(f"key: {key}, attn_processor_key: {attn_processor_key}, sub_key: {sub_key}")
                 lora_grouped_dict[attn_processor_key][sub_key] = value
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
