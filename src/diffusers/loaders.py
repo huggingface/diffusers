@@ -1583,10 +1583,6 @@ class LoraLoaderMixin:
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                import pdb
-
-                pdb.set_trace()
-
                 if cls.use_peft_backend:
                     from peft import LoraConfig
 
