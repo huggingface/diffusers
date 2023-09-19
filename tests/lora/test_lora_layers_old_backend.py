@@ -420,51 +420,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         # Outputs shouldn't match.
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
-    def test_text_encoder_lora(self):
-        from peft import LoraConfig
-
-        pipeline_components, _ = self.get_dummy_components()
-        pipe = StableDiffusionPipeline(**pipeline_components)
-
-        dummy_tokens = self.get_dummy_tokens()
-
-        # inference without lora
-        outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
-        self.assertTrue(outputs_without_lora.shape == (1, 77, 32))
-
-        lora_config = LoraConfig(r=4, target_modules=["k_proj", "q_proj", "v_proj"])
-
-        # 0-init the lora weights
-        pipe.text_encoder.add_adapter(lora_config, adapter_name="default_O_init")
-
-        # inference with lora
-        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
-        self.assertTrue(outputs_with_lora.shape == (1, 77, 32))
-
-        self.assertTrue(
-            torch.allclose(outputs_without_lora, outputs_with_lora),
-            "lora_up_weight are all zero, so the lora outputs should be the same to without lora outputs",
-        )
-
-        lora_config = LoraConfig(r=4, target_modules=["k_proj", "q_proj", "v_proj"], init_lora_weights=False)
-
-        # LoRA with no init
-        pipe.text_encoder.add_adapter(lora_config, adapter_name="default_no_init")
-        # Make it use that adapter
-        pipe.text_encoder.set_adapter("default_no_init")
-
-        # inference with lora
-        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
-        self.assertTrue(outputs_with_lora.shape == (1, 77, 32))
-
-        self.assertFalse(
-            torch.allclose(outputs_without_lora, outputs_with_lora),
-            "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs",
-        )
-
-    def test_text_encoder_lora_remove_monkey_patch(self):
-        from peft import LoraConfig
-
+    def test_text_encoder_lora_monkey_patch(self):
         pipeline_components, _ = self.get_dummy_components()
         pipe = StableDiffusionPipeline(**pipeline_components)
 
@@ -474,15 +430,49 @@ class LoraLoaderMixinTests(unittest.TestCase):
         outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
         assert outputs_without_lora.shape == (1, 77, 32)
 
-        lora_config = LoraConfig(
-            r=4,
-            target_modules=["k_proj", "q_proj", "v_proj"],
-            # To randomly init LoRA weights
-            init_lora_weights=False,
-        )
+        # monkey patch
+        params = pipe._modify_text_encoder(pipe.text_encoder, pipe.lora_scale)
 
-        # Inject adapters
-        pipe.text_encoder.add_adapter(lora_config)
+        set_lora_weights(params, randn_weight=False)
+
+        # inference with lora
+        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_with_lora.shape == (1, 77, 32)
+
+        assert torch.allclose(
+            outputs_without_lora, outputs_with_lora
+        ), "lora_up_weight are all zero, so the lora outputs should be the same to without lora outputs"
+
+        # create lora_attn_procs with randn up.weights
+        create_text_encoder_lora_attn_procs(pipe.text_encoder)
+
+        # monkey patch
+        params = pipe._modify_text_encoder(pipe.text_encoder, pipe.lora_scale)
+
+        set_lora_weights(params, randn_weight=True)
+
+        # inference with lora
+        outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_with_lora.shape == (1, 77, 32)
+
+        assert not torch.allclose(
+            outputs_without_lora, outputs_with_lora
+        ), "lora_up_weight are not zero, so the lora outputs should be different to without lora outputs"
+
+    def test_text_encoder_lora_remove_monkey_patch(self):
+        pipeline_components, _ = self.get_dummy_components()
+        pipe = StableDiffusionPipeline(**pipeline_components)
+
+        dummy_tokens = self.get_dummy_tokens()
+
+        # inference without lora
+        outputs_without_lora = pipe.text_encoder(**dummy_tokens)[0]
+        assert outputs_without_lora.shape == (1, 77, 32)
+
+        # monkey patch
+        params = pipe._modify_text_encoder(pipe.text_encoder, pipe.lora_scale)
+
+        set_lora_weights(params, randn_weight=True)
 
         # inference with lora
         outputs_with_lora = pipe.text_encoder(**dummy_tokens)[0]
@@ -1062,8 +1052,6 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         self.assertFalse(np.allclose(orig_image_slice, lora_image_slice, atol=1e-3))
 
     def test_unfuse_lora(self):
-        from peft import LoraConfig
-
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
@@ -1076,16 +1064,15 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
-
-        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
-
-        sd_pipe.text_encoder.add_adapter(lora_config)
-        sd_pipe.text_encoder_2.add_adapter(lora_config)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
                 unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
                 safe_serialization=True,
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
@@ -1107,12 +1094,10 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             orig_image_slice_two, lora_image_slice
         ), "Fusion of LoRAs should lead to a different image slice."
         assert np.allclose(
-            orig_image_slice, orig_image_slice_two, atol=4e-2
+            orig_image_slice, orig_image_slice_two, atol=1e-3
         ), "Reversing LoRA fusion should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
 
     def test_lora_fusion_is_not_affected_by_unloading(self):
-        from peft import LoraConfig
-
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
@@ -1124,11 +1109,19 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
 
-        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
-
-        sd_pipe.text_encoder.add_adapter(lora_config)
-        sd_pipe.text_encoder_2.add_adapter(lora_config)
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
         sd_pipe.fuse_lora()
         lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
@@ -1139,14 +1132,11 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         images_with_unloaded_lora = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         images_with_unloaded_lora_slice = images_with_unloaded_lora[0, -3:, -3:, -1]
 
-        self.assertTrue(
-            np.allclose(lora_image_slice, images_with_unloaded_lora_slice),
-            "`unload_lora_weights()` should have not effect on the semantics of the results as the LoRA parameters were fused.",
-        )
+        assert np.allclose(
+            lora_image_slice, images_with_unloaded_lora_slice
+        ), "`unload_lora_weights()` should have not effect on the semantics of the results as the LoRA parameters were fused."
 
     def test_fuse_lora_with_different_scales(self):
-        from peft import LoraConfig
-
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
@@ -1158,17 +1148,15 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
-        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
-
-        sd_pipe.text_encoder.add_adapter(lora_config)
-        sd_pipe.text_encoder_2.add_adapter(lora_config)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
                 unet_lora_layers=lora_components["unet_lora_layers"],
-                # text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
-                # text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
                 safe_serialization=True,
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
@@ -1181,6 +1169,17 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         # Reverse LoRA fusion.
         sd_pipe.unfuse_lora()
 
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
         sd_pipe.fuse_lora(lora_scale=0.5)
         lora_images_scale_0_5 = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         lora_image_slice_scale_0_5 = lora_images_scale_0_5[0, -3:, -3:, -1]
@@ -1189,12 +1188,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             lora_image_slice_scale_one, lora_image_slice_scale_0_5, atol=1e-03
         ), "Different LoRA scales should influence the outputs accordingly."
 
-    # TODO: @younesbelkada add save / load tests with text encoder
-    # TODO: @younesbelkada add public method to attach adapters in text encoder
-
     def test_with_different_scales(self):
-        from peft import LoraConfig
-
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
@@ -1206,15 +1200,15 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
-        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
-
-        sd_pipe.text_encoder.add_adapter(lora_config)
-        sd_pipe.text_encoder_2.add_adapter(lora_config)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
                 unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
                 safe_serialization=True,
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
@@ -1234,16 +1228,14 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         lora_image_slice_scale_0_0 = lora_images_scale_0_0[0, -3:, -3:, -1]
 
         assert not np.allclose(
-            lora_image_slice_scale_one, lora_image_slice_scale_0_5, atol=1e-3
+            lora_image_slice_scale_one, lora_image_slice_scale_0_5, atol=1e-03
         ), "Different LoRA scales should influence the outputs accordingly."
 
         assert np.allclose(
-            original_imagee_slice, lora_image_slice_scale_0_0, atol=1e-3
+            original_imagee_slice, lora_image_slice_scale_0_0, atol=1e-03
         ), "LoRA scale of 0.0 shouldn't be different from the results without LoRA."
 
     def test_with_different_scales_fusion_equivalence(self):
-        from peft import LoraConfig
-
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
@@ -1256,16 +1248,15 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True, var=0.1)
-
-        lora_config = LoraConfig(r=8, target_modules=["q_proj", "k_proj", "v_proj"], init_lora_weights=False)
-
-        sd_pipe.text_encoder.add_adapter(lora_config)
-        sd_pipe.text_encoder_2.add_adapter(lora_config)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True, var=0.1)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True, var=0.1)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
                 save_directory=tmpdirname,
                 unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
                 safe_serialization=True,
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
@@ -2237,7 +2228,6 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_sdxl_1_0_fuse_unfuse_all(self):
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
-
         text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict())
         text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
         unet_sd = copy.deepcopy(pipe.unet.state_dict())
