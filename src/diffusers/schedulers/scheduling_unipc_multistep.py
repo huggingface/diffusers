@@ -71,7 +71,6 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
-
 class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
     `UniPCMultistepScheduler` is a training-free framework designed for the fast sampling of diffusion models.
@@ -464,7 +463,6 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 "1.0.0",
                 "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
             )
-        timestep_list = self.timestep_list
         model_output_list = self.model_outputs
 
         s0 = self.timestep_list[-1]
@@ -593,7 +591,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 raise ValueError(" missing`this_sample` as a required keyward argument")
         if order is None:
             if len(args) > 3:
-                sample = args[3]
+                order = args[3]
             else:
                 raise ValueError(" missing`order` as a required keyward argument")
         if this_timestep is not None:
@@ -603,7 +601,6 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
                 "Passing `this_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
             )
 
-
         model_output_list = self.model_outputs
 
         m0 = model_output_list[-1]
@@ -611,7 +608,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         x_t = this_sample
         model_t = this_model_output
 
-        sigma_t, sigma_s0 = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
+        sigma_t, sigma_s0 = self.sigmas[self.step_index], self.sigmas[self.step_index - 1]
         alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
 
@@ -624,7 +621,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         rks = []
         D1s = []
         for i in range(1, order):
-            si = self.step_index - i
+            si = self.step_index - (i + 1)
             mi = model_output_list[-(i + 1)]
             alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si])
             lambda_si = torch.log(alpha_si) - torch.log(sigma_si)
