@@ -127,7 +127,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="kandi_2_2-model-finetuned",
+        default="wuerstchen-model-finetuned",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
