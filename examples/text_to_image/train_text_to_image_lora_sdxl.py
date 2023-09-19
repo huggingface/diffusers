@@ -1075,6 +1075,9 @@ def main(args):
                     mse_loss_weights = (
                         torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
+                    if noise_scheduler.config.prediction_type == "v_prediction":
+                        # velocity objective prediction requires SNR weights to be floored to a min value of 1.
+                        mse_loss_weights = mse_loss_weights + 1
                     # We first calculate the original loss. Then we mean over the non-batch dimensions and
                     # rebalance the sample-wise losses with their respective loss weights.
                     # Finally, we take the mean of the rebalanced loss.
