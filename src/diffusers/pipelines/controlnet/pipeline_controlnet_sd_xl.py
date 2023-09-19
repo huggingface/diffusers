@@ -236,6 +236,7 @@ class StableDiffusionXLControlNetPipeline(
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -275,6 +276,9 @@ class StableDiffusionXLControlNetPipeline(
                 input argument.
             lora_scale (`float`, *optional*):
                 A lora scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
         """
         device = device or self._execution_device
 
@@ -331,14 +335,15 @@ class StableDiffusionXLControlNetPipeline(
                         f" {tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                prompt_embeds = text_encoder(
-                    text_input_ids.to(device),
-                    output_hidden_states=True,
-                )
+                prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
 
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 pooled_prompt_embeds = prompt_embeds[0]
-                prompt_embeds = prompt_embeds.hidden_states[-2]
+                if clip_skip is None:
+                    prompt_embeds = prompt_embeds.hidden_states[-2]
+                else:
+                    # "2" because SDXL always indexes from the penultimate layer.
+                    prompt_embeds = prompt_embeds.hidden_states[-(clip_skip + 2)]
 
                 prompt_embeds_list.append(prompt_embeds)
 
@@ -767,6 +772,7 @@ class StableDiffusionXLControlNetPipeline(
         negative_original_size: Optional[Tuple[int, int]] = None,
         negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
         negative_target_size: Optional[Tuple[int, int]] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -884,6 +890,9 @@ class StableDiffusionXLControlNetPipeline(
                 as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
                 information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Examples:
 
@@ -968,6 +977,7 @@ class StableDiffusionXLControlNetPipeline(
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
+            clip_skip=clip_skip,
         )
 
         # 4. Prepare image
