@@ -166,14 +166,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     @skip_mps
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
-        test_mean_pixel_difference = False
-
         self._test_inference_batch_single_identical(
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
-            test_mean_pixel_difference=test_mean_pixel_difference,
             expected_max_diff=2e-1,
         )
 

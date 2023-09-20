@@ -235,6 +235,9 @@ class StableDiffusionLatentUpscalePipelineFastTests(
 
         assert check_same_shape(outputs)
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=5e-1)
+
 
 @require_torch_gpu
 @slow

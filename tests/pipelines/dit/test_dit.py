@@ -96,7 +96,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertLessEqual(max_diff, 1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=True, expected_max_diff=1e-3)
+        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
