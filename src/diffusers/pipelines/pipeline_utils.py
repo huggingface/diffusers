@@ -1836,6 +1836,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         r"""
         Gives a breakdown of the number of parameters each `torch.nn.Module` component has. Also shows the sum of the
         parameters each module-level component has.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import DiffusionPipeline
+
+        >>> pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+        >>> pipe.display_total_parameters()
+        ```
         """
 
         def format_dict(dict):
