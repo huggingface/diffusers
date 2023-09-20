@@ -36,17 +36,19 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import BlipDiffusionControlNetPipeline
-        >>> from PIL import Image
+        >>> from diffusers.pipelines import BlipDiffusionControlNetPipeline
         >>> from diffusers.utils import load_image
         >>> from controlnet_aux import CannyDetector
+        >>> import torch
 
-        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained("ayushtues/blipdiffusion-controlnet")
-        >>> blip_diffusion_pipe.to("cuda")
+        >>> blip_diffusion_pipe = BlipDiffusionControlNetPipeline.from_pretrained(
+        ...     "ayushtues/blipdiffusion-controlnet", torch_dtype=torch.float16
+        ... ).to("cuda")
 
         >>> style_subject = "flower"
         >>> tgt_subject = "teapot"
         >>> text_prompt = "on a marble table"
+
         >>> cldm_cond_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/kettle.jpg"
         ... ).resize(512, 512)
@@ -71,8 +73,8 @@ EXAMPLE_DOC_STRING = """
         ...     neg_prompt=negative_prompt,
         ...     height=512,
         ...     width=512,
-        ... )
-        >>> output[0][0].save("image.png")
+        ... ).images
+        >>> output[0].save("image.png")
         ```
 """
 

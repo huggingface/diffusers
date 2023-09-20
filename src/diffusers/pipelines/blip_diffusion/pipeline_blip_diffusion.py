@@ -35,23 +35,24 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import BlipDiffusionPipeline
-        >>> from PIL import Image
+        >>> from diffusers.pipelines import BlipDiffusionPipeline
         >>> from diffusers.utils import load_image
+        >>> import torch
 
-        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained("ayushtues/blipdiffusion")
-        >>> blip_diffusion_pipe.to("cuda")
+        >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained(
+        ...     "ayushtues/blipdiffusion", torch_dtype=torch.float16
+        ... ).to("cuda")
+
 
         >>> cond_subject = "dog"
         >>> tgt_subject = "dog"
         >>> text_prompt_input = "swimming underwater"
 
-
         >>> cond_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/dog.jpg"
         ... )
         >>> guidance_scale = 7.5
-        >>> num_inference_steps = 50
+        >>> num_inference_steps = 25
         >>> negative_prompt = "over-exposure, under-exposure, saturated, duplicate, out of frame, lowres, cropped, worst quality, low quality, jpeg artifacts, morbid, mutilated, out of frame, ugly, bad anatomy, bad proportions, deformed, blurry, duplicate"
 
 
@@ -65,8 +66,8 @@ EXAMPLE_DOC_STRING = """
         ...     neg_prompt=negative_prompt,
         ...     height=512,
         ...     width=512,
-        ... )
-        >>> output[0][0].save("image.png")
+        ... ).images
+        >>> output[0].save("image.png")
         ```
 """
 
