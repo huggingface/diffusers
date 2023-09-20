@@ -1290,6 +1290,7 @@ class LoraLoaderMixin:
             state_dict = pretrained_model_name_or_path_or_dict
 
         network_alphas = None
+        # TODO: replace it with `state_dict_utils` logic?
         if all(
             (
                 k.startswith("lora_te_")
@@ -1676,8 +1677,14 @@ class LoraLoaderMixin:
 
         if hasattr(self, "text_encoder"):
             remove_method(self.text_encoder)
+
+            del self.text_encoder.peft_config
+            self.text_encoder._hf_peft_config_loaded = None
         if hasattr(self, "text_encoder_2"):
             remove_method(self.text_encoder_2)
+
+            del self.text_encoder_2.peft_config
+            self.text_encoder_2._hf_peft_config_loaded = None
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
@@ -2872,7 +2879,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
     def _remove_text_encoder_monkey_patch(self):
         if self.use_peft_backend:
             recurse_remove_peft_layers(self.text_encoder)
+            # TODO: @younesbelkada handle this in transformers side
+            del self.text_encoder.peft_config
+            self.text_encoder._hf_peft_config_loaded = None
+
             recurse_remove_peft_layers(self.text_encoder_2)
+
+            del self.text_encoder_2.peft_config
+            self.text_encoder_2._hf_peft_config_loaded = None
         else:
             self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
             self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)

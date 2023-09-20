@@ -158,8 +158,11 @@ def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
                 https://github.com/huggingface/peft/blob/ba0477f2985b1ba311b83459d29895c809404e99/src/peft/utils/save_and_load.py#L92
                 but we add it here in case we don't want to rely on that method.
     """
-    peft_adapter_name = kwargs.pop("adapter_name", "")
-    peft_adapter_name = "." + peft_adapter_name
+    peft_adapter_name = kwargs.pop("adapter_name", None)
+    if peft_adapter_name is not None:
+        peft_adapter_name = "." + peft_adapter_name
+    else:
+        peft_adapter_name = ""
 
     if original_type is None:
         # Old diffusers to PEFT

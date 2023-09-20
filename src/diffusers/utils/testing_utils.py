@@ -255,6 +255,13 @@ def require_peft_backend(test_case):
     return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
 
 
+def deprecate_after_peft_backend(test_case):
+    """
+    Decorator marking a test that will be skipped after PEFT backend
+    """
+    return unittest.skipUnless(not USE_PEFT_BACKEND, "test skipped in favor of PEFT backend")(test_case)
+
+
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
         # local_path = "/home/patrick_huggingface_co/"
