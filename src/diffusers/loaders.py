@@ -14,7 +14,6 @@
 import importlib
 import os
 import re
-import warnings
 from collections import defaultdict
 from contextlib import nullcontext
 from io import BytesIO
@@ -80,6 +79,7 @@ _required_transformers_version = version.parse(
 ) > version.parse("4.33")
 
 USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
+LORA_DEPRECATION_MESSAGE = "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT make sure to install the latest PEFT and transformers packages in the future."
 
 
 class PatchedLoraProjection(nn.Module):
@@ -1672,11 +1672,6 @@ class LoraLoaderMixin:
         if self.use_peft_backend:
             remove_method = recurse_remove_peft_layers
         else:
-            warnings.warn(
-                "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT"
-                " make sure to install the latest PEFT and transformers packages in the future.",
-                FutureWarning,
-            )
             remove_method = self._remove_text_encoder_monkey_patch_classmethod
 
         if hasattr(self, "text_encoder"):
@@ -1686,6 +1681,8 @@ class LoraLoaderMixin:
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
+        deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.23", LORA_DEPRECATION_MESSAGE)
+
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
                 attn_module.q_proj.lora_linear_layer = None
@@ -1712,6 +1709,7 @@ class LoraLoaderMixin:
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
+        deprecate("_modify_text_encoder", "0.23", LORA_DEPRECATION_MESSAGE)
 
         def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
             linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
@@ -2091,11 +2089,7 @@ class LoraLoaderMixin:
                         module.merge()
 
         else:
-            warnings.warn(
-                "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT"
-                " make sure to install the latest PEFT and transformers packages in the future.",
-                FutureWarning,
-            )
+            deprecate("fuse_text_encoder_lora", "0.23", LORA_DEPRECATION_MESSAGE)
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
@@ -2145,11 +2139,7 @@ class LoraLoaderMixin:
                         module.unmerge()
 
         else:
-            warnings.warn(
-                "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT"
-                " make sure to install the latest PEFT and transformers packages in the future.",
-                FutureWarning,
-            )
+            deprecate("unfuse_text_encoder_lora", "0.23", LORA_DEPRECATION_MESSAGE)
 
             def unfuse_text_encoder_lora(text_encoder):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
