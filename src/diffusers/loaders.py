@@ -71,15 +71,15 @@ CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensor
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
 # PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
 # available.
-# For PEFT is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
-_correct_peft_version = is_peft_available() and version.parse(
+# For PEFT it is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
+_required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
 ) > version.parse("0.5")
-_correct_transformers_version = version.parse(
+_required_transformers_version = version.parse(
     version.parse(importlib.metadata.version("transformers")).base_version
 ) > version.parse("4.33")
 
-USE_PEFT_BACKEND = _correct_peft_version and _correct_transformers_version
+USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 
 
 class PatchedLoraProjection(nn.Module):
