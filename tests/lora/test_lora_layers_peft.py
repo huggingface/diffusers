@@ -329,6 +329,12 @@ class PeftLoraLoaderMixinTests:
 
         images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
         self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+            )
+
         self.assertTrue(
             np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
             "Loading from saved checkpoints should give same results.",
@@ -360,19 +366,23 @@ class PeftLoraLoaderMixinTests:
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
-            del pipe
 
-            pipe = self.pipeline_class.from_pretrained(tmpdirname)
-            pipe.to(self.torch_device)
+            pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
+            pipe_from_pretrained.to(self.torch_device)
 
-        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(
+            self.check_if_lora_correctly_set(pipe_from_pretrained.text_encoder),
+            "Lora not correctly set in text encoder",
+        )
 
         if self.has_two_text_encoders:
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                self.check_if_lora_correctly_set(pipe_from_pretrained.text_encoder_2),
+                "Lora not correctly set in text encoder 2",
             )
 
-        images_lora_save_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+        images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0)).images
+
         self.assertTrue(
             np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
             "Loading from saved checkpoints should give same results.",
