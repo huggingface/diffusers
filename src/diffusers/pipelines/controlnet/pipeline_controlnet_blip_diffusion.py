@@ -44,19 +44,17 @@ EXAMPLE_DOC_STRING = """
         >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained("ayushtues/blipdiffusion-controlnet")
         >>> blip_diffusion_pipe.to("cuda")
 
-        >>> style_subject = ["flower"]
-        >>> tgt_subject = ["teapot"]
-        >>> text_prompt = ["on a marble table"]
+        >>> style_subject = "flower"
+        >>> tgt_subject = "teapot"
+        >>> text_prompt = "on a marble table"
         >>> cldm_cond_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/kettle.jpg"
         ... ).resize(512, 512)
         >>> canny = CannyDetector()
         >>> cldm_cond_image = canny(cldm_cond_image, 30, 70, output_type="pil")
-        >>> cldm_cond_image = [cldm_cond_image]
         >>> style_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/flower.jpg"
         ... )
-        >>> iter_seed = 88888
         >>> guidance_scale = 7.5
         >>> num_inference_steps = 50
         >>> negative_prompt = "over-exposure, under-exposure, saturated, duplicate, out of frame, lowres, cropped, worst quality, low quality, jpeg artifacts, morbid, mutilated, out of frame, ugly, bad anatomy, bad proportions, deformed, blurry, duplicate"
@@ -74,7 +72,7 @@ EXAMPLE_DOC_STRING = """
         ...     height=512,
         ...     width=512,
         ... )
-        >>> output[0][0].save("kettle_new.png")
+        >>> output[0][0].save("image.png")
         ```
 """
 

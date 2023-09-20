@@ -42,15 +42,14 @@ EXAMPLE_DOC_STRING = """
         >>> blip_diffusion_pipe = BlipDiffusionPipeline.from_pretrained("ayushtues/blipdiffusion")
         >>> blip_diffusion_pipe.to("cuda")
 
-        >>> cond_subject = ["dog"]
-        >>> tgt_subject = ["dog"]
-        >>> text_prompt_input = ["swimming underwater"]
+        >>> cond_subject = "dog"
+        >>> tgt_subject = "dog"
+        >>> text_prompt_input = "swimming underwater"
 
 
         >>> cond_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/dog.jpg"
         ... )
-        >>> iter_seed = 88888
         >>> guidance_scale = 7.5
         >>> num_inference_steps = 50
         >>> negative_prompt = "over-exposure, under-exposure, saturated, duplicate, out of frame, lowres, cropped, worst quality, low quality, jpeg artifacts, morbid, mutilated, out of frame, ugly, bad anatomy, bad proportions, deformed, blurry, duplicate"
@@ -67,7 +66,7 @@ EXAMPLE_DOC_STRING = """
         ...     height=512,
         ...     width=512,
         ... )
-        >>> output[0][0].save("dog.png")
+        >>> output[0][0].save("image.png")
         ```
 """
 
