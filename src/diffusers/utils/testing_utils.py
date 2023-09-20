@@ -1,3 +1,4 @@
+import importlib
 import inspect
 import io
 import logging
@@ -29,6 +30,7 @@ from .import_utils import (
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
+    is_peft_available,
     is_torch_available,
     is_torch_version,
     is_torchsde_available,
@@ -39,6 +41,15 @@ from .logging import get_logger
 global_rng = random.Random()
 
 logger = get_logger(__name__)
+
+_required_peft_version = is_peft_available() and version.parse(
+    version.parse(importlib.metadata.version("peft")).base_version
+) > version.parse("0.5")
+_required_transformers_version = version.parse(
+    version.parse(importlib.metadata.version("transformers")).base_version
+) > version.parse("4.33")
+
+USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 
 if is_torch_available():
     import torch
@@ -234,6 +245,14 @@ def require_torchsde(test_case):
     Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
     """
     return unittest.skipUnless(is_torchsde_available(), "test requires torchsde")(test_case)
+
+
+def require_peft_backend(test_case):
+    """
+    Decorator marking a test that requires PEFT backend, this would require some specific versions of PEFT and
+    transformers.
+    """
+    return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
