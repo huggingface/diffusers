@@ -20,7 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
@@ -74,7 +74,6 @@ class PeftLoraLoaderMixinTests:
     scheduler_cls = None
     scheduler_kwargs = None
     has_two_text_encoders = False
-    text_kwargs = None
     unet_kwargs = None
     vae_kwargs = None
 
@@ -84,13 +83,13 @@ class PeftLoraLoaderMixinTests:
         scheduler = self.scheduler_cls(**self.scheduler_kwargs)
         torch.manual_seed(0)
         vae = AutoencoderKL(**self.vae_kwargs)
-        text_encoder_config = CLIPTextConfig(**self.text_kwargs)
-        text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        text_encoder = CLIPTextModel.from_pretrained("ybelkada/tiny-clip-text")
+        tokenizer = CLIPTokenizer.from_pretrained("ybelkada/tiny-clip-text")
 
         if self.has_two_text_encoders:
-            text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
-            tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+            # text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
+            text_encoder_2 = CLIPTextModelWithProjection.from_pretrained("ybelkada/tiny-clip-text-2")
+            tokenizer_2 = CLIPTokenizer.from_pretrained("ybelkada/tiny-clip-text-2")
 
         text_lora_config = LoraConfig(
             r=4, lora_alpha=4, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"], init_lora_weights=False
@@ -335,6 +334,50 @@ class PeftLoraLoaderMixinTests:
             "Loading from saved checkpoints should give same results.",
         )
 
+    def test_simple_inference_save_pretrained(self):
+        """
+        Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
+        """
+        components, _, text_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+
+        pipe.text_encoder.add_adapter(text_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+            )
+
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            del pipe
+
+            pipe = self.pipeline_class.from_pretrained(tmpdirname)
+            pipe.to(self.torch_device)
+
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+            )
+
+        images_lora_save_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(
+            np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
+            "Loading from saved checkpoints should give same results.",
+        )
+
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
@@ -346,17 +389,6 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "clip_sample": False,
         "set_alpha_to_one": False,
         "steps_offset": 1,
-    }
-    text_kwargs = {
-        "bos_token_id": 0,
-        "eos_token_id": 2,
-        "hidden_size": 32,
-        "intermediate_size": 37,
-        "layer_norm_eps": 1e-05,
-        "num_attention_heads": 4,
-        "num_hidden_layers": 5,
-        "pad_token_id": 1,
-        "vocab_size": 1000,
     }
     unet_kwargs = {
         "block_out_channels": (32, 64),
@@ -388,19 +420,6 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "beta_schedule": "scaled_linear",
         "timestep_spacing": "leading",
         "steps_offset": 1,
-    }
-    text_kwargs = {
-        "bos_token_id": 0,
-        "eos_token_id": 2,
-        "hidden_size": 32,
-        "intermediate_size": 37,
-        "layer_norm_eps": 1e-05,
-        "num_attention_heads": 4,
-        "num_hidden_layers": 5,
-        "pad_token_id": 1,
-        "vocab_size": 1000,
-        "hidden_act": "gelu",
-        "projection_dim": 32,
     }
     unet_kwargs = {
         "block_out_channels": (32, 64),
