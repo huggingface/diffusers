@@ -6,29 +6,16 @@ from huggingface_hub import HfApi, ModelFilter
 
 import diffusers
 
-
 ALWAYS_TEST_PIPELINE_MODULES = [
-    "alt_diffusion",
-    "audio_diffusion",
     "controlnet",
-    "consistency_models",
-    "dit",
-    "dance diffusion",
     "stable_diffusion",
     "stable_diffusion_2",
     "stable_diffusion_xl",
-    "stable_unclip",
-    "karras_ve",
     "deepfloyd_if",
-    "audioldm",
-    "audioldm2",
-    "musicldm",
     "kandinsky",
-    "kandinsky_v22",
-    "shap_e",
-    "text_to_video",
+    "kandinsky2_2",
+    "text_to_video_synthesis",
     "wuerstchen",
-    "vq_diffusion",
 ]
 PIPELINE_USAGE_CUTOFF = int(os.getenv("PIPELINE_USAGE_CUTOFF", 10000))
 
