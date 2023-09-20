@@ -1876,6 +1876,25 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
+    def test_lycoris(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/Amixx", safety_checker=None, use_safetensors=True, variant="fp16"
+        ).to(torch_device)
+        lora_model_id = "hf-internal-testing/edgLycorisMugler-light"
+        lora_filename = "edgLycorisMugler-light.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        expected = np.array([0.6463, 0.658, 0.599, 0.6542, 0.6512, 0.6213, 0.658, 0.6485, 0.6017])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-3))
+
     def test_a1111_with_model_cpu_offload(self):
         generator = torch.Generator().manual_seed(0)
 
