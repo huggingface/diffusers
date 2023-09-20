@@ -149,6 +149,14 @@ def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
             The state dict to convert.
         original_type (`StateDictType`, *optional*):
             The original type of the state dict, if not provided, the method will try to infer it automatically.
+        kwargs (`dict`, *args*):
+            Additional arguments to pass to the method.
+
+            - **adapter_name**: For example, in case of PEFT, some keys will be pre-pended
+                with the adapter name, therefore needs a special handling. By default PEFT also takes care of that in
+                `get_peft_model_state_dict` method:
+                https://github.com/huggingface/peft/blob/ba0477f2985b1ba311b83459d29895c809404e99/src/peft/utils/save_and_load.py#L92
+                but we add it here in case we don't want to rely on that method.
     """
     peft_adapter_name = kwargs.pop("adapter_name", "")
     peft_adapter_name = "." + peft_adapter_name
