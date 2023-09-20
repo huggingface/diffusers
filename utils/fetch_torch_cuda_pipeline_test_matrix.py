@@ -1,3 +1,4 @@
+import json
 import os
 from collections import defaultdict
 
@@ -86,7 +87,7 @@ def main():
 
     # Get unique modules
     test_modules = list(set(test_modules))
-    print(test_modules)
+    print(json.dumps(test_modules))
 
 
 if __name__ == "__main__":
