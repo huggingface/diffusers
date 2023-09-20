@@ -332,7 +332,7 @@ def parse_args(input_args=None):
         choices=["earlier", "later", "range", "none"],
         help=(
             "The timestep bias strategy, which may help direct the model toward learning low or high frequency details."
-            " Choices: ['earlier', 'later', 'none']."
+            " Choices: ['earlier', 'later', 'range', 'none']."
             " The default is 'none', which means no bias is applied, and training proceeds normally."
             " The value of 'later' will increase the frequency of the model's final training timesteps."
         ),
@@ -1025,12 +1025,18 @@ def main(args):
                     )
 
                 bsz = model_input.shape[0]
-                # Sample a random timestep for each image, potentially biased by the timestep weights.
-                # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
-                weights = generate_timestep_weights(args, noise_scheduler.config.num_train_timesteps).to(
-                    model_input.device
-                )
-                timesteps = torch.multinomial(weights, bsz, replacement=True).long()
+                if args.timestep_bias_strategy == "none":
+                    # Sample a random timestep for each image without bias.
+                    timesteps = torch.randint(
+                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device)
+                else:
+                    # Sample a random timestep for each image, potentially biased by the timestep weights.
+                    # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
+                    weights = generate_timestep_weights(args, noise_scheduler.config.num_train_timesteps).to(
+                        model_input.device
+                    )
+                    timesteps = torch.multinomial(weights, bsz, replacement=True).long()
+                    
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
