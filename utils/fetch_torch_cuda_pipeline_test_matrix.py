@@ -68,16 +68,22 @@ def fetch_pipeline_objects():
     return pipeline_objects
 
 
-def main():
+def fetch_pipeline_modules_to_test():
     pipeline_objects = fetch_pipeline_objects()
 
     test_modules = []
     for pipeline_name in pipeline_objects:
         module = getattr(diffusers, pipeline_name)
-        test_module = module.__module__.split(".")[-2]
+        test_module = module.__module__.split(".")[-2].strip()
         test_modules.append(test_module)
 
+    return test_modules
+
+
+def main():
+    test_modules = fetch_pipeline_modules_to_test()
     test_modules.extend(ALWAYS_TEST_PIPELINE_MODULES)
+
     # Get unique modules
     test_modules = list(set(test_modules))
     print(test_modules)
