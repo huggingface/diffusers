@@ -2160,6 +2160,8 @@ class LoraLoaderMixin:
             if hasattr(self, "text_encoder_2"):
                 unfuse_text_encoder_lora(self.text_encoder_2)
 
+        self.num_fused_loras -= 1
+
 
 class FromSingleFileMixin:
     """
