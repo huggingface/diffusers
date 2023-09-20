@@ -38,6 +38,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     nightly,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -505,6 +506,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         assert out.nsfw_content_detected[0], f"Safety checker should work for prompt: {inputs['prompt']}"
         assert np.abs(out.images[0]).sum() < 1e-5  # should be all zeros
 
+    @require_python39_or_higher
     @require_torch_2
     def test_img2img_compile(self):
         seed = 0

@@ -6,6 +6,7 @@ import os
 import random
 import re
 import struct
+import sys
 import tempfile
 import unittest
 import urllib.parse
@@ -234,6 +235,15 @@ def require_torchsde(test_case):
     Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
     """
     return unittest.skipUnless(is_torchsde_available(), "test requires torchsde")(test_case)
+
+
+def require_python39_or_higher(test_case):
+    def python39_available():
+        sys_info = sys.version_info
+        major, minor = sys_info.major, sys_info.minor
+        return major == 3 and minor >= 9
+
+    return unittest.skipUnless(python39_available(), "test requires Python 3.9 or higher")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
