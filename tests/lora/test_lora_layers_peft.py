@@ -204,6 +204,42 @@ class PeftLoraLoaderMixinTests:
             not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
         )
 
+    def test_simple_inference_with_text_lora_and_scale(self):
+        """
+        Tests a simple inference with lora attached on the text encoder + scale argument
+        and makes sure it works as expected
+        """
+        components, _, text_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+
+        pipe.text_encoder.add_adapter(text_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+            )
+
+        output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+        )
+
+        output_lora_scale = pipe(
+            **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
+        ).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+            "Lora + scale should change the output",
+        )
+
     def test_simple_inference_with_text_lora_fused(self):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
