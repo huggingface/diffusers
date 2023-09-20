@@ -346,7 +346,7 @@ class PaintByExamplePipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return image_latents
 
-    def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
+    def _encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
@@ -359,17 +359,10 @@ class PaintByExamplePipeline(DiffusionPipeline, LoraLoaderMixin):
         bs_embed, seq_len, _ = image_embeddings.shape
         image_embeddings = image_embeddings.repeat(1, num_images_per_prompt, 1)
         image_embeddings = image_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        negative_prompt_embeds = negative_prompt_embeds.repeat(1, image_embeddings.shape[0], 1)
+        negative_prompt_embeds = negative_prompt_embeds.view(bs_embed * num_images_per_prompt, 1, -1)
 
-        if do_classifier_free_guidance:
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, image_embeddings.shape[0], 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(bs_embed * num_images_per_prompt, 1, -1)
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            image_embeddings = torch.cat([negative_prompt_embeds, image_embeddings])
-
-        return image_embeddings
+        return image_embeddings, negative_prompt_embeds
 
     @torch.no_grad()
     def __call__(
@@ -503,9 +496,12 @@ class PaintByExamplePipeline(DiffusionPipeline, LoraLoaderMixin):
         self.check_inputs(example_image, height, width, callback_steps)
 
         # 4. Encode input image
-        image_embeddings = self._encode_image(
-            example_image, device, num_images_per_prompt, do_classifier_free_guidance
-        )
+        image_embeddings, negative_prompt_embeds = self._encode_image(example_image, device, num_images_per_prompt)
+        if do_classifier_free_guidance:
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            image_embeddings = torch.cat([negative_prompt_embeds, image_embeddings])
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
