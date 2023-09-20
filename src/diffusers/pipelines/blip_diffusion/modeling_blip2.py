@@ -91,6 +91,7 @@ class Blip2TextEmbeddings(nn.Module):
                 embeddings = torch.cat((query_embeds, embeddings), dim=1)
         else:
             embeddings = query_embeds
+        embeddings = embeddings.to(query_embeds.dtype)
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
