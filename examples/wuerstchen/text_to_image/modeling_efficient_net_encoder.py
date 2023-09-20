@@ -1,29 +1,8 @@
-import torch
 import torch.nn as nn
 from torchvision.models import efficientnet_v2_l, efficientnet_v2_s
-from torchvision.transforms import (
-    CenterCrop,
-    Compose,
-    ConvertImageDtype,
-    InterpolationMode,
-    Normalize,
-    PILToTensor,
-    Resize,
-)
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models.modeling_utils import ModelMixin
-
-
-EFFNET_PREPROCESS = Compose(
-    [
-        Resize(384, interpolation=InterpolationMode.BILINEAR, antialias=True),
-        CenterCrop(384),
-        PILToTensor(),
-        ConvertImageDtype(torch.float),
-        Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-    ]
-)
 
 
 class EfficientNetEncoder(ModelMixin, ConfigMixin):

@@ -31,8 +31,9 @@ from accelerate.state import AcceleratorState, is_initialized
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo
-from modeling_efficient_net_encoder import EFFNET_PREPROCESS, EfficientNetEncoder
+from modeling_efficient_net_encoder import EfficientNetEncoder
 from packaging import version
+from torchvision import transforms
 from tqdm import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
@@ -516,10 +517,18 @@ def main():
         text_mask = inputs.attention_mask.bool()
         return text_input_ids, text_mask
 
+    effnet_transforms = transforms.Compose(
+        [
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR, antialias=True),
+            transforms.CenterCrop(args.resolution),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ]
+    )
 
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
-        examples["effnet_pixel_values"] = [EFFNET_PREPROCESS(image) for image in images]
+        examples["effnet_pixel_values"] = [effnet_transforms(image) for image in images]
         examples["text_input_ids"], examples["text_mask"] = tokenize_captions(examples)
         return examples
 
@@ -657,7 +666,7 @@ def main():
             # Predict the noise residual and compute loss
             pred_noise = prior(noisy_latents, timesteps, prompt_embeds)
 
-            # TODO snr_gamma
+            # TODO snr_gamma and consistency loss
             loss = F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
 
             # Gather the losses across all processes for logging (if we use distributed training).
@@ -671,7 +680,7 @@ def main():
             optimizer.step()
             lr_scheduler.step()
             optimizer.zero_grad()
-       
+
         # Checks if the accelerator has performed an optimization step behind the scenes
         if accelerator.sync_gradients:
             if args.use_ema:
@@ -712,7 +721,6 @@ def main():
 
         if global_step >= args.max_train_steps:
             break
-
 
 
 if __name__ == "__main__":
