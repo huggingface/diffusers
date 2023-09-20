@@ -84,6 +84,21 @@ DIFFUSERS_STATE_DICT_MAPPINGS = {
 
 
 def convert_state_dict(state_dict, mapping):
+    r"""
+    Simply iterates over the state dict and replaces the patterns in `mapping` with the corresponding values.
+
+    Args:
+        state_dict (`dict[str, torch.Tensor]`):
+            The state dict to convert.
+        mapping (`dict[str, str]`):
+            The mapping to use for conversion, the mapping should be a dictionary with the following structure:
+                - key: the pattern to replace
+                - value: the pattern to replace with
+
+    Returns:
+        converted_state_dict (`dict`)
+            The converted state dict.
+    """
     converted_state_dict = {}
     for k, v in state_dict.items():
         if any(pattern in k for pattern in mapping.keys()):
@@ -96,7 +111,14 @@ def convert_state_dict(state_dict, mapping):
 
 def convert_state_dict_to_peft(state_dict, original_type=None, **kwargs):
     r"""
-    The method automatically infers in which direction the conversion should be done.
+    Converts a state dict to the PEFT format The state dict can be from previous diffusers format (`OLD_DIFFUSERS`), or
+    new diffusers format (`DIFFUSERS`). The method only supports the conversion from diffusers old/new to PEFT for now.
+
+    Args:
+        state_dict (`dict[str, torch.Tensor]`):
+            The state dict to convert.
+        original_type (`StateDictType`, *optional*):
+            The original type of the state dict, if not provided, the method will try to infer it automatically.
     """
     if original_type is None:
         # Old diffusers to PEFT
@@ -107,13 +129,26 @@ def convert_state_dict_to_peft(state_dict, original_type=None, **kwargs):
         else:
             raise ValueError("Could not automatically infer state dict type")
 
+    if original_type not in PEFT_STATE_DICT_MAPPINGS.keys():
+        raise ValueError(f"Original type {original_type} is not supported")
+
     mapping = PEFT_STATE_DICT_MAPPINGS[original_type]
     return convert_state_dict(state_dict, mapping)
 
 
 def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
     r"""
-    The method automatically infers in which direction the conversion should be done.
+    Converts a state dict to new diffusers format. The state dict can be from previous diffusers format
+    (`OLD_DIFFUSERS`), or PEFT format (`PEFT`) or new diffusers format (`DIFFUSERS`). In the last case the method will
+    return the state dict as is.
+
+    The method only supports the conversion from diffusers old, PEFT to diffusers new for now.
+
+    Args:
+        state_dict (`dict[str, torch.Tensor]`):
+            The state dict to convert.
+        original_type (`StateDictType`, *optional*):
+            The original type of the state dict, if not provided, the method will try to infer it automatically.
     """
     peft_adapter_name = kwargs.pop("adapter_name", "")
     peft_adapter_name = "." + peft_adapter_name
@@ -129,6 +164,9 @@ def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
             return state_dict
         else:
             raise ValueError("Could not automatically infer state dict type")
+
+    if original_type not in DIFFUSERS_STATE_DICT_MAPPINGS.keys():
+        raise ValueError(f"Original type {original_type} is not supported")
 
     mapping = DIFFUSERS_STATE_DICT_MAPPINGS[original_type]
     return convert_state_dict(state_dict, mapping)
