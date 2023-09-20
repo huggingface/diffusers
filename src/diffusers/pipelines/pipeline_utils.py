@@ -1842,12 +1842,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return "\n".join([f"- {prop}: {val}" for prop, val in dict.items()]) + "\n"
 
         num_params_breakup = {
-            name: component.num_parameters()
-            for name, component in self.components().items()
+            name: f"{component.num_parameters()}" + f" ({component.num_parameters() / 1e6} Million)"
+            for name, component in self.components.items()
             if isinstance(component, torch.nn.Module)
         }
         total_params = sum(params for _, params in num_params_breakup.items())
 
         print("\nBreakdown of the number of the parameters for the `torch.nn.Module` components of the pipeline:\n")
         print(format_dict(num_params_breakup))
-        print(f"Total number of parameters the pipeline has: {total_params}.\n")
+        print(f"Total number of parameters the pipeline has: {total_params} ({total_params / 1e6} Million).\n")
