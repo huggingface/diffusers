@@ -1115,14 +1115,18 @@ class LoraLoaderMixin:
             low_cpu_mem_usage=low_cpu_mem_usage,
             _pipeline=self,
         )
-        self.load_lora_into_text_encoder(
-            state_dict,
-            network_alphas=network_alphas,
-            text_encoder=self.text_encoder,
-            lora_scale=self.lora_scale,
-            low_cpu_mem_usage=low_cpu_mem_usage,
-            _pipeline=self,
-        )
+
+        if hasattr(self, "text_encoder"):
+            self.load_lora_into_text_encoder(
+                state_dict,
+                network_alphas=network_alphas,
+                text_encoder=self.text_encoder,
+                lora_scale=self.lora_scale,
+                low_cpu_mem_usage=low_cpu_mem_usage,
+                _pipeline=self,
+            )
+        else:
+            logger.warn("No `text_encoder` present in this pipeline, skipping `load_lora_into_text_encoder`.")
 
     @classmethod
     def lora_state_dict(
