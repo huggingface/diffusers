@@ -1028,7 +1028,8 @@ def main(args):
                 if args.timestep_bias_strategy == "none":
                     # Sample a random timestep for each image without bias.
                     timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device)
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
+                    )
                 else:
                     # Sample a random timestep for each image, potentially biased by the timestep weights.
                     # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
@@ -1036,7 +1037,6 @@ def main(args):
                         model_input.device
                     )
                     timesteps = torch.multinomial(weights, bsz, replacement=True).long()
-                    
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
