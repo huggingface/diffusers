@@ -29,7 +29,7 @@ ALWAYS_TEST_PIPELINE_MODULES = [
     "wuerstchen",
     "vq_diffusion",
 ]
-PIPELINE_USAGE_CUTOFF = os.getenv("PIPELINE_USAGE_CUTOFF", 10000)
+PIPELINE_USAGE_CUTOFF = int(os.getenv("PIPELINE_USAGE_CUTOFF", 10000))
 
 api = HfApi()
 filter = ModelFilter(library="diffusers")
