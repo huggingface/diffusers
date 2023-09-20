@@ -1831,3 +1831,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
+
+    def display_total_parameters(self):
+        r"""
+        Gives a breakdown of the number of parameters each `torch.nn.Module` component has. Also shows the sum of the
+        parameters each module-level component has.
+        """
+
+        def format_dict(dict):
+            return "\n".join([f"- {prop}: {val}" for prop, val in dict.items()]) + "\n"
+
+        num_params_breakup = {
+            name: component.num_parameters()
+            for name, component in self.components().items()
+            if isinstance(component, torch.nn.Module)
+        }
+        total_params = sum(params for _, params in num_params_breakup.items())
+
+        print("\nBreakdown of the number of the parameters for the `torch.nn.Module` components of the pipeline:\n")
+        print(format_dict(num_params_breakup))
+        print(f"Total number of parameters the pipeline has: {total_params}.\n")
