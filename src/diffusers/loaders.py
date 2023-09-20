@@ -1584,6 +1584,8 @@ class LoraLoaderMixin:
                     from peft import LoraConfig
 
                     lora_rank = list(rank.values())[0]
+                    # By definition, the scale should be alpha divided by rank.
+                    # https://github.com/huggingface/peft/blob/ba0477f2985b1ba311b83459d29895c809404e99/src/peft/tuners/lora/layer.py#L71
                     alpha = lora_scale * lora_rank
 
                     target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
