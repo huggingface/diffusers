@@ -32,6 +32,8 @@ def recurse_remove_peft_layers(model):
             ## compound module, go inside it
             recurse_remove_peft_layers(module)
 
+        module_replaced = False
+
         if isinstance(module, LoraLayer) and isinstance(module, torch.nn.Linear):
             new_module = torch.nn.Linear(module.in_features, module.out_features, bias=module.bias is not None).to(
                 module.weight.device
@@ -40,11 +42,30 @@ def recurse_remove_peft_layers(model):
             if module.bias is not None:
                 new_module.bias = module.bias
 
+            module_replaced = True
+        elif isinstance(module, LoraLayer) and isinstance(module, torch.nn.Conv2d):
+            new_module = torch.nn.Conv2d(
+                module.in_channels,
+                module.out_channels,
+                module.kernel_size,
+                module.stride,
+                module.padding,
+                module.dilation,
+                module.groups,
+                module.bias,
+            ).to(module.weight.device)
+
+            new_module.weight = module.weight
+            if module.bias is not None:
+                new_module.bias = module.bias
+
+            module_replaced = True
+
+        if module_replaced:
             setattr(model, name, new_module)
             del module
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-        # TODO: do it for Conv2d
 
     return model
