@@ -329,12 +329,12 @@ def parse_args(input_args=None):
         "--timestep_bias_strategy",
         type=str,
         default="none",
-        choices=["earlier", "later", "none"],
+        choices=["earlier", "later", "range", "none"],
         help=(
-            "The timestep bias strategy, which may help direct the model toward learning low or frequency details."
+            "The timestep bias strategy, which may help direct the model toward learning low or high frequency details."
             " Choices: ['earlier', 'later', 'none']."
             " The default is 'none', which means no bias is applied, and training proceeds normally."
-            " The value of 'later' will prefer to generate samples for later timesteps."
+            " The value of 'later' will increase the frequency of the model's final training timesteps."
         ),
     )
     parser.add_argument(
@@ -360,8 +360,8 @@ def parse_args(input_args=None):
         type=int,
         default=1000,
         help=(
-            "When using `--timestep_bias_strategy=range`, the final timestep to bias."
-            " Defaults to 1000, which is the number of timesteps that SDXL Base and SD 2.x were trained on."
+            "When using `--timestep_bias_strategy=range`, the final timestep (inclusive) to bias."
+            " Defaults to 1000, which is the number of timesteps that Stable Diffusion is trained on."
         ),
     )
     parser.add_argument(
