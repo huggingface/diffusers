@@ -1839,10 +1839,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
 
         def format_dict(dict):
-            return (
-                "\n".join([f"- {prop}: {val} ({val.num_parameters() / 1e6} Million)" for prop, val in dict.items()])
-                + "\n"
-            )
+            return "\n".join([f"- {prop}: {val} ({val / 1e6} Million)" for prop, val in dict.items()]) + "\n"
 
         num_params_breakup = {
             name: component.num_parameters()
