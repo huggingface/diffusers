@@ -324,7 +324,6 @@ class Blip2QFormerLayer(nn.Module):
         return outputs
 
     def feed_forward_chunk(self, attention_output):
-        # TODO - self.intermediate is missing!
         intermediate_output = self.intermediate(attention_output)
         layer_output = self.output(intermediate_output, attention_output)
         return layer_output
@@ -366,7 +365,6 @@ class Blip2VisionModel(Blip2PreTrainedModel):
         super().__init__(config)
         self.config = config
         embed_dim = config.hidden_size
-        # TO-DO Added pre_layernorm which is not present in OG HF Code
         self.embeddings = Blip2VisionEmbeddings(config)
         self.pre_layernorm = nn.LayerNorm(embed_dim, eps=config.layer_norm_eps)
         self.encoder = Blip2Encoder(config)

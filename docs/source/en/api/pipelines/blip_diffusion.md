@@ -9,6 +9,8 @@ The abstract from the paper is:
 
 The original codebase can be found at [salesforce/LAVIS](https://github.com/salesforce/LAVIS/tree/main/projects/blip-diffusion).
 
+`BlipDiffusionPipeline` and `BlipDiffusionControlNetPipeline` were contributed by [`ayushtues`](https://github.com/ayushtues/).
+
 
 ## BlipDiffusionPipeline
 [[autodoc]] BlipDiffusionPipeline
