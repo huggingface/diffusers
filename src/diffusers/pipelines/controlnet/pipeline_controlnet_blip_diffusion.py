@@ -337,10 +337,10 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-        scale_down_factor = 2 ** (len(self.unet.block_out_channels) - 1)
+        scale_down_factor = 2 ** (len(self.unet.config.block_out_channels) - 1)
         latents = self.prepare_latents(
             batch_size=batch_size,
-            num_channels=self.unet.in_channels,
+            num_channels=self.unet.config.in_channels,
             height=height // scale_down_factor,
             width=width // scale_down_factor,
             generator=generator,
