@@ -47,3 +47,5 @@ else:
         _import_structure,
         module_spec=__spec__,
     )
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)

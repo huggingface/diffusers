@@ -45,7 +45,7 @@ from diffusers import (
     PNDMScheduler,
 )
 from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, torch_device
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -459,7 +459,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        self._test_inference_batch_single_identical(test_mean_pixel_difference=False, expected_max_diff=2e-4)
+        self._test_inference_batch_single_identical(expected_max_diff=2e-4)
 
     def test_save_load_local(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
@@ -492,7 +492,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
 
-@slow
+@nightly
 class AudioLDM2PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()

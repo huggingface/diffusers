@@ -40,8 +40,7 @@ if TYPE_CHECKING:
         from .modeling_wuerstchen_prior import WuerstchenPrior
         from .pipeline_wuerstchen import WuerstchenDecoderPipeline
         from .pipeline_wuerstchen_combined import WuerstchenCombinedPipeline
-        from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
-
+        from .pipeline_wuerstchen_prior import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPriorPipeline
 else:
     import sys
 
@@ -51,3 +50,6 @@ else:
         _import_structure,
         module_spec=__spec__,
     )
+
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)

@@ -50,12 +50,25 @@ class SafetyConfig(object):
 
 _dummy_objects = {}
 _additional_imports = {}
-_import_structure = {
-    "pipeline_output": ["StableDiffusionSafePipelineOutput"],
-    "pipeline_stable_diffusion_safe": ["StableDiffusionPipelineSafe"],
-    "safety_checker": ["StableDiffusionSafetyChecker"],
-}
+_import_structure = {}
+
 _additional_imports.update({"SafetyConfig": SafetyConfig})
+
+try:
+    if not (is_transformers_available() and is_torch_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ...utils import dummy_torch_and_transformers_objects
+
+    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
+else:
+    _import_structure.update(
+        {
+            "pipeline_output": ["StableDiffusionSafePipelineOutput"],
+            "pipeline_stable_diffusion_safe": ["StableDiffusionPipelineSafe"],
+            "safety_checker": ["StableDiffusionSafetyChecker"],
+        }
+    )
 
 
 if TYPE_CHECKING:
@@ -70,25 +83,16 @@ if TYPE_CHECKING:
         from .safety_checker import SafeStableDiffusionSafetyChecker
 
 else:
-    try:
-        if not (is_transformers_available() and is_torch_available()):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from ...utils import dummy_torch_and_transformers_objects
+    import sys
 
-        _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
+    sys.modules[__name__] = _LazyModule(
+        __name__,
+        globals()["__file__"],
+        _import_structure,
+        module_spec=__spec__,
+    )
 
-    else:
-        import sys
-
-        sys.modules[__name__] = _LazyModule(
-            __name__,
-            globals()["__file__"],
-            _import_structure,
-            module_spec=__spec__,
-        )
-
-        for name, value in _dummy_objects.items():
-            setattr(sys.modules[__name__], name, value)
-        for name, value in _additional_imports.items():
-            setattr(sys.modules[__name__], name, value)
+    for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)
+    for name, value in _additional_imports.items():
+        setattr(sys.modules[__name__], name, value)

@@ -90,6 +90,8 @@ class MultiAdapter(ModelMixin):
             features = adapter(x)
             if accume_state is None:
                 accume_state = features
+                for i in range(len(accume_state)):
+                    accume_state[i] = w * accume_state[i]
             else:
                 for i in range(len(features)):
                     accume_state[i] += w * features[i]
