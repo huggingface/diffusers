@@ -252,7 +252,7 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         elif adapter_type == "light_adapter":
             self.adapter = LightAdapter(in_channels, channels, num_res_blocks, downscale_factor)
         else:
-            raise ValueError(f"unknown adapter_type: {type}. Choose either 'full_adapter' or 'simple_adapter'")
+            raise ValueError(f"Unsupported adapter_type: '{adapter_type}'.")
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         return self.adapter(x)
