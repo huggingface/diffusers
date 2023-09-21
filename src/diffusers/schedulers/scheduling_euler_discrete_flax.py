@@ -165,13 +165,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 f"timestep_spacing must be one of ['linspace', 'leading'], got {self.config.timestep_spacing}"
             )
 
-        low_idx = jnp.floor(timesteps).astype(jnp.int32)
-        high_idx = jnp.ceil(timesteps).astype(jnp.int32)
-
-        frac = jnp.mod(timesteps, 1.0)
-
         sigmas = ((1 - state.common.alphas_cumprod) / state.common.alphas_cumprod) ** 0.5
-        sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
         sigmas = jnp.concatenate([sigmas, jnp.array([0.0], dtype=self.dtype)])
 
         # standard deviation of the initial noise distribution
