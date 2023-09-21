@@ -1,11 +1,15 @@
 import json
+import logging
 import os
 from collections import defaultdict
+from pathlib import Path
 
 from huggingface_hub import HfApi, ModelFilter
 
 import diffusers
 
+
+PATH_TO_REPO = Path(__file__).parent.parent.resolve()
 ALWAYS_TEST_PIPELINE_MODULES = [
     "controlnet",
     "stable_diffusion",
@@ -17,8 +21,9 @@ ALWAYS_TEST_PIPELINE_MODULES = [
     "text_to_video_synthesis",
     "wuerstchen",
 ]
-PIPELINE_USAGE_CUTOFF = int(os.getenv("PIPELINE_USAGE_CUTOFF", 10000))
+PIPELINE_USAGE_CUTOFF = int(os.getenv("PIPELINE_USAGE_CUTOFF", 50000))
 
+logger = logging.getLogger(__name__)
 api = HfApi()
 filter = ModelFilter(library="diffusers")
 
@@ -57,7 +62,11 @@ def fetch_pipeline_objects():
 
 
 def fetch_pipeline_modules_to_test():
-    pipeline_objects = fetch_pipeline_objects()
+    try:
+        pipeline_objects = fetch_pipeline_objects()
+    except Exception as e:
+        logger.error(e)
+        raise RuntimeError("Unable to fetch model list from HuggingFace Hub.")
 
     test_modules = []
     for pipeline_name in pipeline_objects:
@@ -75,6 +84,12 @@ def main():
     # Get unique modules
     test_modules = list(set(test_modules))
     print(json.dumps(test_modules))
+
+    save_path = f"{PATH_TO_REPO}/reports"
+    os.makedirs(save_path, exist_ok=True)
+
+    with open(f"{save_path}/test-pipelines.json", "w") as f:
+        json.dump({"pipeline_test_modules": test_modules}, f)
 
 
 if __name__ == "__main__":
