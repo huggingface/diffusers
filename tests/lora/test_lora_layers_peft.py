@@ -36,7 +36,7 @@ from diffusers.models.attention_processor import (
     LoRAAttnProcessor2_0,
 )
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, slow, require_torch_gpu
 
 
 if is_peft_available():
@@ -461,6 +461,83 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
         "latent_channels": 4,
     }
+
+    @slow
+    @require_torch_gpu
+    def test_integration_logits_with_scale(self):
+        path = "runwayml/stable-diffusion-v1-5"
+        lora_id = "takuma104/lora-test-text-encoder-lora-target"
+
+        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_id)
+        pipe = pipe.to("cuda")
+
+        self.assertTrue(
+            self.check_if_lora_correctly_set(pipe.text_encoder),
+            "Lora not correctly set in text encoder 2",
+        )
+
+        prompt = "a red sks dog"
+
+        images = pipe(
+            prompt=prompt, 
+            num_inference_steps=15, 
+            cross_attention_kwargs={"scale": 0.5},
+            generator=torch.manual_seed(0),
+            output_type="np"
+        ).images
+
+
+        expected_slice_scale = np.array(
+            [[0.5996094,  0.6191406,  0.67871094],
+            [0.6118164,  0.62353516, 0.70166016],
+            [0.60595703, 0.62890625, 0.7163086 ]]
+        )
+
+        predicted_slice = images[0, 0, :3, :3]
+
+        self.assertTrue(
+            np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3)
+        )
+
+
+    @slow
+    @require_torch_gpu
+    def test_integration_logits_no_scale(self):
+        path = "runwayml/stable-diffusion-v1-5"
+        lora_id = "takuma104/lora-test-text-encoder-lora-target"
+
+        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_id)
+        pipe = pipe.to("cuda")
+
+        self.assertTrue(
+            self.check_if_lora_correctly_set(pipe.text_encoder),
+            "Lora not correctly set in text encoder",
+        )
+
+        prompt = "a red sks dog"
+
+        images = pipe(
+            prompt=prompt, 
+            num_inference_steps=15, 
+            generator=torch.manual_seed(0),
+            output_type="np"
+        ).images
+
+
+        expected_slice_scale = np.array(
+            [[0.55859375, 0.19677734, 0.15795898],
+            [0.6171875,  0.17504883, 0.1430664 ],
+            [0.6376953,  0.15136719, 0.16137695]]
+        )
+
+        predicted_slice = images[0, 0, :3, :3]
+
+        self.assertTrue(
+            np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3)
+        )
+        
 
 
 class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
