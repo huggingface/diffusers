@@ -35,7 +35,7 @@ from modeling_efficient_net_encoder import EfficientNetEncoder
 from packaging import version
 from torchvision import transforms
 from tqdm import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, PreTrainedTokenizerFast
 from transformers.utils import ContextManagers
 
 from diffusers import AutoPipelineForText2Image, DDPMWuerstchenScheduler
@@ -405,7 +405,7 @@ def main():
 
     # Load scheduler, effnet, tokenizer, clip_model
     noise_scheduler = DDPMWuerstchenScheduler()
-    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
 
     def deepspeed_zero_init_disabled_context_manager():
         """
@@ -695,7 +695,7 @@ def main():
                 text_input_ids, text_mask, effnet_images = (
                     batch["text_input_ids"],
                     batch["text_mask"],
-                    batch["effnet_pixel_values"].to(weight_dtype)
+                    batch["effnet_pixel_values"].to(weight_dtype),
                 )
 
                 with torch.no_grad():
