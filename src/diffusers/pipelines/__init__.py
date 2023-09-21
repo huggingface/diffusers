@@ -16,7 +16,7 @@ from ..utils import (
 
 # These modules contain pipelines from multiple libraries/frameworks
 _dummy_objects = {}
-_import_structure = {"stable_diffusion": [], "latent_diffusion": [], "controlnet": []}
+_import_structure = {"stable_diffusion": [], "stable_diffusion_xl": [], "latent_diffusion": [], "controlnet": []}
 
 try:
     if not is_torch_available():
@@ -140,12 +140,14 @@ else:
         ]
     )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
-    _import_structure["stable_diffusion_xl"] = [
-        "StableDiffusionXLImg2ImgPipeline",
-        "StableDiffusionXLInpaintPipeline",
-        "StableDiffusionXLInstructPix2PixPipeline",
-        "StableDiffusionXLPipeline",
-    ]
+    _import_structure["stable_diffusion_xl"].extend(
+        [
+            "StableDiffusionXLImg2ImgPipeline",
+            "StableDiffusionXLInpaintPipeline",
+            "StableDiffusionXLInstructPix2PixPipeline",
+            "StableDiffusionXLPipeline",
+        ]
+    )
     _import_structure["t2i_adapter"] = ["StableDiffusionAdapterPipeline", "StableDiffusionXLAdapterPipeline"]
     _import_structure["text_to_video_synthesis"] = [
         "TextToVideoSDPipeline",
@@ -232,9 +234,11 @@ else:
             "FlaxStableDiffusionPipeline",
         ]
     )
-    from .stable_diffusion_xl import (
-        FlaxStableDiffusionXLImg2ImgPipeline,
-        FlaxStableDiffusionXLPipeline,
+    _import_structure["stable_diffusion_xl"].extend(
+        [
+            "FlaxStableDiffusionXLImg2ImgPipeline",
+            "FlaxStableDiffusionXLPipeline",
+        ]
     )
 try:
     if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
@@ -436,6 +440,10 @@ if TYPE_CHECKING:
                 FlaxStableDiffusionImg2ImgPipeline,
                 FlaxStableDiffusionInpaintPipeline,
                 FlaxStableDiffusionPipeline,
+            )
+            from .stable_diffusion_xl import (
+                FlaxStableDiffusionXLImg2ImgPipeline,
+                FlaxStableDiffusionXLPipeline,
             )
 
         try:
