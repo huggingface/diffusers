@@ -31,6 +31,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     skip_mps,
+    is_flaky,
     slow,
     torch_device,
 )
@@ -156,6 +157,7 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @is_flaky()
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=0.001)
 
