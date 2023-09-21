@@ -38,16 +38,17 @@ from tqdm import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
 
-from diffusers import DDPMWuerstchenScheduler
+from diffusers import AutoPipelineForText2Image, DDPMWuerstchenScheduler
 from diffusers.optimization import get_scheduler
-from diffusers.pipelines.wuerstchen import WuerstchenPrior
+from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPrior
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.logging import set_verbosity_error, set_verbosity_info
 
 
 if is_wandb_available():
-    pass
+    import wandb
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.21.0")
@@ -59,8 +60,55 @@ DATASET_NAME_MAPPING = {
 }
 
 
+def log_validation(prior, args, accelerator, weight_dtype, epoch):
+    logger.info("Running validation... ")
+
+    pipeline = AutoPipelineForText2Image.from_pretrained(
+        args.pretrained_decoder_model_name_or_path,
+        prior_prior=accelerator.unwrap_model(prior),
+        torch_dtype=weight_dtype,
+    )
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    if args.seed is None:
+        generator = None
+    else:
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+
+    images = []
+    for i in range(len(args.validation_prompts)):
+        with torch.autocast("cuda"):
+            image = pipeline(
+                args.validation_prompts[i], prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS, generator=generator
+            ).images[0]
+
+        images.append(image)
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+        elif tracker.name == "wandb":
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompts[i]}")
+                        for i, image in enumerate(images)
+                    ]
+                }
+            )
+        else:
+            logger.warn(f"image logging not implemented for {tracker.name}")
+
+    del pipeline
+    torch.cuda.empty_cache()
+
+    return images
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Simple example of finetuning Kandinsky 2.2.")
+    parser = argparse.ArgumentParser(description="Simple example of finetuning Würstchen Prior.")
     parser.add_argument(
         "--pretrained_decoder_model_name_or_path",
         type=str,
@@ -721,6 +769,52 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+
+        if accelerator.is_main_process:
+            if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
+                if args.use_ema:
+                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                    ema_prior.store(prior.parameters())
+                    ema_prior.copy_to(prior.parameters())
+                log_validation(prior, args, accelerator, weight_dtype, global_step)
+                if args.use_ema:
+                    # Switch back to the original UNet parameters.
+                    ema_prior.restore(prior.parameters())
+
+    # Create the pipeline using the trained modules and save it.
+    accelerator.wait_for_everyone()
+    if accelerator.is_main_process:
+        prior = accelerator.unwrap_model(prior)
+        if args.use_ema:
+            ema_prior.copy_to(prior.parameters())
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            args.pretrained_decoder_model_name_or_path, prior_prior=prior
+        )
+        pipeline.prior_pipe.save_pretrained(args.output_dir)
+
+        # Run a final round of inference.
+        images = []
+        if args.validation_prompts is not None:
+            logger.info("Running inference for collecting generated images...")
+            pipeline = pipeline.to(accelerator.device)
+            pipeline.torch_dtype = weight_dtype
+            pipeline.set_progress_bar_config(disable=True)
+
+            if args.seed is None:
+                generator = None
+            else:
+                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+
+            for i in range(len(args.validation_prompts)):
+                with torch.autocast("cuda"):
+                    image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+                images.append(image)
+
+        if args.push_to_hub:
+            pass
+
+    accelerator.end_training()
 
 
 if __name__ == "__main__":
