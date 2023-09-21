@@ -682,40 +682,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         </Tip>
 
+
         Here are the ways to call `to`:
 
-        `to(dtype, silence_dtype_warnings=False) → DiffusionPipeline`
+        - `to(dtype, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the specified
+          [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
+        - `to(device, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the specified
+          [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
+        - `to(device=None, dtype=None, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the
+          specified [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device) and
+          [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
 
-            Returns a pipeline with the specified
-            [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
-
-            Arguments:
-                dtype (`torch.dtype`):
-                    Returns a pipeline with the specified
-                    [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
-                silence_dtype_warnings (`str`, *optional*, defaults to `False`):
-                    Whether dtype warning shall be displayed.
-
-        `to(device, silence_dtype_warnings=False) → DiffusionPipeline`
-
-            Arguments:
-                device (`torch.Device`):
-                    Returns a pipeline with the specified
-                    [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
-                silence_dtype_warnings (`str`, *optional*, defaults to `False`):
-                    Whether dtype warning shall be displayed.
-
-        `to(device=None, dtype=None, silence_dtype_warnings=False) → DiffusionPipeline`
-
-            Arguments:
-                dtype (`torch.dtype`, *optional*):
-                    Returns a pipeline with the specified
-                    [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
-                device (`torch.Device`, *optional*):
-                    Returns a pipeline with the specified
-                    [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
-                silence_dtype_warnings (`str`, *optional*, defaults to `False`):
-                    Whether dtype warning shall be displayed.
+        Arguments:
+            dtype (`torch.dtype`, *optional*):
+                Returns a pipeline with the specified
+                [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
+            device (`torch.Device`, *optional*):
+                Returns a pipeline with the specified
+                [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
+            silence_dtype_warnings (`str`, *optional*, defaults to `False`):
+                Whether dtype warning shall be displayed.
 
         Returns:
             [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
