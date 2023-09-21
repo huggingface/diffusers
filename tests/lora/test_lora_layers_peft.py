@@ -36,7 +36,7 @@ from diffusers.models.attention_processor import (
     LoRAAttnProcessor2_0,
 )
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, slow, require_torch_gpu
+from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, require_torch_gpu, slow
 
 
 if is_peft_available():
@@ -480,24 +480,18 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         prompt = "a red sks dog"
 
         images = pipe(
-            prompt=prompt, 
-            num_inference_steps=15, 
+            prompt=prompt,
+            num_inference_steps=15,
             cross_attention_kwargs={"scale": 0.5},
             generator=torch.manual_seed(0),
-            output_type="np"
+            output_type="np",
         ).images
 
-
-        expected_slice_scale = np.array(
-            [0.307, 0.283,  0.310,  0.310, 0.300,  0.314, 0.336,  0.314, 0.321]
-        )
+        expected_slice_scale = np.array([0.307, 0.283, 0.310, 0.310, 0.300, 0.314, 0.336, 0.314, 0.321])
 
         predicted_slice = images[0, -3:, -3:, -1].flatten()
 
-        self.assertTrue(
-            np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3)
-        )
-
+        self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
     @slow
     @require_torch_gpu
@@ -516,24 +510,13 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         prompt = "a red sks dog"
 
-        images = pipe(
-            prompt=prompt, 
-            num_inference_steps=30, 
-            generator=torch.manual_seed(0),
-            output_type="np"
-        ).images
+        images = pipe(prompt=prompt, num_inference_steps=30, generator=torch.manual_seed(0), output_type="np").images
 
-
-        expected_slice_scale = np.array(
-            [0.074, 0.064, 0.073, 0.0842, 0.069, 0.0641, 0.0794, 0.076, 0.084]
-        )
+        expected_slice_scale = np.array([0.074, 0.064, 0.073, 0.0842, 0.069, 0.0641, 0.0794, 0.076, 0.084])
 
         predicted_slice = images[0, -3:, -3:, -1].flatten()
 
-        self.assertTrue(
-            np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3)
-        )
-        
+        self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
 
 class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
