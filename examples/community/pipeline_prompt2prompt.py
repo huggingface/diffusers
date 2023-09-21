@@ -681,7 +681,7 @@ def get_word_inds(text: str, word_place: int, tokenizer):
     split_text = text.split(" ")
     if isinstance(word_place, str):
         word_place = [i for i, word in enumerate(split_text) if word_place == word]
-    elif isinstance(word_place, str):
+    elif isinstance(word_place, int):
         word_place = [word_place]
     out = []
     if len(word_place) > 0:
