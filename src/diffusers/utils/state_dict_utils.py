@@ -101,10 +101,11 @@ def convert_state_dict(state_dict, mapping):
     """
     converted_state_dict = {}
     for k, v in state_dict.items():
-        if any(pattern in k for pattern in mapping.keys()):
-            for old, new in mapping.items():
-                k = k.replace(old, new)
-
+        for pattern in mapping.keys():
+            if pattern in k:
+                new_pattern = mapping[pattern]
+                k = k.replace(pattern, new_pattern)
+                break
         converted_state_dict[k] = v
     return converted_state_dict
 
