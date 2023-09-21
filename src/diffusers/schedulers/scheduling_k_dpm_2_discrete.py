@@ -269,7 +269,12 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = torch.from_numpy(timesteps).to(device)
 
         # interpolate timesteps
-        timesteps_interpol = self.sigma_to_t(sigmas_interpol).to(device, dtype=timesteps.dtype)
+        sigmas_interpol = sigmas_interpol.cpu()
+        log_sigmas = self.log_sigmas.cpu()
+        timesteps_interpol = np.array(
+            [self._sigma_to_t(sigma_interpol, log_sigmas) for sigma_interpol in sigmas_interpol]
+        )
+        timesteps_interpol = torch.from_numpy(timesteps_interpol).to(device, dtype=timesteps.dtype)
         interleaved_timesteps = torch.stack((timesteps_interpol[1:-1, None], timesteps[1:, None]), dim=-1).flatten()
 
         self.timesteps = torch.cat([timesteps[:1], interleaved_timesteps])
@@ -281,29 +286,6 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._index_counter = defaultdict(int)
 
         self._step_index = None
-
-    def sigma_to_t(self, sigma):
-        # get log sigma
-        log_sigma = sigma.log()
-
-        # get distribution
-        dists = log_sigma - self.log_sigmas[:, None]
-
-        # get sigmas range
-        low_idx = dists.ge(0).cumsum(dim=0).argmax(dim=0).clamp(max=self.log_sigmas.shape[0] - 2)
-        high_idx = low_idx + 1
-
-        low = self.log_sigmas[low_idx]
-        high = self.log_sigmas[high_idx]
-
-        # interpolate sigmas
-        w = (low - log_sigma) / (low - high)
-        w = w.clamp(0, 1)
-
-        # transform interpolation to time range
-        t = (1 - w) * low_idx + w * high_idx
-        t = t.view(sigma.shape)
-        return t
 
     @property
     def state_in_first_order(self):
