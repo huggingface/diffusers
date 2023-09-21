@@ -430,7 +430,6 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_hat = sigma * (gamma + 1)  # Note: sigma_hat == sigma for now
 
         device = model_output.device
-        noise = randn_tensor(model_output.shape, dtype=model_output.dtype, device=device, generator=generator)
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -459,6 +458,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.dt = dt
             prev_sample = sample + derivative * dt
         else:
+            noise = randn_tensor(model_output.shape, dtype=model_output.dtype, device=device, generator=generator)
             # DPM-Solver-2
             # 2. Convert to an ODE derivative for 2nd order
             derivative = (sample - pred_original_sample) / sigma_interpol
