@@ -1678,13 +1678,14 @@ class LoraLoaderMixin:
         if hasattr(self, "text_encoder"):
             remove_method(self.text_encoder)
 
-            del self.text_encoder.peft_config
-            self.text_encoder._hf_peft_config_loaded = None
+            if self.use_peft_backend:
+                del self.text_encoder.peft_config
+                self.text_encoder._hf_peft_config_loaded = None
         if hasattr(self, "text_encoder_2"):
             remove_method(self.text_encoder_2)
-
-            del self.text_encoder_2.peft_config
-            self.text_encoder_2._hf_peft_config_loaded = None
+            if self.use_peft_backend:
+                del self.text_encoder_2.peft_config
+                self.text_encoder_2._hf_peft_config_loaded = None
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
