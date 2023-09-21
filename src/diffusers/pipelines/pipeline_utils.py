@@ -721,8 +721,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
         """
 
-        torch_dtype = deprecate("torch_dtype", "0.25.0", from_kwargs=kwargs)
-        torch_device = deprecate("torch_device", "0.25.0", from_kwargs=kwargs)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        if torch_dtype is not None:
+            deprecate("torch_dtype", "0.25.0", "")
+        torch_device = kwargs.pop("torch_device", None)
+        if torch_device is not None:
+            deprecate("torch_device", "0.25.0", "")
 
         dtype_kwarg = kwargs.pop("dtype", None)
         device_kwarg = kwargs.pop("device", None)
@@ -748,14 +752,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if isinstance(args[0], torch.dtype):
                 dtype_arg = args[0]
             else:
-                device_arg = torch.device(args[0])
+                device_arg = torch.device(args[0]) if args[0] is not None else None
         elif len(args) == 2:
-            if not isinstance(args[1], torch.dtype):
+            if isinstance(args[0], torch.dtype):
                 raise ValueError(
                     "When passing to arguments, make sure the first corresponds to `device` and the second to `dtype`."
                 )
-            dtype_arg = args[0]
-            device_arg = torch.device(args[1])
+            device_arg = torch.device(args[0]) if args[0] is not None else None
+            dtype_arg = args[1]
         elif len(args) > 2:
             raise ValueError("Please make sure to pass at most two arguments (`device` and `dtype`) `.to(...)`")
 
@@ -853,6 +857,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return module.device
 
         return torch.device("cpu")
+
+    @property
+    def dtype(self) -> torch.dtype:
+        r"""
+        Returns:
+            `torch.dtype`: The torch dtype on which the pipeline is located.
+        """
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+
+        for module in modules:
+            return module.dtype
+
+        return torch.float32
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
