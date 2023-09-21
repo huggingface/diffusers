@@ -1593,6 +1593,7 @@ class LoraLoaderMixin:
                     if patch_mlp:
                         target_modules += ["fc1", "fc2"]
 
+                    # TODO: support multi alpha / rank: https://github.com/huggingface/peft/pull/873
                     lora_config = LoraConfig(r=lora_rank, target_modules=target_modules, lora_alpha=alpha)
 
                     text_encoder.load_adapter(adapter_state_dict=text_encoder_lora_state_dict, peft_config=lora_config)
