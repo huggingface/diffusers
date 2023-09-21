@@ -316,7 +316,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
 
             # dynamically adjust the LoRA scale
             adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
-            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale, self.use_peft_backend)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 

@@ -240,6 +240,14 @@ class PeftLoraLoaderMixinTests:
             "Lora + scale should change the output",
         )
 
+        output_lora_0_scale = pipe(
+            **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
+        ).images
+        self.assertTrue(
+            np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
+            "Lora + 0 scale should lead to same result as no LoRA",
+        )
+
     def test_simple_inference_with_text_lora_fused(self):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
