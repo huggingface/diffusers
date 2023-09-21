@@ -677,8 +677,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         <Tip>
 
-            If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is.
-            Otherwise, the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
+            If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is. Otherwise,
+            the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
 
         </Tip>
 
