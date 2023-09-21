@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from typing import Optional
+from collections import OrderedDict
 
 import torch
 import torch.nn.functional as F
@@ -108,13 +109,24 @@ class LoRACompatibleConv(nn.Conv2d):
     def __init__(self, *args, lora_layer: Optional[LoRAConv2dLayer] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
+        self._fused_params = OrderedDict()
 
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self, lora_scale=1.0):
+    def _fuse_lora(self, lora_scale=1.0, lora_name: str = None):
         if self.lora_layer is None:
             return
+
+        # make sure lora have a unique name
+        if lora_name is None:
+            lora_name = "unspecified"
+            unspecified_num = 0
+            while lora_name in self._fused_params:
+                lora_name = f"{lora_name}{unspecified_num+1}"
+                unspecified_num += 1
+        if lora_name in self._fused_params:
+            raise ValueError(f"LoRA with name {lora_name} already fused")
 
         dtype, device = self.weight.data.dtype, self.weight.data.device
 
@@ -134,27 +146,35 @@ class LoRACompatibleConv(nn.Conv2d):
         self.lora_layer = None
 
         # offload the up and down matrices to CPU to not blow the memory
-        self.w_up = w_up.cpu()
-        self.w_down = w_down.cpu()
-        self._lora_scale = lora_scale
+        self._fused_params[lora_name] = {
+            "w_up": w_up.cpu(),
+            "w_down": w_down.cpu(),
+            "lora_scale": lora_scale
+        }
 
-    def _unfuse_lora(self):
-        if not (getattr(self, "w_up", None) is not None and getattr(self, "w_down", None) is not None):
+    def _unfuse_lora(self, lora_name: str = None):
+        if len(self._fused_params) == 0:
             return
+
+        if lora_name is None:
+            unfuse_lora = self._fused_params.popitem(last=True)[1]
+        else:
+            if lora_name not in self._fused_params:
+                raise ValueError(f"LoRA with name {lora_name} not found")
+            unfuse_lora = self._fused_params.pop(lora_name)
 
         fused_weight = self.weight.data
         dtype, device = fused_weight.data.dtype, fused_weight.data.device
 
-        self.w_up = self.w_up.to(device=device).float()
-        self.w_down = self.w_down.to(device).float()
+        w_up = unfuse_lora["w_up"].to(device=device).float()
+        w_down = unfuse_lora["w_down"].to(device).float()
+        lora_scale = unfuse_lora["lora_scale"]
 
-        fusion = torch.mm(self.w_up.flatten(start_dim=1), self.w_down.flatten(start_dim=1))
+        fusion = torch.mm(w_up.flatten(start_dim=1), w_down.flatten(start_dim=1))
         fusion = fusion.reshape((fused_weight.shape))
-        unfused_weight = fused_weight.float() - (self._lora_scale * fusion)
+        unfused_weight = fused_weight.float() - (lora_scale * fusion)
         self.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
-        self.w_up = None
-        self.w_down = None
 
     def forward(self, hidden_states, scale: float = 1.0):
         if self.lora_layer is None:
@@ -175,13 +195,24 @@ class LoRACompatibleLinear(nn.Linear):
     def __init__(self, *args, lora_layer: Optional[LoRALinearLayer] = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lora_layer = lora_layer
+        self._fused_params = OrderedDict()
+
 
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self, lora_scale=1.0):
+    def _fuse_lora(self, lora_scale=1.0, lora_name: str = None):
         if self.lora_layer is None:
             return
+
+        if lora_name is None:
+            lora_name = "unspecified"
+            unspecified_num = 0
+            while lora_name in self._fused_params:
+                lora_name = f"{lora_name}{unspecified_num+1}"
+                unspecified_num += 1
+        if lora_name in self._fused_params:
+            raise ValueError(f"LoRA with name {lora_name} already fused")
 
         dtype, device = self.weight.data.dtype, self.weight.data.device
 
@@ -199,25 +230,34 @@ class LoRACompatibleLinear(nn.Linear):
         self.lora_layer = None
 
         # offload the up and down matrices to CPU to not blow the memory
-        self.w_up = w_up.cpu()
-        self.w_down = w_down.cpu()
-        self._lora_scale = lora_scale
+        self._fused_params[lora_name] = {
+            "w_up": w_up.cpu(),
+            "w_down": w_down.cpu(),
+            "lora_scale": lora_scale
+        }
 
-    def _unfuse_lora(self):
-        if not (getattr(self, "w_up", None) is not None and getattr(self, "w_down", None) is not None):
+    def _unfuse_lora(self, lora_name: str = None):
+        if len(self._fused_params) == 0:
             return
+
+        if lora_name is None:
+            unfuse_lora = self._fused_params.popitem(last=True)[1]
+
+        else:
+            if lora_name not in self._fused_params:
+                raise ValueError(f"LoRA with name {lora_name} not found")
+            unfuse_lora = self._fused_params.pop(lora_name)
 
         fused_weight = self.weight.data
         dtype, device = fused_weight.dtype, fused_weight.device
 
-        w_up = self.w_up.to(device=device).float()
-        w_down = self.w_down.to(device).float()
+        w_up = unfuse_lora["w_up"].to(device=device).float()
+        w_down = unfuse_lora["w_down"].to(device).float()
+        lora_scale = unfuse_lora["lora_scale"]
 
-        unfused_weight = fused_weight.float() - (self._lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
+        unfused_weight = fused_weight.float() - (lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
         self.weight.data = unfused_weight.to(device=device, dtype=dtype)
 
-        self.w_up = None
-        self.w_down = None
 
     def forward(self, hidden_states, scale: float = 1.0):
         if self.lora_layer is None:
