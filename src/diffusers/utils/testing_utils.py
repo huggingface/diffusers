@@ -34,6 +34,7 @@ from .import_utils import (
     is_torch_available,
     is_torch_version,
     is_torchsde_available,
+    is_transformers_available,
 )
 from .logging import get_logger
 
@@ -45,7 +46,7 @@ logger = get_logger(__name__)
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
 ) > version.parse("0.5")
-_required_transformers_version = version.parse(
+_required_transformers_version = is_transformers_available() and version.parse(
     version.parse(importlib.metadata.version("transformers")).base_version
 ) > version.parse("4.33")
 
