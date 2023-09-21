@@ -36,11 +36,12 @@ You can fine-tune the Würstchen prior model with `train_text_to_image_prior.py`
 ```bash
 export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
-accelerate launch --mixed_precision="fp16"  train_text_to_image_prior.py \
+accelerate launch  train_text_to_image_prior.py \
+  --mixed_precision="fp16"
   --dataset_name=$DATASET_NAME \
   --resolution=768 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=4 \
+  --train_batch_size=4 \
+  --dataloader_num_workers=4 \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \

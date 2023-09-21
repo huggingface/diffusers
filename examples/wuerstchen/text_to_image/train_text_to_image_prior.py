@@ -60,12 +60,14 @@ DATASET_NAME_MAPPING = {
 }
 
 
-def log_validation(prior, args, accelerator, weight_dtype, epoch):
+def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dtype, epoch):
     logger.info("Running validation... ")
 
     pipeline = AutoPipelineForText2Image.from_pretrained(
         args.pretrained_decoder_model_name_or_path,
         prior_prior=accelerator.unwrap_model(prior),
+        prior_text_encoder=accelerator.unwrap_model(text_encoder),
+        prior_tokenizer=tokenizer,
         torch_dtype=weight_dtype,
     )
     pipeline = pipeline.to(accelerator.device)
@@ -693,7 +695,7 @@ def main():
                 text_input_ids, text_mask, effnet_images = (
                     batch["text_input_ids"],
                     batch["text_mask"],
-                    batch["effnet_pixel_values"].to(weight_dtype),
+                    batch["effnet_pixel_values"].to(weight_dtype)
                 )
 
                 with torch.no_grad():
@@ -776,7 +778,7 @@ def main():
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_prior.store(prior.parameters())
                     ema_prior.copy_to(prior.parameters())
-                log_validation(prior, args, accelerator, weight_dtype, global_step)
+                log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dtype, global_step)
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
                     ema_prior.restore(prior.parameters())
@@ -789,7 +791,10 @@ def main():
             ema_prior.copy_to(prior.parameters())
 
         pipeline = AutoPipelineForText2Image.from_pretrained(
-            args.pretrained_decoder_model_name_or_path, prior_prior=prior
+            args.pretrained_decoder_model_name_or_path,
+            prior_prior=prior,
+            prior_text_encoder=accelerator.unwrap_model(text_encoder),
+            prior_tokenizer=tokenizer,
         )
         pipeline.prior_pipe.save_pretrained(args.output_dir)
 
@@ -797,8 +802,7 @@ def main():
         images = []
         if args.validation_prompts is not None:
             logger.info("Running inference for collecting generated images...")
-            pipeline = pipeline.to(accelerator.device)
-            pipeline.torch_dtype = weight_dtype
+            pipeline = pipeline.to(accelerator.device, torch_dtype=weight_dtype)
             pipeline.set_progress_bar_config(disable=True)
 
             if args.seed is None:
@@ -808,7 +812,9 @@ def main():
 
             for i in range(len(args.validation_prompts)):
                 with torch.autocast("cuda"):
-                    image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+                    image = pipeline(
+                        args.validation_prompts[i], prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS, generator=generator
+                    ).images[0]
                 images.append(image)
 
         if args.push_to_hub:
