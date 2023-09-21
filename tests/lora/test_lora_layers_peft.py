@@ -468,7 +468,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         path = "runwayml/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
-        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
         pipe.load_lora_weights(lora_id)
         pipe = pipe.to("cuda")
 
@@ -489,12 +489,10 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 
         expected_slice_scale = np.array(
-            [[0.5996094,  0.6191406,  0.67871094],
-            [0.6118164,  0.62353516, 0.70166016],
-            [0.60595703, 0.62890625, 0.7163086 ]]
+            [0.307, 0.283,  0.310,  0.310, 0.300,  0.314, 0.336,  0.314, 0.321]
         )
 
-        predicted_slice = images[0, 0, :3, :3]
+        predicted_slice = images[0, -3:, -3:, -1].flatten()
 
         self.assertTrue(
             np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3)
@@ -507,7 +505,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         path = "runwayml/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
-        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
         pipe.load_lora_weights(lora_id)
         pipe = pipe.to("cuda")
 
@@ -520,19 +518,17 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         images = pipe(
             prompt=prompt, 
-            num_inference_steps=15, 
+            num_inference_steps=30, 
             generator=torch.manual_seed(0),
             output_type="np"
         ).images
 
 
         expected_slice_scale = np.array(
-            [[0.55859375, 0.19677734, 0.15795898],
-            [0.6171875,  0.17504883, 0.1430664 ],
-            [0.6376953,  0.15136719, 0.16137695]]
+            [0.074, 0.064, 0.073, 0.0842, 0.069, 0.0641, 0.0794, 0.076, 0.084]
         )
 
-        predicted_slice = images[0, 0, :3, :3]
+        predicted_slice = images[0, -3:, -3:, -1].flatten()
 
         self.assertTrue(
             np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3)
