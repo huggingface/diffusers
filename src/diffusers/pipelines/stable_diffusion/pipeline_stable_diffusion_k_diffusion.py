@@ -609,6 +609,9 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
             noise_sampler = BrownianTreeNoiseSampler(latents, min_sigma, max_sigma, noise_sampler_seed)
             sampler_kwargs["noise_sampler"] = noise_sampler
 
+        if "generator" in inspect.signature(self.sampler).parameters:
+            sampler_kwargs["generator"] = generator
+
         latents = self.sampler(model_fn, latents, sigmas, **sampler_kwargs)
 
         if not output_type == "latent":
