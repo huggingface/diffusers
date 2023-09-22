@@ -69,3 +69,21 @@ def recurse_remove_peft_layers(model):
                 torch.cuda.empty_cache()
 
     return model
+
+
+def scale_peft_layers(model, scale: float = None):
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    if scale is not None and scale != 1.0:
+        for module in model.modules():
+            if isinstance(module, BaseTunerLayer):
+                module.scaling[module.active_adapter] *= scale
+
+
+def unscale_peft_layers(model, scale: float = None):
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    if scale is not None and scale != 1.0 and scale != 0.0:
+        for module in model.modules():
+            if isinstance(module, BaseTunerLayer):
+                module.scaling[module.active_adapter] /= scale

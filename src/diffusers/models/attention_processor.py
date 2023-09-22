@@ -21,6 +21,7 @@ from torch import nn
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
+from .constants import USE_PEFT_BACKEND
 from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 
@@ -137,22 +138,27 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        self.to_q = LoRACompatibleLinear(query_dim, self.inner_dim, bias=bias)
+        if USE_PEFT_BACKEND:
+            linear_cls = nn.Linear
+        else:
+            linear_cls = LoRACompatibleLinear
+
+        self.to_q = linear_cls(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            self.to_k = LoRACompatibleLinear(self.cross_attention_dim, self.inner_dim, bias=bias)
-            self.to_v = LoRACompatibleLinear(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_k = linear_cls(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_v = linear_cls(self.cross_attention_dim, self.inner_dim, bias=bias)
         else:
             self.to_k = None
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = LoRACompatibleLinear(added_kv_proj_dim, self.inner_dim)
-            self.add_v_proj = LoRACompatibleLinear(added_kv_proj_dim, self.inner_dim)
+            self.add_k_proj = linear_cls(added_kv_proj_dim, self.inner_dim)
+            self.add_v_proj = linear_cls(added_kv_proj_dim, self.inner_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(LoRACompatibleLinear(self.inner_dim, query_dim, bias=out_bias))
+        self.to_out.append(linear_cls(self.inner_dim, query_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -1010,15 +1016,19 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, scale=scale)
+        query = attn.to_q(hidden_states, scale=scale) if not USE_PEFT_BACKEND else attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, scale=scale)
-        value = attn.to_v(encoder_hidden_states, scale=scale)
+        key = (
+            attn.to_k(encoder_hidden_states, scale=scale) if not USE_PEFT_BACKEND else attn.to_k(encoder_hidden_states)
+        )
+        value = (
+            attn.to_v(encoder_hidden_states, scale=scale) if not USE_PEFT_BACKEND else attn.to_v(encoder_hidden_states)
+        )
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -1038,7 +1048,9 @@ class AttnProcessor2_0:
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, scale=scale)
+        hidden_states = (
+            attn.to_out[0](hidden_states, scale=scale) if not USE_PEFT_BACKEND else attn.to_out[0](hidden_states)
+        )
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 

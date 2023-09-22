@@ -37,6 +37,8 @@ from ...utils import (
     is_invisible_watermark_available,
     logging,
     replace_example_docstring,
+    scale_peft_layers,
+    unscale_peft_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -749,9 +751,16 @@ class StableDiffusionXLPipeline(
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
+        lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+
+        if self.use_peft_backend:
+            scale_peft_layers(self.text_encoder, lora_scale)
+
+            if hasattr(self, "text_encoder_2"):
+                scale_peft_layers(self.text_encoder_2, lora_scale)
+
+            scale_peft_layers(self.unet, lora_scale)
+
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -769,7 +778,7 @@ class StableDiffusionXLPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
+            lora_scale=lora_scale,
             clip_skip=clip_skip,
         )
 
@@ -893,6 +902,14 @@ class StableDiffusionXLPipeline(
 
         # Offload all models
         self.maybe_free_model_hooks()
+
+        if self.use_peft_backend:
+            unscale_peft_layers(self.text_encoder, lora_scale)
+
+            if hasattr(self, "text_encoder_2"):
+                unscale_peft_layers(self.text_encoder_2, lora_scale)
+
+            unscale_peft_layers(self.unet, lora_scale)
 
         if not return_dict:
             return (image,)

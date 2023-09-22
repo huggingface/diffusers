@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from ..utils import _LazyModule, is_flax_available, is_torch_available
 
 
-_import_structure = {}
+_import_structure = {"constants": ["USE_PEFT_BACKEND"]}
 
 if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
@@ -44,6 +44,8 @@ if is_flax_available():
 
 
 if TYPE_CHECKING:
+    from .constants import USE_PEFT_BACKEND
+
     if is_torch_available():
         from .adapter import MultiAdapter, T2IAdapter
         from .autoencoder_asym_kl import AsymmetricAutoencoderKL

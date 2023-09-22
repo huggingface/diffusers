@@ -26,13 +26,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0, use_peft_backend: bool = False):
-    if use_peft_backend:
-        from peft.tuners.lora import LoraLayer
-
-        for module in text_encoder.modules():
-            if isinstance(module, LoraLayer):
-                module.scaling[module.active_adapter] = lora_scale
-    else:
+    if not use_peft_backend:
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
                 attn_module.q_proj.lora_scale = lora_scale

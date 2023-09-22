@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import importlib
 import os
 import re
 from collections import defaultdict
@@ -24,9 +23,9 @@ import requests
 import safetensors
 import torch
 from huggingface_hub import hf_hub_download, model_info
-from packaging import version
 from torch import nn
 
+from .models import USE_PEFT_BACKEND
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
     DIFFUSERS_CACHE,
@@ -34,10 +33,10 @@ from .utils import (
     _get_model_file,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
     deprecate,
     is_accelerate_available,
     is_omegaconf_available,
-    is_peft_available,
     is_transformers_available,
     logging,
     recurse_remove_peft_layers,
@@ -66,19 +65,6 @@ TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
 
-
-# Below should be `True` if the current version of `peft` and `transformers` are compatible with
-# PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
-# available.
-# For PEFT it is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
-_required_peft_version = is_peft_available() and version.parse(
-    version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
-_required_transformers_version = version.parse(
-    version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
-
-USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 LORA_DEPRECATION_MESSAGE = "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT make sure to install the latest PEFT and transformers packages in the future."
 
 
@@ -255,6 +241,7 @@ class AttnProcsLayers(torch.nn.Module):
 class UNet2DConditionLoadersMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
+    use_peft_backend = USE_PEFT_BACKEND
 
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
@@ -399,7 +386,7 @@ class UNet2DConditionLoadersMixin:
         # fill attn processors
         lora_layers_list = []
 
-        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
+        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys()) and not self.use_peft_backend
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
@@ -513,6 +500,8 @@ class UNet2DConditionLoadersMixin:
                         cross_attention_dim=cross_attention_dim,
                     )
                     attn_processors[key].load_state_dict(value_dict)
+        elif self.use_peft_backend:
+            pass
         else:
             raise ValueError(
                 f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
@@ -1443,7 +1432,9 @@ class LoraLoaderMixin:
         return new_state_dict
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, _pipeline=None):
+    def load_lora_into_unet(
+        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, _pipeline=None, adapter_name="default"
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -1461,6 +1452,8 @@ class LoraLoaderMixin:
                 tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
+            adapter_name (`str`, *optional*):
+                The name of the adapter to load the weights into. By default we use `"default"`
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
@@ -1486,6 +1479,48 @@ class LoraLoaderMixin:
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
             logger.warn(warn_message)
+
+        if cls.use_peft_backend:
+            from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+
+            state_dict = convert_unet_state_dict_to_peft(state_dict)
+            target_modules = []
+            ranks = []
+            for key in state_dict.keys():
+                # filter out the name
+                filtered_name = ".".join(key.split(".")[:-2])
+                target_modules.append(filtered_name)
+                if "lora_B" in key:
+                    rank = state_dict[key].shape[1]
+                    ranks.append(rank)
+
+            current_rank = ranks[0]
+            if not all(rank == current_rank for rank in ranks):
+                raise ValueError("Multi-rank not supported yet")
+
+            # TODO: support multi-alpha
+            alpha = current_rank
+
+            lora_config = LoraConfig(
+                r=current_rank,
+                lora_alpha=alpha,
+                target_modules=target_modules,
+            )
+
+            inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
+
+            incompatible_keys = set_peft_model_state_dict(unet, state_dict)
+
+            if incompatible_keys is not None:
+                # check only for unexpected keys
+                if hasattr(incompatible_keys, "unexpected_keys") and len(incompatible_keys.unexpected_keys) > 0:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                        f" {incompatible_keys.unexpected_keys}. "
+                    )
+                elif hasattr(incompatible_keys, "unexpected_keys") and len(incompatible_keys.unexpected_keys) == 0:
+                    # At this point all LoRA layars has been loaded so we init back an empty state_dict
+                    state_dict = {}
 
         unet.load_attn_procs(
             state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage, _pipeline=_pipeline
