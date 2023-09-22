@@ -58,10 +58,10 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run fast PyTorch Pipeline CPU tests
+    - name: Run fast PyTorch LoRA CPU tests with PEFT backend
       if: ${{ matrix.config.framework == 'lora' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
-          tests/lora/test_lora_peft.py
+          tests/lora/test_lora_layers_peft.py
