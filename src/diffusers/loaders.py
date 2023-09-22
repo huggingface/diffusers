@@ -417,8 +417,8 @@ class UNet2DConditionLoadersMixin:
                 )
 
             for key, value_dict in lora_grouped_dict.items():
-                if ("down" in key or "up" in key) and "time" in key:
-                    print(key)
+                # if ("down" in key or "up" in key) and "time" in key:
+                #     print(key)
                 attn_processor = self
                 for sub_key in key.split("."):
                     # try:
@@ -1885,6 +1885,7 @@ class LoraLoaderMixin:
                 # SDXL specificity.
                 # if "emb" in diffusers_name and "time" not in diffusers_name:
                 if "emb" in diffusers_name:
+                    print(f"diffusers_name: {diffusers_name}")
                     pattern = r"\.\d+(?=\D*$)"
                     diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
                 if ".in." in diffusers_name:
