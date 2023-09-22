@@ -35,12 +35,17 @@ from .utils import (
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
     deprecate,
+    get_adapter_name,
+    get_rank_and_alpha_pattern,
     is_accelerate_available,
     is_omegaconf_available,
     is_peft_available,
     is_transformers_available,
     logging,
     recurse_remove_peft_layers,
+    scale_lora_layers,
+    set_adapter_layers,
+    set_weights_and_activate_adapters,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
@@ -1100,7 +1105,9 @@ class LoraLoaderMixin:
     num_fused_loras = 0
     use_peft_backend = USE_PEFT_BACKEND
 
-    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_lora_weights(
+        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
+    ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
         `self.text_encoder`.
@@ -1144,6 +1151,7 @@ class LoraLoaderMixin:
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
             _pipeline=self,
+            adapter_name=adapter_name,
         )
 
     @classmethod
@@ -1500,6 +1508,7 @@ class LoraLoaderMixin:
         lora_scale=1.0,
         low_cpu_mem_usage=None,
         _pipeline=None,
+        adapter_name=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1522,6 +1531,9 @@ class LoraLoaderMixin:
                 tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
 
@@ -1583,18 +1595,30 @@ class LoraLoaderMixin:
                 if cls.use_peft_backend:
                     from peft import LoraConfig
 
-                    lora_rank = list(rank.values())[0]
-                    # By definition, the scale should be alpha divided by rank.
-                    # https://github.com/huggingface/peft/blob/ba0477f2985b1ba311b83459d29895c809404e99/src/peft/tuners/lora/layer.py#L71
-                    alpha = lora_scale * lora_rank
+                    r, lora_alpha, rank_pattern, alpha_pattern, target_modules = get_rank_and_alpha_pattern(
+                        rank, network_alphas, text_encoder_lora_state_dict
+                    )
 
-                    target_modules = ["q_proj", "k_proj", "v_proj", "out_proj"]
-                    if patch_mlp:
-                        target_modules += ["fc1", "fc2"]
+                    lora_config = LoraConfig(
+                        r=r,
+                        target_modules=target_modules,
+                        lora_alpha=lora_alpha,
+                        rank_pattern=rank_pattern,
+                        alpha_pattern=alpha_pattern,
+                    )
 
-                    lora_config = LoraConfig(r=lora_rank, target_modules=target_modules, lora_alpha=alpha)
+                    # adapter_name
+                    if adapter_name is None:
+                        adapter_name = get_adapter_name(text_encoder)
 
-                    text_encoder.load_adapter(adapter_state_dict=text_encoder_lora_state_dict, peft_config=lora_config)
+                    # inject LoRA layers and load the state dict
+                    text_encoder.load_adapter(
+                        adapter_name=adapter_name,
+                        adapter_state_dict=text_encoder_lora_state_dict,
+                        peft_config=lora_config,
+                    )
+                    # scale LoRA layers with `lora_scale`
+                    scale_lora_layers(text_encoder, lora_weightage=lora_scale)
 
                     is_model_cpu_offload = False
                     is_sequential_cpu_offload = False
@@ -2168,6 +2192,65 @@ class LoraLoaderMixin:
                 unfuse_text_encoder_lora(self.text_encoder_2)
 
         self.num_fused_loras -= 1
+
+    def set_adapter(
+        self,
+        adapter_names: Union[List[str], str],
+        unet_weights: List[float] = None,
+        te_weights: List[float] = None,
+        te2_weights: List[float] = None,
+    ):
+        if not self.use_peft_backend:
+            raise ValueError("PEFT backend is required for this method.")
+
+        def process_weights(adapter_names, weights):
+            if weights is None:
+                weights = [1.0] * len(adapter_names)
+            elif isinstance(weights, float):
+                weights = [weights]
+
+            if len(adapter_names) != len(weights):
+                raise ValueError(
+                    f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
+                )
+            return weights
+
+        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+
+        # To Do
+        # Handle the UNET
+
+        # Handle the Text Encoder
+        te_weights = process_weights(adapter_names, te_weights)
+        if hasattr(self, "text_encoder"):
+            set_weights_and_activate_adapters(self.text_encoder, adapter_names, te_weights)
+        te2_weights = process_weights(adapter_names, te2_weights)
+        if hasattr(self, "text_encoder_2"):
+            set_weights_and_activate_adapters(self.text_encoder_2, adapter_names, te2_weights)
+
+    def disable_lora(self):
+        if not self.use_peft_backend:
+            raise ValueError("PEFT backend is required for this method.")
+        # To Do
+        # Disbale unet adapters
+
+        # Disbale text encoder adapters
+        if hasattr(self, "text_encoder"):
+            set_adapter_layers(self.text_encoder, enabled=False)
+        if hasattr(self, "text_encoder_2"):
+            set_adapter_layers(self.text_encoder_2, enabled=False)
+
+    def enable_lora(self):
+        if not self.use_peft_backend:
+            raise ValueError("PEFT backend is required for this method.")
+        # To Do
+        # Enable unet adapters
+
+        # Enable text encoder adapters
+        if hasattr(self, "text_encoder"):
+            set_adapter_layers(self.text_encoder, enabled=True)
+        if hasattr(self, "text_encoder_2"):
+            set_adapter_layers(self.text_encoder_2, enabled=True)
 
 
 class FromSingleFileMixin:

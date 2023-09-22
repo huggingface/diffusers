@@ -69,3 +69,70 @@ def recurse_remove_peft_layers(model):
                 torch.cuda.empty_cache()
 
     return model
+
+
+def scale_lora_layers(model, lora_weightage):
+    from peft.tuners.tuner_utils import BaseTunerLayer
+
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            module.scale_layer(lora_weightage)
+
+
+def get_rank_and_alpha_pattern(rank_dict, network_alpha_dict, peft_state_dict):
+    rank_pattern = None
+    alpha_pattern = None
+    r = lora_alpha = list(rank_dict.values())[0]
+    if len(set(rank_dict.values())) > 1:
+        # get the rank occuring the most number of times
+        r = max(set(rank_dict.values()), key=list(rank_dict.values()).count)
+
+        # for modules with rank different from the most occuring rank, add it to the `rank_pattern`
+        rank_pattern = dict(filter(lambda x: x[1] != r, rank_dict.items()))
+        rank_pattern = {k.split(".lora_B.")[0]: v for k, v in rank_pattern.items()}
+
+    if network_alpha_dict is not None and len(set(network_alpha_dict.values())) > 1:
+        # get the alpha occuring the most number of times
+        lora_alpha = max(set(network_alpha_dict.values()), key=list(network_alpha_dict.values()).count)
+
+        # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
+        alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
+        alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
+
+    # layer names without the Diffusers specific
+    target_modules = {name.split(".lora")[0] for name in peft_state_dict.keys()}
+
+    return r, lora_alpha, rank_pattern, alpha_pattern, target_modules
+
+
+def get_adapter_name(model):
+    from peft.tuners.tuner_utils import BaseTunerLayer
+
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            return f"default_{len(module.r)}"
+    return "default_0"
+
+
+def set_adapter_layers(model, enabled=True):
+    from peft.tuners.tuner_utils import BaseTunerLayer
+
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            module.disable_adapters = False if enabled else True
+
+
+def set_weights_and_activate_adapters(model, adapter_names, weights):
+    from peft.tuners.tuner_utils import BaseTunerLayer
+
+    # iterate over each adapter, make it active and set the corresponding scaling weight
+    for adapter_name, weight in zip(adapter_names, weights):
+        for module in model.modules():
+            if isinstance(module, BaseTunerLayer):
+                module.active_adapter = adapter_name
+                module.scale_layer(weight)
+
+    # set multiple active adapters
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            module.active_adapter = adapter_names
