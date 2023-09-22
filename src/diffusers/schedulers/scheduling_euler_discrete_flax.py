@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import flax
-import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
