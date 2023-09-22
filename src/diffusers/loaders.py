@@ -1885,9 +1885,10 @@ class LoraLoaderMixin:
                 # SDXL specificity.
                 # if "emb" in diffusers_name and "time" not in diffusers_name:
                 if "emb" in diffusers_name:
-                    print(f"diffusers_name: {diffusers_name}")
+                    print(f"Before diffusers_name: {diffusers_name}")
                     pattern = r"\.\d+(?=\D*$)"
                     diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
+                    print(f"After diffusers_name: {diffusers_name}")
                 if ".in." in diffusers_name:
                     diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
                 if ".out." in diffusers_name:
