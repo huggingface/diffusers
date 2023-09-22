@@ -100,7 +100,7 @@ def get_rank_and_alpha_pattern(rank_dict, network_alpha_dict, peft_state_dict):
         alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
 
     # layer names without the Diffusers specific
-    target_modules = {name.split(".lora")[0] for name in peft_state_dict.keys()}
+    target_modules = list(set([name.split(".lora")[0] for name in peft_state_dict.keys()]))
 
     return r, lora_alpha, rank_pattern, alpha_pattern, target_modules
 
