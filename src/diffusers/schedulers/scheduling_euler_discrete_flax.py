@@ -115,7 +115,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         if self.config.timestep_spacing in ["linspace", "trailing"]:
             init_noise_sigma = sigmas.max()
         else:
-            init_noise_sigma = (self.sigmas.max() ** 2 + 1) ** 0.5
+            init_noise_sigma = (sigmas.max() ** 2 + 1) ** 0.5
 
         return EulerDiscreteSchedulerState.create(
             common=common,
@@ -143,7 +143,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         step_index = step_index[0]
 
         sigma = state.sigmas[step_index]
-        sample = sample / ((sigma.item()**2 + 1) ** 0.5)
+        sample = sample / ((sigma**2 + 1) ** 0.5)
         return sample
 
     def set_timesteps(
@@ -178,7 +178,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         if self.config.timestep_spacing in ["linspace", "trailing"]:
             init_noise_sigma = sigmas.max()
         else:
-            init_noise_sigma = (self.sigmas.max() ** 2 + 1) ** 0.5
+            init_noise_sigma = (sigmas.max() ** 2 + 1) ** 0.5
 
         return state.replace(
             timesteps=timesteps,
@@ -222,7 +222,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         (step_index,) = jnp.where(state.timesteps == timestep, size=1)
         step_index = step_index[0]
 
-        sigma = state.sigmas[step_index].item()
+        sigma = state.sigmas[step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -241,7 +241,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         # dt = sigma_down - sigma
         dt = state.sigmas[step_index + 1] - sigma
 
-        prev_sample = sample + derivative * dt.item()
+        prev_sample = sample + derivative * dt
 
         if not return_dict:
             return (prev_sample, state)
