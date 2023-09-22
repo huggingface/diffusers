@@ -216,7 +216,9 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         return super().get_dummy_components("multi_adapter")
 
     def get_dummy_inputs(self, device, seed=0):
-        return super().get_dummy_inputs(device, seed, num_images=2)
+        inputs = super().get_dummy_inputs(device, seed, num_images=2)
+        inputs["adapter_conditioning_scale"] = [0.5, 0.5]
+        return inputs
 
     def test_stable_diffusion_adapter_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
