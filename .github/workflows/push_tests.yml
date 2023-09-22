@@ -154,7 +154,7 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v2
       with:
-        name: examples_test_reports
+        name: torch_compile_test_reports
         path: reports
 
   run_examples_tests:
