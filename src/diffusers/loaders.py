@@ -417,6 +417,8 @@ class UNet2DConditionLoadersMixin:
                 )
 
             for key, value_dict in lora_grouped_dict.items():
+                if ("down" in key or "up" in key) and "time" in key:
+                    print(key)
                 attn_processor = self
                 for sub_key in key.split("."):
                     try:
