@@ -193,7 +193,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         neg_prompt_embeds, negative_pooled_embeds = self.get_embeddings(neg_prompt_ids, params)
 
         add_time_ids = self._get_add_time_ids(
-            (1024, 1024), (0, 0), (1024, 1024), prompt_embeds.shape[0], dtype=prompt_embeds.dtype
+            (height, width), (0, 0), (height, width), prompt_embeds.shape[0], dtype=prompt_embeds.dtype
         )
 
         prompt_embeds = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
