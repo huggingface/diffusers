@@ -26,7 +26,7 @@ import unittest
 import unittest.mock as mock
 
 import numpy as np
-import PIL
+import PIL.Image
 import requests_mock
 import safetensors.torch
 import torch
