@@ -151,7 +151,6 @@ jobs:
 
   flax_tpu_tests:
     runs-on: docker-tpu
-    report: flax_tpu
     container:
       image: diffusers/diffusers-flax-tpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --privileged
