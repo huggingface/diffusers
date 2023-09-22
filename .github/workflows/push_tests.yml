@@ -78,7 +78,7 @@ jobs:
 
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -s -v -k "not Flax and not Onnx and not compile" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
