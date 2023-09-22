@@ -424,7 +424,7 @@ class UNet2DConditionLoadersMixin:
                     try:
                         attn_processor = getattr(attn_processor, sub_key)
                     except:
-                        print(f"key: {key} attn_processor: {attn_processor} sub_key: {sub_key}")
+                        print(f"key: {key} sub_key: {sub_key}")
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
                 # or add_{k,v,q,out_proj}_proj_lora layers.
