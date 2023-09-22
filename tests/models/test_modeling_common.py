@@ -34,6 +34,7 @@ from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_torch_2,
+    require_torch_accelerator_with_training,
     require_torch_gpu,
     run_test_in_subprocess,
     torch_device,
@@ -454,7 +455,7 @@ class ModelTesterMixin:
 
         self.assertEqual(output_1.shape, output_2.shape)
 
-    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
+    @require_torch_accelerator_with_training
     def test_training(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -471,7 +472,7 @@ class ModelTesterMixin:
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
-    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
+    @require_torch_accelerator_with_training
     def test_ema_training(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -535,7 +536,7 @@ class ModelTesterMixin:
 
         recursive_check(outputs_tuple, outputs_dict)
 
-    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
+    @require_torch_accelerator_with_training
     def test_enable_disable_gradient_checkpointing(self):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing

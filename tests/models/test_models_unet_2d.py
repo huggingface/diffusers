@@ -22,10 +22,11 @@ import torch
 from diffusers import UNet2DModel
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    floats_tensor,
-    slow,
-    torch_all_close,
+    enable_full_determinism, 
+    floats_tensor, 
+    require_torch_gpu,
+    slow, 
+    torch_all_close, 
     torch_device,
 )
 
@@ -153,7 +154,7 @@ class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
-    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    @require_torch_gpu
     def test_from_pretrained_accelerate(self):
         model, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
         model.to(torch_device)
@@ -161,7 +162,7 @@ class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
-    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    @require_torch_gpu
     def test_from_pretrained_accelerate_wont_change_results(self):
         # by defautl model loading will use accelerate as `low_cpu_mem_usage=True`
         model_accelerate, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
