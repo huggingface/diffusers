@@ -722,16 +722,16 @@ class StableDiffusionXLImg2ImgPipeline(
                 bypassed before it is initiated. Consequently, the initial part of the denoising process is skipped and
                 it is assumed that the passed `image` is a partly denoised image. Note that when this is specified,
                 strength will be ignored. The `denoising_start` parameter is particularly beneficial when this pipeline
-                is integrated into a "Mixture of Denoisers" multi-pipeline setup, as detailed in [**Refining the Image
-                Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output).
+                is integrated into a "Mixture of Denoisers" multi-pipeline setup, as detailed in [**Refine Image
+                Quality**](https://huggingface.co/docs/diffusers/using-diffusers/sdxl#refine-image-quality).
             denoising_end (`float`, *optional*):
                 When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
                 completed before it is intentionally prematurely terminated. As a result, the returned sample will
                 still retain a substantial amount of noise (ca. final 20% of timesteps still needed) and should be
                 denoised by a successor pipeline that has `denoising_start` set to 0.8 so that it only denoises the
                 final 20% of the scheduler. The denoising_end parameter should ideally be utilized when this pipeline
-                forms a part of a "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
-                Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output).
+                forms a part of a "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refine Image
+                Quality**](https://huggingface.co/docs/diffusers/using-diffusers/sdxl#refine-image-quality).
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
