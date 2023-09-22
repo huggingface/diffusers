@@ -83,12 +83,12 @@ class PeftLoraLoaderMixinTests:
         scheduler = self.scheduler_cls(**self.scheduler_kwargs)
         torch.manual_seed(0)
         vae = AutoencoderKL(**self.vae_kwargs)
-        text_encoder = CLIPTextModel.from_pretrained("ybelkada/tiny-clip-text-2")
-        tokenizer = CLIPTokenizer.from_pretrained("ybelkada/tiny-clip-text-2")
+        text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+        tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
         if self.has_two_text_encoders:
-            text_encoder_2 = CLIPTextModelWithProjection.from_pretrained("ybelkada/tiny-clip-text-2")
-            tokenizer_2 = CLIPTokenizer.from_pretrained("ybelkada/tiny-clip-text-2")
+            text_encoder_2 = CLIPTextModelWithProjection.from_pretrained("peft-internal-testing/tiny-clip-text-2")
+            tokenizer_2 = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
         text_lora_config = LoraConfig(
             r=4, lora_alpha=4, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"], init_lora_weights=False
