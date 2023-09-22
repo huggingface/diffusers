@@ -672,6 +672,7 @@ if TYPE_CHECKING:
             FlaxDDIMScheduler,
             FlaxDDPMScheduler,
             FlaxDPMSolverMultistepScheduler,
+            FlaxEulerDiscreteScheduler,
             FlaxKarrasVeScheduler,
             FlaxLMSDiscreteScheduler,
             FlaxPNDMScheduler,
