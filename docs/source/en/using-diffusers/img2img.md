@@ -597,4 +597,10 @@ Running diffusion models is computationally expensive and intensive, but with a 
 + pipeline.enable_xformers_memory_efficient_attention()
 ```
 
+With [`torch.compile`](optimization/torch2.0#torch.compile), you can boost your inference speed even more by wrapping your UNet with it:
+
+```py
+pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+```
+
 To learn more, take a look at the [Reduce memory usage](optimization/memory) and [Torch 2.0](optimization/torch2.0) guides.
