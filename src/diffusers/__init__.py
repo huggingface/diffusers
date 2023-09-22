@@ -690,6 +690,7 @@ if TYPE_CHECKING:
             FlaxStableDiffusionImg2ImgPipeline,
             FlaxStableDiffusionInpaintPipeline,
             FlaxStableDiffusionPipeline,
+            FlaxStableDiffusionXLPipeline,
         )
 
     try:
