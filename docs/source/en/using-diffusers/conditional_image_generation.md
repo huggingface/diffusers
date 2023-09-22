@@ -14,15 +14,17 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Text-to-image generates an image from a text description (for example, "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k") which is also known as a *prompt*. From a very high-level, a latent diffusion model takes a prompt and some random initial noise, and iteratively removes the noise to construct an image. The *denoising* process is guided by the prompt. Once the denoising process ends after a predetermined number of timesteps, the latent image representation is decoded into an image.
+When you think of diffusion models, text-to-image is usually one of the first things that come to mind. Text-to-image generates an image from a text description (for example, "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k") which is also known as a *prompt*. 
+
+From a very high-level, a latent diffusion model takes a prompt and some random initial noise, and iteratively removes the noise to construct an image. The *denoising* process is guided by the prompt, and once the denoising process ends after a predetermined number of timesteps, the latent image representation is decoded into an image.
 
 <Tip>
 
-Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog post to learn more details about how the model works.
+Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog post to learn more about how a latent diffusion model works.
 
 </Tip>
 
-You can do this in 🤗 Diffusers in just two steps:
+You can do this in 🤗 Diffusers in two steps:
 
 1. Load a checkpoint into the [`AutoPipelineForText2Image`] class, which automatically detects the appropriate pipeline class to use based on the checkpoint:
 
@@ -48,7 +50,7 @@ image = pipeline(
 
 ## Popular models
 
-The most common text-to-image models are [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](sdxl), Kandinsky 2.2, and [ControlNet](controlnet). The results from each model are slightly different because of their architecture and training process, but no matter which model you choose, their usage is more or less the same.
+The most common text-to-image models are [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder), and [ControlNet](https://huggingface.co/lllyasviel/ControlNet). The results from each model are slightly different because of their architecture and training process, but no matter which model you choose, their usage is more or less the same. Let's use the same prompt for each model and compare their results.
 
 ### Stable Diffusion v1.5
 
@@ -66,7 +68,7 @@ image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detai
 
 ### Stable Diffusion XL
 
-SDXL is a much larger version of the previous Stable Diffusion models, and involves a two-stage model process that adds even more details to an image. It also includes some additional *micro-conditionings* to generate high-quality centered images. Take a look at the more comprehensive [SDXL](sdxl) guide to learn more about how to use it. But in general, you can use SDXL like:
+SDXL is a much larger version of the previous Stable Diffusion models, and involves a two-stage model process that adds even more details to an image. It also includes some additional *micro-conditionings* to generate high-quality centered images. Take a look at the more comprehensive [SDXL](sdxl) guide to learn more about how to use it. In general, you can use SDXL like:
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -80,7 +82,9 @@ image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detai
 
 ### Kandinsky 2.2
 
-The Kandinsky model is a bit different from the Stable Diffusion models because it also uses an image prior model to create embeddings that are used to better align text and images in the diffusion model. Take a look at the more comprehensive Kandinsky guide to learn more about how to use it. The easiest way to use Kandinsky 2.2 is:
+The Kandinsky model is a bit different from the Stable Diffusion models because it also uses an image prior model to create embeddings that are used to better align text and images in the diffusion model.
+
+The easiest way to use Kandinsky 2.2 is:
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -94,7 +98,7 @@ image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detai
 
 ### ControlNet
 
-ControlNet models offers a diverse set of options for more explicit control over a generated image. With ControlNet's, you add an additional conditioning input image to the model. For example, if you provide an image of a human pose (usually represented as multiple keypoints that are connected into a skeleton) as a conditioning input, the model generates an image that follows the pose of the image. Check out the more in-depth [ControlNet](controlnet) guide to learn more about other conditioning inputs and how to use them.
+ControlNet models offers diverse options for more explicit control over how to generate an image. With ControlNet's, you add an additional conditioning input image to the model. For example, if you provide an image of a human pose (usually represented as multiple keypoints that are connected into a skeleton) as a conditioning input, the model generates an image that follows the pose of the image. Check out the more in-depth [ControlNet](controlnet) guide to learn more about other conditioning inputs and how to use them.
 
 In this example, let's condition the ControlNet with a human pose estimation image. Load the ControlNet model pretrained on human pose estimations:
 
@@ -108,7 +112,7 @@ controlnet = ControlNetModel.from_pretrained(
 pose_image = load_image("https://huggingface.co/lllyasviel/control_v11p_sd15_openpose/resolve/main/images/control.png")
 ```
 
-Pass the `controlnet` to the [`AutoPipelineForText2Image`], and provide the prompt and pose estimation image to control generation:
+Pass the `controlnet` to the [`AutoPipelineForText2Image`], and provide the prompt and pose estimation image:
 
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(
@@ -142,7 +146,7 @@ There are a number of parameters that can be configured in the pipeline that aff
 
 ### Height and width
 
-The `height` and `width` parameters control the height and width in pixels of the generated image. By default, the Stable Diffusion v1.5 model outputs 512x512 images, but you can change this to any size you want. For example, to create a rectangular image:
+The `height` and `width` parameters control the height and width (in pixels) of the generated image. By default, the Stable Diffusion v1.5 model outputs 512x512 images, but you can change this to any size you want. For example, to create a rectangular image:
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -168,7 +172,7 @@ Other models may have different default image sizes depending on the image size'
 
 ### Guidance scale
 
-The `guidance_scale` parameter determines how important the prompt is in guiding image generation. A lower value gives the model more "creativity" to generate images that are more loosely related to the prompt. Higher `guidance_scale` values push the model to follow the prompt more closely, and if this value is too high, you may observe some artifacts in the generated image.
+The `guidance_scale` parameter affects how much the prompt influences image generation. A lower value gives the model "creativity" to generate images that are more loosely related to the prompt. Higher `guidance_scale` values push the model to follow the prompt more closely, and if this value is too high, you may observe some artifacts in the generated image.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -227,9 +231,9 @@ image = pipeline(
 
 ### Generator
 
-A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html#generator) object is used to enable reproducibility in a pipeline by setting a manual seed. However, you can also use a `Generator` to generate batches of images and iteratively improve on an image generated from a seed as detailed in the [Improve image quality with deterministic generation](reusing_seeds) guide.
+A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html#generator) object enables reproducibility in a pipeline by setting a manual seed. However, you can also use a `Generator` to generate batches of images and iteratively improve on an image generated from a seed as detailed in the [Improve image quality with deterministic generation](reusing_seeds) guide.
 
-You can set a seed and `Generator` as shown below. Creating an image with a `Generator` should return the same result each time now, instead of randomly generating a new image.
+You can set a seed and `Generator` as shown below. Creating an image with a `Generator` should return the same result each time instead of randomly generating a new image.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -276,15 +280,15 @@ image = pipeline(
 
 ### ControlNet
 
-As you saw in the [ControlNet](#controlnet) section, these models offer a more flexible and accurate way to generate images by incorporating an additional conditioning image input. The ControlNet is pretrained on the conditioning image input to generate new images that resemble it. For example, if you take a ControlNet pretrained on depth maps, you can give the model a depth map as a conditioning input and it'll generate an image that preserves the spatial information of it. This is quicker and easier than specifying the depth information in a prompt. You can even combine multiple conditioning inputs with a [MultiControlNet](controlnet#multicontrolnet)!
+As you saw in the [ControlNet](#controlnet) section, these models offer a more flexible and accurate way to generate images by incorporating an additional conditioning image input. The ControlNet is pretrained on the conditioning image input to generate new images that resemble it. For example, if you take a ControlNet pretrained on depth maps, you can give the model a depth map as a conditioning input and it'll generate an image that preserves the spatial information in it. This is quicker and easier than specifying the depth information in a prompt. You can even combine multiple conditioning inputs with a [MultiControlNet](controlnet#multicontrolnet)!
 
 There are many types of conditioning inputs you can use, and 🤗 Diffusers supports ControlNet for Stable Diffusion and SDXL models. Take a look at the more comprehensive [ControlNet](controlnet) guide to learn how you can use these models.
 
 ## Optimize
 
-Diffusion models are large, and the iterative nature of denoising an image is computationally expensive and intensive. But this doesn't mean you need access to powerful - or even many - GPUs to use them. There are many things you can do to run diffusion models on consumer and free-tier resources. For example, you can load model weights in half-precision to save GPU memory and increase speed or offloading the entire model to the GPU to preserve even more memory.
+Diffusion models are large, and the iterative nature of denoising an image is computationally expensive and intensive. But this doesn't mean you need access to powerful - or even many - GPUs to use them. There are many optimization techniques for running diffusion models on consumer and free-tier resources. For example, you can load model weights in half-precision to save GPU memory and increase speed or offload the entire model to the GPU to save even more memory.
 
-PyTorch 2.0 also supports a more memory-efficient attention mechanism called *scaled dot product attention* that is automatically enabled if you're using PyTorch 2.0. You can combine this with [`torch.compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) to speed your code up even more:
+PyTorch 2.0 also supports a more memory-efficient attention mechanism called [*scaled dot product attention*](http://localhost:3000/using-diffusers/optimization/torch2.0#scaled-dot-product-attention) that is automatically enabled if you're using PyTorch 2.0. You can combine this with [`torch.compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) to speed your code up even more:
 
 ```py
 from diffusers import AutoPipelineForText2Image
