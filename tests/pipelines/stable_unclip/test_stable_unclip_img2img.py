@@ -196,9 +196,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because undeterminism requires a looser check.
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device in ["cpu", "mps"]
-
-        self._test_inference_batch_single_identical(test_max_difference=test_max_difference)
+        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

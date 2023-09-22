@@ -53,7 +53,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.21.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -955,6 +955,9 @@ def main():
                     mse_loss_weights = (
                         torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
+                    if noise_scheduler.config.prediction_type == "v_prediction":
+                        # velocity objective prediction requires SNR weights to be floored to a min value of 1.
+                        mse_loss_weights = mse_loss_weights + 1
                     # We first calculate the original loss. Then we mean over the non-batch dimensions and
                     # rebalance the sample-wise losses with their respective loss weights.
                     # Finally, we take the mean of the rebalanced loss.

@@ -62,7 +62,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             The prior tokenizer to be used for text inputs.
         prior_text_encoder (`CLIPTextModel`):
             The prior text encoder to be used for text inputs.
-        prior (`WuerstchenPrior`):
+        prior_prior (`WuerstchenPrior`):
             The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
@@ -119,8 +119,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
         `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
         """
-        self.prior_pipe.enable_model_cpu_offload()
-        self.decoder_pipe.enable_model_cpu_offload()
+        self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
+        self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -144,7 +144,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
@@ -249,7 +249,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
-            prompt=prompt,
+            prompt=prompt if prompt is not None else "",
             num_inference_steps=num_inference_steps,
             timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
@@ -258,4 +258,5 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             output_type=output_type,
             return_dict=return_dict,
         )
+
         return outputs

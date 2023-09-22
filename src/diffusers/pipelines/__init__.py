@@ -67,8 +67,10 @@ else:
         "AudioLDM2ProjectionModel",
         "AudioLDM2UNet2DConditionModel",
     ]
+    _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
     _import_structure["controlnet"].extend(
         [
+            "BlipDiffusionControlNetPipeline",
             "StableDiffusionControlNetImg2ImgPipeline",
             "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionControlNetPipeline",
@@ -113,6 +115,7 @@ else:
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_diffusion"].extend(
         [
+            "CLIPImageProjection",
             "CycleDiffusionPipeline",
             "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionDepth2ImgPipeline",
@@ -146,12 +149,12 @@ else:
         "StableDiffusionXLPipeline",
     ]
     _import_structure["t2i_adapter"] = ["StableDiffusionAdapterPipeline", "StableDiffusionXLAdapterPipeline"]
+    _import_structure["tune_a_video"] = ["TuneAVideoPipeline"]
     _import_structure["text_to_video_synthesis"] = [
         "TextToVideoSDPipeline",
         "TextToVideoZeroPipeline",
         "VideoToVideoSDPipeline",
     ]
-    _import_structure["tune_a_video"] = ["TuneAVideoPipeline"]
     _import_structure["unclip"] = ["UnCLIPImageVariationPipeline", "UnCLIPPipeline"]
     _import_structure["unidiffuser"] = [
         "ImageTextPipelineOutput",
@@ -281,7 +284,9 @@ if TYPE_CHECKING:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
+        from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import (
+            BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionControlNetPipeline,
@@ -324,6 +329,7 @@ if TYPE_CHECKING:
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_diffusion import (
+            CLIPImageProjection,
             CycleDiffusionPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionDepth2ImgPipeline,

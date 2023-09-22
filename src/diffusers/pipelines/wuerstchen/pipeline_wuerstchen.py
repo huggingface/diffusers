@@ -19,7 +19,7 @@ import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import is_accelerate_available, is_accelerate_version, logging, replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_paella_vq_model import PaellaVQModel
@@ -72,6 +72,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             width=int(24*10.67)=256 in order to match the training conditions.
     """
 
+    model_cpu_offload_seq = "text_encoder->decoder->vqgan"
+
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
@@ -102,35 +104,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.decoder]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.prior_hook = hook
-
-        _, hook = cpu_offload_with_hook(self.vqgan, device, prev_module_hook=self.prior_hook)
-
-        self.final_offload_hook = hook
 
     def encode_prompt(
         self,
@@ -214,48 +187,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
         return text_encoder_hidden_states, uncond_text_encoder_hidden_states
 
-    def check_inputs(
-        self,
-        image_embeddings,
-        prompt,
-        negative_prompt,
-        num_inference_steps,
-        do_classifier_free_guidance,
-        device,
-        dtype,
-    ):
-        if not isinstance(prompt, list):
-            if isinstance(prompt, str):
-                prompt = [prompt]
-            else:
-                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
-
-        if do_classifier_free_guidance:
-            if negative_prompt is not None and not isinstance(negative_prompt, list):
-                if isinstance(negative_prompt, str):
-                    negative_prompt = [negative_prompt]
-                else:
-                    raise TypeError(
-                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
-                    )
-
-        if isinstance(image_embeddings, list):
-            image_embeddings = torch.cat(image_embeddings, dim=0)
-        if isinstance(image_embeddings, np.ndarray):
-            image_embeddings = torch.Tensor(image_embeddings, device=device).to(dtype=dtype)
-        if not isinstance(image_embeddings, torch.Tensor):
-            raise TypeError(
-                f"'image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(image_embeddings)}."
-            )
-
-        if not isinstance(num_inference_steps, int):
-            raise TypeError(
-                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
-                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
-            )
-
-        return image_embeddings, prompt, negative_prompt, num_inference_steps
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -324,9 +255,35 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 1. Check inputs. Raise error if not correct
-        image_embeddings, prompt, negative_prompt, num_inference_steps = self.check_inputs(
-            image_embeddings, prompt, negative_prompt, num_inference_steps, do_classifier_free_guidance, device, dtype
-        )
+        if not isinstance(prompt, list):
+            if isinstance(prompt, str):
+                prompt = [prompt]
+            else:
+                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
+
+        if do_classifier_free_guidance:
+            if negative_prompt is not None and not isinstance(negative_prompt, list):
+                if isinstance(negative_prompt, str):
+                    negative_prompt = [negative_prompt]
+                else:
+                    raise TypeError(
+                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
+                    )
+
+        if isinstance(image_embeddings, list):
+            image_embeddings = torch.cat(image_embeddings, dim=0)
+        if isinstance(image_embeddings, np.ndarray):
+            image_embeddings = torch.Tensor(image_embeddings, device=device).to(dtype=dtype)
+        if not isinstance(image_embeddings, torch.Tensor):
+            raise TypeError(
+                f"'image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(image_embeddings)}."
+            )
+
+        if not isinstance(num_inference_steps, int):
+            raise TypeError(
+                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
+                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
+            )
 
         # 2. Encode caption
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
@@ -389,6 +346,9 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         # 10. Scale and decode the image latents with vq-vae
         latents = self.vqgan.config.scale_factor * latents
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
+
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
