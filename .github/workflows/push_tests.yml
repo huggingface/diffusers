@@ -94,7 +94,7 @@ jobs:
             tests/pipelines/${{ matrix.module }}
       - name: Failure short reports
         if: ${{ failure() }}
-        run: cat reports/tests_${{ matrix.module }}_failures_short.txt
+        run: cat reports/tests_pipeline_${{ matrix.module }}_failures_short.txt
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
@@ -184,7 +184,7 @@ jobs:
 
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_${{ report }}_failures_short.txt
+      run: cat reports/tests_flax_tpu_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
