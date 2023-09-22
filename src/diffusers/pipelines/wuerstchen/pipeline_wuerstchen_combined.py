@@ -161,6 +161,10 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        prior_callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        prior_callback_steps: int = 1,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -222,6 +226,18 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+            prior_callback (`Callable`, *optional*):
+                A function that will be called every `prior_callback_steps` steps during inference. The function will be
+                called with the following arguments: `prior_callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            prior_callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
 
         Examples:
 
@@ -244,6 +260,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             latents=latents,
             output_type="pt",
             return_dict=False,
+            callback=prior_callback,
+            callback_steps=prior_callback_steps,
         )
         image_embeddings = prior_outputs[0]
 
@@ -257,6 +275,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             generator=generator,
             output_type=output_type,
             return_dict=return_dict,
+            callback=callback,
+            callback_steps=callback_steps,
         )
 
         return outputs
