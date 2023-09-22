@@ -108,7 +108,7 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_output_pretrained(self):
         model = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32", subfolder="unet")
         torch.manual_seed(0)
-        accelerator_manual_seed(0)
+        accelerator_manual_seed(torch_device, 0)
         
         num_features = model.config.in_channels
         seq_len = 16
