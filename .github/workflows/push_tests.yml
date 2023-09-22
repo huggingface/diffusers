@@ -22,7 +22,7 @@ jobs:
   setup_torch_cuda_pipeline_matrix:
     runs-on: docker-gpu
     container:
-      image: diffusers/diffusers-pytorch-cpu
+      image: diffusers/diffusers-pytorch-cpu # this is a CPU image, but we need it to fetch the matrix
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
     outputs:
       pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
