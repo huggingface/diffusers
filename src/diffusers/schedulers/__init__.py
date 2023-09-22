@@ -76,6 +76,7 @@ else:
     _import_structure["scheduling_ddim_flax"] = ["FlaxDDIMScheduler"]
     _import_structure["scheduling_ddpm_flax"] = ["FlaxDDPMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_flax"] = ["FlaxDPMSolverMultistepScheduler"]
+    _import_structure["scheduling_euler_discrete_flax"] = ["FlaxEulerDiscreteScheduler"]
     _import_structure["scheduling_karras_ve_flax"] = ["FlaxKarrasVeScheduler"]
     _import_structure["scheduling_lms_discrete_flax"] = ["FlaxLMSDiscreteScheduler"]
     _import_structure["scheduling_pndm_flax"] = ["FlaxPNDMScheduler"]
