@@ -20,6 +20,7 @@ env:
 
 jobs:
   setup_torch_cuda_pipeline_matrix:
+    name: Setup Torch Pipelines CUDA Slow Tests Matrix
     runs-on: docker-gpu
     container:
       image: diffusers/diffusers-pytorch-cpu # this is a CPU image, but we need it to fetch the matrix
@@ -56,6 +57,7 @@ jobs:
           path: reports
 
   torch_pipelines_cuda_tests:
+    name: Torch Pipelines CUDA Slow Tests
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
       fail-fast: false
@@ -106,6 +108,7 @@ jobs:
           path: reports
 
   torch_cuda_tests:
+    name: Torch CUDA Tests
     runs-on: docker-gpu
     container:
       image: diffusers/diffusers-pytorch-cuda
@@ -154,6 +157,7 @@ jobs:
         path: reports
 
   flax_tpu_tests:
+    name: Flax TPU Tests
     runs-on: docker-tpu
     container:
       image: diffusers/diffusers-flax-tpu
@@ -200,6 +204,7 @@ jobs:
         path: reports
 
   onnx_cuda_tests:
+    name: ONNX CUDA Tests
     runs-on: docker-gpu
     container:
       image: diffusers/diffusers-onnxruntime-cuda
