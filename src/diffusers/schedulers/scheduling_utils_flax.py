@@ -37,6 +37,7 @@ class FlaxKarrasDiffusionSchedulers(Enum):
     FlaxPNDMScheduler = 3
     FlaxLMSDiscreteScheduler = 4
     FlaxDPMSolverMultistepScheduler = 5
+    FlaxEulerDiscreteScheduler = 6
 
 
 @dataclass
