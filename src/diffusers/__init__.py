@@ -396,7 +396,6 @@ else:
             "FlaxStableDiffusionImg2ImgPipeline",
             "FlaxStableDiffusionInpaintPipeline",
             "FlaxStableDiffusionPipeline",
-            "FlaxStableDiffusionXLImg2ImgPipeline",
             "FlaxStableDiffusionXLPipeline",
         ]
     )
