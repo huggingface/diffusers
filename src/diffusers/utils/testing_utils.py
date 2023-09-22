@@ -7,6 +7,7 @@ import os
 import random
 import re
 import struct
+import sys
 import tempfile
 import unittest
 import urllib.parse
@@ -261,6 +262,15 @@ def deprecate_after_peft_backend(test_case):
     Decorator marking a test that will be skipped after PEFT backend
     """
     return unittest.skipUnless(not USE_PEFT_BACKEND, "test skipped in favor of PEFT backend")(test_case)
+
+
+def require_python39_or_higher(test_case):
+    def python39_available():
+        sys_info = sys.version_info
+        major, minor = sys_info.major, sys_info.minor
+        return major == 3 and minor >= 9
+
+    return unittest.skipUnless(python39_available(), "test requires Python 3.9 or higher")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
