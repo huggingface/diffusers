@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> cldm_cond_image = load_image(
         ...     "https://huggingface.co/datasets/ayushtues/blipdiffusion_images/resolve/main/kettle.jpg"
-        ... ).resize(512, 512)
+        ... ).resize((512, 512))
         >>> canny = CannyDetector()
         >>> cldm_cond_image = canny(cldm_cond_image, 30, 70, output_type="pil")
         >>> style_image = load_image(
