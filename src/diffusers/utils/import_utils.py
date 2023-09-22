@@ -267,6 +267,14 @@ except importlib_metadata.PackageNotFoundError:
     _invisible_watermark_available = False
 
 
+_peft_available = importlib.util.find_spec("peft") is not None
+try:
+    _peft_version = importlib_metadata.version("peft")
+    logger.debug(f"Successfully imported peft version {_peft_version}")
+except importlib_metadata.PackageNotFoundError:
+    _peft_available = False
+
+
 def is_torch_available():
     return _torch_available
 
@@ -349,6 +357,10 @@ def is_torchsde_available():
 
 def is_invisible_watermark_available():
     return _invisible_watermark_available
+
+
+def is_peft_available():
+    return _peft_available
 
 
 # docstyle-ignore
