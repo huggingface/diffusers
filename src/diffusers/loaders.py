@@ -1298,6 +1298,7 @@ class LoraLoaderMixin:
             state_dict = pretrained_model_name_or_path_or_dict
 
         network_alphas = None
+        # TODO: replace it with a method from `state_dict_utils`
         if all(
             (
                 k.startswith("lora_te_")
@@ -1562,15 +1563,15 @@ class LoraLoaderMixin:
 
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         rank_key = f"{name}.out_proj.lora_B.weight"
-                        rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
+                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
                     patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
                     if patch_mlp:
                         for name, _ in text_encoder_mlp_modules(text_encoder):
                             rank_key_fc1 = f"{name}.fc1.lora_B.weight"
                             rank_key_fc2 = f"{name}.fc2.lora_B.weight"
-                            rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
-                            rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
+                            rank[rank_key_fc1] = text_encoder_lora_state_dict[rank_key_fc1].shape[1]
+                            rank[rank_key_fc2] = text_encoder_lora_state_dict[rank_key_fc2].shape[1]
                 else:
                     for name, _ in text_encoder_attn_modules(text_encoder):
                         rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
@@ -1581,8 +1582,8 @@ class LoraLoaderMixin:
                         for name, _ in text_encoder_mlp_modules(text_encoder):
                             rank_key_fc1 = f"{name}.fc1.lora_linear_layer.up.weight"
                             rank_key_fc2 = f"{name}.fc2.lora_linear_layer.up.weight"
-                            rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
-                            rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
+                            rank[rank_key_fc1] = text_encoder_lora_state_dict[rank_key_fc1].shape[1]
+                            rank[rank_key_fc2] = text_encoder_lora_state_dict[rank_key_fc2].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -1700,8 +1701,15 @@ class LoraLoaderMixin:
 
         if hasattr(self, "text_encoder"):
             remove_method(self.text_encoder)
+
+            if self.use_peft_backend:
+                del self.text_encoder.peft_config
+                self.text_encoder._hf_peft_config_loaded = None
         if hasattr(self, "text_encoder_2"):
             remove_method(self.text_encoder_2)
+            if self.use_peft_backend:
+                del self.text_encoder_2.peft_config
+                self.text_encoder_2._hf_peft_config_loaded = None
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
@@ -2955,7 +2963,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
     def _remove_text_encoder_monkey_patch(self):
         if self.use_peft_backend:
             recurse_remove_peft_layers(self.text_encoder)
+            # TODO: @younesbelkada handle this in transformers side
+            del self.text_encoder.peft_config
+            self.text_encoder._hf_peft_config_loaded = None
+
             recurse_remove_peft_layers(self.text_encoder_2)
+
+            del self.text_encoder_2.peft_config
+            self.text_encoder_2._hf_peft_config_loaded = None
         else:
             self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
             self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)

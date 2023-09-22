@@ -270,7 +270,7 @@ except importlib_metadata.PackageNotFoundError:
 _peft_available = importlib.util.find_spec("peft") is not None
 try:
     _peft_version = importlib_metadata.version("peft")
-    logger.debug(f"Successfully imported accelerate version {_peft_version}")
+    logger.debug(f"Successfully imported peft version {_peft_version}")
 except importlib_metadata.PackageNotFoundError:
     _peft_available = False
 
