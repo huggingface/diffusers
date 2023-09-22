@@ -108,9 +108,14 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         timesteps = jnp.arange(0, self.config.num_train_timesteps).round()[::-1]
         sigmas = ((1 - common.alphas_cumprod) / common.alphas_cumprod) ** 0.5
+        sigmas = jnp.interp(timesteps, jnp.arange(0, len(sigmas)), sigmas)
+        sigmas = jnp.concatenate([sigmas, jnp.array([0.0], dtype=self.dtype)])
 
         # standard deviation of the initial noise distribution
-        init_noise_sigma = sigmas.max()
+        if self.config.timestep_spacing in ["linspace", "trailing"]:
+            init_noise_sigma = sigmas.max()
+        else:
+            init_noise_sigma = (self.sigmas.max() ** 2 + 1) ** 0.5
 
         return EulerDiscreteSchedulerState.create(
             common=common,
@@ -138,7 +143,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         step_index = step_index[0]
 
         sigma = state.sigmas[step_index]
-        sample = sample / ((sigma**2 + 1) ** 0.5)
+        sample = sample / ((sigma.item()**2 + 1) ** 0.5)
         return sample
 
     def set_timesteps(
@@ -166,12 +171,14 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             )
 
         sigmas = ((1 - state.common.alphas_cumprod) / state.common.alphas_cumprod) ** 0.5
+        sigmas = jnp.interp(timesteps, jnp.arange(0, len(sigmas)), sigmas)
         sigmas = jnp.concatenate([sigmas, jnp.array([0.0], dtype=self.dtype)])
 
         # standard deviation of the initial noise distribution
-        init_noise_sigma = sigmas.max()
-
-        timesteps = timesteps.astype(jnp.int32)
+        if self.config.timestep_spacing in ["linspace", "trailing"]:
+            init_noise_sigma = sigmas.max()
+        else:
+            init_noise_sigma = (self.sigmas.max() ** 2 + 1) ** 0.5
 
         return state.replace(
             timesteps=timesteps,
@@ -186,7 +193,6 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        key: Optional[jax.random.KeyArray] = None,
         return_dict: bool = True,
     ) -> Union[FlaxEulerDiscreteSchedulerOutput, Tuple]:
         """
@@ -216,7 +222,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         (step_index,) = jnp.where(state.timesteps == timestep, size=1)
         step_index = step_index[0]
 
-        sigma = state.sigmas[step_index]
+        sigma = state.sigmas[step_index].item()
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
@@ -235,7 +241,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         # dt = sigma_down - sigma
         dt = state.sigmas[step_index + 1] - sigma
 
-        prev_sample = sample + derivative * dt
+        prev_sample = sample + derivative * dt.item()
 
         if not return_dict:
             return (prev_sample, state)
