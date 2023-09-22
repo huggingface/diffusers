@@ -202,11 +202,6 @@ else:
             "StableDiffusionOnnxPipeline",
         ]
     )
-    _import_structure["stable_diffusion_xl"].extend(
-        [
-            "FlaxStableDiffusionXLPipeline",
-        ]
-    )
 
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
@@ -240,6 +235,11 @@ else:
             "FlaxStableDiffusionImg2ImgPipeline",
             "FlaxStableDiffusionInpaintPipeline",
             "FlaxStableDiffusionPipeline",
+        ]
+    )
+    _import_structure["stable_diffusion_xl"].extend(
+        [
+            "FlaxStableDiffusionXLPipeline",
         ]
     )
 try:
