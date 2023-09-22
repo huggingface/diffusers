@@ -20,7 +20,7 @@ env:
 
 jobs:
   setup_torch_cuda_pipeline_matrix:
-    runs-on: docker-cpu
+    runs-on: docker-gpu
     container:
       image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
