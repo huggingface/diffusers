@@ -17,11 +17,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
-from .attention import Attention, FeedForward
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
+from .attention import Attention, FeedForward
 from .modeling_utils import ModelMixin
 
 
