@@ -52,6 +52,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
     only_cross_attention: bool = False
     use_memory_efficient_attention: bool = False
     dtype: jnp.dtype = jnp.float32
+    transformer_layers_per_block: int = 1
 
     def setup(self):
         resnets = []
@@ -72,7 +73,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
                 in_channels=self.out_channels,
                 n_heads=self.num_attention_heads,
                 d_head=self.out_channels // self.num_attention_heads,
-                depth=1,
+                depth=self.transformer_layers_per_block,
                 use_linear_projection=self.use_linear_projection,
                 only_cross_attention=self.only_cross_attention,
                 use_memory_efficient_attention=self.use_memory_efficient_attention,
@@ -192,6 +193,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
     only_cross_attention: bool = False
     use_memory_efficient_attention: bool = False
     dtype: jnp.dtype = jnp.float32
+    transformer_layers_per_block: int = 1
 
     def setup(self):
         resnets = []
@@ -213,7 +215,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
                 in_channels=self.out_channels,
                 n_heads=self.num_attention_heads,
                 d_head=self.out_channels // self.num_attention_heads,
-                depth=1,
+                depth=self.transformer_layers_per_block,
                 use_linear_projection=self.use_linear_projection,
                 only_cross_attention=self.only_cross_attention,
                 use_memory_efficient_attention=self.use_memory_efficient_attention,
@@ -331,6 +333,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
     use_linear_projection: bool = False
     use_memory_efficient_attention: bool = False
     dtype: jnp.dtype = jnp.float32
+    transformer_layers_per_block: int = 1
 
     def setup(self):
         # there is always at least one resnet
@@ -350,7 +353,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
                 in_channels=self.in_channels,
                 n_heads=self.num_attention_heads,
                 d_head=self.in_channels // self.num_attention_heads,
-                depth=1,
+                depth=self.transformer_layers_per_block,
                 use_linear_projection=self.use_linear_projection,
                 use_memory_efficient_attention=self.use_memory_efficient_attention,
                 dtype=self.dtype,
