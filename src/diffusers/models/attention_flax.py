@@ -142,7 +142,7 @@ class FlaxAttention(nn.Module):
     dim_head: int = 64
     dropout: float = 0.0
     use_memory_efficient_attention: bool = False
-    split_head_dim: bool = True
+    split_head_dim: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
