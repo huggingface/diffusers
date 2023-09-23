@@ -174,7 +174,7 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 class TuneAVideoPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
         expected_video = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/tuneavideo-full-mo-di.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/tuneavideo-10step-mo-di.npy"
         )
 
         pipe = TuneAVideoPipeline.from_pretrained(
