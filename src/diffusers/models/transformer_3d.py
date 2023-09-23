@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
-from attention import Attention, FeedForward
+from .attention import Attention, FeedForward
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
