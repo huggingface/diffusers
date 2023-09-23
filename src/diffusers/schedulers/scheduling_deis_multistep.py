@@ -243,7 +243,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
-        self.sigmas = torch.from_numpy(sigmas).to(device=device)
+        self.sigmas = torch.from_numpy(sigmas)
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
 
         self.num_inference_steps = len(timesteps)
