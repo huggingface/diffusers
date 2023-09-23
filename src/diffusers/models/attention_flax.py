@@ -219,9 +219,9 @@ class FlaxAttention(nn.Module):
                 attention_scores = jnp.einsum("b t n h, b f n h -> b n f t", key_states, query_states)
             else:
                 attention_scores = jnp.einsum("b i d, b j d->b i j", query_states, key_states)
-            
+
             attention_scores = attention_scores * self.scale
-            attention_probs = nn.softmax(attention_scores, axis= -1 if self.split_head_dim else 2)
+            attention_probs = nn.softmax(attention_scores, axis=-1 if self.split_head_dim else 2)
 
             # attend to values
             if self.split_head_dim:
