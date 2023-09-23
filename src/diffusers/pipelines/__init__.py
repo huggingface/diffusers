@@ -239,6 +239,7 @@ else:
     )
     _import_structure["stable_diffusion_xl"].extend(
         [
+            "FlaxStableDiffusionXLImg2ImgPipeline",
             "FlaxStableDiffusionXLPipeline",
         ]
     )
@@ -446,6 +447,7 @@ if TYPE_CHECKING:
                 FlaxStableDiffusionPipeline,
             )
             from .stable_diffusion_xl import (
+                FlaxStableDiffusionXLImg2ImgPipeline,
                 FlaxStableDiffusionXLPipeline,
             )
 

@@ -396,6 +396,7 @@ else:
             "FlaxStableDiffusionImg2ImgPipeline",
             "FlaxStableDiffusionInpaintPipeline",
             "FlaxStableDiffusionPipeline",
+            "FlaxStableDiffusionXLImg2ImgPipeline",
             "FlaxStableDiffusionXLPipeline",
         ]
     )
@@ -694,6 +695,7 @@ if TYPE_CHECKING:
             FlaxStableDiffusionImg2ImgPipeline,
             FlaxStableDiffusionInpaintPipeline,
             FlaxStableDiffusionPipeline,
+            FlaxStableDiffusionXLImg2ImgPipeline,
             FlaxStableDiffusionXLPipeline,
         )
 

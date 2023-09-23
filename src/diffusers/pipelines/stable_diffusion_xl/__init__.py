@@ -34,6 +34,7 @@ if is_transformers_available() and is_flax_available():
 
     _additional_imports.update({"PNDMSchedulerState": PNDMSchedulerState})
     _import_structure["pipeline_flax_stable_diffusion_xl"] = ["FlaxStableDiffusionXLPipeline"]
+    _import_structure["pipeline_flax_stable_diffusion_xl_img2img"] = ["FlaxStableDiffusionXLImg2ImgPipeline"]
 
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
         from ...utils.dummy_flax_objects import *
     else:
         from .pipeline_flax_stable_diffusion_xl import (
+            FlaxStableDiffusionXLImg2ImgPipeline,
             FlaxStableDiffusionXLPipeline,
         )
         from .pipeline_output import FlaxStableDiffusionXLPipelineOutput
