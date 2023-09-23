@@ -877,7 +877,7 @@ def main():
             prior_text_encoder=accelerator.unwrap_model(text_encoder),
             prior_tokenizer=tokenizer,
         )
-        pipeline.prior_pipe.save_pretrained(args.output_dir)
+        pipeline.prior_pipe.save_pretrained(os.path.join(args.output_dir, "prior_pipeline"))
 
         # Run a final round of inference.
         images = []
