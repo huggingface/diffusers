@@ -43,7 +43,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPrior
 from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available
-from diffusers.utils.logging import set_verbosity_error, set_verbosity_info
+from diffusers.utils.logging import make_image_grid, set_verbosity_error, set_verbosity_info
 
 
 if is_wandb_available():
@@ -58,6 +58,82 @@ logger = get_logger(__name__, log_level="INFO")
 DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
+
+
+def save_model_card(
+    args,
+    repo_id: str,
+    images=None,
+    repo_folder=None,
+):
+    img_str = ""
+    if len(images) > 0:
+        image_grid = make_image_grid(images, 1, len(args.validation_prompts))
+        image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
+        img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
+
+    yaml = f"""
+---
+license: mit
+base_model: {args.pretrained_prior_model_name_or_path}
+datasets:
+- {args.dataset_name}
+tags:
+- wuerstchen
+- text-to-image
+- diffusers
+inference: true
+---
+    """
+    model_card = f"""
+# Finetuning - {repo_id}
+
+This pipeline was finetuned from **{args.pretrained_prior_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
+{img_str}
+
+## Pipeline usage
+
+You can use the pipeline like so:
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipe_prior = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
+pipe_t2i = DiffusionPipeline.from_pretrained("{args.pretrained_decoder_model_name_or_path}", torch_dtype=torch.float16)
+prompt = "{args.validation_prompts[0]}"
+image_embeds, negative_image_embeds = pipe_prior(prompt, guidance_scale=1.0).to_tuple()
+image = pipe_t2i(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds).images[0]
+image.save("my_image.png")
+```
+
+## Training info
+
+These are the key hyperparameters used during training:
+
+* Epochs: {args.num_train_epochs}
+* Learning rate: {args.learning_rate}
+* Batch size: {args.train_batch_size}
+* Gradient accumulation steps: {args.gradient_accumulation_steps}
+* Image resolution: {args.resolution}
+* Mixed-precision: {args.mixed_precision}
+
+"""
+    wandb_info = ""
+    if is_wandb_available():
+        wandb_run_url = None
+        if wandb.run is not None:
+            wandb_run_url = wandb.run.url
+
+    if wandb_run_url is not None:
+        wandb_info = f"""
+More information on all the CLI arguments and the environment are available on your [`wandb` run page]({wandb_run_url}).
+"""
+
+    model_card += wandb_info
+
+    with open(os.path.join(repo_folder, "README.md"), "w") as f:
+        f.write(yaml + model_card)
 
 
 def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dtype, epoch):
@@ -405,7 +481,9 @@ def main():
 
     # Load scheduler, effnet, tokenizer, clip_model
     noise_scheduler = DDPMWuerstchenScheduler()
-    tokenizer = PreTrainedTokenizerFast.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="tokenizer")
+    tokenizer = PreTrainedTokenizerFast.from_pretrained(
+        args.pretrained_prior_model_name_or_path, subfolder="tokenizer"
+    )
 
     def deepspeed_zero_init_disabled_context_manager():
         """
@@ -821,7 +899,13 @@ def main():
                 images.append(image)
 
         if args.push_to_hub:
-            pass
+            save_model_card(args, repo_id, images, repo_folder=args.output_dir)
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
     accelerator.end_training()
 
