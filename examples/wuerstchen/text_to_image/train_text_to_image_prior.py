@@ -42,8 +42,8 @@ from diffusers import AutoPipelineForText2Image, DDPMWuerstchenScheduler
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPrior
 from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_wandb_available
-from diffusers.utils.logging import make_image_grid, set_verbosity_error, set_verbosity_info
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
+from diffusers.utils.logging import set_verbosity_error, set_verbosity_info
 
 
 if is_wandb_available():
@@ -158,7 +158,11 @@ def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dty
     for i in range(len(args.validation_prompts)):
         with torch.autocast("cuda"):
             image = pipeline(
-                args.validation_prompts[i], prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS, generator=generator
+                args.validation_prompts[i],
+                prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS,
+                generator=generator,
+                height=args.resolution,
+                width=args.resolution,
             ).images[0]
 
         images.append(image)
@@ -894,7 +898,11 @@ def main():
             for i in range(len(args.validation_prompts)):
                 with torch.autocast("cuda"):
                     image = pipeline(
-                        args.validation_prompts[i], prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS, generator=generator
+                        args.validation_prompts[i],
+                        prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS,
+                        generator=generator,
+                        width=args.resolution,
+                        height=args.resolution,
                     ).images[0]
                 images.append(image)
 
