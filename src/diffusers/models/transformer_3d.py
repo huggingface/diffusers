@@ -21,7 +21,7 @@ from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .attention import BasicSparseTransformerBlock
+from attention import Attention,FeedForward
 from .modeling_utils import ModelMixin
 
 
@@ -88,7 +88,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         # Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
             [
-                BasicSparseTransformerBlock(
+                BasicSparse3DTransformerBlock(
                     inner_dim,
                     num_attention_heads,
                     attention_head_dim,
@@ -167,3 +167,105 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             return (output,)
 
         return Transformer3DModelOutput(sample=output)
+
+class BasicSparse3DTransformerBlock(nn.Module):
+    r"""
+    A modified basic Transformer block designed for use with Text to Video models. Currently only used by Tune A Video
+    pipeline with attn1 processor set to the TuneAVideoAttnProcessor.
+
+    Parameters:
+        dim (`int`): The number of channels in the input and output.
+        num_attention_heads (`int`): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`): The number of channels in each head.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        dropout=0.0,
+        cross_attention_dim: int = 1280,
+        activation_fn: str = "geglu",
+    ):
+        super().__init__()
+
+        # Temporal-Attention.
+        self.attn1 = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=False,
+            cross_attention_dim=None,
+            upcast_attention=False,
+        )
+        self.norm1 = nn.LayerNorm(dim)
+
+        # Cross-Attn
+        self.attn2 = Attention(
+            query_dim=dim,
+            cross_attention_dim=cross_attention_dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=False,
+            upcast_attention=False,
+        )
+
+        self.norm2 = nn.LayerNorm(dim)
+
+        # Feed-forward
+        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
+        self.norm3 = nn.LayerNorm(dim)
+
+        # Temp-Attn
+        self.attn_temp = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=False,
+            upcast_attention=False,
+        )
+        nn.init.zeros_(self.attn_temp.to_out[0].weight.data)
+        self.norm_temp = nn.LayerNorm(dim)
+
+    def forward(
+        self, hidden_states, encoder_hidden_states=None, timestep=None, attention_mask=None, video_length=None
+    ):
+        # SparseCausal-Attention
+        norm_hidden_states = self.norm1(hidden_states)
+
+        hidden_states = (
+            self.attn1(norm_hidden_states, attention_mask=attention_mask, video_length=video_length) + hidden_states
+        )
+
+        norm_hidden_states = self.norm2(hidden_states)
+        hidden_states = (
+            self.attn2(norm_hidden_states, encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask)
+            + hidden_states
+        )
+
+        # Feed-forward
+        hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
+
+        # Temporal-Attention
+        d = hidden_states.shape[1]
+        # hidden_states = rearrange(hidden_states, "(b f) d c -> (b d) f c", f=video_length)
+        # (b f) d c -> b f d c -> b d f c -> (b d) f c
+        hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.movedim((0, 1, 2, 3), (0, 2, 1, 3))
+        hidden_states = hidden_states.flatten(0, 1)
+        norm_hidden_states = self.norm_temp(hidden_states)
+        hidden_states = self.attn_temp(norm_hidden_states) + hidden_states
+        # hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
+        # (b d) f c -> b d f c ->  b f d c -> (b f) d c
+        hidden_states = hidden_states.reshape([-1, d, *hidden_states.shape[1:]])
+        hidden_states = hidden_states.movedim((0, 1, 2, 3), (0, 2, 1, 3))
+        hidden_states = hidden_states.flatten(0, 1)
+
+        return hidden_states
