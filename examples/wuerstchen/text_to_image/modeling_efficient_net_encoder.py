@@ -11,9 +11,9 @@ class EfficientNetEncoder(ModelMixin, ConfigMixin):
         super().__init__()
 
         if effnet == "efficientnet_v2_s":
-            self.backbone = efficientnet_v2_s(weights="DEFAULT").features.eval()
+            self.backbone = efficientnet_v2_s(weights="DEFAULT").features
         else:
-            self.backbone = efficientnet_v2_l(weights="DEFAULT").features.eval()
+            self.backbone = efficientnet_v2_l(weights="DEFAULT").features
         self.mapper = nn.Sequential(
             nn.Conv2d(c_cond, c_latent, kernel_size=1, bias=False),
             nn.BatchNorm2d(c_latent),  # then normalize them to have mean 0 and std 1

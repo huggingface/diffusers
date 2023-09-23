@@ -30,7 +30,7 @@ from accelerate.logging import get_logger
 from accelerate.state import AcceleratorState, is_initialized
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
-from huggingface_hub import create_repo
+from huggingface_hub import create_repo, hf_hub_download
 from modeling_efficient_net_encoder import EfficientNetEncoder
 from packaging import version
 from torchvision import transforms
@@ -423,9 +423,12 @@ def main():
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
-        image_encoder = EfficientNetEncoder.from_pretrained(
-            "warp-ai/EfficientNetEncoder", torch_dtype=weight_dtype
-        ).eval()
+        pretrained_checkpoint_file = hf_hub_download("dome272/wuerstchen", filename="model_v2_stage_b.pt")
+        state_dict = torch.load(pretrained_checkpoint_file, map_location="cpu")
+        image_encoder = EfficientNetEncoder()
+        image_encoder.load_state_dict(state_dict["effnet_state_dict"])
+        image_encoder.eval()
+
         text_encoder = CLIPTextModel.from_pretrained(
             args.pretrained_prior_model_name_or_path, subfolder="text_encoder", torch_dtype=weight_dtype
         ).eval()
