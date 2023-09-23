@@ -685,7 +685,10 @@ class Upsample3D(nn.Module):
         self.conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
     def forward(self, hidden_states, output_size=None):
-        assert hidden_states.shape[1] == self.channels
+        if hidden_states.shape[1] != self.channels:
+            raise ValueError(
+                f"Expected hidden_states tensor at dimension 1 to match the number of channels. Expected: {self.channels} but passed: {hidden_states.shape[1]}"
+            )
 
         # Cast to float32 to as 'upsample_nearest2d_out_frame' op does not support bfloat16
         dtype = hidden_states.dtype

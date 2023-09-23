@@ -17,11 +17,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
+from attention import Attention, FeedForward
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from attention import Attention,FeedForward
 from .modeling_utils import ModelMixin
 
 
@@ -129,7 +129,8 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         # Input
-        assert hidden_states.dim() == 5, f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}."
+        if not hidden_states.dim() == 5:
+            raise ValueError(f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}.")
         video_length = hidden_states.shape[2]
         # hidden_states = rearrange(hidden_states, "b c f h w -> (b f) c h w")
         hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
@@ -167,6 +168,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
             return (output,)
 
         return Transformer3DModelOutput(sample=output)
+
 
 class BasicSparse3DTransformerBlock(nn.Module):
     r"""
