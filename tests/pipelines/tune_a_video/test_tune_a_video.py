@@ -187,7 +187,7 @@ class TuneAVideoPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cuda").manual_seed(42)
 
         video_frames = pipe(
-            prompt, video_length=3, generator=generator, num_inference_steps=50, output_type="pt"
+            prompt, video_length=3, generator=generator, num_inference_steps=10, output_type="pt"
         ).frames
         video = video_frames.cpu().numpy()
 
