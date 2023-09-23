@@ -52,7 +52,15 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import floats_tensor, load_image, nightly, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    deprecate_after_peft_backend,
+    floats_tensor,
+    load_image,
+    nightly,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 
 def create_lora_layers(model, mock_weights: bool = True):
@@ -181,6 +189,7 @@ def state_dicts_almost_equal(sd1, sd2):
     return models_are_equal
 
 
+@deprecate_after_peft_backend
 class LoraLoaderMixinTests(unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -773,6 +782,7 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
         assert np.abs(image_slice - image_slice_2).max() > 1e-2
 
 
+@deprecate_after_peft_backend
 class SDXLLoraLoaderMixinTests(unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -1873,6 +1883,25 @@ class LoraIntegrationTests(unittest.TestCase):
 
         images = images[0, -3:, -3:, -1].flatten()
         expected = np.array([0.3636, 0.3708, 0.3694, 0.3679, 0.3829, 0.3677, 0.3692, 0.3688, 0.3292])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-3))
+
+    def test_lycoris(self):
+        generator = torch.Generator().manual_seed(0)
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/Amixx", safety_checker=None, use_safetensors=True, variant="fp16"
+        ).to(torch_device)
+        lora_model_id = "hf-internal-testing/edgLycorisMugler-light"
+        lora_filename = "edgLycorisMugler-light.safetensors"
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+        images = pipe(
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+
+        images = images[0, -3:, -3:, -1].flatten()
+        expected = np.array([0.6463, 0.658, 0.599, 0.6542, 0.6512, 0.6213, 0.658, 0.6485, 0.6017])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
