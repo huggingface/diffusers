@@ -521,7 +521,7 @@ class StableDiffusionImg2ImgPipeline(
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
 
-        return timesteps, num_inference_steps - t_start
+        return timesteps, num_inference_steps - abs(t_start)
 
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
