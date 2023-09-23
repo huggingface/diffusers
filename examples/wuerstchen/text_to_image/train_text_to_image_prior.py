@@ -30,7 +30,7 @@ from accelerate.logging import get_logger
 from accelerate.state import AcceleratorState, is_initialized
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
-from huggingface_hub import create_repo, hf_hub_download
+from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from modeling_efficient_net_encoder import EfficientNetEncoder
 from packaging import version
 from torchvision import transforms
@@ -475,7 +475,7 @@ def main():
             os.makedirs(args.output_dir, exist_ok=True)
 
         if args.push_to_hub:
-            create_repo(
+            repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
