@@ -370,6 +370,7 @@ else:
             "FlaxDDIMScheduler",
             "FlaxDDPMScheduler",
             "FlaxDPMSolverMultistepScheduler",
+            "FlaxEulerDiscreteScheduler",
             "FlaxKarrasVeScheduler",
             "FlaxLMSDiscreteScheduler",
             "FlaxPNDMScheduler",
@@ -397,6 +398,7 @@ else:
             "FlaxStableDiffusionImg2ImgPipeline",
             "FlaxStableDiffusionInpaintPipeline",
             "FlaxStableDiffusionPipeline",
+            "FlaxStableDiffusionXLPipeline",
         ]
     )
 
@@ -677,6 +679,7 @@ if TYPE_CHECKING:
             FlaxDDIMScheduler,
             FlaxDDPMScheduler,
             FlaxDPMSolverMultistepScheduler,
+            FlaxEulerDiscreteScheduler,
             FlaxKarrasVeScheduler,
             FlaxLMSDiscreteScheduler,
             FlaxPNDMScheduler,
@@ -695,6 +698,7 @@ if TYPE_CHECKING:
             FlaxStableDiffusionImg2ImgPipeline,
             FlaxStableDiffusionInpaintPipeline,
             FlaxStableDiffusionPipeline,
+            FlaxStableDiffusionXLPipeline,
         )
 
     try:
