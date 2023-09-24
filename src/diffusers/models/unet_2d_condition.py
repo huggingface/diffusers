@@ -52,26 +52,27 @@ from .unet_2d_blocks import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-def Fourier_filter(x, threshold, scale):
+def Fourier_filter(sample, threshold, scale):
     import torch
     from torch.fft import fftn, ifftn, fftshift, ifftshift
 
+    sample = sample.to(dtype=torch.complex64)
     # FFT
-    x_freq = fftn(x, dim=(-2, -1))
+    x_freq = fftn(sample, dim=(-2, -1))
     x_freq = fftshift(x_freq, dim=(-2, -1))
-    
-    B, C, H, W = x_freq.shape
-    mask = torch.ones((B, C, H, W)).cuda()  # CUDA için
 
+    B, C, H, W = x_freq.shape
+    mask = torch.ones((B, C, H, W)).to(x_freq.device, dtype=x_freq.dtype)
     crow, ccol = H // 2, W // 2
     mask[..., crow - threshold:crow + threshold, ccol - threshold:ccol + threshold] = scale
     x_freq = x_freq * mask
-    
+
     # IFFT
     x_freq = ifftshift(x_freq, dim=(-2, -1))
     x_filtered = ifftn(x_freq, dim=(-2, -1)).real
-    
-    return x_filtered    
+
+    x_filtered = x_filtered.to(dtype=torch.float16)
+    return x_filtered
 
 
 @dataclass
