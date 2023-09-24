@@ -99,11 +99,11 @@ You can use the pipeline like so:
 from diffusers import DiffusionPipeline
 import torch
 
-pipe_prior = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
-pipe_t2i = DiffusionPipeline.from_pretrained("{args.pretrained_decoder_model_name_or_path}", torch_dtype=torch.float16)
+pipe_prior = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype={args.weight_dtype})
+pipe_t2i = DiffusionPipeline.from_pretrained("{args.pretrained_decoder_model_name_or_path}", torch_dtype={args.weight_dtype})
 prompt = "{args.validation_prompts[0]}"
-image_embeds, negative_image_embeds = pipe_prior(prompt, guidance_scale=1.0).to_tuple()
-image = pipe_t2i(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds).images[0]
+(image_embeds,) = pipe_prior(prompt).to_tuple()
+image = pipe_t2i(image_embeddings=image_embeds, prompt=prompt).images[0]
 image.save("my_image.png")
 ```
 
