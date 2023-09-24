@@ -52,6 +52,27 @@ from .unet_2d_blocks import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+def Fourier_filter(x, threshold, scale):
+    import torch
+    from torch.fft import fftn, ifftn, fftshift, ifftshift
+
+    # FFT
+    x_freq = fftn(x, dim=(-2, -1))
+    x_freq = fftshift(x_freq, dim=(-2, -1))
+    
+    B, C, H, W = x_freq.shape
+    mask = torch.ones((B, C, H, W)).cuda()  # CUDA için
+
+    crow, ccol = H // 2, W // 2
+    mask[..., crow - threshold:crow + threshold, ccol - threshold:ccol + threshold] = scale
+    x_freq = x_freq * mask
+    
+    # IFFT
+    x_freq = ifftshift(x_freq, dim=(-2, -1))
+    x_filtered = ifftn(x_freq, dim=(-2, -1)).real
+    
+    return x_filtered    
+
 
 @dataclass
 class UNet2DConditionOutput(BaseOutput):
@@ -1008,6 +1029,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
+            # Fourier Filter
+            if sample.shape[1] == 1280:
+                sample[:, :640] *= 1.1 # For SD2.1
+                sample = Fourier_filter(sample, threshold=1, scale=0.9)
+                
+            if sample.shape[1] == 640:
+                sample[:, :320] *= 1.2 # For SD2.1
+                sample = Fourier_filter(sample, threshold=1, scale=0.2)
+                
             # if we have not reached the final block and need to forward the
             # upsample size, we do it here
             if not is_final_block and forward_upsample_size:
