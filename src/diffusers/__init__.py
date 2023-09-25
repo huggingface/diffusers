@@ -3,6 +3,7 @@ __version__ = "0.22.0.dev0"
 from typing import TYPE_CHECKING
 
 from .utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     is_flax_available,
@@ -15,9 +16,6 @@ from .utils import (
     is_torchsde_available,
     is_transformers_available,
 )
-
-
-from .utils import DIFFUSERS_SLOW_IMPORT
 
 
 # Lazy Import based on
