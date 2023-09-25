@@ -2,7 +2,7 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPTokenizer
 

@@ -16,7 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from packaging import version
 from transformers import CLIPImageProcessor, XLMRobertaTokenizer
@@ -31,7 +31,8 @@ from ...utils import PIL_INTERPOLATION, deprecate, logging, replace_example_docs
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from . import AltDiffusionPipelineOutput, RobertaSeriesModelWithTransformation
+from .modeling_roberta_series import RobertaSeriesModelWithTransformation
+from .pipeline_output import AltDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

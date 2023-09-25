@@ -16,7 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -39,7 +39,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionXLPipelineOutput
+from .pipeline_output import StableDiffusionXLPipelineOutput
 
 
 if is_invisible_watermark_available():
