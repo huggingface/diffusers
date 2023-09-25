@@ -313,13 +313,6 @@ def parse_args():
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument(
-        "--snr_gamma",
-        type=float,
-        default=None,
-        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-        "More details here: https://arxiv.org/abs/2303.09556.",
-    )
-    parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument(
@@ -803,7 +796,7 @@ def main():
                 # Predict the noise residual and compute losscd
                 pred_noise = prior(noisy_latents, timesteps, prompt_embeds)
 
-                # TODO snr_gamma and consistency loss
+                # vanilla loss
                 loss = F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).

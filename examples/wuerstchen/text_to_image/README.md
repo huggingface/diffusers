@@ -50,6 +50,6 @@ accelerate launch  train_text_to_image_prior.py \
   --validation_prompts="A robot pokemon, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="wuerstchen-prior-pokemon-model" 
+  --output_dir="wuerstchen-prior-pokemon-model"
 ```
 <!-- accelerate_snippet_end -->
