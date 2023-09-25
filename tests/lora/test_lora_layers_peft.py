@@ -548,6 +548,11 @@ class PeftLoraLoaderMixinTests:
             "Lora + 0 scale should lead to same result as no LoRA",
         )
 
+        self.assertTrue(
+            pipe.text_encoder.text_model.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0,
+            "The scaling parameter has not been correctly restored!",
+        )
+
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline

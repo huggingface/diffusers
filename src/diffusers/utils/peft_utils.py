@@ -82,21 +82,66 @@ def recurse_remove_peft_layers(model):
 
 
 def scale_peft_layers(model, scale: float = None):
+    r"""
+    Scale peft layers - Loops over the modules of the model and scale the layers that are of type `BaseTunerLayer`. We
+    also store the original scale factor in case we multiply it by zero.
+
+    Args:
+        model (`torch.nn.Module`):
+            The model to scale.
+        scale (`float`, *optional*):
+            The scale factor to use.
+    """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
     if scale is not None and scale != 1.0:
         for module in model.modules():
             if isinstance(module, BaseTunerLayer):
+                original_scale = module.scaling[module.active_adapter]
+
+                # Store the previous scale in case we multiply it by zero
+                if "_hf_peft_original_scales" not in module.scaling:
+                    module.scaling["_hf_peft_original_scales"] = {module.active_adapter: original_scale}
+                else:
+                    module.scaling["_hf_peft_original_scales"][module.active_adapter] = original_scale
+
                 module.scaling[module.active_adapter] *= scale
 
 
 def unscale_peft_layers(model, scale: float = None):
+    r"""
+    Un-scale peft layers - in case the modules has been zero-ed by a zero factor we retrieve the previous scale and
+    restore it. Otherwise, assuming the user uses the same scale factor, we just divide by the scale factor.
+
+    Args:
+        model (`torch.nn.Module`):
+            The model to unscale.
+        scale (`float`, *optional*):
+            The scale factor to use. If 0.0 is passed, we retrieve the original scale factor. In order to retrieve the
+            original factor the user needs first to call `scale_peft_layers` with the same scale factor.
+    """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
     if scale is not None and scale != 1.0 and scale != 0.0:
         for module in model.modules():
             if isinstance(module, BaseTunerLayer):
                 module.scaling[module.active_adapter] /= scale
+    elif scale is not None and scale == 0.0:
+        for module in model.modules():
+            if isinstance(module, BaseTunerLayer):
+                if "_hf_peft_original_scales" not in module.scaling:
+                    raise ValueError(
+                        "The layer has not been scaled, cannot unscale it - please call first `scale_peft_layers`"
+                    )
+
+                original_scale = module.scaling["_hf_peft_original_scales"][module.active_adapter]
+                module.scaling[module.active_adapter] = original_scale
+
+                del module.scaling["_hf_peft_original_scales"][module.active_adapter]
+
+                # Clean up ..
+                if len(module.scaling["_hf_peft_original_scales"]) == 0:
+                    del module.scaling["_hf_peft_original_scales"]
 
 
 class PeftLayerScaler:
