@@ -16,7 +16,7 @@
 import unittest
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 
 from diffusers.image_processor import VaeImageProcessor

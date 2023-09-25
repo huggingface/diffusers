@@ -3,7 +3,7 @@ import inspect
 from typing import Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from torch.nn import functional as F
 from torchvision import transforms
