@@ -52,7 +52,15 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import floats_tensor, load_image, nightly, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    deprecate_after_peft_backend,
+    floats_tensor,
+    load_image,
+    nightly,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 
 def create_lora_layers(model, mock_weights: bool = True):
@@ -181,6 +189,7 @@ def state_dicts_almost_equal(sd1, sd2):
     return models_are_equal
 
 
+@deprecate_after_peft_backend
 class LoraLoaderMixinTests(unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -773,6 +782,7 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
         assert np.abs(image_slice - image_slice_2).max() > 1e-2
 
 
+@deprecate_after_peft_backend
 class SDXLLoraLoaderMixinTests(unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
