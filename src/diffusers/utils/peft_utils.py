@@ -149,7 +149,7 @@ class PeftLayerScaler:
     A custom context manager that scale / unscale PEFT layers before and after the forward pass.
     """
 
-    def __init__(self, modules_to_scale: List[torch.nn.Module], scale: float = None):
+    def __init__(self, modules_to_scale: List["torch.nn.Module"], scale: float = None):
         self.modules_to_scale = modules_to_scale
         self.scale = scale
 
