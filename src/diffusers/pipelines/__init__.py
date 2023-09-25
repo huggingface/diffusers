@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING
 
-from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 from ..utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -13,6 +12,7 @@ from ..utils import (
     is_torch_available,
     is_transformers_available,
 )
+from ..utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 # These modules contain pipelines from multiple libraries/frameworks
