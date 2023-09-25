@@ -2337,7 +2337,10 @@ class FromSingleFileMixin:
 
             # Model type will be inferred from the checkpoint.
             if not isinstance(controlnet, (ControlNetModel, MultiControlNetModel)):
-                raise ValueError("ControlNet needs to be passed if loading from ControlNet pipeline.")
+                if isinstance(controlnet, (list, tuple)) and controlnet:
+                    pass
+                else:
+                    raise ValueError("ControlNet needs to be passed if loading from ControlNet pipeline.")
         elif "StableDiffusion" in pipeline_name:
             # Model type will be inferred from the checkpoint.
             pass
