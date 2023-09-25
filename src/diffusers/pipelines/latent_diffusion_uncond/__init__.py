@@ -1,11 +1,12 @@
 from typing import TYPE_CHECKING
 
 from ...utils import _LazyModule
+from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 _import_structure = {"pipeline_latent_diffusion_uncond": ["LDMPipeline"]}
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .pipeline_latent_diffusion_uncond import LDMPipeline
 else:
     import sys

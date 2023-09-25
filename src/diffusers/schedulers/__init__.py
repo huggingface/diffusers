@@ -23,6 +23,7 @@ from ..utils import (
     is_torch_available,
     is_torchsde_available,
 )
+from ..utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 _dummy_modules = {}
@@ -111,7 +112,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["scheduling_dpmsolver_sde"] = ["DPMSolverSDEScheduler"]
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from ..utils import (
         OptionalDependencyNotAvailable,
         is_flax_available,

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 import PIL
@@ -12,6 +12,7 @@ from ...utils import (
     is_torch_available,
     is_transformers_available,
 )
+from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT, List, Optional, Union
 
 
 _dummy_objects = {}
@@ -29,7 +30,7 @@ else:
     _import_structure["pipeline_paint_by_example"] = ["PaintByExamplePipeline"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()

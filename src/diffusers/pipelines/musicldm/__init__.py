@@ -8,6 +8,7 @@ from ...utils import (
     is_transformers_available,
     is_transformers_version,
 )
+from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 _dummy_objects = {}
@@ -24,7 +25,7 @@ else:
     _import_structure["pipeline_musicldm"] = ["MusicLDMPipeline"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.27.0")):
             raise OptionalDependencyNotAvailable()

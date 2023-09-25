@@ -7,6 +7,7 @@ from ...utils import (
     is_torch_available,
     is_transformers_available,
 )
+from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 _dummy_objects = {}
@@ -42,7 +43,7 @@ else:
     _import_structure["watermark"] = ["IFWatermarker"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()

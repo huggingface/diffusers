@@ -8,6 +8,7 @@ from ...utils import (
     is_torch_available,
     is_transformers_available,
 )
+from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 _dummy_objects = {}
@@ -36,7 +37,7 @@ if is_transformers_available() and is_flax_available():
     _import_structure["pipeline_flax_stable_diffusion_xl"] = ["FlaxStableDiffusionXLPipeline"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
