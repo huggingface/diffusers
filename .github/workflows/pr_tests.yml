@@ -15,6 +15,7 @@ concurrency:
 env:
   DIFFUSERS_IS_CI: yes
   OMP_NUM_THREADS: 4
+  HF_HOME: /mnt/cache
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
 
