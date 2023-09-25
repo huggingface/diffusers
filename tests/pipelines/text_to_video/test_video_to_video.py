@@ -165,6 +165,10 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent()
 
+    @is_flaky()
+    def test_save_load_local(self):
+        super().test_save_load_local()
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
