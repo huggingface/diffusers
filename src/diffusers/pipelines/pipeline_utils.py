@@ -688,9 +688,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         - `to(dtype, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the specified
           [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
         - `to(device, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the specified
-          [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
+          [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
         - `to(device=None, dtype=None, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the
-          specified [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device) and
+          specified [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device) and
           [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
 
         Arguments:
@@ -701,7 +701,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 Returns a pipeline with the specified
                 [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
             silence_dtype_warnings (`str`, *optional*, defaults to `False`):
-                Whether dtype warning shall be displayed.
+                Whether to omit warnings if the target `dtype` is not compatible with the target `device`.
 
         Returns:
             [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
@@ -720,14 +720,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if torch_dtype is not None and dtype_kwarg is not None:
             raise ValueError(
-                "You have passed both `torch_dtype` and `dtype` as a keyword argument. Plesae make sure to only pass `dtype`."
+                "You have passed both `torch_dtype` and `dtype` as a keyword argument. Please make sure to only pass `dtype`."
             )
 
         dtype = torch_dtype or dtype_kwarg
 
         if torch_device is not None and device_kwarg is not None:
             raise ValueError(
-                "You have passed both `torch_device` and `device` as a keyword argument. Plesae make sure to only pass `device`."
+                "You have passed both `torch_device` and `device` as a keyword argument. Please make sure to only pass `device`."
             )
 
         device = torch_device or device_kwarg
@@ -742,7 +742,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         elif len(args) == 2:
             if isinstance(args[0], torch.dtype):
                 raise ValueError(
-                    "When passing to arguments, make sure the first corresponds to `device` and the second to `dtype`."
+                    "When passing two arguments, make sure the first corresponds to `device` and the second to `dtype`."
                 )
             device_arg = torch.device(args[0]) if args[0] is not None else None
             dtype_arg = args[1]
@@ -758,7 +758,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if device is not None and device_arg is not None:
             raise ValueError(
-                "You have passed `dtype` both as an argument and as a keyword argument. Please only pass one of the two."
+                "You have passed `device` both as an argument and as a keyword argument. Please only pass one of the two."
             )
 
         device = device or device_arg
@@ -1386,7 +1386,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Function that offloads all components, removes all model hooks that were added when using
         `enable_model_cpu_offload` and then applies them again. In case the model has not been offloaded this function
         is a no-op. Make sure to add this function to the end of the `__call__` function of your pipeline so that it
-        functions correctly when applying enable_model_cpu_offload correctly.
+        functions correctly when applying enable_model_cpu_offload.
         """
         if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
             # `enable_model_cpu_offload` has not be called, so silently do nothing
