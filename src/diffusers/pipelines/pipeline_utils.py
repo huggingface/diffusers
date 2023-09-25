@@ -1345,10 +1345,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
-        # _offload_gpu_id should be set to passed gpu_id or default to previously set id or default to 0
-        self._offload_gpu_id = gpu_id or self._offload_gpu_id or 0
+        torch_device = torch.device(device)
+        device_index = torch_device.index
 
-        device = torch.device(f"cuda:{self._offload_gpu_id }")
+        if gpu_id is not None and device_index is not None:
+            raise ValueError(
+                f"You have passed both `gpu_id`={gpu_id} and an index as part of the passed device `device`={device}"
+                f"Cannot pass both. Please make sure to either not define `gpu_id` or not pass the index as part of the device: `device`={torch_device.type}"
+            )
+
+        # _offload_gpu_id should be set to passed gpu_id (or id in passed `device`) or default to previously set id or default to 0
+        self._offload_gpu_id = gpu_id or torch_device.index or self._offload_gpu_id or 0
+
+        device_type = torch_device.type
+        device = torch.device(f"{device_type}:{self._offload_gpu_id}")
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
@@ -1420,11 +1430,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
-        # _offload_gpu_id should be set to passed gpu_id or default to previously set id or default to 0
-        self._offload_gpu_id = gpu_id or self._offload_gpu_id or 0
+        torch_device = torch.device(device)
+        device_index = torch_device.index
 
-        if device == "cuda":
-            device = torch.device(f"{device}:{self._offload_gpu_id }")
+        if gpu_id is not None and device_index is not None:
+            raise ValueError(
+                f"You have passed both `gpu_id`={gpu_id} and an index as part of the passed device `device`={device}"
+                f"Cannot pass both. Please make sure to either not define `gpu_id` or not pass the index as part of the device: `device`={torch_device.type}"
+            )
+
+        # _offload_gpu_id should be set to passed gpu_id (or id in passed `device`) or default to previously set id or default to 0
+        self._offload_gpu_id = gpu_id or torch_device.index or self._offload_gpu_id or 0
+
+        device_type = torch_device.type
+        device = torch.device(f"{device_type}:{self._offload_gpu_id}")
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)

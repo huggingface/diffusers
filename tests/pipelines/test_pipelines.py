@@ -1498,32 +1498,43 @@ class PipelineFastTests(unittest.TestCase):
         sd2 = sd.to(torch.device(device_type))
         sd3 = sd.to(device_type, torch.float32)
         sd4 = sd.to(device=device_type)
-        sd5 = sd.to(device_type, dtype=torch.float32)
+        sd5 = sd.to(torch_device=device_type)
+        sd6 = sd.to(device_type, dtype=torch.float32)
+        sd7 = sd.to(device_type, torch_dtype=torch.float32)
 
         assert sd1.device.type == device_type
         assert sd2.device.type == device_type
         assert sd3.device.type == device_type
         assert sd4.device.type == device_type
         assert sd5.device.type == device_type
+        assert sd6.device.type == device_type
+        assert sd7.device.type == device_type
 
         sd1 = sd.to(torch.float16)
         sd2 = sd.to(None, torch.float16)
         sd3 = sd.to(dtype=torch.float16)
-        sd4 = sd.to(None, dtype=torch.float16)
+        sd4 = sd.to(torch_dtype=torch.float16)
+        sd5 = sd.to(None, dtype=torch.float16)
+        sd6 = sd.to(None, torch_dtype=torch.float16)
 
         assert sd1.dtype == torch.float16
         assert sd2.dtype == torch.float16
         assert sd3.dtype == torch.float16
         assert sd4.dtype == torch.float16
+        assert sd5.dtype == torch.float16
+        assert sd6.dtype == torch.float16
 
         sd1 = sd.to(device=device_type, dtype=torch.float16)
-        sd2 = sd.to(device_type, torch.float16)
+        sd2 = sd.to(torch_device=device_type, torch_dtype=torch.float16)
+        sd3 = sd.to(device_type, torch.float16)
 
         assert sd1.dtype == torch.float16
         assert sd2.dtype == torch.float16
+        assert sd3.dtype == torch.float16
 
         assert sd1.device.type == device_type
         assert sd2.device.type == device_type
+        assert sd3.device.type == device_type
 
     def test_pipe_same_device_id_offload(self):
         unet = self.dummy_cond_unet()
