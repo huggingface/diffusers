@@ -30,7 +30,7 @@ from ...schedulers import (
     FlaxPNDMScheduler,
 )
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
-from . import FlaxStableDiffusionXLPipelineOutput
+from .pipeline_output import FlaxStableDiffusionXLPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

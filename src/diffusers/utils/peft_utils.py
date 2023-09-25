@@ -21,15 +21,15 @@ from packaging import version
 
 from .import_utils import is_peft_available, is_torch_available
 
-
 if is_torch_available():
     import torch
 
-
 MIN_PEFT_VERSION = "0.5.0"
 
-
 def recurse_remove_peft_layers(model):
+    if is_torch_available():
+        import torch
+
     r"""
     Recursively replace all instances of `LoraLayer` with corresponding new layers in `model`.
     """

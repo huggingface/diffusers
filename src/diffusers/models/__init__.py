@@ -14,7 +14,7 @@
 
 from typing import TYPE_CHECKING
 
-from ..utils import _LazyModule, is_flax_available, is_torch_available
+from ..utils import DIFFUSERS_SLOW_IMPORT, _LazyModule, is_flax_available, is_torch_available
 
 
 _import_structure = {"constants": ["USE_PEFT_BACKEND"]}
@@ -43,7 +43,7 @@ if is_flax_available():
     _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .constants import USE_PEFT_BACKEND
 
     if is_torch_available():
