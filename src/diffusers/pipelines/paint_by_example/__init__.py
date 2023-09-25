@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -12,7 +12,7 @@ from ...utils import (
     is_torch_available,
     is_transformers_available,
 )
-from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT, List, Optional, Union
+from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 _dummy_objects = {}
