@@ -2,7 +2,7 @@
 
 <img src="https://github.com/dome272/Wuerstchen/assets/61938694/0617c863-165a-43ee-9303-2a17299a0cf9">
 
-[Würstchen: Efficient Pretraining of Text-to-Image Models](https://huggingface.co/papers/2306.00637) is by Pablo Pernias, Dominic Rampas, and Marc Aubreville.
+[Würstchen: Efficient Pretraining of Text-to-Image Models](https://huggingface.co/papers/2306.00637) is by Pablo Pernias, Dominic Rampas, Mats L. Richter and Christopher Pal and Marc Aubreville.
 
 The abstract from the paper is:
 
@@ -134,3 +134,14 @@ The original codebase, as well as experimental ideas, can be found at [dome272/W
 [[autodoc]] WuerstchenDecoderPipeline
 	- all
 	- __call__
+
+## Citation
+      @misc{pernias2023wuerstchen,
+            title={Wuerstchen: Efficient Pretraining of Text-to-Image Models}, 
+            author={Pablo Pernias and Dominic Rampas and Mats L. Richter and Christopher Pal and Marc Aubreville},
+            year={2023},
+            eprint={2306.00637},
+            archivePrefix={arXiv},
+            primaryClass={cs.CV}
+      }
+
