@@ -4,14 +4,18 @@ from ...utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
+    is_flax_available,
     is_torch_available,
     is_transformers_available,
 )
 
 
 _dummy_objects = {}
+_additional_imports = {}
 _import_structure = {"pipeline_output": ["StableDiffusionXLPipelineOutput"]}
 
+if is_transformers_available() and is_flax_available():
+    _import_structure["pipeline_output"].extend(["FlaxStableDiffusionXLPipelineOutput"])
 try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
@@ -24,6 +28,12 @@ else:
     _import_structure["pipeline_stable_diffusion_xl_img2img"] = ["StableDiffusionXLImg2ImgPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_inpaint"] = ["StableDiffusionXLInpaintPipeline"]
     _import_structure["pipeline_stable_diffusion_xl_instruct_pix2pix"] = ["StableDiffusionXLInstructPix2PixPipeline"]
+
+if is_transformers_available() and is_flax_available():
+    from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
+
+    _additional_imports.update({"PNDMSchedulerState": PNDMSchedulerState})
+    _import_structure["pipeline_flax_stable_diffusion_xl"] = ["FlaxStableDiffusionXLPipeline"]
 
 
 if TYPE_CHECKING:
@@ -38,6 +48,17 @@ if TYPE_CHECKING:
         from .pipeline_stable_diffusion_xl_inpaint import StableDiffusionXLInpaintPipeline
         from .pipeline_stable_diffusion_xl_instruct_pix2pix import StableDiffusionXLInstructPix2PixPipeline
 
+    try:
+        if not (is_transformers_available() and is_flax_available()):
+            raise OptionalDependencyNotAvailable()
+    except OptionalDependencyNotAvailable:
+        from ...utils.dummy_flax_objects import *
+    else:
+        from .pipeline_flax_stable_diffusion_xl import (
+            FlaxStableDiffusionXLPipeline,
+        )
+        from .pipeline_output import FlaxStableDiffusionXLPipelineOutput
+
 else:
     import sys
 
@@ -49,4 +70,6 @@ else:
     )
 
     for name, value in _dummy_objects.items():
+        setattr(sys.modules[__name__], name, value)
+    for name, value in _additional_imports.items():
         setattr(sys.modules[__name__], name, value)
