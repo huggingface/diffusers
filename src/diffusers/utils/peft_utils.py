@@ -159,7 +159,7 @@ class PeftLayerScaler:
                 scale_peft_layers(submodule, self.scale)
 
     def __exit__(self, *args, **kwargs):
-        if self.scale is not None and self.scale != 1.0 and self.scale != 0.0:
+        if self.scale is not None and self.scale != 1.0:
             for submodule in self.modules_to_scale:
                 unscale_peft_layers(submodule, self.scale)
 
