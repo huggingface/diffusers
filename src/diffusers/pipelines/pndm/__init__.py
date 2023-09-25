@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING
 
-from ...utils import _LazyModule
-from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
+from ...utils import DIFFUSERS_SLOW_IMPORT, _LazyModule
 
 
 _import_structure = {"pipeline_pndm": ["PNDMPipeline"]}

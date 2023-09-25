@@ -1,6 +1,6 @@
 # flake8: noqa
 from typing import TYPE_CHECKING
-from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
+from ...utils import DIFFUSERS_SLOW_IMPORT
 from ...utils import (
     _LazyModule,
     is_note_seq_available,

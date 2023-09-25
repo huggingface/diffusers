@@ -7,6 +7,7 @@ import PIL
 from PIL import Image
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     BaseOutput,
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -14,7 +15,6 @@ from ...utils import (
     is_torch_available,
     is_transformers_available,
 )
-from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 @dataclass

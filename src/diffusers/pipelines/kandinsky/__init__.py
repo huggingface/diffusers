@@ -1,13 +1,13 @@
 from typing import TYPE_CHECKING
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
     is_torch_available,
     is_transformers_available,
 )
-from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 _dummy_objects = {}

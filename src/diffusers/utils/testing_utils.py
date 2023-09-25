@@ -149,7 +149,6 @@ def parse_flag_from_env(key, default=False):
 
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 _run_nightly_tests = parse_flag_from_env("RUN_NIGHTLY", default=False)
-DIFFUSERS_SLOW_IMPORT = parse_flag_from_env("DIFFUSERS_SLOW_IMPORT", default=False)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):

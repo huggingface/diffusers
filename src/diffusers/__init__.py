@@ -15,7 +15,9 @@ from .utils import (
     is_torchsde_available,
     is_transformers_available,
 )
-from .utils.testing_utils import DIFFUSERS_SLOW_IMPORT
+
+
+# from .utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 # Lazy Import based on
@@ -415,6 +417,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(["MidiProcessor"])
 
+DIFFUSERS_SLOW_IMPORT = False
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
 

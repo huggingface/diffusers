@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     _LazyModule,
 )
-from ...utils.testing_utils import DIFFUSERS_SLOW_IMPORT
 
 
 _import_structure = {"pipeline_consistency_models": ["ConsistencyModelPipeline"]}
