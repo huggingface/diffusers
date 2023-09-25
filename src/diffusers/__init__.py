@@ -17,7 +17,7 @@ from .utils import (
 )
 
 
-# from .utils.testing_utils import DIFFUSERS_SLOW_IMPORT
+from .utils import DIFFUSERS_SLOW_IMPORT
 
 
 # Lazy Import based on
