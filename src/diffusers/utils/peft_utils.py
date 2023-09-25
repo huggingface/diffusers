@@ -80,8 +80,8 @@ def scale_lora_layers(model, lora_weightage):
 
 
 def get_rank_and_alpha_pattern(rank_dict, network_alpha_dict, peft_state_dict):
-    rank_pattern = None
-    alpha_pattern = None
+    rank_pattern = {}
+    alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
     if len(set(rank_dict.values())) > 1:
         # get the rank occuring the most number of times
