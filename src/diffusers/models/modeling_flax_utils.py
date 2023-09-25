@@ -303,23 +303,23 @@ class FlaxModelMixin(PushToHubMixin):
             "framework": "flax",
         }
 
-        # Load config if we don't provide a configuration
-        config_path = config if config is not None else pretrained_model_name_or_path
-        model, model_kwargs = cls.from_config(
-            config_path,
-            cache_dir=cache_dir,
-            return_unused_kwargs=True,
-            force_download=force_download,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
-            revision=revision,
-            subfolder=subfolder,
-            # model args
-            dtype=dtype,
-            **kwargs,
-        )
+        # Load config if we don't provide one
+        if config is None:
+            config, unused_kwargs = cls.load_config(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                return_unused_kwargs=True,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                **kwargs,
+            )
+
+        model, model_kwargs = cls.from_config(config, dtype=dtype, return_unused_kwargs=True, **unused_kwargs)
 
         # Load model
         pretrained_path_with_subfolder = (
