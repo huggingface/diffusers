@@ -53,3 +53,16 @@ accelerate launch  train_text_to_image_prior.py \
   --output_dir="wuerstchen-prior-pokemon-model"
 ```
 <!-- accelerate_snippet_end -->
+
+## Training with LoRA
+
+Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+
+In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
+
+- Previous pretrained weights are kept frozen so that model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114).
+- Rank-decomposition matrices have significantly fewer parameters than original model, which means that trained LoRA weights are easily portable.
+- LoRA attention layers allow to control to which extent the model is adapted toward new training images via a `scale` parameter.
+
+[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
+
