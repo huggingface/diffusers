@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     is_torch_available,
@@ -27,7 +28,7 @@ else:
     _import_structure["text_proj"] = ["UnCLIPTextProjModel"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
             raise OptionalDependencyNotAvailable()
