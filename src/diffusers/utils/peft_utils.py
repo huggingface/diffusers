@@ -72,7 +72,7 @@ def recurse_remove_peft_layers(model):
 
 
 def scale_lora_layers(model, lora_weightage):
-    from peft.tuners.tuner_utils import BaseTunerLayer
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
@@ -106,7 +106,7 @@ def get_rank_and_alpha_pattern(rank_dict, network_alpha_dict, peft_state_dict):
 
 
 def get_adapter_name(model):
-    from peft.tuners.tuner_utils import BaseTunerLayer
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
@@ -115,7 +115,7 @@ def get_adapter_name(model):
 
 
 def set_adapter_layers(model, enabled=True):
-    from peft.tuners.tuner_utils import BaseTunerLayer
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
@@ -123,7 +123,7 @@ def set_adapter_layers(model, enabled=True):
 
 
 def set_weights_and_activate_adapters(model, adapter_names, weights):
-    from peft.tuners.tuner_utils import BaseTunerLayer
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
     # iterate over each adapter, make it active and set the corresponding scaling weight
     for adapter_name, weight in zip(adapter_names, weights):
