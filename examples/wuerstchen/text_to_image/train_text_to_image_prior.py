@@ -781,7 +781,7 @@ def main():
                     prompt_embeds = text_encoder_output.last_hidden_state
                     image_embeds = image_encoder(effnet_images)
                     # scale
-                    image_embeds = image_embeds.add(1.).div(42.)
+                    image_embeds = image_embeds.add(1.0).div(42.0)
 
                     # Sample noise that we'll add to the image_embeds
                     noise = torch.randn_like(image_embeds)
