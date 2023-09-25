@@ -141,7 +141,7 @@ jobs:
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_torch_cuda \
-          tests/models tests/schedulers tests/others
+          tests/models tests/schedulers tests/lora tests/others
 
     - name: Failure short reports
       if: ${{ failure() }}
