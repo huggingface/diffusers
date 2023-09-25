@@ -4,11 +4,7 @@ from typing import List, Union
 import numpy as np
 import PIL
 
-from ...utils import (
-    BaseOutput,
-    is_flax_available,
-    is_transformers_available,
-)
+from ...utils import BaseOutput, is_flax_available
 
 
 @dataclass
@@ -25,7 +21,7 @@ class StableDiffusionXLPipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
-if is_transformers_available() and is_flax_available():
+if is_flax_available():
     import flax
 
     @flax.struct.dataclass
