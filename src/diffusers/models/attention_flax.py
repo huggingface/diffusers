@@ -132,7 +132,7 @@ class FlaxAttention(nn.Module):
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
         split_head_dim (`bool`, *optional*, defaults to `False`):
-            TODO
+            speeds up Stable Diffusion 2.1 and XL
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
 
