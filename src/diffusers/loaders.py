@@ -2214,6 +2214,16 @@ class LoraLoaderMixin:
 
         self.num_fused_loras -= 1
 
+    @property
+    def lora_modules_to_scale(self):
+        """
+        Returns the list of the LoRA modules to scale
+        """
+        lora_modules = [self.text_encoder, self.unet]
+        if hasattr(self, "text_encoder_2"):
+            lora_modules.append(self.text_encoder_2)
+        return lora_modules
+
 
 class FromSingleFileMixin:
     """
