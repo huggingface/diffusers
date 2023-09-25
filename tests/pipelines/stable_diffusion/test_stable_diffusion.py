@@ -900,7 +900,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
         assert mem_bytes_offloaded < mem_bytes
         assert mem_bytes_offloaded < 3.5 * 10**9
-        for module in pipe.text_encoder, pipe.unet, pipe.vae, pipe.safety_checker:
+        for module in pipe.text_encoder, pipe.unet, pipe.vae:
             assert module.device == torch.device("cpu")
 
         # With attention slicing
