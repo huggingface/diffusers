@@ -13,7 +13,7 @@
 # limitations under the License.
 from typing import Callable, List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from transformers import (
     CLIPImageProcessor,

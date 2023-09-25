@@ -45,6 +45,7 @@ from .hub_utils import (
 )
 from .import_utils import (
     BACKENDS_MAPPING,
+    DIFFUSERS_SLOW_IMPORT,
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
     USE_JAX,
