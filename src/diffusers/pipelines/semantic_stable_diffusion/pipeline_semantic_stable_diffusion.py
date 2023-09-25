@@ -12,7 +12,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import SemanticStableDiffusionPipelineOutput
+from .pipeline_output import SemanticStableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

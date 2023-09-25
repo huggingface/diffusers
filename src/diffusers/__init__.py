@@ -3,6 +3,7 @@ __version__ = "0.22.0.dev0"
 from typing import TYPE_CHECKING
 
 from .utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     is_flax_available,
@@ -414,7 +415,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(["MidiProcessor"])
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
 
     try:

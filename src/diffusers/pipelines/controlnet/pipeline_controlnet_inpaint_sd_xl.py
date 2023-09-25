@@ -21,8 +21,6 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
-
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
@@ -41,6 +39,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from .multicontrolnet import MultiControlNetModel
 
 
