@@ -14,11 +14,18 @@
 """
 PEFT utilities: Utilities related to peft library
 """
-from .import_utils import is_torch_available
+import importlib
+
+from packaging import version
+
+from .import_utils import is_peft_available, is_torch_available
 
 
 if is_torch_available():
     import torch
+
+
+MIN_PEFT_VERSION = "0.5.0"
 
 
 def recurse_remove_peft_layers(model):
@@ -87,3 +94,23 @@ def unscale_peft_layers(model, scale: float = None):
         for module in model.modules():
             if isinstance(module, BaseTunerLayer):
                 module.scaling[module.active_adapter] /= scale
+
+
+def check_peft_version(min_version: str) -> None:
+    r"""
+    Checks if the version of PEFT is compatible.
+
+    Args:
+        version (`str`):
+            The version of PEFT to check against.
+    """
+    if not is_peft_available():
+        raise ValueError("PEFT is not installed. Please install it with `pip install peft`")
+
+    is_peft_version_compatible = version.parse(importlib.metadata.version("peft")) > version.parse(min_version)
+
+    if not is_peft_version_compatible:
+        raise ValueError(
+            f"The version of PEFT you are using is not compatible, please use a version that is greater"
+            f" than {min_version}"
+        )

@@ -32,10 +32,12 @@ from ..utils import (
     DIFFUSERS_CACHE,
     FLAX_WEIGHTS_NAME,
     HF_HUB_OFFLINE,
+    MIN_PEFT_VERSION,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     _add_variant,
     _get_model_file,
+    check_peft_version,
     deprecate,
     is_accelerate_available,
     is_torch_version,
@@ -187,6 +189,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
     _supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_unexpected = None
+    _hf_peft_config_loaded = False
 
     def __init__(self):
         super().__init__()
@@ -291,6 +294,133 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
         """
         self.set_use_memory_efficient_attention_xformers(False)
+
+    def add_adapter(self, adapter_config, adapter_name: Optional[str] = None) -> None:
+        r"""
+        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
+        official documentation: https://huggingface.co/docs/peft
+
+        Adds a fresh new adapter to the current model for training purpose. If no adapter name is passed, a default
+        name is assigned to the adapter to follow the convention of PEFT library (in PEFT we use "default" as the
+        default adapter name).
+
+        Args:
+            adapter_config (`~peft.PeftConfig`):
+                The configuration of the adapter to add, supported adapters are non-prefix tuning and adaption prompts
+                methods
+            adapter_name (`str`, *optional*, defaults to `"default"`):
+                The name of the adapter to add. If no name is passed, a default name is assigned to the adapter.
+        """
+        check_peft_version(min_version=MIN_PEFT_VERSION)
+
+        from peft import PeftConfig, inject_adapter_in_model
+
+        adapter_name = adapter_name or "default"
+
+        if not self._hf_peft_config_loaded:
+            self._hf_peft_config_loaded = True
+        elif adapter_name in self.peft_config:
+            raise ValueError(f"Adapter with name {adapter_name} already exists. Please use a different name.")
+
+        if not isinstance(adapter_config, PeftConfig):
+            raise ValueError(
+                f"adapter_config should be an instance of PeftConfig. Got {type(adapter_config)} instead."
+            )
+
+        # Unlike transformers, here we don't need to retrieve the name_or_path of the unet as the loading logic is
+        # handled by the `load_lora_layers` or `LoraLoaderMixin`.
+        # @patrickvonplaten @sayakpaul do we have an equivalent of `model.config.name_or_path` in diffusers?
+        adapter_config.base_model_name_or_path = None
+        inject_adapter_in_model(adapter_config, self, adapter_name)
+        self.set_adapter(adapter_name)
+
+    def set_adapter(self, adapter_name: str) -> None:
+        """
+        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
+        official documentation: https://huggingface.co/docs/peft
+
+        Sets a specific adapter by forcing the model to use a that adapter and disable the other adapters.
+
+        Args:
+            adapter_name (`str`):
+                The name of the adapter to set.
+        """
+        check_peft_version(min_version=MIN_PEFT_VERSION)
+
+        if not self._hf_peft_config_loaded:
+            raise ValueError("No adapter loaded. Please load an adapter first.")
+        elif adapter_name not in self.peft_config:
+            raise ValueError(
+                f"Adapter with name {adapter_name} not found. Please pass the correct adapter name among {list(self.peft_config.keys())}"
+            )
+
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        _adapters_has_been_set = False
+
+        for _, module in self.named_modules():
+            if isinstance(module, BaseTunerLayer):
+                module.active_adapter = adapter_name
+                _adapters_has_been_set = True
+
+        if not _adapters_has_been_set:
+            raise ValueError(
+                "Did not succeeded in setting the adapter. Please make sure you are using a model that supports adapters."
+            )
+
+    def disable_adapters(self) -> None:
+        r"""
+        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
+        official documentation: https://huggingface.co/docs/peft
+
+        Disable all adapters that are attached to the model. This leads to inferring with the base model only.
+        """
+        check_peft_version(min_version=MIN_PEFT_VERSION)
+
+        if not self._hf_peft_config_loaded:
+            raise ValueError("No adapter loaded. Please load an adapter first.")
+
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        for _, module in self.named_modules():
+            if isinstance(module, BaseTunerLayer):
+                module.disable_adapters = True
+
+    def enable_adapters(self) -> None:
+        """
+        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
+        official documentation: https://huggingface.co/docs/peft
+
+        Enable adapters that are attached to the model. The model will use `self.active_adapter()`
+        """
+        check_peft_version(min_version=MIN_PEFT_VERSION)
+
+        if not self._hf_peft_config_loaded:
+            raise ValueError("No adapter loaded. Please load an adapter first.")
+
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        for _, module in self.named_modules():
+            if isinstance(module, BaseTunerLayer):
+                module.disable_adapters = False
+
+    def active_adapter(self) -> str:
+        """
+        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
+        official documentation: https://huggingface.co/docs/peft
+
+        Gets the current active adapter of the model.
+        """
+        check_peft_version(min_version=MIN_PEFT_VERSION)
+
+        if not self._hf_peft_config_loaded:
+            raise ValueError("No adapter loaded. Please load an adapter first.")
+
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        for _, module in self.named_modules():
+            if isinstance(module, BaseTunerLayer):
+                return module.active_adapter
 
     def save_pretrained(
         self,

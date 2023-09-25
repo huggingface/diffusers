@@ -94,6 +94,10 @@ class PeftLoraLoaderMixinTests:
             r=4, lora_alpha=4, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"], init_lora_weights=False
         )
 
+        unet_lora_config = LoraConfig(
+            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+        )
+
         unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
 
         if self.has_two_text_encoders:
@@ -120,7 +124,7 @@ class PeftLoraLoaderMixinTests:
             "unet_lora_layers": unet_lora_layers,
             "unet_lora_attn_procs": unet_lora_attn_procs,
         }
-        return pipeline_components, lora_components, text_lora_config
+        return pipeline_components, lora_components, text_lora_config, unet_lora_config
 
     def get_dummy_inputs(self, with_generator=True):
         batch_size = 1
@@ -166,7 +170,7 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple inference and makes sure it works as expected
         """
-        components, _, _ = self.get_dummy_components()
+        components, _, _, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(self.torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -180,7 +184,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached on the text encoder
         and makes sure it works as expected
         """
-        components, _, text_lora_config = self.get_dummy_components()
+        components, _, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(self.torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -208,7 +212,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached on the text encoder + scale argument
         and makes sure it works as expected
         """
-        components, _, text_lora_config = self.get_dummy_components()
+        components, _, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(self.torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -252,7 +256,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected
         """
-        components, _, text_lora_config = self.get_dummy_components()
+        components, _, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(self.torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -289,7 +293,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder, then unloads the lora weights
         and makes sure it works as expected
         """
-        components, _, text_lora_config = self.get_dummy_components()
+        components, _, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(self.torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -327,7 +331,7 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple usecase where users could use saving utilities for LoRA.
         """
-        components, _, text_lora_config = self.get_dummy_components()
+        components, _, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(self.torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -387,7 +391,7 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
         """
-        components, _, text_lora_config = self.get_dummy_components()
+        components, _, text_lora_config, _ = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(self.torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -428,6 +432,73 @@ class PeftLoraLoaderMixinTests:
 
         self.assertTrue(
             np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
+            "Loading from saved checkpoints should give same results.",
+        )
+
+    def test_simple_inference_with_text_unet_lora_save_load(self):
+        """
+        Tests a simple usecase where users could use saving utilities for LoRA for Unet + text encoder
+        """
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+
+        pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.unet.add_adapter(unet_lora_config)
+
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+            )
+
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
+            unet_state_dict = get_peft_model_state_dict(pipe.unet)
+            if self.has_two_text_encoders:
+                text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+
+                self.pipeline_class.save_lora_weights(
+                    save_directory=tmpdirname,
+                    text_encoder_lora_layers=text_encoder_state_dict,
+                    text_encoder_2_lora_layers=text_encoder_2_state_dict,
+                    unet_lora_layers=unet_state_dict,
+                    safe_serialization=False,
+                )
+            else:
+                self.pipeline_class.save_lora_weights(
+                    save_directory=tmpdirname,
+                    text_encoder_lora_layers=text_encoder_state_dict,
+                    unet_lora_layers=unet_state_dict,
+                    safe_serialization=False,
+                )
+
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            pipe.unload_lora_weights()
+
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
+
+        images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+            )
+
+        self.assertTrue(
+            np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
             "Loading from saved checkpoints should give same results.",
         )
 

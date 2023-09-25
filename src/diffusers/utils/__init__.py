@@ -83,7 +83,13 @@ from .import_utils import (
 from .loading_utils import load_image
 from .logging import get_logger
 from .outputs import BaseOutput
-from .peft_utils import recurse_remove_peft_layers, scale_peft_layers, unscale_peft_layers
+from .peft_utils import (
+    MIN_PEFT_VERSION,
+    check_peft_version,
+    recurse_remove_peft_layers,
+    scale_peft_layers,
+    unscale_peft_layers,
+)
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
 from .state_dict_utils import (
     convert_state_dict_to_diffusers,
