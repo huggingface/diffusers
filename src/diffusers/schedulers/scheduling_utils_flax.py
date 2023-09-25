@@ -16,7 +16,7 @@ import math
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
