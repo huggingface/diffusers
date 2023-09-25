@@ -417,7 +417,6 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(["MidiProcessor"])
 
-DIFFUSERS_SLOW_IMPORT = False
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
 
