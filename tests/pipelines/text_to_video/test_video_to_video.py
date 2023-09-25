@@ -30,8 +30,8 @@ from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    skip_mps,
     is_flaky,
+    skip_mps,
     slow,
     torch_device,
 )
@@ -160,6 +160,10 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @is_flaky()
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=0.001)
+
+    @is_flaky()
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent()
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
