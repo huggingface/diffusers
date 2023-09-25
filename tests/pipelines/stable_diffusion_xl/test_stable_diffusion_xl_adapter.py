@@ -184,7 +184,6 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
-
     @parameterized.expand(["full_adapter", "full_adapter_xl", "light_adapter"])
     def test_total_downscale_factor(self, adapter_type):
         """Test that the T2IAdapter correctly reports its total_downscale_factor."""
@@ -215,6 +214,7 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
             expected_out_image_size,
             expected_out_image_size,
         )
+
 
 class StableDiffusionXLMultiAdapterPipelineFastTests(
     StableDiffusionXLAdapterPipelineFastTests, PipelineTesterMixin, unittest.TestCase
