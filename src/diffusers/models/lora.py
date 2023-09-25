@@ -25,18 +25,25 @@ from ..utils import logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
-    for _, attn_module in text_encoder_attn_modules(text_encoder):
-        if isinstance(attn_module.q_proj, PatchedLoraProjection):
-            attn_module.q_proj.lora_scale = lora_scale
-            attn_module.k_proj.lora_scale = lora_scale
-            attn_module.v_proj.lora_scale = lora_scale
-            attn_module.out_proj.lora_scale = lora_scale
+def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0, use_peft_backend: bool = False):
+    if use_peft_backend:
+        from peft.tuners.lora import LoraLayer
 
-    for _, mlp_module in text_encoder_mlp_modules(text_encoder):
-        if isinstance(mlp_module.fc1, PatchedLoraProjection):
-            mlp_module.fc1.lora_scale = lora_scale
-            mlp_module.fc2.lora_scale = lora_scale
+        for module in text_encoder.modules():
+            if isinstance(module, LoraLayer):
+                module.scaling[module.active_adapter] = lora_scale
+    else:
+        for _, attn_module in text_encoder_attn_modules(text_encoder):
+            if isinstance(attn_module.q_proj, PatchedLoraProjection):
+                attn_module.q_proj.lora_scale = lora_scale
+                attn_module.k_proj.lora_scale = lora_scale
+                attn_module.v_proj.lora_scale = lora_scale
+                attn_module.out_proj.lora_scale = lora_scale
+
+        for _, mlp_module in text_encoder_mlp_modules(text_encoder):
+            if isinstance(mlp_module.fc1, PatchedLoraProjection):
+                mlp_module.fc1.lora_scale = lora_scale
+                mlp_module.fc2.lora_scale = lora_scale
 
 
 class LoRALinearLayer(nn.Module):

@@ -20,8 +20,6 @@ import PIL
 import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
-
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, MultiAdapter, T2IAdapter, UNet2DConditionModel
@@ -40,6 +38,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -288,8 +287,8 @@ class StableDiffusionXLAdapterPipeline(
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
+            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale, self.use_peft_backend)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -787,8 +786,16 @@ class StableDiffusionXLAdapterPipeline(
         height, width = self._default_height_width(height, width, image)
         device = self._execution_device
 
-        adapter_input = _preprocess_adapter_image(image, height, width).to(device)
+        if isinstance(self.adapter, MultiAdapter):
+            adapter_input = []
 
+            for one_image in image:
+                one_image = _preprocess_adapter_image(one_image, height, width)
+                one_image = one_image.to(device=device, dtype=self.adapter.dtype)
+                adapter_input.append(one_image)
+        else:
+            adapter_input = _preprocess_adapter_image(image, height, width)
+            adapter_input = adapter_input.to(device=device, dtype=self.adapter.dtype)
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
 
@@ -865,10 +872,14 @@ class StableDiffusionXLAdapterPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Prepare added time ids & embeddings & adapter features
-        adapter_input = adapter_input.type(latents.dtype)
-        adapter_state = self.adapter(adapter_input)
-        for k, v in enumerate(adapter_state):
-            adapter_state[k] = v * adapter_conditioning_scale
+        if isinstance(self.adapter, MultiAdapter):
+            adapter_state = self.adapter(adapter_input, adapter_conditioning_scale)
+            for k, v in enumerate(adapter_state):
+                adapter_state[k] = v
+        else:
+            adapter_state = self.adapter(adapter_input)
+            for k, v in enumerate(adapter_state):
+                adapter_state[k] = v * adapter_conditioning_scale
         if num_images_per_prompt > 1:
             for k, v in enumerate(adapter_state):
                 adapter_state[k] = v.repeat(num_images_per_prompt, 1, 1, 1)

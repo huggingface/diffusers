@@ -216,6 +216,8 @@
       title: AudioLDM 2
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
+    - local: api/pipelines/blip_diffusion
+      title: BLIP Diffusion
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet

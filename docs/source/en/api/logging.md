@@ -67,30 +67,30 @@ By default, `tqdm` progress bars are displayed during model download. [`logging.
 
 ## Base setters
 
-[[autodoc]] logging.set_verbosity_error
+[[autodoc]] utils.logging.set_verbosity_error
 
-[[autodoc]] logging.set_verbosity_warning
+[[autodoc]] utils.logging.set_verbosity_warning
 
-[[autodoc]] logging.set_verbosity_info
+[[autodoc]] utils.logging.set_verbosity_info
 
-[[autodoc]] logging.set_verbosity_debug
+[[autodoc]] utils.logging.set_verbosity_debug
 
 ## Other functions
 
-[[autodoc]] logging.get_verbosity
+[[autodoc]] utils.logging.get_verbosity
 
-[[autodoc]] logging.set_verbosity
+[[autodoc]] utils.logging.set_verbosity
 
-[[autodoc]] logging.get_logger
+[[autodoc]] utils.logging.get_logger
 
-[[autodoc]] logging.enable_default_handler
+[[autodoc]] utils.logging.enable_default_handler
 
-[[autodoc]] logging.disable_default_handler
+[[autodoc]] utils.logging.disable_default_handler
 
-[[autodoc]] logging.enable_explicit_format
+[[autodoc]] utils.logging.enable_explicit_format
 
-[[autodoc]] logging.reset_format
+[[autodoc]] utils.logging.reset_format
 
-[[autodoc]] logging.enable_progress_bar
+[[autodoc]] utils.logging.enable_progress_bar
 
-[[autodoc]] logging.disable_progress_bar
+[[autodoc]] utils.logging.disable_progress_bar

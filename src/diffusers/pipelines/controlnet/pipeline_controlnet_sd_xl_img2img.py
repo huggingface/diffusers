@@ -41,7 +41,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from ..stable_diffusion_xl import StableDiffusionXLPipelineOutput
+from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
 if is_invisible_watermark_available():
@@ -326,8 +326,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
+            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale, self.use_peft_backend)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 

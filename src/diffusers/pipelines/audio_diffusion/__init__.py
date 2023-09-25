@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from ...utils import _LazyModule
+from ...utils import DIFFUSERS_SLOW_IMPORT, _LazyModule
 
 
 _import_structure = {
@@ -8,7 +8,7 @@ _import_structure = {
     "pipeline_audio_diffusion": ["AudioDiffusionPipeline"],
 }
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .mel import Mel
     from .pipeline_audio_diffusion import AudioDiffusionPipeline
 
