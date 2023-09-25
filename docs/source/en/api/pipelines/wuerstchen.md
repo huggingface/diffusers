@@ -136,7 +136,8 @@ The original codebase, as well as experimental ideas, can be found at [dome272/W
 	- __call__
 
 ## Citation
-```
+
+```bibtex
       @misc{pernias2023wuerstchen,
             title={Wuerstchen: Efficient Pretraining of Text-to-Image Models}, 
             author={Pablo Pernias and Dominic Rampas and Mats L. Richter and Christopher Pal and Marc Aubreville},
