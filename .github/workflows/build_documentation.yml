@@ -8,9 +8,6 @@ on:
       - v*-release
       - v*-patch
 
-env:
-  DIFFUSERS_SLOW_IMPORT: yes
-
 jobs:
   build:
     uses: huggingface/doc-builder/.github/workflows/build_main_documentation.yml@main

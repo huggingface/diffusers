@@ -3,9 +3,6 @@ name: Build PR Documentation
 on:
   pull_request:
 
-env:
-  DIFFUSERS_SLOW_IMPORT: yes
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
