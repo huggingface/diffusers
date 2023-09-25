@@ -43,7 +43,6 @@ from diffusers.loaders import AttnProcsLayers
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPrior
-from diffusers.training_utils import EMAModel
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.logging import set_verbosity_error, set_verbosity_info
 
@@ -139,17 +138,17 @@ More information on all the CLI arguments and the environment are available on y
         f.write(yaml + model_card)
 
 
-def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dtype, epoch):
+def log_validation(text_encoder, tokenizer, attn_processors, args, accelerator, weight_dtype, epoch):
     logger.info("Running validation... ")
 
     pipeline = AutoPipelineForText2Image.from_pretrained(
         args.pretrained_decoder_model_name_or_path,
-        prior_prior=accelerator.unwrap_model(prior),
         prior_text_encoder=accelerator.unwrap_model(text_encoder),
         prior_tokenizer=tokenizer,
         torch_dtype=weight_dtype,
     )
     pipeline = pipeline.to(accelerator.device)
+    pipeline.set_attn_processor(attn_processors)
     pipeline.set_progress_bar_config(disable=True)
 
     if args.seed is None:
@@ -521,7 +520,12 @@ def main():
     image_encoder.requires_grad_(False)
 
     # load prior model
-    prior = WuerstchenPrior.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
+    prior = WuerstchenPrior.from_pretrained(
+        args.pretrained_prior_model_name_or_path,
+        subfolder="prior",
+        torch_dtype=weight_dtype,
+        device=accelerator.device,
+    )
     # lora attn processor
     lora_attn_procs = {}
     for name in prior.attn_processors.keys():
@@ -805,7 +809,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(prior.parameters(), args.max_grad_norm)
+                    accelerator.clip_grad_norm_(lora_layers.parameters(), args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -851,26 +855,29 @@ def main():
 
         if accelerator.is_main_process:
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
-                log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dtype, global_step)
+                log_validation(
+                    text_encoder, tokenizer, prior.attn_processors, args, accelerator, weight_dtype, global_step
+                )
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        prior = accelerator.unwrap_model(prior)
-
-        pipeline = AutoPipelineForText2Image.from_pretrained(
-            args.pretrained_decoder_model_name_or_path,
-            prior_prior=prior,
-            prior_text_encoder=accelerator.unwrap_model(text_encoder),
-            prior_tokenizer=tokenizer,
-        )
-        pipeline.prior_pipe.save_pretrained(os.path.join(args.output_dir, "prior_pipeline"))
+        prior = prior.to(torch.float32)
+        prior.save_attn_procs(os.path.join(args.output_dir, "prior_lora"))
 
         # Run a final round of inference.
         images = []
         if args.validation_prompts is not None:
             logger.info("Running inference for collecting generated images...")
+            pipeline = AutoPipelineForText2Image.from_pretrained(
+                args.pretrained_decoder_model_name_or_path,
+                prior_text_encoder=accelerator.unwrap_model(text_encoder),
+                prior_tokenizer=tokenizer,
+            )
             pipeline = pipeline.to(accelerator.device, torch_dtype=weight_dtype)
+            # load attention processors
+            pipeline.prior_prior.load_attn_procs(os.path.join(args.output_dir, "prior_lora"))
+
             pipeline.set_progress_bar_config(disable=True)
 
             if args.seed is None:
