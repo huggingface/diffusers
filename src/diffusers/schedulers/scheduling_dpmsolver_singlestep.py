@@ -275,7 +275,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
 
-        self.timesteps = torch.from_numpy(timesteps).to(device)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
         self.model_outputs = [None] * self.config.solver_order
         self.sample = None
 
@@ -870,12 +870,12 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
-        timesteps: torch.FloatTensor,
+        timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
@@ -893,7 +893,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 
-        noisy_samples = original_samples + noise * sigma
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
+        noisy_samples = alpha_t * original_samples + sigma_t * noise
         return noisy_samples
 
     def __len__(self):

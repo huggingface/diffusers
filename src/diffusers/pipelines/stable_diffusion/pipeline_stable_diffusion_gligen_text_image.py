@@ -16,7 +16,7 @@ import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from transformers import (
     CLIPFeatureExtractor,

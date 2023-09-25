@@ -252,7 +252,10 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         elif adapter_type == "light_adapter":
             self.adapter = LightAdapter(in_channels, channels, num_res_blocks, downscale_factor)
         else:
-            raise ValueError(f"unknown adapter_type: {type}. Choose either 'full_adapter' or 'simple_adapter'")
+            raise ValueError(
+                f"Unsupported adapter_type: '{adapter_type}'. Choose either 'full_adapter' or "
+                "'full_adapter_xl' or 'light_adapter'."
+            )
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         return self.adapter(x)
@@ -331,8 +334,8 @@ class FullAdapterXL(nn.Module):
                 self.body.append(AdapterBlock(channels[i], channels[i], num_res_blocks))
 
         self.body = nn.ModuleList(self.body)
-        # XL has one fewer downsampling
-        self.total_downscale_factor = downscale_factor * 2 ** (len(channels) - 2)
+        # XL has only one downsampling AdapterBlock.
+        self.total_downscale_factor = downscale_factor * 2
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         x = self.unshuffle(x)
