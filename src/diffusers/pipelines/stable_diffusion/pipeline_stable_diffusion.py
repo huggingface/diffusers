@@ -534,6 +534,17 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def validate_freeu_kwargs(self, freeu_kwargs):
+        expected_keys = {"s1", "s2", "b1", "b2"}
+
+        # Check if freeu_kwargs is a dictionary
+        if freeu_kwargs is not None and not isinstance(freeu_kwargs, dict):
+            raise ValueError("`freeu_kwargs` needs to be a dictionary when specified.")
+
+        # Check if all expected keys are present in the dictionary
+        if not all(key in freeu_kwargs for key in expected_keys):
+            raise ValueError("Expected keys (s1, s2, b1, and b2) not found in `freeu_kwargs`.")
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -555,6 +566,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        freeu_kwargs: Optional[Dict[str, float]] = None,
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
     ):
@@ -690,6 +702,9 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        # 6.1. Validate FreeU kwargs.
+        self.validate_freeu_kwargs(freeu_kwargs)
+
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -704,6 +719,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    freeu_kwargs=freeu_kwargs,
                     return_dict=False,
                 )[0]
 

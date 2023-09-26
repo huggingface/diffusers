@@ -2192,6 +2192,7 @@ class CrossAttnUpBlock2D(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        freeu_kwargs: Optional[Dict[str, float]] = None,
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
@@ -2199,6 +2200,18 @@ class CrossAttnUpBlock2D(nn.Module):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            if freeu_kwargs is not None:
+                # --------------- FreeU code -----------------------
+                # Only operate on the first two stages
+                # `fourier_filter` to be implemented.
+                if hidden_states.shape[1] == 1280:
+                    hidden_states[:, :640] = hidden_states[:, :640] * freeu_kwargs["b1"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s1"])
+                if hidden_states.shape[1] == 640:
+                    hidden_states[:, :320] = hidden_states[:, :320] * freeu_kwargs["b2"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s2"])
+                # ---------------------------------------------------------
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -2293,11 +2306,30 @@ class UpBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
+    def forward(
+        self,
+        hidden_states,
+        res_hidden_states_tuple,
+        temb=None,
+        upsample_size=None,
+        scale: float = 1.0,
+        freeu_kwargs: Dict[str, float] = None,
+    ):
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+            if freeu_kwargs is not None:
+                # --------------- FreeU code -----------------------
+                # Only operate on the first two stages
+                # `fourier_filter` needs to be implemented.
+                if hidden_states.shape[1] == 1280:
+                    hidden_states[:, :640] = hidden_states[:, :640] * freeu_kwargs["b1"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s1"])
+                if hidden_states.shape[1] == 640:
+                    hidden_states[:, :320] = hidden_states[:, :320] * freeu_kwargs["b2"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s2"])
+                # ---------------------------------------------------------
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -2317,7 +2349,7 @@ class UpBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale)
+                hidden_states = resnet(hidden_states, temb, scale=scale, freeu_kwargs=freeu_kwargs)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
