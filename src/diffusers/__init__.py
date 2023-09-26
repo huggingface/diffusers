@@ -13,7 +13,7 @@ from .utils import (
     is_onnx_available,
     is_scipy_available,
     is_torch_available,
-    is_torchsde_available,
+    is_torchsde_brownian_available,
     is_transformers_available,
 )
 
@@ -42,7 +42,7 @@ _import_structure = {
         "is_onnx_available",
         "is_scipy_available",
         "is_torch_available",
-        "is_torchsde_available",
+        "is_torchsde_brownian_available",
         "is_transformers_available",
         "is_transformers_version",
         "is_unidecode_available",
@@ -167,13 +167,13 @@ else:
     _import_structure["schedulers"].extend(["LMSDiscreteScheduler"])
 
 try:
-    if not (is_torch_available() and is_torchsde_available()):
+    if not (is_torch_available() and is_torchsde_brownian_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from .utils import dummy_torch_and_torchsde_objects  # noqa F403
+    from .utils import dummy_torch_and_torchsde_brownian_objects  # noqa F403
 
-    _import_structure["utils.dummy_torch_and_torchsde_objects"] = [
-        name for name in dir(dummy_torch_and_torchsde_objects) if not name.startswith("_")
+    _import_structure["utils.dummy_torch_and_torchsde_brownian_objects"] = [
+        name for name in dir(dummy_torch_and_torchsde_brownian_objects) if not name.startswith("_")
     ]
 
 else:
@@ -518,10 +518,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .schedulers import LMSDiscreteScheduler
 
     try:
-        if not (is_torch_available() and is_torchsde_available()):
+        if not (is_torch_available() and is_torchsde_brownian_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from .utils.dummy_torch_and_torchsde_objects import *  # noqa F403
+        from .utils.dummy_torch_and_torchsde_brownian_objects import *  # noqa F403
     else:
         from .schedulers import DPMSolverSDEScheduler
 

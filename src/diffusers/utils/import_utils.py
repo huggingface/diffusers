@@ -254,12 +254,12 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _bs4_available = False
 
-_torchsde_available = importlib.util.find_spec("torchsde") is not None
+_torchsde_brownian_available = importlib.util.find_spec("torchsde_brownian") is not None
 try:
-    _torchsde_version = importlib_metadata.version("torchsde")
-    logger.debug(f"Successfully imported torchsde version {_torchsde_version}")
+    _torchsde_brownian_version = importlib_metadata.version("torchsde_brownian")
+    logger.debug(f"Successfully imported torchsde_brownian version {_torchsde_brownian_version}")
 except importlib_metadata.PackageNotFoundError:
-    _torchsde_available = False
+    _torchsde_brownian_available = False
 
 _invisible_watermark_available = importlib.util.find_spec("imwatermark") is not None
 try:
@@ -353,8 +353,8 @@ def is_bs4_available():
     return _bs4_available
 
 
-def is_torchsde_available():
-    return _torchsde_available
+def is_torchsde_brownian_available():
+    return _torchsde_brownian_available
 
 
 def is_invisible_watermark_available():
@@ -469,8 +469,8 @@ that match your environment. Please note that you may need to restart your runti
 """
 
 # docstyle-ignore
-TORCHSDE_IMPORT_ERROR = """
-{0} requires the torchsde library but it was not found in your environment. You can install it with pip: `pip install torchsde`
+TORCHSDE_BROWNIAN_IMPORT_ERROR = """
+{0} requires the torchsde_brownian library but it was not found in your environment. You can install it with pip: `pip install torchsde_brownian`
 """
 
 # docstyle-ignore
@@ -498,7 +498,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("tensorboard", (is_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
         ("compel", (is_compel_available, COMPEL_IMPORT_ERROR)),
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
-        ("torchsde", (is_torchsde_available, TORCHSDE_IMPORT_ERROR)),
+        ("torchsde_brownian", (is_torchsde_brownian_available, TORCHSDE_BROWNIAN_IMPORT_ERROR)),
         ("invisible_watermark", (is_invisible_watermark_available, INVISIBLE_WATERMARK_IMPORT_ERROR)),
     ]
 )

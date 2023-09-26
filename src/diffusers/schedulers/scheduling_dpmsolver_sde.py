@@ -18,14 +18,14 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torchsde
+import torchsde_brownian
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
 class BatchedBrownianTree:
-    """A wrapper around torchsde.BrownianTree that enables batches of entropy."""
+    """A wrapper around torchsde_brownian.BrownianTree that enables batches of entropy."""
 
     def __init__(self, x, t0, t1, seed=None, **kwargs):
         t0, t1, self.sign = self.sort(t0, t1)
@@ -39,7 +39,7 @@ class BatchedBrownianTree:
         except TypeError:
             seed = [seed]
             self.batched = False
-        self.trees = [torchsde.BrownianTree(t0, w0, t1, entropy=s, **kwargs) for s in seed]
+        self.trees = [torchsde_brownian.BrownianTree(t0, w0, t1, entropy=s, **kwargs) for s in seed]
 
     @staticmethod
     def sort(a, b):
@@ -52,7 +52,7 @@ class BatchedBrownianTree:
 
 
 class BrownianTreeNoiseSampler:
-    """A noise sampler backed by a torchsde.BrownianTree.
+    """A noise sampler backed by a torchsde_brownian.BrownianTree.
 
     Args:
         x (Tensor): The tensor whose shape, device and dtype to use to generate

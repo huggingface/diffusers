@@ -36,7 +36,7 @@ from .import_utils import (
     is_peft_available,
     is_torch_available,
     is_torch_version,
-    is_torchsde_available,
+    is_torchsde_brownian_available,
     is_transformers_available,
 )
 from .logging import get_logger
@@ -244,11 +244,11 @@ def require_note_seq(test_case):
     return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
 
 
-def require_torchsde(test_case):
+def require_torchsde_brownian(test_case):
     """
-    Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
+    Decorator marking a test that requires torchsde_brownian. These tests are skipped when torchsde_brownian isn't installed.
     """
-    return unittest.skipUnless(is_torchsde_available(), "test requires torchsde")(test_case)
+    return unittest.skipUnless(is_torchsde_brownian_available(), "test requires torchsde_brownian")(test_case)
 
 
 def require_peft_backend(test_case):

@@ -106,7 +106,7 @@ _deps = [
     "jaxlib>=0.1.65",
     "Jinja2",
     "k-diffusion>=0.0.12",
-    "torchsde",
+    "torchsde-brownian==0.2.5",
     "note_seq",
     "librosa",
     "numpy",

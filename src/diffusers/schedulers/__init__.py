@@ -22,7 +22,7 @@ from ..utils import (
     is_flax_available,
     is_scipy_available,
     is_torch_available,
-    is_torchsde_available,
+    is_torchsde_brownian_available,
 )
 
 
@@ -102,12 +102,12 @@ else:
     _import_structure["scheduling_lms_discrete"] = ["LMSDiscreteScheduler"]
 
 try:
-    if not (is_torch_available() and is_torchsde_available()):
+    if not (is_torch_available() and is_torchsde_brownian_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import dummy_torch_and_torchsde_objects  # noqa F403
+    from ..utils import dummy_torch_and_torchsde_brownian_objects  # noqa F403
 
-    _dummy_modules.update(get_objects_from_module(dummy_torch_and_torchsde_objects))
+    _dummy_modules.update(get_objects_from_module(dummy_torch_and_torchsde_brownian_objects))
 
 else:
     _import_structure["scheduling_dpmsolver_sde"] = ["DPMSolverSDEScheduler"]
@@ -118,7 +118,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         is_flax_available,
         is_scipy_available,
         is_torch_available,
-        is_torchsde_available,
+        is_torchsde_brownian_available,
     )
 
     try:
@@ -184,10 +184,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_lms_discrete import LMSDiscreteScheduler
 
     try:
-        if not (is_torch_available() and is_torchsde_available()):
+        if not (is_torch_available() and is_torchsde_brownian_available()):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from ..utils.dummy_torch_and_torchsde_objects import *  # noqa F403
+        from ..utils.dummy_torch_and_torchsde_brownian_objects import *  # noqa F403
     else:
         from .scheduling_dpmsolver_sde import DPMSolverSDEScheduler
 

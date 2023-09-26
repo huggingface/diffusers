@@ -19,7 +19,7 @@ deps = {
     "jaxlib": "jaxlib>=0.1.65",
     "Jinja2": "Jinja2",
     "k-diffusion": "k-diffusion>=0.0.12",
-    "torchsde": "torchsde",
+    "torchsde_brownian": "torchsde_brownian",
     "note_seq": "note_seq",
     "librosa": "librosa",
     "numpy": "numpy",

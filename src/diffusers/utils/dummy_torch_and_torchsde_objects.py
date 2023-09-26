@@ -3,15 +3,15 @@ from ..utils import DummyObject, requires_backends
 
 
 class DPMSolverSDEScheduler(metaclass=DummyObject):
-    _backends = ["torch", "torchsde"]
+    _backends = ["torch", "torchsde_brownian"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch", "torchsde"])
+        requires_backends(self, ["torch", "torchsde_brownian"])
 
     @classmethod
     def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "torchsde"])
+        requires_backends(cls, ["torch", "torchsde_brownian"])
 
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "torchsde"])
+        requires_backends(cls, ["torch", "torchsde_brownian"])
