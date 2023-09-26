@@ -550,7 +550,7 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/boy_ray_ban.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 9e-2
+        assert np.abs(expected_image - image).max() < 0.9e-1
 
     def test_load_local(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
