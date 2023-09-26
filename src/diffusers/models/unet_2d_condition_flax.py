@@ -377,6 +377,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample = jnp.transpose(sample, (0, 2, 3, 1))
         sample = self.conv_in(sample)
 
+        if not isinstance(t_emb, jax._src.interpreters.partial_eval.DynamicJaxprTracer):
+            import torch; import numpy as np
+            print("t_emb", torch.from_numpy(np.asarray(t_emb)).abs().sum())
+            print("sample", torch.from_numpy(np.asarray(sample)).abs().sum())
+
         # 3. down
         down_block_res_samples = (sample,)
         for down_block in self.down_blocks:

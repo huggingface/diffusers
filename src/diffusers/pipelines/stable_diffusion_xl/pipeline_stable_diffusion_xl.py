@@ -818,6 +818,10 @@ class StableDiffusionXLPipeline(
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
+        print("prompt embeds", prompt_embeds.abs().sum())
+        print("text_embeds", add_text_embeds.abs().sum())
+        print("add_time_ids", add_time_ids)
+
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
@@ -837,7 +841,11 @@ class StableDiffusionXLPipeline(
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
+                print("latent_model_input 1", latent_model_input.abs().sum())
+
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                print("latent_model_input 2", latent_model_input.abs().sum())
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
@@ -859,8 +867,12 @@ class StableDiffusionXLPipeline(
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
+                print("noise pred", noise_pred.abs().sum())
+
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                print("latent_model_input 3", latents.abs().sum())
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

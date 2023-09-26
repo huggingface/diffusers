@@ -37,6 +37,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Set to True to use python for loop instead of jax.fori_loop for easier debugging
 DEBUG = False
+DEBUG = True
 
 
 class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
@@ -216,14 +217,20 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
         # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * params["scheduler"].init_noise_sigma
-
+        
         # Prepare scheduler state
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents.shape
         )
 
+        import torch; import numpy as np
+        latents = latents * scheduler_state.init_noise_sigma
+
         added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+        print("prompt_embeds", torch.from_numpy(np.asarray(prompt_embeds)).abs().sum())
+        print("text_embeds", torch.from_numpy(np.asarray(add_text_embeds)).abs().sum())
+        print("add_time_ids", add_time_ids)
 
         # Denoising loop
         def loop_body(step, args):
@@ -236,7 +243,11 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             t = jnp.array(scheduler_state.timesteps, dtype=jnp.int32)[step]
             timestep = jnp.broadcast_to(t, latents_input.shape[0])
 
+            print("latents_input 1", torch.from_numpy(np.asarray(latents_input)).abs().sum())
+
             latents_input = self.scheduler.scale_model_input(scheduler_state, latents_input, t)
+
+            print("latents_input 2", torch.from_numpy(np.asarray(latents_input)).abs().sum())
 
             # predict the noise residual
             noise_pred = self.unet.apply(
@@ -250,8 +261,12 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             noise_pred_uncond, noise_prediction_text = jnp.split(noise_pred, 2, axis=0)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
+            print("noise_pred", torch.from_numpy(np.asarray(noise_pred)).abs().sum())
+
             # compute the previous noisy sample x_t -> x_t-1
             latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
+
+            print("latents_input 3", torch.from_numpy(np.asarray(latents)).abs().sum())
             return latents, scheduler_state
 
         if DEBUG:
