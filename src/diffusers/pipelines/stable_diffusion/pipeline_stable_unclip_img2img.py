@@ -15,7 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
