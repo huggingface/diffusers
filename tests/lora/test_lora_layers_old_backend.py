@@ -1794,7 +1794,6 @@ class UNet3DConditionModelTests(unittest.TestCase):
         assert (sample - new_sample).abs().max() < 1e-4
         assert (sample - old_sample).abs().max() < 3e-3
 
-    @unittest.skip("Difference is too large. Test is not useful")
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
