@@ -132,7 +132,8 @@ class FlaxAttention(nn.Module):
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
         split_head_dim (`bool`, *optional*, defaults to `False`):
-            Whether to split the head dimension into a new axis for the self-attention computation. In most cases, enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
+            Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
+            enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
 
