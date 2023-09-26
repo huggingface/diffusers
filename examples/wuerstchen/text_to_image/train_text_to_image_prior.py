@@ -788,7 +788,7 @@ def main():
                     bsz = image_embeds.shape[0]
 
                     # Sample a random timestep for each image
-                    timesteps = torch.rand((bsz,), device=image_embeds.device)
+                    timesteps = torch.rand((bsz,), device=image_embeds.device, dtype=weight_dtype)
 
                     # add noise to latent
                     noisy_latents = noise_scheduler.add_noise(image_embeds, noise, timesteps)

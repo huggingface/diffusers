@@ -214,11 +214,12 @@ class DDPMWuerstchenScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
         device = original_samples.device
+        dtype = original_samples.dtype
         alpha_cumprod = self._alpha_cumprod(timesteps, device=device).view(
             timesteps.size(0), *[1 for _ in original_samples.shape[1:]]
         )
         noisy_samples = alpha_cumprod.sqrt() * original_samples + (1 - alpha_cumprod).sqrt() * noise
-        return noisy_samples
+        return noisy_samples.to(dtype=dtype)
 
     def __len__(self):
         return self.config.num_train_timesteps

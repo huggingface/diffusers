@@ -520,12 +520,9 @@ def main():
     image_encoder.requires_grad_(False)
 
     # load prior model
-    prior = WuerstchenPrior.from_pretrained(
-        args.pretrained_prior_model_name_or_path,
-        subfolder="prior",
-        torch_dtype=weight_dtype,
-        device=accelerator.device,
-    )
+    prior = WuerstchenPrior.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
+    prior.to(accelerator.device, dtype=weight_dtype)
+    
     # lora attn processor
     lora_attn_procs = {}
     for name in prior.attn_processors.keys():
@@ -791,7 +788,7 @@ def main():
                     bsz = image_embeds.shape[0]
 
                     # Sample a random timestep for each image
-                    timesteps = torch.rand((bsz,), device=image_embeds.device)
+                    timesteps = torch.rand((bsz,), device=image_embeds.device, dtype=weight_dtype)
 
                     # add noise to latent
                     noisy_latents = noise_scheduler.add_noise(image_embeds, noise, timesteps)
