@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 
 from ...utils import (
     BaseOutput,

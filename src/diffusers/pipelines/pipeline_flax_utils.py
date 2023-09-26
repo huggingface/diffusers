@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import flax
 import numpy as np
-import PIL
+import PIL.Image
 from flax.core.frozen_dict import FrozenDict
 from huggingface_hub import create_repo, snapshot_download
 from PIL import Image

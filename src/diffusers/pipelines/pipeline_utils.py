@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from huggingface_hub import ModelCard, create_repo, hf_hub_download, model_info, snapshot_download
 from packaging import version
@@ -1033,6 +1033,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
+            if pretrained_model_name_or_path.count("/") > 1:
+                raise ValueError(
+                    f'The provided pretrained_model_name_or_path "{pretrained_model_name_or_path}"'
+                    " is neither a valid local path nor a valid repo id. Please check the parameter."
+                )
             cached_folder = cls.download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,

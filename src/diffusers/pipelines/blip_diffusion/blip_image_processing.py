@@ -38,7 +38,7 @@ from diffusers.utils import numpy_to_pil
 
 
 if is_vision_available():
-    import PIL
+    import PIL.Image
 
 
 logger = logging.get_logger(__name__)

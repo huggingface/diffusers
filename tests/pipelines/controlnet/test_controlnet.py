@@ -36,6 +36,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
     load_numpy,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -894,6 +895,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.1655, 0.1721, 0.1623, 0.1685, 0.1711, 0.1646, 0.1651, 0.1631, 0.1494])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @require_python39_or_higher
     @require_torch_2
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
