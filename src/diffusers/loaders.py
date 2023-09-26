@@ -51,7 +51,7 @@ from .utils.import_utils import BACKENDS_MAPPING
 
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, CLIPTextModelWithProjection
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -2196,13 +2196,24 @@ class LoraLoaderMixin:
 
         self.num_fused_loras -= 1
 
-    def set_adapter(
+    def set_adapter_for_text_encoder(
         self,
         adapter_names: Union[List[str], str],
-        unet_weights: List[float] = None,
-        te_weights: List[float] = None,
-        te2_weights: List[float] = None,
+        text_encoder: Optional[PreTrainedModel] = None,
+        text_encoder_weights: List[float] = None,
     ):
+        """
+        Sets the adapter layers for the text encoder.
+
+        Args:
+            adapter_names (`List[str]` or `str`):
+                The names of the adapters to use.
+            text_encoder (`torch.nn.Module`, *optional*):
+                The text encoder module to set the adapter layers for. If `None`, it will try to get the `text_encoder`
+                attribute.
+            text_encoder_weights (`List[float]`, *optional*):
+                The weights to use for the text encoder. If `None`, the weights are set to `1.0` for all the adapters.
+        """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for this method.")
 
@@ -2219,41 +2230,44 @@ class LoraLoaderMixin:
             return weights
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+        text_encoder_weights = process_weights(adapter_names, text_encoder_weights)
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
+        if text_encoder is None:
+            raise ValueError("Text Encoder not found.")
+        set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
 
-        # To Do
-        # Handle the UNET
+    def disable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
+        """
+        Disables the LoRA layers for the text encoder.
 
-        # Handle the Text Encoder
-        te_weights = process_weights(adapter_names, te_weights)
-        if hasattr(self, "text_encoder"):
-            set_weights_and_activate_adapters(self.text_encoder, adapter_names, te_weights)
-        te2_weights = process_weights(adapter_names, te2_weights)
-        if hasattr(self, "text_encoder_2"):
-            set_weights_and_activate_adapters(self.text_encoder_2, adapter_names, te2_weights)
-
-    def disable_lora(self):
+        Args:
+            text_encoder (`torch.nn.Module`, *optional*):
+                The text encoder module to disable the LoRA layers for. If `None`, it will try to get the
+                `text_encoder` attribute.
+        """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for this method.")
-        # To Do
-        # Disbale unet adapters
 
-        # Disbale text encoder adapters
-        if hasattr(self, "text_encoder"):
-            set_adapter_layers(self.text_encoder, enabled=False)
-        if hasattr(self, "text_encoder_2"):
-            set_adapter_layers(self.text_encoder_2, enabled=False)
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
+        if text_encoder is None:
+            raise ValueError("Text Encoder not found.")
+        set_adapter_layers(text_encoder, enabled=False)
 
-    def enable_lora(self):
+    def enable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
+        """
+        Enables the LoRA layers for the text encoder.
+
+        Args:
+            text_encoder (`torch.nn.Module`, *optional*):
+                The text encoder module to enable the LoRA layers for. If `None`, it will try to get the `text_encoder`
+                attribute.
+        """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for this method.")
-        # To Do
-        # Enable unet adapters
-
-        # Enable text encoder adapters
-        if hasattr(self, "text_encoder"):
-            set_adapter_layers(self.text_encoder, enabled=True)
-        if hasattr(self, "text_encoder_2"):
-            set_adapter_layers(self.text_encoder_2, enabled=True)
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
+        if text_encoder is None:
+            raise ValueError("Text Encoder not found.")
+        set_adapter_layers(self.text_encoder, enabled=True)
 
 
 class FromSingleFileMixin:
