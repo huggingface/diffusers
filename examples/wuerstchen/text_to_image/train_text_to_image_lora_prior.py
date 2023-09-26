@@ -515,11 +515,13 @@ def main():
             args.pretrained_prior_model_name_or_path, subfolder="text_encoder", torch_dtype=weight_dtype
         ).eval()
 
-    # Freeze text_encoder and image_encoder
+    # Freeze text_encoder, cast to weight_dtype and image_encoder and move to device
     text_encoder.requires_grad_(False)
     image_encoder.requires_grad_(False)
+    image_encoder.to(accelerator.device, dtype=weight_dtype)
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
-    # load prior model
+    # load prior model, cast to weight_dtype and move to device
     prior = WuerstchenPrior.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
     prior.to(accelerator.device, dtype=weight_dtype)
     
@@ -529,31 +531,6 @@ def main():
         lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=prior.config["c"], rank=args.rank)
     prior.set_attn_processor(lora_attn_procs)
     lora_layers = AttnProcsLayers(prior.attn_processors)
-
-    # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
-        def save_model_hook(models, weights, output_dir):
-            for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "prior"))
-
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
-
-        def load_model_hook(models, input_dir):
-            for i in range(len(models)):
-                # pop models so that they are not loaded again
-                model = models.pop()
-
-                # load diffusers style into model
-                load_model = WuerstchenPrior.from_pretrained(input_dir, subfolder="prior")
-                model.register_to_config(**load_model.config)
-
-                model.load_state_dict(load_model.state_dict())
-                del load_model
-
-        accelerator.register_save_state_pre_hook(save_model_hook)
-        accelerator.register_load_state_pre_hook(load_model_hook)
 
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -699,8 +676,6 @@ def main():
     lora_layers, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         lora_layers, optimizer, train_dataloader, lr_scheduler
     )
-    image_encoder.to(accelerator.device, dtype=weight_dtype)
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
