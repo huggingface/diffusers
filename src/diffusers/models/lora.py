@@ -31,7 +31,12 @@ def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0, use_pe
 
         for module in text_encoder.modules():
             if isinstance(module, LoraLayer):
-                module.scaling[module.active_adapter] = lora_scale
+                active_adapter = module.active_adapter
+                if isinstance(active_adapter, list):
+                    for adapter in active_adapter:
+                        module.scaling[adapter] = lora_scale
+                else:
+                    module.scaling[module.active_adapter] = lora_scale
     else:
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
