@@ -148,7 +148,7 @@ def log_validation(text_encoder, tokenizer, attn_processors, args, accelerator, 
         torch_dtype=weight_dtype,
     )
     pipeline = pipeline.to(accelerator.device)
-    pipeline.set_attn_processor(attn_processors)
+    pipeline.prior_prior.set_attn_processor(attn_processors)
     pipeline.set_progress_bar_config(disable=True)
 
     if args.seed is None:
