@@ -74,6 +74,15 @@ def recurse_remove_peft_layers(model):
 
 
 def scale_lora_layers(model, lora_weightage):
+    """
+    Adjust the weightage given to the LoRA layers of the model.
+
+    Args:
+        model (`torch.nn.Module`):
+            The model to scale.
+        lora_weightage (`float`):
+            The weightage to be given to the LoRA layers.
+    """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
     for module in model.modules():
