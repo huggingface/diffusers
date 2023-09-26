@@ -167,15 +167,15 @@ class TuneAVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_progress_bar(self):
         return super().test_progress_bar()
-    
+
     @unittest.skip(reason="`set_default_attn_processor` is not supported as we use a custom attn processor")
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         pass
-    
+
     @unittest.skip(reason="`set_default_attn_processor` is not supported as we use a custom attn processor")
     def test_save_load_local(self, expected_max_difference=5e-4):
         pass
-    
+
     @unittest.skip(reason="`set_default_attn_processor` is not supported as we use a custom attn processor")
     def test_save_load_optional_components(self, expected_max_difference=1e-4):
         pass
