@@ -150,9 +150,9 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
 
         # add noise
-        t_start = self.num_inference_steps -2 
+        t_start = self.num_inference_steps - 2
         noise = self.dummy_noise_deter
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
         sample = scheduler.add_noise(sample, noise, timesteps[:1])
 
         for i, t in enumerate(timesteps):

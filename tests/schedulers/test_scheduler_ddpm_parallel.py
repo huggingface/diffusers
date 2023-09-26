@@ -227,9 +227,9 @@ class DDPMParallelSchedulerTest(SchedulerCommonTest):
         sample = self.dummy_sample_deter
         generator = torch.manual_seed(0)
 
-         # add noise
+        # add noise
         noise = self.dummy_noise_deter
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
         sample = scheduler.add_noise(sample, noise, timesteps[:1])
 
         for t in timesteps:

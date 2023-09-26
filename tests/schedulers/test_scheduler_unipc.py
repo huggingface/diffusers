@@ -257,7 +257,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
         # add noise
         noise = self.dummy_noise_deter
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
         sample = scheduler.add_noise(sample, noise, timesteps[:1])
 
         for i, t in enumerate(timesteps):
@@ -269,4 +269,3 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 315.5757) < 1e-2, f" expected result sum 315.5757, but get {result_sum}"
         assert abs(result_mean.item() - 0.4109) < 1e-3, f" expected result mean 0.4109, but get {result_mean}"
-

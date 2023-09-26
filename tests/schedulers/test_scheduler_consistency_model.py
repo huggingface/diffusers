@@ -132,7 +132,7 @@ class CMStochasticIterativeSchedulerTest(SchedulerCommonTest):
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
 
         noise = self.dummy_noise_deter
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
 
         sample = scheduler.add_noise(sample, noise, timesteps[:1])
 

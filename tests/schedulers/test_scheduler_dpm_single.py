@@ -294,15 +294,15 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
 
         # add noise
         noise = self.dummy_noise_deter
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
         sample = scheduler.add_noise(sample, noise, timesteps[:1])
 
         for i, t in enumerate(timesteps):
             residual = model(sample, t)
             sample = scheduler.step(residual, t, sample).prev_sample
-        
+
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        
-        assert abs(result_sum.item() -  269.2187) < 1e-2, f" expected result sum  269.2187, but get {result_sum}"
+
+        assert abs(result_sum.item() - 269.2187) < 1e-2, f" expected result sum  269.2187, but get {result_sum}"
         assert abs(result_mean.item() - 0.3505) < 1e-3, f" expected result mean 0.3505, but get {result_mean}"

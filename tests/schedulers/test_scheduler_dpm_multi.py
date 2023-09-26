@@ -114,7 +114,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             sample = scheduler.step(residual, t, sample).prev_sample
 
         return sample
-    
+
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
 
@@ -212,7 +212,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.3301) < 1e-3
-    
+
     def test_full_loop_with_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -220,23 +220,23 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
         num_inference_steps = 10
         t_start = 5
-        
+
         model = self.dummy_model()
         sample = self.dummy_sample_deter
         scheduler.set_timesteps(num_inference_steps)
-        
+
         # add noise
         noise = self.dummy_noise_deter
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
         sample = scheduler.add_noise(sample, noise, timesteps[:1])
 
         for i, t in enumerate(timesteps):
             residual = model(sample, t)
             sample = scheduler.step(residual, t, sample).prev_sample
-        
+
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-        
+
         assert abs(result_sum.item() - 318.4111) < 1e-2, f" expected result sum 318.4111, but get {result_sum}"
         assert abs(result_mean.item() - 0.4146) < 1e-3, f" expected result mean 0.4146, but get {result_mean}"
 

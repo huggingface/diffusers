@@ -202,13 +202,13 @@ class DDIMParallelSchedulerTest(SchedulerCommonTest):
 
         # add noise
         noise = self.dummy_noise_deter
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
         sample = scheduler.add_noise(sample, noise, timesteps[:1])
 
         for t in timesteps:
             residual = model(sample, t)
             sample = scheduler.step(residual, t, sample, eta).prev_sample
-        
+
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 

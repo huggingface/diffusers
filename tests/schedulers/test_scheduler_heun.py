@@ -173,7 +173,7 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
         t_start = self.num_inference_steps - 2
         noise = self.dummy_noise_deter
         noise = noise.to(torch_device)
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
         sample = scheduler.add_noise(sample, noise, timesteps[:1])
 
         for i, t in enumerate(timesteps):
@@ -189,4 +189,3 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 75074.8906) < 1e-2, f" expected result sum 75074.8906, but get {result_sum}"
         assert abs(result_mean.item() - 97.7538) < 1e-3, f" expected result mean 97.7538, but get {result_mean}"
-

@@ -263,7 +263,7 @@ class SchedulerCommonTest(unittest.TestCase):
         sample = torch.rand((batch_size, num_channels, height, width))
 
         return sample
-    
+
     @property
     def dummy_noise_deter(self):
         batch_size = 4
