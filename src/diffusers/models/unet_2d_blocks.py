@@ -2192,25 +2192,25 @@ class CrossAttnUpBlock2D(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        freeu_kwargs: Optional[Dict[str, float]] = None,
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        is_freeu_enabled = getattr(self.config, "s1", None) and getattr(self.config, "s2", None) and getattr(self.config, "b1", None), getattr(self.config, "b2", None)  
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
 
-            if freeu_kwargs is not None:
+            if is_freeu_enabled is not None:
                 # --------------- FreeU code -----------------------
                 # Only operate on the first two stages
                 # `fourier_filter` to be implemented.
                 if hidden_states.shape[1] == 1280:
-                    hidden_states[:, :640] = hidden_states[:, :640] * freeu_kwargs["b1"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s1"])
+                    hidden_states[:, :640] = hidden_states[:, :640] * self.config["b1"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
                 if hidden_states.shape[1] == 640:
-                    hidden_states[:, :320] = hidden_states[:, :320] * freeu_kwargs["b2"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s2"])
+                    hidden_states[:, :320] = hidden_states[:, :320] * self.config["b2"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
                 # ---------------------------------------------------------
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -2313,22 +2313,24 @@ class UpBlock2D(nn.Module):
         temb=None,
         upsample_size=None,
         scale: float = 1.0,
-        freeu_kwargs: Dict[str, float] = None,
     ):
+        is_freeu_enabled = getattr(self.config, "s1", None) and getattr(self.config, "s2", None) and getattr(self.config, "b1", None), getattr(self.config, "b2", None)  
+
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
-            if freeu_kwargs is not None:
+            
+            if is_freeu_enabled:
                 # --------------- FreeU code -----------------------
                 # Only operate on the first two stages
                 # `fourier_filter` needs to be implemented.
                 if hidden_states.shape[1] == 1280:
-                    hidden_states[:, :640] = hidden_states[:, :640] * freeu_kwargs["b1"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s1"])
+                    hidden_states[:, :640] = hidden_states[:, :640] * self.config["b1"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
                 if hidden_states.shape[1] == 640:
-                    hidden_states[:, :320] = hidden_states[:, :320] * freeu_kwargs["b2"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=freeu_kwargs["s2"])
+                    hidden_states[:, :320] = hidden_states[:, :320] * self.config["b2"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
                 # ---------------------------------------------------------
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -2349,7 +2351,7 @@ class UpBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale, freeu_kwargs=freeu_kwargs)
+                hidden_states = resnet(hidden_states, temb, scale=scale)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

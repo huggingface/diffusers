@@ -731,6 +731,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    def enable_freeu(self, **kwargs):
+        for k in kwargs:
+            if not hasattr(self.unet.config, k) or getattr(self.unet.config, k) is None:
+                setattr(self.unet.config, k, kwargs[k])
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -740,7 +745,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        freeu_kwargs: Optional[Dict[str, float]] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
@@ -1023,8 +1027,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     cross_attention_kwargs=cross_attention_kwargs,
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
-                    encoder_attention_mask=encoder_attention_mask,
-                    freeu_kwargs=freeu_kwargs,
+                    encoder_attention_mask=encoder_attention_mask
                 )
             else:
                 sample = upsample_block(
@@ -1033,7 +1036,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     res_hidden_states_tuple=res_samples,
                     upsample_size=upsample_size,
                     scale=lora_scale,
-                    freeu_kwargs=freeu_kwargs,
                 )
 
         # 6. post-process
