@@ -115,30 +115,6 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
         return sample
     
-    def full_loop_with_noise(self, scheduler=None, **config):
-        if scheduler is None:
-            scheduler_class = self.scheduler_classes[0]
-            scheduler_config = self.get_scheduler_config(**config)
-            scheduler = scheduler_class(**scheduler_config)
-
-        num_inference_steps = 10
-        t_start = 5
-        
-        model = self.dummy_model()
-        sample = self.dummy_sample_deter
-        scheduler.set_timesteps(num_inference_steps)
-
-        noise = self.dummy_noise_deter
-        timesteps = scheduler.timesteps[t_start * scheduler.order:]
-
-        sample = scheduler.add_noise(sample, noise, timesteps[:1])
-
-        for i, t in enumerate(scheduler.timesteps):
-            residual = model(sample, t)
-            sample = scheduler.step(residual, t, sample).prev_sample
-
-        return sample
-
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
 
@@ -238,10 +214,31 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         assert abs(result_mean.item() - 0.3301) < 1e-3
     
     def test_full_loop_with_noise(self):
-        sample = self.full_loop_with_noise()
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = 10
+        t_start = 5
+        
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
+        
+        # add noise
+        noise = self.dummy_noise_deter
+        timesteps = scheduler.timesteps[t_start * scheduler.order:]
+        sample = scheduler.add_noise(sample, noise, timesteps[:1])
+
+        for i, t in enumerate(timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample).prev_sample
+        
+        result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
         
-        assert abs(result_mean.item() - 0.4091) < 1e-3
+        assert abs(result_sum.item() - 318.4111) < 1e-2, f" expected result sum 318.4111, but get {result_sum}"
+        assert abs(result_mean.item() - 0.4146) < 1e-3, f" expected result mean 0.4146, but get {result_mean}"
 
     def test_full_loop_no_noise_thres(self):
         sample = self.full_loop(thresholding=True, dynamic_thresholding_ratio=0.87, sample_max_value=0.5)
