@@ -33,6 +33,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -355,6 +356,7 @@ class ModelTesterMixin:
         max_diff = (image - new_image).abs().max().item()
         self.assertLessEqual(max_diff, expected_max_diff, "Models give different forward passes")
 
+    @require_python39_or_higher
     @require_torch_2
     def test_from_save_pretrained_dynamo(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
