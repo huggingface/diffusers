@@ -2194,7 +2194,7 @@ class CrossAttnUpBlock2D(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-        is_freeu_enabled = getattr(self.config, "s1", None) and getattr(self.config, "s2", None) and getattr(self.config, "b1", None), getattr(self.config, "b2", None)  
+        is_freeu_enabled = getattr(self.config, "s1", None) and getattr(self.config, "s2", None) and getattr(self.config, "b1", None) and getattr(self.config, "b2", None)  
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -2314,7 +2314,7 @@ class UpBlock2D(nn.Module):
         upsample_size=None,
         scale: float = 1.0,
     ):
-        is_freeu_enabled = getattr(self.config, "s1", None) and getattr(self.config, "s2", None) and getattr(self.config, "b1", None), getattr(self.config, "b2", None)  
+        is_freeu_enabled = getattr(self.config, "s1", None) and getattr(self.config, "s2", None) and getattr(self.config, "b1", None) and getattr(self.config, "b2", None)  
 
         for resnet in self.resnets:
             # pop res hidden states

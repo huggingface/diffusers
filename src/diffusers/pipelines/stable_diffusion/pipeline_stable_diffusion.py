@@ -534,7 +534,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         latents = latents * self.scheduler.init_noise_sigma
         return latents
     
-    def enable_freeu(self, **freeu_kwargs):
+    def enable_freeu(self, s1=0.9, s2=0.2, b1=1.2, b2=1.4):
         self.validate_freeu_kwargs(freeu_kwargs)
         self.unet.enable_freeu(**freeu_kwargs)
 
