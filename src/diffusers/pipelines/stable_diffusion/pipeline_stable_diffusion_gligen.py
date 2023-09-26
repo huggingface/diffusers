@@ -16,7 +16,7 @@ import inspect
 import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -278,7 +278,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
