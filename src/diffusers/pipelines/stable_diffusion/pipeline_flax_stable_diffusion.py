@@ -35,7 +35,7 @@ from ...schedulers import (
 )
 from ...utils import deprecate, logging, replace_example_docstring
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
-from . import FlaxStableDiffusionPipelineOutput
+from .pipeline_output import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 
