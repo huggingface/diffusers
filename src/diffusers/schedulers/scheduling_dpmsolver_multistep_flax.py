@@ -217,15 +217,15 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         last_timestep = self.config.num_train_timesteps
         if self.config.timestep_spacing == "linspace":
             timesteps = (
-                jnp.linspace(0, last_timestep - 1, num_inference_steps + 1)
-                .round()[::-1][:-1]
-                .astype(jnp.int32)
+                jnp.linspace(0, last_timestep - 1, num_inference_steps + 1).round()[::-1][:-1].astype(jnp.int32)
             )
         elif self.config.timestep_spacing == "leading":
             step_ratio = last_timestep // (num_inference_steps + 1)
             # creates integer timesteps by multiplying by ratio
             # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (jnp.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(jnp.int32)
+            timesteps = (
+                (jnp.arange(0, num_inference_steps + 1) * step_ratio).round()[::-1][:-1].copy().astype(jnp.int32)
+            )
             timesteps += self.config.steps_offset
         elif self.config.timestep_spacing == "trailing":
             step_ratio = self.config.num_train_timesteps / num_inference_steps
