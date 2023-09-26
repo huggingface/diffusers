@@ -1550,7 +1550,6 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         assert max_diff_new_sample < expected_max_diff
         assert max_diff_old_sample < expected_max_diff
 
-    @unittest.skip("Difference is too large. Test is not useful")
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
