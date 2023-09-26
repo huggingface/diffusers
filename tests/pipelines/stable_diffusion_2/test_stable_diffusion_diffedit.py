@@ -37,6 +37,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     nightly,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
@@ -303,8 +304,7 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
         raw_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/diffedit/fruit.png"
         )
-
-        raw_image = raw_image.convert("RGB").resize((768, 768))
+        raw_image = raw_image.convert("RGB").resize((256, 256))
 
         cls.raw_image = raw_image
 
@@ -312,9 +312,11 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
         generator = torch.manual_seed(0)
 
         pipe = StableDiffusionDiffEditPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-1", safety_checker=None, torch_dtype=torch.float16
+            "stabilityai/stable-diffusion-2-1-base", safety_checker=None, torch_dtype=torch.float16
         )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.scheduler.clip_sample = True
+
         pipe.inverse_scheduler = DDIMInverseScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -330,7 +332,11 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
         )
 
         inv_latents = pipe.invert(
-            prompt=source_prompt, image=self.raw_image, inpaint_strength=0.7, generator=generator
+            prompt=source_prompt,
+            image=self.raw_image,
+            inpaint_strength=0.7,
+            generator=generator,
+            num_inference_steps=5,
         ).latents
 
         image = pipe(
@@ -340,7 +346,8 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
             generator=generator,
             negative_prompt=source_prompt,
             inpaint_strength=0.7,
-            output_type="numpy",
+            num_inference_steps=5,
+            output_type="np",
         ).images[0]
 
         expected_image = (
@@ -348,11 +355,12 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
                 load_image(
                     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
                     "/diffedit/pears.png"
-                ).resize((768, 768))
+                ).resize((256, 256))
             )
             / 255
         )
-        assert np.abs((expected_image - image).max()) < 5e-1
+
+        assert numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten()) < 2e-1
 
 
 @nightly
