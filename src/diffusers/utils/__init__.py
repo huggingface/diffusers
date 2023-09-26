@@ -85,7 +85,7 @@ from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
     get_adapter_name,
-    get_rank_and_alpha_pattern,
+    get_peft_kwargs,
     recurse_remove_peft_layers,
     scale_lora_layers,
     set_adapter_layers,

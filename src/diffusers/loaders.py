@@ -36,7 +36,7 @@ from .utils import (
     convert_state_dict_to_peft,
     deprecate,
     get_adapter_name,
-    get_rank_and_alpha_pattern,
+    get_peft_kwargs,
     is_accelerate_available,
     is_omegaconf_available,
     is_peft_available,
@@ -1127,6 +1127,9 @@ class LoraLoaderMixin:
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
         """
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
@@ -1508,8 +1511,8 @@ class LoraLoaderMixin:
         prefix=None,
         lora_scale=1.0,
         low_cpu_mem_usage=None,
-        _pipeline=None,
         adapter_name=None,
+        _pipeline=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1534,7 +1537,7 @@ class LoraLoaderMixin:
                 argument to `True` will raise an error.
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded
+                `default_{i}` where i is the total number of adapters being loaded.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
 
@@ -1596,17 +1599,9 @@ class LoraLoaderMixin:
                 if cls.use_peft_backend:
                     from peft import LoraConfig
 
-                    r, lora_alpha, rank_pattern, alpha_pattern, target_modules = get_rank_and_alpha_pattern(
-                        rank, network_alphas, text_encoder_lora_state_dict
-                    )
+                    lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict)
 
-                    lora_config = LoraConfig(
-                        r=r,
-                        target_modules=target_modules,
-                        lora_alpha=lora_alpha,
-                        rank_pattern=rank_pattern,
-                        alpha_pattern=alpha_pattern,
-                    )
+                    lora_config = LoraConfig(**lora_config_kwargs)
 
                     # adapter_name
                     if adapter_name is None:

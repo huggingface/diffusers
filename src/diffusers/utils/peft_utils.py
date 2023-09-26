@@ -14,6 +14,7 @@
 """
 PEFT utilities: Utilities related to peft library
 """
+import collections
 from .import_utils import is_torch_available
 
 
@@ -79,13 +80,13 @@ def scale_lora_layers(model, lora_weightage):
             module.scale_layer(lora_weightage)
 
 
-def get_rank_and_alpha_pattern(rank_dict, network_alpha_dict, peft_state_dict):
+def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
     rank_pattern = {}
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
     if len(set(rank_dict.values())) > 1:
         # get the rank occuring the most number of times
-        r = max(set(rank_dict.values()), key=list(rank_dict.values()).count)
+        r = collections.Counter(rank_dict.values()).most_common()[0][0]
 
         # for modules with rank different from the most occuring rank, add it to the `rank_pattern`
         rank_pattern = dict(filter(lambda x: x[1] != r, rank_dict.items()))
@@ -93,7 +94,7 @@ def get_rank_and_alpha_pattern(rank_dict, network_alpha_dict, peft_state_dict):
 
     if network_alpha_dict is not None and len(set(network_alpha_dict.values())) > 1:
         # get the alpha occuring the most number of times
-        lora_alpha = max(set(network_alpha_dict.values()), key=list(network_alpha_dict.values()).count)
+        lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
 
         # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
         alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
@@ -102,7 +103,14 @@ def get_rank_and_alpha_pattern(rank_dict, network_alpha_dict, peft_state_dict):
     # layer names without the Diffusers specific
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})
 
-    return r, lora_alpha, rank_pattern, alpha_pattern, target_modules
+    lora_config_kwargs = {
+        "r": r,
+        "lora_alpha": lora_alpha,
+        "rank_pattern": rank_pattern,
+        "alpha_pattern": alpha_pattern,
+        "target_modules": target_modules,
+    }
+    return lora_config_kwargs
 
 
 def get_adapter_name(model):
@@ -119,7 +127,11 @@ def set_adapter_layers(model, enabled=True):
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            module.disable_adapters = False if enabled else True
+            # The recent version of PEFT needs to call `enable_adapters` instead
+            if hasattr(module, "enable_adapters"):
+                module.enable_adapters(enabled=False)
+            else:
+                module.disable_adapters = True
 
 
 def set_weights_and_activate_adapters(model, adapter_names, weights):
@@ -129,10 +141,18 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
     for adapter_name, weight in zip(adapter_names, weights):
         for module in model.modules():
             if isinstance(module, BaseTunerLayer):
-                module.active_adapter = adapter_name
+                # For backward compatbility with previous PEFT versions
+                if hasattr(module, "set_adapter"):
+                    module.set_adapter(adapter_name)
+                else:
+                    module.active_adapter = adapter_name
                 module.scale_layer(weight)
 
     # set multiple active adapters
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            module.active_adapter = adapter_names
+            # For backward compatbility with previous PEFT versions
+            if hasattr(module, "set_adapter"):
+                module.set_adapter(adapter_names)
+            else:
+                module.active_adapter = adapter_names
