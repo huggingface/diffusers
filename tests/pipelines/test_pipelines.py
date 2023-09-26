@@ -73,6 +73,7 @@ from diffusers.utils.testing_utils import (
     require_compel,
     require_flax,
     require_onnxruntime,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -1636,6 +1637,7 @@ class PipelineSlowTests(unittest.TestCase):
 
         assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
+    @require_python39_or_higher
     @require_torch_2
     def test_from_save_pretrained_dynamo(self):
         run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
