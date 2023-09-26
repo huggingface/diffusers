@@ -252,7 +252,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_save_load_local(self):
         super().test_save_load_local(expected_max_difference=1e-3)
 
-    @unittest.skip("Keyerror raised by acclerate")
+    @unittest.skip("Key error is raised with accelerate")
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
