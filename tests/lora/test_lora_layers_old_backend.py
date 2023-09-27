@@ -1786,7 +1786,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
         with torch.no_grad():
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
-        model.set_attn_processor(AttnProcessor())
+        model.set_default_attn_processor()
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
