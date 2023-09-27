@@ -216,6 +216,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         super().__init__()
 
         self.sample_size = sample_size
+
         if num_attention_heads is not None:
             raise ValueError(
                 "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
@@ -729,6 +730,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
+
+    def enable_freeu(self, **kwargs):
+        for k in kwargs:
+            if not hasattr(self.unet.config, k) or getattr(self.unet.config, k) is None:
+                setattr(self.unet.config, k, kwargs[k])
 
     def forward(
         self,
