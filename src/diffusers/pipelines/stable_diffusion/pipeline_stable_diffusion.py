@@ -539,6 +539,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         The default values are for Stable Diffusion v1. They come from https://github.com/ChenyangSi/FreeU.
         """
+        if not hasattr(self, "unet"):
+            raise ValueError("The pipeline must have `unet` for using FreeU.")
         self.validate_freeu_kwargs(s1=s1, s2=s2, b1=b1, b2=b2)
         self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
 
