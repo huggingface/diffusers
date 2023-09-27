@@ -736,6 +736,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             if not hasattr(self.unet.config, k) or getattr(self.unet.config, k) is None:
                 setattr(self.unet.config, k, kwargs[k])
 
+    def disable_freeu(self):
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for k in freeu_keys:
+            if hasattr(self.unet.config, k) or getattr(self.unet.config, k) is not None:
+                setattr(self.unet.config, k, None)
+
     def forward(
         self,
         sample: torch.FloatTensor,

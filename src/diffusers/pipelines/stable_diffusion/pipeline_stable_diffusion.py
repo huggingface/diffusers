@@ -543,7 +543,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         self.unet.enable_freeu(s1, s2, b1, b2)
 
     def disable_freeu(self):
-        pass  # to be implemented
+        """Disables the FreeU mechanism if enabled."""
+        self.unet.disable_freeu()
 
     def validate_freeu_kwargs(self, **freeu_kwargs):
         expected_keys = {"s1", "s2", "b1", "b2"}
