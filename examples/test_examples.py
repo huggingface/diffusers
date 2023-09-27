@@ -59,8 +59,8 @@ def run_command(command: List[str], return_stdout=False):
         ) from e
 
 
-stream_handler = logging.StreamHandler(sys.stdout)
-logger.addHandler(stream_handler)
+# stream_handler = logging.StreamHandler(sys.stdout)
+# logger.addHandler(stream_handler)
 
 
 class ExamplesTestsAccelerate(unittest.TestCase):
