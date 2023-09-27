@@ -539,6 +539,32 @@ class AltDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def enable_freeu(self, s1=0.9, s2=0.2, b1=1.2, b2=1.4):
+        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+
+        The default values are for Alt Diffusion v1. They come from https://github.com/ChenyangSi/FreeU.
+        """
+        self.validate_freeu_kwargs(s1, s2, b1, b2)
+        self.unet.enable_freeu(s1, s2, b1, b2)
+
+    def disable_freeu(self):
+        """Disables the FreeU mechanism if enabled."""
+        self.unet.disable_freeu()
+
+    def validate_freeu_kwargs(self, **freeu_kwargs):
+        expected_keys = {"s1", "s2", "b1", "b2"}
+
+        # Check if all expected keys are present in the dictionary
+        if not all(key in freeu_kwargs for key in expected_keys):
+            raise ValueError("Expected keys (s1, s2, b1, and b2) not found in `freeu_kwargs`.")
+
+        for k in freeu_kwargs:
+            if k is None:
+                raise ValueError(
+                    f"When enabling FreeU, all the hyperparameters (s1, s2, b1, and b2) must be set. Found {k} to be"
+                    " `None`."
+                )
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(

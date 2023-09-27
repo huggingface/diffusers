@@ -32,6 +32,7 @@ from ...models.embeddings import (
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import is_torch_version, logging
+from ...utils.torch_utils import fourier_filter
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -749,6 +750,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 add_upsample=add_upsample,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resolution_idx=i,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
@@ -938,6 +940,17 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
+
+    def enable_freeu(self, **kwargs):
+        for k in kwargs:
+            if not hasattr(self.unet.config, k) or getattr(self.unet.config, k) is None:
+                setattr(self.unet.config, k, kwargs[k])
+
+    def disable_freeu(self):
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for k in freeu_keys:
+            if hasattr(self.unet.config, k) or getattr(self.unet.config, k) is not None:
+                setattr(self.unet.config, k, None)
 
     def forward(
         self,
@@ -1628,6 +1641,7 @@ class UpBlockFlat(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -1668,12 +1682,36 @@ class UpBlockFlat(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
+        is_freeu_enabled = (
+            getattr(self.config, "s1", None)
+            and getattr(self.config, "s2", None)
+            and getattr(self.config, "b1", None)
+            and getattr(self.config, "b2", None)
+        )
+
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # Courtesy:
+            # https://github.com/ChenyangSi/FreeU
+            # https://github.com/lyn-rgb/FreeU_Diffusers
+            if is_freeu_enabled:
+                # --------------- FreeU code -----------------------
+                # Only operate on the first two stages
+                if self.resolution_idx == 0:
+                    num_half_channels = hidden_states.shape[-1] // 2
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
+                if self.resolution_idx == 1:
+                    num_half_channels = hidden_states.shape[-1] // 2
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
+
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -1710,6 +1748,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int = 1,
@@ -1788,6 +1827,7 @@ class CrossAttnUpBlockFlat(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
@@ -1801,11 +1841,34 @@ class CrossAttnUpBlockFlat(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        is_freeu_enabled = (
+            getattr(self.config, "s1", None)
+            and getattr(self.config, "s2", None)
+            and getattr(self.config, "b1", None)
+            and getattr(self.config, "b2", None)
+        )
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # Courtesy:
+            # https://github.com/ChenyangSi/FreeU
+            # https://github.com/lyn-rgb/FreeU_Diffusers
+            if is_freeu_enabled is not None:
+                # --------------- FreeU code -----------------------
+                # Only operate on the first two stages
+                if self.resolution_idx == 0:
+                    num_half_channels = hidden_states.shape[1] // 2
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
+                if self.resolution_idx == 1:
+                    num_half_channels = hidden_states.shape[1] // 2
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
+                # ---------------------------------------------------------
+
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
