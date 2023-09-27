@@ -1303,6 +1303,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             run_command(self._launch_args + resume_run_args)
 
             # check checkpoint directories exist
+            print({x for x in os.listdir(tmpdir) if "checkpoint" in x})
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
                 {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
