@@ -74,11 +74,11 @@ jobs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
-        CUBLAS_WORKSPACE_CONFIG: :16:8 
+        CUBLAS_WORKSPACE_CONFIG: :16:8
 
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -s -v -k "not Flax and not Onnx and not compile" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
@@ -111,6 +111,50 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: ${{ matrix.config.report }}_test_reports
+        path: reports
+
+  run_torch_compile_tests:
+    name: PyTorch Compile CUDA tests
+
+    runs-on: docker-gpu
+
+    container:
+      image: diffusers/diffusers-pytorch-compile-cuda
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: NVIDIA-SMI
+      run: |
+        nvidia-smi
+
+    - name: Install dependencies
+      run: |
+        python -m pip install -e .[quality,test,training]
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run example tests on GPU
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      run: |
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v -k "compile" --make-reports=tests_torch_compile_cuda tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_compile_cuda_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: torch_compile_test_reports
         path: reports
 
   run_examples_tests:

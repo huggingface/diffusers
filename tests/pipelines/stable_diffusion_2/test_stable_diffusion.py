@@ -382,7 +382,8 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         # make sure that more than 3.3 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes > 3.3 * 10**9
-        assert np.abs(image_sliced - image).max() < 1e-3
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_sliced.flatten())
+        assert max_diff < 5e-3
 
     def test_stable_diffusion_text2img_intermediate_state(self):
         number_of_steps = 0

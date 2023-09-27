@@ -321,21 +321,9 @@ with torch.inference_mode():
 
 Recent work on optimizing bandwidth in the attention block has generated huge speed-ups and reductions in GPU memory usage. The most recent type of memory-efficient attention is [Flash Attention](https://arxiv.org/pdf/2205.14135.pdf) (you can check out the original code at [HazyResearch/flash-attention](https://github.com/HazyResearch/flash-attention)).
 
-The table below details the speed-ups from a few different Nvidia GPUs when running inference on image sizes of 512x512 and a batch size of 1 (one prompt):
+<Tip>
 
-| GPU              | base attention (fp16) | memory-efficient attention (fp16) |
-|------------------|-----------------------|-----------------------------------|
-| NVIDIA Tesla T4  |               3.5it/s |                           5.5it/s |
-| NVIDIA 3060 RTX  |               4.6it/s |                           7.8it/s |
-| NVIDIA A10G      |              8.88it/s |                          15.6it/s |
-| NVIDIA RTX A6000 |              11.7it/s |                         21.09it/s |
-| NVIDIA TITAN RTX |             12.51it/s |                         18.22it/s |
-| A100-SXM4-40GB   |              18.6it/s |                           29.it/s |
-| A100-SXM-80GB    |              18.7it/s |                          29.5it/s |
-
-<Tip warning={true}>
-
-If you have PyTorch 2.0 installed, you shouldn't use xFormers!
+If you have PyTorch >= 2.0 installed, you should not expect a speed-up for inference when enabling `xformers`.
 
 </Tip>
 
@@ -365,3 +353,5 @@ with torch.inference_mode():
 # optional: You can disable it via
 # pipe.disable_xformers_memory_efficient_attention()
 ```
+
+The iteration speed when using `xformers` should match the iteration speed of Torch 2.0 as described [here](torch2.0).

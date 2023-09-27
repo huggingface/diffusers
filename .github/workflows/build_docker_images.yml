@@ -26,6 +26,7 @@ jobs:
         image-name:
           - diffusers-pytorch-cpu
           - diffusers-pytorch-cuda
+          - diffusers-pytorch-compile-cuda
           - diffusers-flax-cpu
           - diffusers-flax-tpu
           - diffusers-onnxruntime-cpu

@@ -34,7 +34,7 @@ from ...schedulers import (
 )
 from ...utils import PIL_INTERPOLATION, logging, replace_example_docstring
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
-from . import FlaxStableDiffusionPipelineOutput
+from .pipeline_output import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 
