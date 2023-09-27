@@ -360,7 +360,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         for _, module in self.named_modules():
             if isinstance(module, BaseTunerLayer):
-                module.active_adapter = adapter_name
+                if hasattr(module, "set_adapter"):
+                    module.set_adapter(adapter_name)
+                else:
+                    module.active_adapter = adapter_name
                 _adapters_has_been_set = True
 
         if not _adapters_has_been_set:
