@@ -2218,7 +2218,6 @@ class CrossAttnUpBlock2D(nn.Module):
             and getattr(self, "b1", None)
             and getattr(self, "b2", None)
         )
-        print(f"From {self.__class__}: {is_freeu_enabled}")
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -2344,7 +2343,6 @@ class UpBlock2D(nn.Module):
             and getattr(self, "b1", None)
             and getattr(self, "b2", None)
         )
-        print(f"From {self.__class__}: {is_freeu_enabled}")
 
         for resnet in self.resnets:
             # pop res hidden states
