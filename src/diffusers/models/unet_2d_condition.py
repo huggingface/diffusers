@@ -941,6 +941,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # 3. down
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         if self.use_peft_backend:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_peft_layers(self, lora_scale)
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
@@ -1042,6 +1043,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         sample = self.conv_out(sample)
 
         if self.use_peft_backend:
+            # remove `lora_scale` from each PEFT layer
             unscale_peft_layers(self, lora_scale)
 
         if not return_dict:
