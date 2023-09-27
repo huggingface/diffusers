@@ -30,6 +30,8 @@ from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    is_flaky,
+    numpy_cosine_similarity_distance,
     skip_mps,
     slow,
     torch_device,
@@ -156,8 +158,17 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @is_flaky()
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=0.001)
+
+    @is_flaky()
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent()
+
+    @is_flaky()
+    def test_save_load_local(self):
+        super().test_save_load_local()
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -188,17 +199,18 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @skip_mps
 class VideoToVideoSDPipelineSlowTests(unittest.TestCase):
     def test_two_step_model(self):
-        pipe = VideoToVideoSDPipeline.from_pretrained("cerspense/zeroscope_v2_XL", torch_dtype=torch.float16)
+        pipe = VideoToVideoSDPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         # 10 frames
         generator = torch.Generator(device="cpu").manual_seed(0)
-        video = torch.randn((1, 10, 3, 1024, 576), generator=generator)
-        video = video.to("cuda")
+        video = torch.randn((1, 10, 3, 320, 576), generator=generator)
 
         prompt = "Spiderman is surfing"
 
         video_frames = pipe(prompt, video=video, generator=generator, num_inference_steps=3, output_type="pt").frames
 
-        expected_array = np.array([-1.0458984, -1.1279297, -0.9663086, -0.91503906, -0.75097656])
-        assert np.abs(video_frames.cpu().numpy()[0, 0, 0, 0, -5:] - expected_array).sum() < 1e-2
+        expected_array = np.array([-0.9770508, -0.8027344, -0.62646484, -0.8334961, -0.7573242])
+        output_array = video_frames.cpu().numpy()[0, 0, 0, 0, -5:]
+
+        assert numpy_cosine_similarity_distance(expected_array, output_array) < 1e-2

@@ -15,7 +15,7 @@ import importlib
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Union
+from typing import Optional, Union
 
 import torch
 
@@ -83,7 +83,7 @@ class SchedulerMixin(PushToHubMixin):
     @classmethod
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Dict[str, Any] = None,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
         subfolder: Optional[str] = None,
         return_unused_kwargs=False,
         **kwargs,

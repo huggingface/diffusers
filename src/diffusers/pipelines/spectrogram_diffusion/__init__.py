@@ -1,5 +1,6 @@
 # flake8: noqa
 from typing import TYPE_CHECKING
+from ...utils import DIFFUSERS_SLOW_IMPORT
 from ...utils import (
     _LazyModule,
     is_note_seq_available,
@@ -38,7 +39,7 @@ else:
     _import_structure["midi_utils"] = ["MidiProcessor"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
