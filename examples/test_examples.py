@@ -27,11 +27,14 @@ import safetensors
 from accelerate.utils import write_basic_config
 
 from diffusers import DiffusionPipeline, UNet2DConditionModel
+import torch 
+import diffusers
 
+log = logging.getLogger("test")
+log.setLevel(logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s | %(name)s | %(levelname)s | %(module)s | %(message)s')
 
-logging.basicConfig(level=logging.DEBUG)
-
-logger = logging.getLogger()
+log.info(f'loaded: torch={torch.__version__} diffusers={diffusers.__version__}')
 
 
 # These utils relate to ensuring the right error message is received when running scripts
