@@ -87,11 +87,13 @@ from .outputs import BaseOutput
 from .peft_utils import (
     MIN_PEFT_VERSION,
     check_peft_version,
+    get_adapter_name,
+    get_peft_kwargs,
     recurse_remove_peft_layers,
     scale_peft_layers,
-    unscale_peft_layers,
     set_adapter_layers,
     set_weights_and_activate_adapters,
+    unscale_peft_layers,
 )
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
 from .state_dict_utils import (

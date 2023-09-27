@@ -19,6 +19,9 @@ import collections
 from .import_utils import is_torch_available
 
 
+MIN_PEFT_VERSION = "0.5.0"
+
+
 def recurse_remove_peft_layers(model):
     if is_torch_available():
         import torch
@@ -150,6 +153,7 @@ def unscale_peft_layers(model, scale: float = None):
                 # Clean up ..
                 if len(module.scaling["_hf_peft_original_scales"]) == 0:
                     del module.scaling["_hf_peft_original_scales"]
+
 
 def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
     rank_pattern = {}

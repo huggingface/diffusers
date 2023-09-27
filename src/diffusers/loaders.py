@@ -42,7 +42,7 @@ from .utils import (
     is_transformers_available,
     logging,
     recurse_remove_peft_layers,
-    scale_lora_layers,
+    scale_peft_layers,
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
@@ -1650,7 +1650,7 @@ class LoraLoaderMixin:
                         peft_config=lora_config,
                     )
                     # scale LoRA layers with `lora_scale`
-                    scale_lora_layers(text_encoder, weight=lora_scale)
+                    scale_peft_layers(text_encoder, scale=lora_scale)
 
                     is_model_cpu_offload = False
                     is_sequential_cpu_offload = False
