@@ -277,6 +277,50 @@ image
   <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-negative.png"/>
 </div>
 
+## Preserve unmasked areas
+
+The [`StableDiffusionInpaintPipeline`] (and other inpainting pipelines) generally also changes the unmasked part of an image to create a more natural transition between the masked and unmasked region. If this behavior is undesirable, you can force the unmasked area to remain the same. However, forcing the unmasked portion of the image to remain the same might result in some weird transitions between the unmasked and masked areas.
+
+```py
+import PIL
+import numpy as np
+import torch
+
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image
+
+device = "cuda"
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    torch_dtype=torch.float16,
+)
+pipeline = pipeline.to(device)
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = load_image(img_url).resize((512, 512))
+mask_image = load_image(mask_url).resize((512, 512))
+
+prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+repainted_image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+repainted_image.save("repainted_image.png")
+
+# Convert mask to grayscale NumPy array
+mask_image_arr = np.array(mask_image.convert("L"))
+# Add a channel dimension to the end of the grayscale mask
+mask_image_arr = mask_image_arr[:, :, None]
+# Binarize the mask: 1s correspond to the pixels which are repainted
+mask_image_arr = mask_image_arr.astype(np.float32) / 255.0
+mask_image_arr[mask_image_arr < 0.5] = 0
+mask_image_arr[mask_image_arr >= 0.5] = 1
+
+# Take the masked pixels from the repainted image and the unmasked pixels from the initial image
+unmasked_unchanged_image_arr = (1 - mask_image_arr) * init_image + mask_image_arr * repainted_image
+unmasked_unchanged_image = PIL.Image.fromarray(unmasked_unchanged_image_arr.round().astype("uint8"))
+unmasked_unchanged_image.save("force_unmasked_unchanged.png")
+```
+
 ## Chained inpainting pipelines
 
 [`AutoPipelineForInpainting`] can be chained with other 🤗 Diffusers pipelines to edit their outputs.
