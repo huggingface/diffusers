@@ -2336,7 +2336,7 @@ class FromSingleFileMixin:
             from .pipelines.controlnet.multicontrolnet import MultiControlNetModel
 
             # Model type will be inferred from the checkpoint.
-            if not isinstance(controlnet, (ControlNetModel, MultiControlNetModel)):
+            if not (isinstance(controlnet, (ControlNetModel, MultiControlNetModel)) or isinstance(controlnet, (list, tuple)) and isinstance(controlnet[0], ControlNetModel))
                 if isinstance(controlnet, (list, tuple)) and controlnet:
                     pass
                 else:
