@@ -26,7 +26,7 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import BaseOutput, deprecate, logging, replace_example_docstring, scale_peft_layers, unscale_peft_layers
+from ...utils import BaseOutput, deprecate, logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
@@ -266,11 +266,11 @@ class StableDiffusionLDM3DPipeline(
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
 
+            # dynamically adjust the LoRA scale
             if not self.use_peft_backend:
-                # dynamically adjust the LoRA scale
                 adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
             else:
-                scale_peft_layers(self.text_encoder, lora_scale)
+                scale_lora_layers(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -396,7 +396,8 @@ class StableDiffusionLDM3DPipeline(
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if self.use_peft_backend:
-            unscale_peft_layers(self.text_encoder, lora_scale)
+            # Retrieve the original scale by scaling back the LoRA layers
+            unscale_lora_layers(self.text_encoder)
 
         return prompt_embeds, negative_prompt_embeds
 

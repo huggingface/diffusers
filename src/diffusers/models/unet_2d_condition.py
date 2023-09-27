@@ -20,7 +20,7 @@ import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
-from ..utils import BaseOutput, logging, scale_peft_layers, unscale_peft_layers
+from ..utils import BaseOutput, logging, scale_lora_layers, unscale_lora_layers
 from .activations import get_activation
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -942,7 +942,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         if self.use_peft_backend:
             # weight the lora layers by setting `lora_scale` for each PEFT layer
-            scale_peft_layers(self, lora_scale)
+            scale_lora_layers(self, lora_scale)
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
         is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
@@ -1044,7 +1044,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         if self.use_peft_backend:
             # remove `lora_scale` from each PEFT layer
-            unscale_peft_layers(self, lora_scale)
+            unscale_lora_layers(self)
 
         if not return_dict:
             return (sample,)

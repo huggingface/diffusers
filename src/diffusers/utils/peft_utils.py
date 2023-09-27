@@ -78,84 +78,38 @@ def recurse_remove_peft_layers(model):
     return model
 
 
-def scale_peft_layers(model, scale: float = None):
-    r"""
-    Scale peft layers - Loops over the modules of the model and scale the layers that are of type `BaseTunerLayer`. We
-    also store the original scale factor in case we multiply it by zero.
+def scale_lora_layers(model, weight):
+    """
+    Adjust the weightage given to the LoRA layers of the model.
 
     Args:
         model (`torch.nn.Module`):
             The model to scale.
-        scale (`float`, *optional*):
-            The scale factor to use.
+        weight (`float`):
+            The weight to be given to the LoRA layers.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
-    if scale is not None and scale != 1.0:
-        for module in model.modules():
-            if isinstance(module, BaseTunerLayer):
-                # To deal with previous PEFT versions
-                active_adapters = module.active_adapter
-                if isinstance(active_adapters, str):
-                    active_adapters = [active_adapters]
-
-                for active_adapter in active_adapters:
-                    original_scale = module.scaling[active_adapter]
-
-                    # Store the previous scale in case we multiply it by zero
-                    if "_hf_peft_original_scales" not in module.scaling:
-                        module.scaling["_hf_peft_original_scales"] = {active_adapter: original_scale}
-                    else:
-                        module.scaling["_hf_peft_original_scales"][active_adapter] = original_scale
-
-                    module.scaling[active_adapter] *= scale
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            module.scale_layer(weight)
 
 
-def unscale_peft_layers(model, scale: float = None):
-    r"""
-    Un-scale peft layers - in case the modules has been zero-ed by a zero factor we retrieve the previous scale and
-    restore it. Otherwise, assuming the user uses the same scale factor, we just divide by the scale factor.
+def unscale_lora_layers(model):
+    """
+    Adjust bacl the weightage given to the LoRA layers of the model.
 
     Args:
         model (`torch.nn.Module`):
-            The model to unscale.
-        scale (`float`, *optional*):
-            The scale factor to use. If 0.0 is passed, we retrieve the original scale factor. In order to retrieve the
-            original factor the user needs first to call `scale_peft_layers` with the same scale factor.
+            The model to scale.
+        weight (`float`):
+            The weight to be given to the LoRA layers.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
-    if scale is not None and scale != 1.0 and scale != 0.0:
-        for module in model.modules():
-            if isinstance(module, BaseTunerLayer):
-                # To deal with previous PEFT versions
-                active_adapters = module.active_adapter
-                if isinstance(active_adapters, str):
-                    active_adapters = [active_adapters]
-
-                for active_adapter in active_adapters:
-                    module.scaling[active_adapter] /= scale
-    elif scale is not None and scale == 0.0:
-        for module in model.modules():
-            if isinstance(module, BaseTunerLayer):
-                if "_hf_peft_original_scales" not in module.scaling:
-                    raise ValueError(
-                        "The layer has not been scaled, cannot unscale it - please call first `scale_peft_layers`"
-                    )
-                # To deal with previous PEFT versions
-                active_adapters = module.active_adapter
-                if isinstance(active_adapters, str):
-                    active_adapters = [active_adapters]
-
-                for active_adapter in active_adapters:
-                    original_scale = module.scaling["_hf_peft_original_scales"][active_adapter]
-                    module.scaling[active_adapter] = original_scale
-
-                    del module.scaling["_hf_peft_original_scales"][active_adapter]
-
-                # Clean up ..
-                if len(module.scaling["_hf_peft_original_scales"]) == 0:
-                    del module.scaling["_hf_peft_original_scales"]
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            module.unscale_layer()
 
 
 def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
