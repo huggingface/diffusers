@@ -265,6 +265,49 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
         sample = torch.arange(num_elems)
         sample = sample.reshape(num_channels, width, batch_size)
         sample = sample / num_elems
-        sample = sample.permute(3, 0, 1, 2)
+        sample = sample.permute(2, 0, 1)
 
         return sample
+
+    def test_switch(self):
+        # make sure that iterating over schedulers with same config names gives same results
+        # for defaults
+        scheduler = UniPCMultistepScheduler(**self.get_scheduler_config())
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2441) < 1e-3
+
+        scheduler = DPMSolverSinglestepScheduler.from_config(scheduler.config)
+        scheduler = DEISMultistepScheduler.from_config(scheduler.config)
+        scheduler = DPMSolverMultistepScheduler.from_config(scheduler.config)
+        scheduler = UniPCMultistepScheduler.from_config(scheduler.config)
+
+        sample = self.full_loop(scheduler=scheduler)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2441) < 1e-3
+
+    def test_full_loop_no_noise(self):
+        sample = self.full_loop()
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2441) < 1e-3
+
+    def test_full_loop_with_karras(self):
+        sample = self.full_loop(use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2898) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction")
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.1014) < 1e-3
+
+    def test_full_loop_with_karras_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_karras_sigmas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.1944) < 1e-3
