@@ -732,12 +732,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-    def enable_freeu(self, **kwargs):
+    def enable_freeu(self, s1, s2, b1, b2):
         for i, upsample_block in enumerate(self.up_blocks):
-            setattr(upsample_block, "b1", kwargs["b1"])
-            setattr(upsample_block, "b2", kwargs["b2"])
-            setattr(upsample_block, "s1", kwargs["s1"])
-            setattr(upsample_block, "s2", kwargs["s2"])
+            setattr(upsample_block, "s1", s1)
+            setattr(upsample_block, "s2", s2)
+            setattr(upsample_block, "b1", b1)
+            setattr(upsample_block, "b2", b2)
 
     def disable_freeu(self):
         is_freeu_enabled = (
