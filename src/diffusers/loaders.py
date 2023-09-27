@@ -2666,6 +2666,7 @@ class FromOriginalControlnetMixin:
 
         return controlnet
 
+
 class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
     """This class overrides `LoraLoaderMixin` with LoRA loading/saving code that's specific to SDXL"""
 
