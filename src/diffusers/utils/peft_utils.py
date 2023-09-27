@@ -15,15 +15,11 @@
 PEFT utilities: Utilities related to peft library
 """
 import importlib
-from typing import List
 
 from packaging import version
 
 from .import_utils import is_peft_available, is_torch_available
 
-
-if is_torch_available():
-    import torch
 
 MIN_PEFT_VERSION = "0.5.0"
 
@@ -159,26 +155,6 @@ def unscale_peft_layers(model, scale: float = None):
                 # Clean up ..
                 if len(module.scaling["_hf_peft_original_scales"]) == 0:
                     del module.scaling["_hf_peft_original_scales"]
-
-
-class PeftLayerScaler:
-    r"""
-    A custom context manager that scale / unscale PEFT layers before and after the forward pass.
-    """
-
-    def __init__(self, modules_to_scale: List["torch.nn.Module"], scale: float = None):
-        self.modules_to_scale = modules_to_scale
-        self.scale = scale
-
-    def __enter__(self, *args, **kwargs):
-        if self.scale is not None and self.scale != 1.0:
-            for submodule in self.modules_to_scale:
-                scale_peft_layers(submodule, self.scale)
-
-    def __exit__(self, *args, **kwargs):
-        if self.scale is not None and self.scale != 1.0:
-            for submodule in self.modules_to_scale:
-                unscale_peft_layers(submodule, self.scale)
 
 
 def check_peft_version(min_version: str) -> None:
