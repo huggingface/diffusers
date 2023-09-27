@@ -97,15 +97,21 @@ def scale_peft_layers(model, scale: float = None):
     if scale is not None and scale != 1.0:
         for module in model.modules():
             if isinstance(module, BaseTunerLayer):
-                original_scale = module.scaling[module.active_adapter]
+                # To deal with previous PEFT versions
+                active_adapters = module.active_adapter
+                if isinstance(active_adapters, str):
+                    active_adapters = [active_adapters]
 
-                # Store the previous scale in case we multiply it by zero
-                if "_hf_peft_original_scales" not in module.scaling:
-                    module.scaling["_hf_peft_original_scales"] = {module.active_adapter: original_scale}
-                else:
-                    module.scaling["_hf_peft_original_scales"][module.active_adapter] = original_scale
+                for active_adapter in active_adapters:
+                    original_scale = module.scaling[active_adapter]
 
-                module.scaling[module.active_adapter] *= scale
+                    # Store the previous scale in case we multiply it by zero
+                    if "_hf_peft_original_scales" not in module.scaling:
+                        module.scaling["_hf_peft_original_scales"] = {active_adapter: original_scale}
+                    else:
+                        module.scaling["_hf_peft_original_scales"][active_adapter] = original_scale
+
+                    module.scaling[active_adapter] *= scale
 
 
 def unscale_peft_layers(model, scale: float = None):
@@ -125,7 +131,13 @@ def unscale_peft_layers(model, scale: float = None):
     if scale is not None and scale != 1.0 and scale != 0.0:
         for module in model.modules():
             if isinstance(module, BaseTunerLayer):
-                module.scaling[module.active_adapter] /= scale
+                # To deal with previous PEFT versions
+                active_adapters = module.active_adapter
+                if isinstance(active_adapters, str):
+                    active_adapters = [active_adapters]
+
+                for active_adapter in active_adapters:
+                    module.scaling[active_adapter] /= scale
     elif scale is not None and scale == 0.0:
         for module in model.modules():
             if isinstance(module, BaseTunerLayer):
@@ -133,11 +145,16 @@ def unscale_peft_layers(model, scale: float = None):
                     raise ValueError(
                         "The layer has not been scaled, cannot unscale it - please call first `scale_peft_layers`"
                     )
+                # To deal with previous PEFT versions
+                active_adapters = module.active_adapter
+                if isinstance(active_adapters, str):
+                    active_adapters = [active_adapters]
 
-                original_scale = module.scaling["_hf_peft_original_scales"][module.active_adapter]
-                module.scaling[module.active_adapter] = original_scale
+                for active_adapter in active_adapters:
+                    original_scale = module.scaling["_hf_peft_original_scales"][active_adapter]
+                    module.scaling[active_adapter] = original_scale
 
-                del module.scaling["_hf_peft_original_scales"][module.active_adapter]
+                    del module.scaling["_hf_peft_original_scales"][active_adapter]
 
                 # Clean up ..
                 if len(module.scaling["_hf_peft_original_scales"]) == 0:
