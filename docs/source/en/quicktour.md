@@ -130,7 +130,7 @@ You can also use the pipeline locally. The only difference is you need to downlo
 Then load the saved weights into the pipeline:
 
 ```python
->>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", use_safetensors=True)
+>>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", local_files_only=True, use_safetensors=True)
 ```
 
 Now you can run the pipeline as you would in the section above.
