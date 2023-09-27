@@ -24,7 +24,10 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 ```bash
 accelerate config
 ```
-For this example we want to directly store the trained LoRA embeddings on the Hub, so we need to be logged in and add the `--push_to_hub` flag.
+For this example we want to directly store the trained LoRA embeddings on the Hub, so we need to be logged in and add the `--push_to_hub` flag to the training script. To do so, run:
+```bash
+huggingface-cli login
+```
 
 ## Prior training
 
@@ -56,7 +59,7 @@ accelerate launch  train_text_to_image_prior.py \
 
 ## Training with LoRA
 
-Low-Rank Adaption of Large Language Models was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
+Low-Rank Adaption of Large Language Models (or LoRA) was first introduced by Microsoft in [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) by *Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen*.
 
 In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 
@@ -64,5 +67,24 @@ In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-de
 - Rank-decomposition matrices have significantly fewer parameters than original model, which means that trained LoRA weights are easily portable.
 - LoRA attention layers allow to control to which extent the model is adapted toward new training images via a `scale` parameter.
 
-[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository.
+
+### Prior Training
+
+First, you need to set up your development environment as explained in the [installation](#installing-the-dependencies). Make sure to set the `DATASET_NAME` environment variables. Here, we will use the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
+
+```bash
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+
+accelerate launch --mixed_precision="fp16" train_text_to_image_prior_lora.py \
+  --dataset_name=$DATASET_NAME --caption_column="text" \
+  --resolution=768 \
+  --train_batch_size=8 \
+  --num_train_epochs=100 --checkpointing_steps=5000 \
+  --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --seed=42 \
+  --rank=4 \
+  --output_dir="wuerstchen-prior-pokemon-lora" \
+  --validation_prompt="cute dragon creature" --report_to="wandb" \
+  --push_to_hub \
+```
 
