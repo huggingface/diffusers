@@ -734,14 +734,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
     def enable_freeu(self, **kwargs):
         for k in kwargs:
-            if not hasattr(self.unet.config, k) or getattr(self.unet.config, k) is None:
-                setattr(self.unet.config, k, kwargs[k])
+            if not hasattr(self.config, k) or getattr(self.config, k) is None:
+                setattr(self.config, k, kwargs[k])
 
     def disable_freeu(self):
         freeu_keys = {"s1", "s2", "b1", "b2"}
         for k in freeu_keys:
-            if hasattr(self.unet.config, k) or getattr(self.unet.config, k) is not None:
-                setattr(self.unet.config, k, None)
+            if hasattr(self.config, k) or getattr(self.config, k) is not None:
+                setattr(self.config, k, None)
 
     def forward(
         self,
