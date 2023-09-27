@@ -506,6 +506,8 @@ class UNet2DConditionLoadersMixin:
                     )
                     attn_processors[key].load_state_dict(value_dict)
         elif self.use_peft_backend:
+            # In that case we have nothing to do as loading the adapter weights is already handled above by `set_peft_model_state_dict`
+            # on the Unet
             pass
         else:
             raise ValueError(
