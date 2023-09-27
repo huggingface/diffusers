@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -120,7 +121,7 @@ if is_transformers_available() and is_flax_available():
     _import_structure["pipeline_flax_stable_diffusion_inpaint"] = ["FlaxStableDiffusionInpaintPipeline"]
     _import_structure["safety_checker_flax"] = ["FlaxStableDiffusionSafetyChecker"]
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
@@ -130,6 +131,7 @@ if TYPE_CHECKING:
 
     else:
         from .clip_image_project_model import CLIPImageProjection
+        from .pipeline_cycle_diffusion import CycleDiffusionPipeline
         from .pipeline_stable_diffusion import (
             StableDiffusionPipeline,
             StableDiffusionPipelineOutput,
@@ -195,14 +197,11 @@ if TYPE_CHECKING:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_onnx_objects import *
     else:
-        from .pipeline_onnx_stable_diffusion import (
-            OnnxStableDiffusionImg2ImgPipeline,
-            OnnxStableDiffusionInpaintPipeline,
-            OnnxStableDiffusionInpaintPipelineLegacy,
-            OnnxStableDiffusionPipeline,
-            OnnxStableDiffusionUpscalePipeline,
-            StableDiffusionOnnxPipeline,
-        )
+        from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
+        from .pipeline_onnx_stable_diffusion_img2img import OnnxStableDiffusionImg2ImgPipeline
+        from .pipeline_onnx_stable_diffusion_inpaint import OnnxStableDiffusionInpaintPipeline
+        from .pipeline_onnx_stable_diffusion_inpaint_legacy import OnnxStableDiffusionInpaintPipelineLegacy
+        from .pipeline_onnx_stable_diffusion_upscale import OnnxStableDiffusionUpscalePipeline
 
     try:
         if not (is_transformers_available() and is_flax_available()):
@@ -210,13 +209,11 @@ if TYPE_CHECKING:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_flax_objects import *
     else:
-        from .pipeline_flax_stable_diffusion import (
-            FlaxStableDiffusionImg2ImgPipeline,
-            FlaxStableDiffusionInpaintPipeline,
-            FlaxStableDiffusionPipeline,
-            FlaxStableDiffusionSafetyChecker,
-        )
+        from .pipeline_flax_stable_diffusion import FlaxStableDiffusionPipeline
+        from .pipeline_flax_stable_diffusion_img2img import FlaxStableDiffusionImg2ImgPipeline
+        from .pipeline_flax_stable_diffusion_inpaint import FlaxStableDiffusionInpaintPipeline
         from .pipeline_output import FlaxStableDiffusionPipelineOutput
+        from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 else:
     import sys

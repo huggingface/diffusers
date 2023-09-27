@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -28,7 +29,7 @@ else:
     _import_structure["pipeline_wuerstchen_prior"] = ["DEFAULT_STAGE_C_TIMESTEPS", "WuerstchenPriorPipeline"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
@@ -40,7 +41,7 @@ if TYPE_CHECKING:
         from .modeling_wuerstchen_prior import WuerstchenPrior
         from .pipeline_wuerstchen import WuerstchenDecoderPipeline
         from .pipeline_wuerstchen_combined import WuerstchenCombinedPipeline
-        from .pipeline_wuerstchen_prior import WuerstchenPriorPipeline
+        from .pipeline_wuerstchen_prior import DEFAULT_STAGE_C_TIMESTEPS, WuerstchenPriorPipeline
 else:
     import sys
 

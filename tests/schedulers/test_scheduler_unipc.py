@@ -52,6 +52,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
             output, new_output = sample, sample
             for t in range(time_step, time_step + scheduler.config.solver_order + 1):
+                t = scheduler.timesteps[t]
                 output = scheduler.step(residual, t, output, **kwargs).prev_sample
                 new_output = new_scheduler.step(residual, t, new_output, **kwargs).prev_sample
 
@@ -242,10 +243,29 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
 
         assert sample.dtype == torch.float16
 
-    def test_unique_timesteps(self, **config):
-        for scheduler_class in self.scheduler_classes:
-            scheduler_config = self.get_scheduler_config(**config)
-            scheduler = scheduler_class(**scheduler_config)
+    def test_full_loop_with_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
 
-            scheduler.set_timesteps(scheduler.config.num_train_timesteps)
-            assert len(scheduler.timesteps.unique()) == scheduler.num_inference_steps
+        num_inference_steps = 10
+        t_start = 8
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
+
+        # add noise
+        noise = self.dummy_noise_deter
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
+        sample = scheduler.add_noise(sample, noise, timesteps[:1])
+
+        for i, t in enumerate(timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample).prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 315.5757) < 1e-2, f" expected result sum 315.5757, but get {result_sum}"
+        assert abs(result_mean.item() - 0.4109) < 1e-3, f" expected result mean 0.4109, but get {result_mean}"

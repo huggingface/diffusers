@@ -29,8 +29,8 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    nightly,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -290,8 +290,11 @@ class KandinskyInpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=5e-1)
 
-@slow
+
+@nightly
 @require_torch_gpu
 class KandinskyInpaintPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

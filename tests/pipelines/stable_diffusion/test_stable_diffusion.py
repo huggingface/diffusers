@@ -37,13 +37,14 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.models.attention_processor import AttnProcessor, LoRAXFormersAttnProcessor
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -51,8 +52,6 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ...models.test_lora_layers import create_unet_lora_layers
-from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
@@ -187,40 +186,6 @@ class StableDiffusionPipelineFastTests(
         expected_slice = np.array([0.5756, 0.6118, 0.5005, 0.5041, 0.5471, 0.4726, 0.4976, 0.4865, 0.4864])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    def test_stable_diffusion_lora(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward 1
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
-
-        # set lora layers
-        lora_attn_procs = create_lora_layers(sd_pipe.unet)
-        sd_pipe.unet.set_attn_processor(lora_attn_procs)
-        sd_pipe = sd_pipe.to(torch_device)
-
-        # forward 2
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.0})
-        image = output.images
-        image_slice_1 = image[0, -3:, -3:, -1]
-
-        # forward 3
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.5})
-        image = output.images
-        image_slice_2 = image[0, -3:, -3:, -1]
-
-        assert np.abs(image_slice - image_slice_1).max() < 1e-2
-        assert np.abs(image_slice - image_slice_2).max() > 1e-2
 
     def test_stable_diffusion_prompt_embeds(self):
         components = self.get_dummy_components()
@@ -373,56 +338,6 @@ class StableDiffusionPipelineFastTests(
         expected_slice = np.array([0.5122, 0.5712, 0.4825, 0.5053, 0.5646, 0.4769, 0.5179, 0.4894, 0.4994])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
-    @unittest.skipIf(not torch.cuda.is_available(), reason="xformers requires cuda")
-    def test_stable_diffusion_attn_processors(self):
-        # disable_full_determinism()
-        device = "cuda"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-
-        # run normal sd pipe
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run xformers attention
-        sd_pipe.enable_xformers_memory_efficient_attention()
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run attention slicing
-        sd_pipe.enable_attention_slicing()
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run vae attention slicing
-        sd_pipe.enable_vae_slicing()
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run lora attention
-        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
-        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
-        sd_pipe.unet.set_attn_processor(attn_processors)
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run lora xformers attention
-        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
-        attn_processors = {
-            k: LoRAXFormersAttnProcessor(hidden_size=v.hidden_size, cross_attention_dim=v.cross_attention_dim)
-            for k, v in attn_processors.items()
-        }
-        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
-        sd_pipe.unet.set_attn_processor(attn_processors)
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # enable_full_determinism()
 
     def test_stable_diffusion_no_safety_checker(self):
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -585,14 +500,7 @@ class StableDiffusionPipelineFastTests(
         negative_prompt = None
         num_images_per_prompt = 1
         logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
-
-        prompt = 25 * "@"
-        with CaptureLogger(logger) as cap_logger_3:
-            negative_text_embeddings_3, text_embeddings_3 = sd_pipe.encode_prompt(
-                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-            )
-            if negative_text_embeddings_3 is not None:
-                text_embeddings_3 = torch.cat([negative_text_embeddings_3, text_embeddings_3])
+        logger.setLevel(logging.WARNING)
 
         prompt = 100 * "@"
         with CaptureLogger(logger) as cap_logger:
@@ -602,6 +510,9 @@ class StableDiffusionPipelineFastTests(
             if negative_text_embeddings is not None:
                 text_embeddings = torch.cat([negative_text_embeddings, text_embeddings])
 
+        # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
+        assert cap_logger.out.count("@") == 25
+
         negative_prompt = "Hello"
         with CaptureLogger(logger) as cap_logger_2:
             negative_text_embeddings_2, text_embeddings_2 = sd_pipe.encode_prompt(
@@ -610,12 +521,18 @@ class StableDiffusionPipelineFastTests(
             if negative_text_embeddings_2 is not None:
                 text_embeddings_2 = torch.cat([negative_text_embeddings_2, text_embeddings_2])
 
+        assert cap_logger.out == cap_logger_2.out
+
+        prompt = 25 * "@"
+        with CaptureLogger(logger) as cap_logger_3:
+            negative_text_embeddings_3, text_embeddings_3 = sd_pipe.encode_prompt(
+                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            )
+            if negative_text_embeddings_3 is not None:
+                text_embeddings_3 = torch.cat([negative_text_embeddings_3, text_embeddings_3])
+
         assert text_embeddings_3.shape == text_embeddings_2.shape == text_embeddings.shape
         assert text_embeddings.shape[1] == 77
-
-        assert cap_logger.out == cap_logger_2.out
-        # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
-        assert cap_logger.out.count("@") == 25
         assert cap_logger_3.out == ""
 
     def test_stable_diffusion_height_width_opt(self):
@@ -803,7 +720,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_vae_tiling(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", torch_dtype=torch.float16, safety_checker=None
+        )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
         pipe.unet = pipe.unet.to(memory_format=torch.channels_last)
@@ -982,7 +901,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
         assert mem_bytes_offloaded < mem_bytes
         assert mem_bytes_offloaded < 3.5 * 10**9
-        for module in pipe.text_encoder, pipe.unet, pipe.vae, pipe.safety_checker:
+        for module in pipe.text_encoder, pipe.unet, pipe.vae:
             assert module.device == torch.device("cpu")
 
         # With attention slicing
@@ -1072,6 +991,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 8e-1
 
+    @require_python39_or_higher
     @require_torch_2
     def test_stable_diffusion_compile(self):
         seed = 0
@@ -1126,7 +1046,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)

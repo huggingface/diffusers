@@ -532,6 +532,7 @@ def parse_args(input_args=None):
         "--validation_image",
         type=str,
         default=None,
+        nargs="+",
         help=(
             "A set of paths to the t2iadapter conditioning image be evaluated every `--validation_steps`"
             " and logged to `--report_to`. Provide either a matching number of `--validation_prompt`s, a"

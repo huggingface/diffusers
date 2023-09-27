@@ -27,6 +27,7 @@ TEST_UNET_CONFIG = {
         "ResnetUpsampleBlock2D",
     ],
     "resnet_time_scale_shift": "scale_shift",
+    "attn_norm_num_groups": 32,
     "upsample_type": "resnet",
     "downsample_type": "resnet",
 }
@@ -52,6 +53,7 @@ IMAGENET_64_UNET_CONFIG = {
         "ResnetUpsampleBlock2D",
     ],
     "resnet_time_scale_shift": "scale_shift",
+    "attn_norm_num_groups": 32,
     "upsample_type": "resnet",
     "downsample_type": "resnet",
 }
