@@ -99,11 +99,13 @@ You can use the pipeline like so:
 from diffusers import DiffusionPipeline
 import torch
 
-pipe_prior = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype={args.weight_dtype})
-pipe_t2i = DiffusionPipeline.from_pretrained("{args.pretrained_decoder_model_name_or_path}", torch_dtype={args.weight_dtype})
-prompt = "{args.validation_prompts[0]}"
-(image_embeds,) = pipe_prior(prompt).to_tuple()
-image = pipe_t2i(image_embeddings=image_embeds, prompt=prompt).images[0]
+pipeline = AutoPipelineForText2Image.from_pretrained(
+                "{args.pretrained_decoder_model_name_or_path}", torch_dtype={args.weight_dtype}
+            )
+# load lora weights from folder:
+pipeline.prior_pipe.load_lora_weights("{os.path.join(args.output_dir, "prior_lora")}")
+
+image = pipeline(prompt=prompt).images[0]
 image.save("my_image.png")
 ```
 
@@ -111,6 +113,7 @@ image.save("my_image.png")
 
 These are the key hyperparameters used during training:
 
+* LoRA rank: {args.rank}
 * Epochs: {args.num_train_epochs}
 * Learning rate: {args.learning_rate}
 * Batch size: {args.train_batch_size}
