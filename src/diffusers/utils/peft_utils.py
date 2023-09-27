@@ -86,7 +86,7 @@ def scale_lora_layers(model, weight):
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            module.scale_layer(lora_weightage)
+            module.scale_layer(weight)
 
 
 def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):

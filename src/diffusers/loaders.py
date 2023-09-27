@@ -2233,7 +2233,9 @@ class LoraLoaderMixin:
         text_encoder_weights = process_weights(adapter_names, text_encoder_weights)
         text_encoder = text_encoder or getattr(self, "text_encoder", None)
         if text_encoder is None:
-            raise ValueError("The pipeline does not have a default `pipe.text_encoder` class. Please make sure to pass a `text_encoder` instead.")
+            raise ValueError(
+                "The pipeline does not have a default `pipe.text_encoder` class. Please make sure to pass a `text_encoder` instead."
+            )
         set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
 
     def disable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
