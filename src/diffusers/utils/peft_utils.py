@@ -89,7 +89,7 @@ def scale_lora_layers(model, weight):
             module.scale_layer(weight)
 
 
-def unscale_lora_layers(model, weight):
+def unscale_lora_layers(model):
     """
     Adjust bacl the weightage given to the LoRA layers of the model.
 
@@ -103,7 +103,7 @@ def unscale_lora_layers(model, weight):
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            module.unscale_layer(weight)
+            module.unscale_layer()
 
 
 def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):

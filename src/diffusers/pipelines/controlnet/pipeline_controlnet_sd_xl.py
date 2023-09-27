@@ -285,9 +285,9 @@ class StableDiffusionXLControlNetPipeline(
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            if self.use_peft_backend:
-                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
-                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale, self.use_peft_backend)
+            if not self.use_peft_backend:
+                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
             else:
                 scale_lora_layers(self.text_encoder, lora_scale)
                 scale_lora_layers(self.text_encoder_2, lora_scale)
@@ -428,8 +428,8 @@ class StableDiffusionXLControlNetPipeline(
             )
 
         if self.use_peft_backend:
-            unscale_lora_layers(self.text_encoder, lora_scale)
-            unscale_lora_layers(self.text_encoder_2, lora_scale)
+            unscale_lora_layers(self.text_encoder)
+            unscale_lora_layers(self.text_encoder_2)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
