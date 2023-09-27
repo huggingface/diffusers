@@ -39,6 +39,8 @@ UNET_TO_DIFFUSERS = {
     ".to_k_lora.up": ".to_k.lora_B",
     ".to_v_lora.down": ".to_v.lora_A",
     ".to_v_lora.up": ".to_v.lora_B",
+    ".lora.up": ".lora_B",
+    ".lora.down": ".lora_A",
     ".processor.": ".",
 }
 
@@ -52,6 +54,8 @@ DIFFUSERS_TO_PEFT = {
     ".v_proj.lora_linear_layer.down": ".v_proj.lora_A",
     ".out_proj.lora_linear_layer.up": ".out_proj.lora_B",
     ".out_proj.lora_linear_layer.down": ".out_proj.lora_A",
+    ".lora_linear_layer.up": ".lora_B",
+    ".lora_linear_layer.down": ".lora_A",
 }
 
 DIFFUSERS_OLD_TO_PEFT = {
@@ -63,6 +67,8 @@ DIFFUSERS_OLD_TO_PEFT = {
     ".to_v_lora.down": ".v_proj.lora_A",
     ".to_out_lora.up": ".out_proj.lora_B",
     ".to_out_lora.down": ".out_proj.lora_A",
+    ".lora_linear_layer.up": ".lora_B",
+    ".lora_linear_layer.down": ".lora_A",
 }
 
 PEFT_TO_DIFFUSERS = {

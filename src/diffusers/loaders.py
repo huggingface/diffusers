@@ -1521,7 +1521,7 @@ class LoraLoaderMixin:
 
             inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
 
-            incompatible_keys = set_peft_model_state_dict(unet, state_dict)
+            incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
 
             if incompatible_keys is not None:
                 # check only for unexpected keys
@@ -1609,6 +1609,7 @@ class LoraLoaderMixin:
                         for name, _ in text_encoder_mlp_modules(text_encoder):
                             rank_key_fc1 = f"{name}.fc1.lora_B.weight"
                             rank_key_fc2 = f"{name}.fc2.lora_B.weight"
+
                             rank[rank_key_fc1] = text_encoder_lora_state_dict[rank_key_fc1].shape[1]
                             rank[rank_key_fc2] = text_encoder_lora_state_dict[rank_key_fc2].shape[1]
                 else:
