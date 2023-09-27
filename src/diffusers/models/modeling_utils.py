@@ -407,12 +407,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, BaseTunerLayer):
                 module.disable_adapters = False
 
-    def active_adapter(self) -> str:
+    def active_adapters(self) -> List[str]:
         """
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
 
-        Gets the current active adapter of the model.
+        Gets the current list of active adapters of the model.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
