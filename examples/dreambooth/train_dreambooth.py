@@ -1219,8 +1219,7 @@ def main(args):
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
-    checkpoints = os.listdir(args.output_dir)
-    print([d for d in checkpoints if d.startswith("checkpoint")])
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         if args.train_text_encoder:
@@ -1346,13 +1345,11 @@ def main(args):
                             checkpoints = os.listdir(args.output_dir)
                             checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
                             checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
-                            print(f"All checkpoints: {checkpoints}")
 
                             # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
                             if len(checkpoints) >= args.checkpoints_total_limit:
                                 num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
                                 removing_checkpoints = checkpoints[0:num_to_remove]
-                                print(f"To be removed checkpoints: {removing_checkpoints}")
 
                                 logger.info(
                                     f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
@@ -1391,7 +1388,6 @@ def main(args):
                 break
 
     # Create the pipeline using using the trained modules and save it.
-    print(f"Final global step: {global_step}.")
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         pipeline_args = {}
