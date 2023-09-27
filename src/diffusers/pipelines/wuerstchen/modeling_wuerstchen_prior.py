@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import UNet2DConditionLoadersMixin
 from ...models.attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -27,12 +28,13 @@ from ...models.attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from ...loaders import UNet2DConditionLoadersMixin
 from ...models.modeling_utils import ModelMixin
 from .modeling_wuerstchen_common import AttnBlock, ResBlock, TimestepBlock, WuerstchenLayerNorm
 
 
 class WuerstchenPrior(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+    UNET_NAME = "prior"
+
     @register_to_config
     def __init__(self, c_in=16, c=1280, c_cond=1024, c_r=64, depth=16, nhead=16, dropout=0.1):
         super().__init__()

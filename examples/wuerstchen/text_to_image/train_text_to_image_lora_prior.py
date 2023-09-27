@@ -19,7 +19,6 @@ import random
 import shutil
 from pathlib import Path
 
-import accelerate
 import datasets
 import numpy as np
 import torch
@@ -32,13 +31,12 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from modeling_efficient_net_encoder import EfficientNetEncoder
-from packaging import version
 from torchvision import transforms
 from tqdm import tqdm
 from transformers import CLIPTextModel, PreTrainedTokenizerFast
 from transformers.utils import ContextManagers
 
-from diffusers import AutoPipelineForText2Image, DDPMWuerstchenScheduler
+from diffusers import AutoPipelineForText2Image, DDPMWuerstchenScheduler, WuerstchenPriorPipeline
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.optimization import get_scheduler
@@ -524,7 +522,7 @@ def main():
     # load prior model, cast to weight_dtype and move to device
     prior = WuerstchenPrior.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
     prior.to(accelerator.device, dtype=weight_dtype)
-    
+
     # lora attn processor
     lora_attn_procs = {}
     for name in prior.attn_processors.keys():
@@ -835,7 +833,10 @@ def main():
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         prior = prior.to(torch.float32)
-        prior.save_attn_procs(os.path.join(args.output_dir, "prior_lora"))
+        WuerstchenPriorPipeline.save_lora_weights(
+            os.path.join(args.output_dir, "prior_lora"),
+            unet_lora_layers=lora_layers,
+        )
 
         # Run a final round of inference.
         images = []
@@ -847,8 +848,8 @@ def main():
                 prior_tokenizer=tokenizer,
             )
             pipeline = pipeline.to(accelerator.device, torch_dtype=weight_dtype)
-            # load attention processors
-            pipeline.prior_prior.load_attn_procs(os.path.join(args.output_dir, "prior_lora"))
+            # load lora weights
+            pipeline.prior_pipe.load_lora_weights(os.path.join(args.output_dir, "prior_lora"))
 
             pipeline.set_progress_bar_config(disable=True)
 
