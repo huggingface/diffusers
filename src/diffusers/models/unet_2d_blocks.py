@@ -2213,10 +2213,10 @@ class CrossAttnUpBlock2D(nn.Module):
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         is_freeu_enabled = (
-            getattr(self.config, "s1", None)
-            and getattr(self.config, "s2", None)
-            and getattr(self.config, "b1", None)
-            and getattr(self.config, "b2", None)
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
         )
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -2232,12 +2232,12 @@ class CrossAttnUpBlock2D(nn.Module):
                 # Only operate on the first two stages
                 if self.resolution_idx == 0:
                     num_half_channels = hidden_states.shape[1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b1
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s1)
                 if self.resolution_idx == 1:
                     num_half_channels = hidden_states.shape[1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b2
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s2)
                 # ---------------------------------------------------------
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
@@ -2338,10 +2338,10 @@ class UpBlock2D(nn.Module):
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         is_freeu_enabled = (
-            getattr(self.config, "s1", None)
-            and getattr(self.config, "s2", None)
-            and getattr(self.config, "b1", None)
-            and getattr(self.config, "b2", None)
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
         )
 
         for resnet in self.resnets:
@@ -2357,12 +2357,12 @@ class UpBlock2D(nn.Module):
                 # Only operate on the first two stages
                 if self.resolution_idx == 0:
                     num_half_channels = hidden_states.shape[-1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b1
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s1)
                 if self.resolution_idx == 1:
                     num_half_channels = hidden_states.shape[-1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b2
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s2)
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 

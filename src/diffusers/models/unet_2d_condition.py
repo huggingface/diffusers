@@ -733,15 +733,20 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             module.gradient_checkpointing = value
 
     def enable_freeu(self, **kwargs):
-        for k in kwargs:
-            if not hasattr(self.config, k) or getattr(self.config, k) is None:
-                setattr(self.config, k, kwargs[k])
+        if not hasattr(self, "unet"):
+            raise ValueError("The pipeline must have `unet` for using FreeU.")
+        for i, upsample_block in enumerate(self.unet.up_blocks):
+            setattr(upsample_block, "b1", kwargs["b1"])
+            setattr(upsample_block, "b2", kwargs["b2"])
+            setattr(upsample_block, "s1", kwargs["s1"])
+            setattr(upsample_block, "s2", kwargs["s2"])
 
     def disable_freeu(self):
         freeu_keys = {"s1", "s2", "b1", "b2"}
-        for k in freeu_keys:
-            if hasattr(self.config, k) or getattr(self.config, k) is not None:
-                setattr(self.config, k, None)
+        for i, upsample_block in enumerate(self.unet.up_blocks):
+            for k in freeu_keys:
+                if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
+                    setattr(self.config, k, None)
 
     def forward(
         self,
