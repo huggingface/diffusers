@@ -19,11 +19,10 @@ import collections
 from .import_utils import is_torch_available
 
 
-if is_torch_available():
-    import torch
-
-
 def recurse_remove_peft_layers(model):
+    if is_torch_available():
+        import torch
+
     r"""
     Recursively replace all instances of `LoraLayer` with corresponding new layers in `model`.
     """

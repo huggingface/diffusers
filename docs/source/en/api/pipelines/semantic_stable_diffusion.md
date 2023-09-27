@@ -31,5 +31,5 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 	- __call__
 
 ## StableDiffusionSafePipelineOutput
-[[autodoc]] pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput
+[[autodoc]] pipelines.semantic_stable_diffusion.pipeline_output.SemanticStableDiffusionPipelineOutput
 	- all
