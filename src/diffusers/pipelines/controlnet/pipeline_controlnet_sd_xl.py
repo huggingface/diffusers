@@ -35,10 +35,7 @@ from ...models.attention_processor import (
 )
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    logging,
-    replace_example_docstring,
-)
+from ...utils import logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
@@ -288,8 +285,12 @@ class StableDiffusionXLControlNetPipeline(
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
-            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale, self.use_peft_backend)
+            if self.use_peft_backend:
+                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
+                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale, self.use_peft_backend)
+            else:
+                scale_lora_layers(self.text_encoder, lora_scale)
+                scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -425,6 +426,10 @@ class StableDiffusionXLControlNetPipeline(
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
                 bs_embed * num_images_per_prompt, -1
             )
+
+        if self.use_peft_backend:
+            unscale_lora_layers(self.text_encoder, lora_scale)
+            unscale_lora_layers(self.text_encoder_2, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
