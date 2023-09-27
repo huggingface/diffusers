@@ -1153,8 +1153,8 @@ class LoraLoaderMixin:
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
-            _pipeline=self,
             adapter_name=adapter_name,
+            _pipeline=self,
         )
 
     @classmethod
@@ -1614,7 +1614,7 @@ class LoraLoaderMixin:
                         peft_config=lora_config,
                     )
                     # scale LoRA layers with `lora_scale`
-                    scale_lora_layers(text_encoder, lora_weightage=lora_scale)
+                    scale_lora_layers(text_encoder, weight=lora_scale)
 
                     is_model_cpu_offload = False
                     is_sequential_cpu_offload = False
@@ -2233,7 +2233,7 @@ class LoraLoaderMixin:
         text_encoder_weights = process_weights(adapter_names, text_encoder_weights)
         text_encoder = text_encoder or getattr(self, "text_encoder", None)
         if text_encoder is None:
-            raise ValueError("Text Encoder not found.")
+            raise ValueError("The pipeline does not have a default `pipe.text_encoder` class. Please make sure to pass a `text_encoder` instead.")
         set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
 
     def disable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
