@@ -753,6 +753,7 @@ def main():
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1] if len(dirs) > 0 else None
+            print(f"Path found: {path}")
 
         if path is None:
             accelerator.print(
@@ -762,8 +763,10 @@ def main():
             initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
+            print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
+            print(f"Global step: {global_step}")
 
             initial_global_step = global_step
             first_epoch = global_step // num_update_steps_per_epoch
@@ -771,6 +774,7 @@ def main():
     else:
         initial_global_step = 0
 
+    print(f"Initial global step: {initial_global_step}")
     progress_bar = tqdm(
         range(0, args.max_train_steps),
         initial=initial_global_step,

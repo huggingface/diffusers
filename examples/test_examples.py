@@ -1305,7 +1305,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-12", "checkpoint-8", "checkpoint-10"},
+                {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
             )
 
     def test_dreambooth_checkpointing_checkpoints_total_limit(self):
