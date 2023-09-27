@@ -34,6 +34,8 @@ from ...utils import (
     is_invisible_watermark_available,
     logging,
     replace_example_docstring,
+    scale_peft_layers,
+    unscale_peft_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -270,9 +272,14 @@ class StableDiffusionXLImg2ImgPipeline(
         if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
             self._lora_scale = lora_scale
 
-            # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
-            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale, self.use_peft_backend)
+            if not self.use_peft_backend:
+                # dynamically adjust the LoRA scale
+                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+            else:
+                # dynamically adjust the LoRA scale
+                scale_peft_layers(self.text_encoder, lora_scale)
+                scale_peft_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -408,6 +415,12 @@ class StableDiffusionXLImg2ImgPipeline(
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
                 bs_embed * num_images_per_prompt, -1
             )
+
+        if self.use_peft_backend:
+            unscale_peft_layers(self.text_encoder, lora_scale)
+
+            if hasattr(self, "text_encoder_2"):
+                unscale_peft_layers(self.text_encoder_2, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 

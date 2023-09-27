@@ -41,6 +41,8 @@ from ...utils import (
     deprecate,
     logging,
     replace_example_docstring,
+    scale_peft_layers,
+    unscale_peft_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -445,8 +447,11 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
 
-            # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale, self.use_peft_backend)
+            if not self.use_peft_backend:
+                # dynamically adjust the LoRA scale
+                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+            else:
+                scale_peft_layers(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -570,6 +575,9 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+        if self.use_peft_backend:
+            unscale_peft_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 
