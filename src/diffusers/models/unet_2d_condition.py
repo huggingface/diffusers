@@ -744,7 +744,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         for i, upsample_block in enumerate(self.up_blocks):
             for k in freeu_keys:
                 if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
-                    setattr(self.config, k, None)
+                    setattr(self, k, None)
 
     def forward(
         self,
