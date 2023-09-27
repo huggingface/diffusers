@@ -537,7 +537,18 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
     def enable_freeu(self, s1=0.9, s2=0.2, b1=1.2, b2=1.4):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
 
-        The default values are for Stable Diffusion v1. They come from https://github.com/ChenyangSi/FreeU.
+        The default values are for Stable Diffusion v1. They come from the [official
+        repository](https://github.com/ChenyangSi/FreeU).
+
+        The suffxes after the scaling factors represent the stages where they are being applied.
+
+        Please refer to the repository for other combinations of hyperparameter values.
+
+        Args:
+            s1 (`int`): Scaling factor to attenuate the contributions of the skip features.
+            s2 (`int`): Scaling factor to attenuate the contributions of the skip features.
+            b1 (`int`): Scaling factor to amplify the contributions of backbone features.
+            b2 (`int`): Scaling factor to amplify the contributions of backbone features.
         """
         if not hasattr(self, "unet"):
             raise ValueError("The pipeline must have `unet` for using FreeU.")
