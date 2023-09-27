@@ -40,7 +40,7 @@ You can fine-tune the Würstchen prior model with `train_text_to_image_prior.py`
 export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 accelerate launch  train_text_to_image_prior.py \
-  --mixed_precision="fp16"
+  --mixed_precision="fp16" \
   --dataset_name=$DATASET_NAME \
   --resolution=768 \
   --train_batch_size=4 \
@@ -75,7 +75,8 @@ First, you need to set up your development environment as explained in the [inst
 ```bash
 export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
-accelerate launch --mixed_precision="fp16" train_text_to_image_prior_lora.py \
+accelerate launch train_text_to_image_prior_lora.py \
+  --mixed_precision="fp16" \
   --dataset_name=$DATASET_NAME --caption_column="text" \
   --resolution=768 \
   --train_batch_size=8 \
@@ -83,8 +84,8 @@ accelerate launch --mixed_precision="fp16" train_text_to_image_prior_lora.py \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
   --seed=42 \
   --rank=4 \
-  --output_dir="wuerstchen-prior-pokemon-lora" \
-  --validation_prompt="cute dragon creature" --report_to="wandb" \
+  --validation_prompt="cute dragon creature" \
+  --report_to="wandb" \
   --push_to_hub \
+  --output_dir="wuerstchen-prior-pokemon-lora"
 ```
-
