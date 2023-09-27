@@ -1391,6 +1391,7 @@ def main(args):
                 break
 
     # Create the pipeline using using the trained modules and save it.
+    print(f"Final global step: {global_step}.")
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         pipeline_args = {}

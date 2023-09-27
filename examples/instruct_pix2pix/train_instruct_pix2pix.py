@@ -900,7 +900,8 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
-
+        
+        print(f"Final global step: {global_step}.")
         if accelerator.is_main_process:
             if (
                 (args.val_image_url is not None)
