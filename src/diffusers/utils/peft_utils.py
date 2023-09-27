@@ -15,8 +15,11 @@
 PEFT utilities: Utilities related to peft library
 """
 import collections
+import importlib
 
-from .import_utils import is_torch_available
+from packaging import version
+
+from .import_utils import is_peft_available, is_torch_available
 
 
 MIN_PEFT_VERSION = "0.5.0"
