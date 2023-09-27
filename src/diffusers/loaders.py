@@ -1143,14 +1143,16 @@ class LoraLoaderMixin:
         self.load_lora_into_unet(
             state_dict,
             network_alphas=network_alphas,
-            unet=getattr(self, "unet", self.UNET_NAME),
+            unet=getattr(self, self.UNET_NAME if hasattr(self, "UNET_NAME") else "unet"),
             low_cpu_mem_usage=low_cpu_mem_usage,
             _pipeline=self,
         )
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
-            text_encoder=getattr(self, "text_encoder", self.TEXT_ENCODER_NAME),
+            text_encoder=getattr(
+                self, self.TEXT_ENCODER_NAME if hasattr(self, "TEXT_ENCODER_NAME") else "text_encoder"
+            ),
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
             adapter_name=adapter_name,
