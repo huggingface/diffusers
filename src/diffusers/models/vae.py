@@ -213,6 +213,7 @@ class Decoder(nn.Module):
                 attention_head_dim=output_channel,
                 temb_channels=temb_channels,
                 resnet_time_scale_shift=norm_type,
+                resolution_idx=None,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
