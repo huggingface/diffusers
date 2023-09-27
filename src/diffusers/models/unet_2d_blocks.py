@@ -2234,7 +2234,7 @@ class CrossAttnUpBlock2D(nn.Module):
                     num_half_channels = hidden_states.shape[1] // 2
                     hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
                     res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
-                if self.resolution_idx == 0:
+                if self.resolution_idx == 1:
                     num_half_channels = hidden_states.shape[1] // 2
                     hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
                     res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
