@@ -134,8 +134,18 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         added_cond_kwargs = None
         if self.addition_embed_type == "text_time":
-            # TODO: how to get this from the config? It's no longer cross_attention_dim
-            text_embeds_dim = 1280
+            # we retrieve the expected `text_embeds_dim` by first checking if the architecture is a refiner
+            # or non-refiner architecture and then by "reverse-computing" from `projection_class_embeddings_input_dim`
+            is_refiner = (
+                5 * self.config.addition_time_embed_dim + self.config.cross_attention_dim
+                == self.config.projection_class_embeddings_input_dim
+            )
+            num_micro_conditions = 5 if is_refiner else 6
+
+            text_embeds_dim = self.config.projection_class_embeddings_input_dim - (
+                num_micro_conditions * self.config.addition_time_embed_dim
+            )
+
             time_ids_channels = self.projection_class_embeddings_input_dim - text_embeds_dim
             time_ids_dims = time_ids_channels // self.addition_time_embed_dim
             added_cond_kwargs = {
