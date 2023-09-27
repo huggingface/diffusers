@@ -539,8 +539,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         The default values are for Stable Diffusion v1. They come from https://github.com/ChenyangSi/FreeU.
         """
-        self.validate_freeu_kwargs(s1, s2, b1, b2)
-        self.unet.enable_freeu(s1, s2, b1, b2)
+        self.validate_freeu_kwargs(s1=s1, s2=s2, b1=b1, b2=b2)
+        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
 
     def disable_freeu(self):
         """Disables the FreeU mechanism if enabled."""
