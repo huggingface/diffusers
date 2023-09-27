@@ -313,7 +313,7 @@ class Attention(nn.Module):
     def set_processor(self, processor: "AttnProcessor"):
         if (
             hasattr(self, "processor")
-            and not isinstance(processor, LORA_ATTENTION_PROCESSORS)
+            and isinstance(processor, (AttnProcessor, AttnAddedKVProcessor))
             and self.to_q.lora_layer is not None
         ):
             deprecate(
