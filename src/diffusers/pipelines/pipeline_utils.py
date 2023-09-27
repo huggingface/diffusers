@@ -498,7 +498,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     _exclude_from_cpu_offload = []
     _load_connected_pipes = False
     _is_onnx = False
-    _offload_gpu_id = None
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -1361,7 +1360,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # _offload_gpu_id should be set to passed gpu_id (or id in passed `device`) or default to previously set id or default to 0
-        self._offload_gpu_id = gpu_id or torch_device.index or self._offload_gpu_id or 0
+        self._offload_gpu_id = gpu_id or torch_device.index or getattr(self, "_offload_gpu_id", 0)
 
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
@@ -1446,7 +1445,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         # _offload_gpu_id should be set to passed gpu_id (or id in passed `device`) or default to previously set id or default to 0
-        self._offload_gpu_id = gpu_id or torch_device.index or self._offload_gpu_id or 0
+        self._offload_gpu_id = gpu_id or torch_device.index or getattr(self, "_offload_gpu_id", 0)
 
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
