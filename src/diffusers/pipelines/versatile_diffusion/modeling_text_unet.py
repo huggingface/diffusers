@@ -942,15 +942,18 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             module.gradient_checkpointing = value
 
     def enable_freeu(self, **kwargs):
-        for k in kwargs:
-            if not hasattr(self.unet.config, k) or getattr(self.unet.config, k) is None:
-                setattr(self.unet.config, k, kwargs[k])
+        for i, upsample_block in enumerate(self.up_blocks):
+            setattr(upsample_block, "b1", kwargs["b1"])
+            setattr(upsample_block, "b2", kwargs["b2"])
+            setattr(upsample_block, "s1", kwargs["s1"])
+            setattr(upsample_block, "s2", kwargs["s2"])
 
     def disable_freeu(self):
         freeu_keys = {"s1", "s2", "b1", "b2"}
-        for k in freeu_keys:
-            if hasattr(self.unet.config, k) or getattr(self.unet.config, k) is not None:
-                setattr(self.unet.config, k, None)
+        for i, upsample_block in enumerate(self.up_blocks):
+            for k in freeu_keys:
+                if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
+                    setattr(self.config, k, None)
 
     def forward(
         self,
@@ -1686,10 +1689,10 @@ class UpBlockFlat(nn.Module):
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         is_freeu_enabled = (
-            getattr(self.config, "s1", None)
-            and getattr(self.config, "s2", None)
-            and getattr(self.config, "b1", None)
-            and getattr(self.config, "b2", None)
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
         )
 
         for resnet in self.resnets:
@@ -1705,12 +1708,12 @@ class UpBlockFlat(nn.Module):
                 # Only operate on the first two stages
                 if self.resolution_idx == 0:
                     num_half_channels = hidden_states.shape[-1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b1
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s1)
                 if self.resolution_idx == 1:
                     num_half_channels = hidden_states.shape[-1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b2
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s2)
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -1842,10 +1845,10 @@ class CrossAttnUpBlockFlat(nn.Module):
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         is_freeu_enabled = (
-            getattr(self.config, "s1", None)
-            and getattr(self.config, "s2", None)
-            and getattr(self.config, "b1", None)
-            and getattr(self.config, "b2", None)
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
         )
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -1861,12 +1864,12 @@ class CrossAttnUpBlockFlat(nn.Module):
                 # Only operate on the first two stages
                 if self.resolution_idx == 0:
                     num_half_channels = hidden_states.shape[1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b1
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s1)
                 if self.resolution_idx == 1:
                     num_half_channels = hidden_states.shape[1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b2
+                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s2)
                 # ---------------------------------------------------------
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
