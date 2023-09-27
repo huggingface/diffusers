@@ -464,9 +464,6 @@ def main():
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
-    # Set UNet to trainable.
-    unet.train()
-
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config)
@@ -759,32 +756,29 @@ def main():
                 f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
             )
             args.resume_from_checkpoint = None
-            initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
-            initial_global_step = global_step
+            resume_global_step = global_step * args.gradient_accumulation_steps
             first_epoch = global_step // num_update_steps_per_epoch
+            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
-    else:
-        initial_global_step = 0
-
-    print(f"Initial global step: {initial_global_step}")
-    checkpoints = os.listdir(args.output_dir)
-    print([d for d in checkpoints if d.startswith("checkpoint")])
-    progress_bar = tqdm(
-        range(0, args.max_train_steps),
-        initial=initial_global_step,
-        desc="Steps",
-        # Only show the progress bar once on each machine.
-        disable=not accelerator.is_local_main_process,
-    )
+    # Only show the progress bar once on each machine.
+    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar.set_description("Steps")
 
     for epoch in range(first_epoch, args.num_train_epochs):
+        unet.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
+            # Skip steps until we reach the resumed step
+            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
+                if step % args.gradient_accumulation_steps == 0:
+                    progress_bar.update(1)
+                continue
+
             with accelerator.accumulate(unet):
                 # We want to learn the denoising process w.r.t the edited images which
                 # are conditioned on the original image (which was edited) and the edit instruction.
@@ -874,13 +868,11 @@ def main():
                             checkpoints = os.listdir(args.output_dir)
                             checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
                             checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
-                            print(f"All checkpoints: {checkpoints}")
 
                             # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
                             if len(checkpoints) >= args.checkpoints_total_limit:
                                 num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
                                 removing_checkpoints = checkpoints[0:num_to_remove]
-                                print(f"To be removed checkpoints: {removing_checkpoints}")
 
                                 logger.info(
                                     f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
@@ -900,8 +892,7 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
-        
-        print(f"Final global step: {global_step}.")
+
         if accelerator.is_main_process:
             if (
                 (args.val_image_url is not None)
