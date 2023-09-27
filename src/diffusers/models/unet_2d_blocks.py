@@ -250,6 +250,7 @@ def get_up_block(
     add_upsample,
     resnet_eps,
     resnet_act_fn,
+    resolution_idx,
     transformer_layers_per_block=1,
     num_attention_heads=None,
     resnet_groups=None,
@@ -282,6 +283,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -296,6 +298,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -315,6 +318,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -338,6 +342,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -363,6 +368,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -378,6 +384,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -391,6 +398,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -403,6 +411,7 @@ def get_up_block(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -416,6 +425,7 @@ def get_up_block(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -431,6 +441,7 @@ def get_up_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -442,6 +453,7 @@ def get_up_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -1994,6 +2006,7 @@ class AttnUpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2076,6 +2089,8 @@ class AttnUpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -2104,6 +2119,7 @@ class CrossAttnUpBlock2D(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int = 1,
@@ -2182,6 +2198,7 @@ class CrossAttnUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
@@ -2213,11 +2230,13 @@ class CrossAttnUpBlock2D(nn.Module):
             if is_freeu_enabled is not None:
                 # --------------- FreeU code -----------------------
                 # Only operate on the first two stages
-                if hidden_states.shape[1] == 1280:
-                    hidden_states[:, :640] = hidden_states[:, :640] * self.config["b1"]
+                if self.resolution_idx == 0:
+                    num_half_channels = hidden_states.shape[1] // 2
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
                     res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
-                if hidden_states.shape[1] == 640:
-                    hidden_states[:, :320] = hidden_states[:, :320] * self.config["b2"]
+                if self.resolution_idx == 0:
+                    num_half_channels = hidden_states.shape[1] // 2
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
                     res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
                 # ---------------------------------------------------------
 
@@ -2274,6 +2293,7 @@ class UpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2314,6 +2334,7 @@ class UpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         is_freeu_enabled = (
@@ -2334,11 +2355,13 @@ class UpBlock2D(nn.Module):
             if is_freeu_enabled:
                 # --------------- FreeU code -----------------------
                 # Only operate on the first two stages
-                if hidden_states.shape[1] == 1280:
-                    hidden_states[:, :640] = hidden_states[:, :640] * self.config["b1"]
+                if self.resolution_idx == 0:
+                    num_half_channels = hidden_states.shape[-1] // 2
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b1"]
                     res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s1"])
-                if hidden_states.shape[1] == 640:
-                    hidden_states[:, :320] = hidden_states[:, :320] * self.config["b2"]
+                if self.resolution_idx == 1:
+                    num_half_channels = hidden_states.shape[-1] // 2
+                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.config["b2"]
                     res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.config["s2"])
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
@@ -2374,6 +2397,7 @@ class UpDecoderBlock2D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2413,6 +2437,8 @@ class UpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, temb=None, scale: float = 1.0):
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)
@@ -2429,6 +2455,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2492,6 +2519,8 @@ class AttnUpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, temb=None, scale: float = 1.0):
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)
@@ -2512,6 +2541,7 @@ class AttnSkipUpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2596,6 +2626,8 @@ class AttnSkipUpBlock2D(nn.Module):
             self.skip_norm = None
             self.act = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, skip_sample=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
@@ -2632,6 +2664,7 @@ class SkipUpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2694,6 +2727,8 @@ class SkipUpBlock2D(nn.Module):
             self.skip_norm = None
             self.act = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, skip_sample=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
@@ -2727,6 +2762,7 @@ class ResnetUpsampleBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2786,6 +2822,7 @@ class ResnetUpsampleBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         for resnet in self.resnets:
@@ -2827,6 +2864,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2916,6 +2954,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
@@ -2990,6 +3029,7 @@ class KUpBlock2D(nn.Module):
         in_channels: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 5,
         resnet_eps: float = 1e-5,
@@ -3031,6 +3071,7 @@ class KUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
@@ -3070,6 +3111,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         in_channels: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 4,
         resnet_eps: float = 1e-5,
@@ -3147,6 +3189,7 @@ class KCrossAttnUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
