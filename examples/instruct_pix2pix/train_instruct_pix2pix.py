@@ -772,6 +772,8 @@ def main():
         initial_global_step = 0
 
     print(f"Initial global step: {initial_global_step}")
+    checkpoints = os.listdir(args.output_dir)
+    print([d for d in checkpoints if d.startswith("checkpoint")])
     progress_bar = tqdm(
         range(0, args.max_train_steps),
         initial=initial_global_step,
