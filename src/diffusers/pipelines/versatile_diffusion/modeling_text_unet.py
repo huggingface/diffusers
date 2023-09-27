@@ -1259,7 +1259,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if self.use_peft_backend:
             # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
+            unscale_lora_layers(self)
 
         if not return_dict:
             return (sample,)
