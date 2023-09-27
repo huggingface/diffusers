@@ -747,13 +747,13 @@ def main():
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
+            print(f"Path found: {path}")
         else:
             # Get the most recent checkpoint
             dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1] if len(dirs) > 0 else None
-            print(f"Path found: {path}")
 
         if path is None:
             accelerator.print(
