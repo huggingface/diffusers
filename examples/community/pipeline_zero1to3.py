@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import kornia
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
