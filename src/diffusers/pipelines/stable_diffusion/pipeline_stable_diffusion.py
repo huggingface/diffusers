@@ -541,25 +541,11 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         """
         if not hasattr(self, "unet"):
             raise ValueError("The pipeline must have `unet` for using FreeU.")
-        self.validate_freeu_kwargs(s1=s1, s2=s2, b1=b1, b2=b2)
         self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
 
     def disable_freeu(self):
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
-
-    def validate_freeu_kwargs(self, **freeu_kwargs):
-        expected_keys = {"s1", "s2", "b1", "b2"}
-
-        # Check if all expected keys are present in the dictionary
-        if not all(key in freeu_kwargs for key in expected_keys):
-            raise ValueError("Expected keys (s1, s2, b1, and b2) not found in `freeu_kwargs`.")
-
-        for k in freeu_kwargs:
-            if k is None:
-                raise ValueError(
-                    f"When enabling FreeU, all the hyperparameters (s1, s2, b1, and b2) must be set. Found {k} to be `None`."
-                )
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
