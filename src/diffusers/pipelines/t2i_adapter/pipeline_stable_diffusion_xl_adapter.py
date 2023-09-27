@@ -426,6 +426,7 @@ class StableDiffusionXLAdapterPipeline(
             )
 
         if self.use_peft_backend:
+            # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(self.text_encoder)
             unscale_lora_layers(self.text_encoder_2)
 

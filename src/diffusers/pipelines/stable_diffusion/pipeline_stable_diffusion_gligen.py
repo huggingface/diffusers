@@ -274,7 +274,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            if self.use_peft_backend:
+            if not self.use_peft_backend:
                 adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
             else:
                 scale_lora_layers(self.text_encoder, lora_scale)
@@ -403,6 +403,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if self.use_peft_backend:
+            # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(self.text_encoder)
 
         return prompt_embeds, negative_prompt_embeds
