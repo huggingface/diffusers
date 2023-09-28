@@ -395,7 +395,7 @@ class StableDiffusionLDM3DPipeline(
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-        if self.use_peft_backend:
+        if isinstance(self, LoraLoaderMixin) and self.use_peft_backend:
             # Retrieve the original scale by scaling back the LoRA layers
             unscale_lora_layers(self.text_encoder)
 
