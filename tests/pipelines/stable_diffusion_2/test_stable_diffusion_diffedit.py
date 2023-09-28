@@ -39,7 +39,6 @@ from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -292,7 +291,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 
 
 @require_torch_gpu
-@slow
+@nightly
 class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
