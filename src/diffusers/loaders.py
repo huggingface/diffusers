@@ -397,11 +397,8 @@ class UNet2DConditionLoadersMixin:
                 )
 
             for key, value_dict in lora_grouped_dict.items():
-                if "time" in key:
-                    print(key)
                 attn_processor = self
                 for sub_key in key.split("."):
-                    print(f"{key}: {sub_key}")
                     attn_processor = getattr(attn_processor, sub_key)
 
                 # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
@@ -2540,7 +2537,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
         load_state_dict_results = self.load_state_dict(converted_state_dict, strict=False)
         if not all("lora" in k for k in load_state_dict_results.unexpected_keys):
             raise ValueError(
-                f"The unexpected keys must only belong to LoRA parameters at this point: {load_state_dict_results.unexpected_keys}"
+                f"The unexpected keys must only belong to LoRA parameters at this point, but found the following keys that are non-LoRA\n: {load_state_dict_results.unexpected_keys}"
             )
 
         # Filter out the rest of the state_dict for handling LoRA.
@@ -2584,22 +2581,24 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
                     kernel_size=kernel_size,
                     stride=attn_processor.stride,
                     padding=attn_processor.padding,
-                    initial_weight=attn_processor.weight,
-                    initial_bias=attn_processor.bias,
+                    # initial_weight=attn_processor.weight,
+                    # initial_bias=attn_processor.bias,
                 )
             elif isinstance(attn_processor, LoRACompatibleLinear):
                 lora = LoRALinearLayer(
                     attn_processor.in_features,
                     attn_processor.out_features,
                     rank,
-                    initial_weight=attn_processor.weight,
-                    initial_bias=attn_processor.bias,
+                    # initial_weight=attn_processor.weight,
+                    # initial_bias=attn_processor.bias,
                 )
             else:
                 raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
 
             value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
-            lora.load_state_dict(value_dict, strict=False)
+            load_state_dict_results = lora.load_state_dict(value_dict, strict=False)
+            if not all("initial" in k for k in load_state_dict_results.unexpected_keys):
+                raise ValueError("Incorrect `value_dict` for the LoRA layer.")
             lora_layers_list.append((attn_processor, lora))
 
             # set correct dtype & device
