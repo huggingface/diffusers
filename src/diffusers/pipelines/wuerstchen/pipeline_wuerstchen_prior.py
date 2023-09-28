@@ -85,8 +85,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             A scheduler to be used in combination with `prior` to generate image embedding.
     """
 
-    UNET_NAME = "prior"
-    TEXT_ENCODER_NAME = "text_encoder"
+    unet_name = "prior"
+    text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->prior"
 
     def __init__(
