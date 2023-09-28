@@ -334,7 +334,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         inject_adapter_in_model(adapter_config, self, adapter_name)
         self.set_adapter(adapter_name)
 
-    def set_adapter(self, adapter_name: str) -> None:
+    def set_adapter(self, adapter_name: Union[str, List[str]]) -> None:
         """
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
@@ -342,13 +342,20 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         Sets a specific adapter by forcing the model to use a that adapter and disable the other adapters.
 
         Args:
-            adapter_name (`str`):
-                The name of the adapter to set.
+            adapter_name (Union[str, List[str]])):
+                The list of adapters to set or the adapter name in case of single adapter.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
         if not self._hf_peft_config_loaded:
             raise ValueError("No adapter loaded. Please load an adapter first.")
+        elif isinstance(adapter_name, list):
+            missing = set(adapter_name) - set(self.peft_config)
+            if len(missing) > 0:
+                raise ValueError(
+                    f"Following adapter(s) could not be found: {', '.join(missing)}. Make sure you are passing the correct adapter name(s)."
+                    f" current loaded adapters are: {list(self.peft_config.keys())}"
+                )
         elif adapter_name not in self.peft_config:
             raise ValueError(
                 f"Adapter with name {adapter_name} not found. Please pass the correct adapter name among {list(self.peft_config.keys())}"
@@ -362,6 +369,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             if isinstance(module, BaseTunerLayer):
                 if hasattr(module, "set_adapter"):
                     module.set_adapter(adapter_name)
+                # Previous versions of PEFT does not support multi-adapter inference
+                elif not hasattr(module, "set_adapter") and isinstance(adapter_name, list):
+                    raise ValueError(
+                        "You are trying to set multiple adapters and you have a PEFT version that does not support multi-adapter inference. Please upgrade to the latest version of PEFT."
+                        " `pip install -U peft` or `pip install -U git+https://github.com/huggingface/peft.git`"
+                    )
                 else:
                     module.active_adapter = adapter_name
                 _adapters_has_been_set = True
