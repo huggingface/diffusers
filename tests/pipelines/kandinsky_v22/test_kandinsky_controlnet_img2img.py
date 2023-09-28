@@ -33,8 +33,8 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    nightly,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -232,7 +232,7 @@ class KandinskyV22ControlnetImg2ImgPipelineFastTests(PipelineTesterMixin, unitte
         super().test_float16_inference(expected_max_diff=2e-1)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
