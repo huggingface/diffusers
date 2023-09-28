@@ -19,7 +19,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import ControlNetLoaderMixin, FromOriginalControlnetMixin, UNet2DConditionLoadersMixin
+from ..loaders import ControlLoRAMixin, FromOriginalControlnetMixin, UNet2DConditionLoadersMixin
 from ..models.lora import LoRACompatibleConv
 from ..utils import BaseOutput, logging
 from .attention_processor import (
@@ -109,7 +109,7 @@ class ControlNetConditioningEmbedding(nn.Module):
 
 
 class ControlNetModel(
-    ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, FromOriginalControlnetMixin, ControlNetLoaderMixin
+    ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, FromOriginalControlnetMixin, ControlLoRAMixin
 ):
     """
     A ControlNet model.

@@ -2514,7 +2514,7 @@ class FromOriginalControlnetMixin:
         return controlnet
 
 
-class ControlNetLoaderMixin(LoraLoaderMixin):
+class ControlLoRAMixin(LoraLoaderMixin):
     # Simplify ControlNet LoRA loading.
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict, **kwargs):
         from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
