@@ -305,9 +305,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
                 text_input_ids, untruncated_ids
             ):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-                )
+                removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
                 logger.warning(
                     "The following part of your input was truncated because CLIP can only handle sequences up to"
                     f" {self.tokenizer.model_max_length} tokens: {removed_text}"
@@ -800,7 +798,9 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
 
                 if gligen_inpaint_image is not None:
                     gligen_inpaint_latent_with_noise = (
-                        self.scheduler.add_noise(gligen_inpaint_latent, torch.randn_like(gligen_inpaint_latent), t)
+                        self.scheduler.add_noise(
+                            gligen_inpaint_latent, torch.randn_like(gligen_inpaint_latent), torch.tensor([t])
+                        )
                         .expand(latents.shape[0], -1, -1, -1)
                         .clone()
                     )
