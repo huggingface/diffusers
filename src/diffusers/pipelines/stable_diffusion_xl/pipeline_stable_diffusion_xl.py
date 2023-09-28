@@ -553,18 +553,16 @@ class StableDiffusionXLPipeline(
     def enable_freeu(self, s1=0.9, s2=0.2, b1=1.2, b2=1.4):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
 
-        The default values are for Stable Diffusion v1. They come from the [official
-        repository](https://github.com/ChenyangSi/FreeU).
+        The suffixes after the scaling factors represent the stages where they are being applied.
 
-        The suffxes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the repository for other combinations of hyperparameter values.
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
+        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
 
         Args:
-            s1 (`int`): Scaling factor to attenuate the contributions of the skip features.
-            s2 (`int`): Scaling factor to attenuate the contributions of the skip features.
-            b1 (`int`): Scaling factor to amplify the contributions of backbone features.
-            b2 (`int`): Scaling factor to amplify the contributions of backbone features.
+            s1 (`float`): Scaling factor for stage 1 to attenuate the contributions of the skip features.
+            s2 (`float`): Scaling factor for stage 2 to attenuate the contributions of the skip features.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
         """
         if not hasattr(self, "unet"):
             raise ValueError("The pipeline must have `unet` for using FreeU.")

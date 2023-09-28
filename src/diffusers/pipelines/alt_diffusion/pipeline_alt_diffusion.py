@@ -539,21 +539,19 @@ class AltDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def enable_freeu(self, s1=0.9, s2=0.2, b1=1.2, b2=1.4):
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
 
-        The default values are for Alt Diffusion v1. They come from the [official
-        repository](https://github.com/ChenyangSi/FreeU).
+        The suffixes after the scaling factors represent the stages where they are being applied.
 
-        The suffxes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the repository for other combinations of hyperparameter values.
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
+        that are known to work well for different pipelines such as Alt Diffusion v1, v2, and Alt Diffusion XL.
 
         Args:
-            s1 (`int`): Scaling factor to attenuate the contributions of the skip features.
-            s2 (`int`): Scaling factor to attenuate the contributions of the skip features.
-            b1 (`int`): Scaling factor to amplify the contributions of backbone features.
-            b2 (`int`): Scaling factor to amplify the contributions of backbone features.
+            s1 (`float`): Scaling factor for stage 1 to attenuate the contributions of the skip features.
+            s2 (`float`): Scaling factor for stage 2 to attenuate the contributions of the skip features.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
         """
         if not hasattr(self, "unet"):
             raise ValueError("The pipeline must have `unet` for using FreeU.")
