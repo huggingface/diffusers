@@ -40,7 +40,17 @@ def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
 
 
 class LoRALinearLayer(nn.Module):
-    def __init__(self, in_features, out_features, rank=4, network_alpha=None, device=None, dtype=None):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        rank=4,
+        network_alpha=None,
+        device=None,
+        dtype=None,
+        initial_weight=None,
+        initial_bias=None,
+    ):
         super().__init__()
 
         self.down = nn.Linear(in_features, rank, bias=False, device=device, dtype=dtype)
@@ -52,6 +62,10 @@ class LoRALinearLayer(nn.Module):
         self.out_features = out_features
         self.in_features = in_features
 
+        # Control-LoRA specific.
+        self.initial_weight = initial_weight
+        self.initial_bias = initial_bias
+
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
 
@@ -59,18 +73,40 @@ class LoRALinearLayer(nn.Module):
         orig_dtype = hidden_states.dtype
         dtype = self.down.weight.dtype
 
-        down_hidden_states = self.down(hidden_states.to(dtype))
-        up_hidden_states = self.up(down_hidden_states)
+        if not (self.initial_weight and self.initial_bias):
+            down_hidden_states = self.down(hidden_states.to(dtype))
+            up_hidden_states = self.up(down_hidden_states)
 
-        if self.network_alpha is not None:
-            up_hidden_states *= self.network_alpha / self.rank
+            if self.network_alpha is not None:
+                up_hidden_states *= self.network_alpha / self.rank
 
-        return up_hidden_states.to(orig_dtype)
+            return up_hidden_states.to(orig_dtype)
+        else:
+            initial_weight = self.initial_weight
+            if initial_weight.device != hidden_states.device:
+                initial_weight = initial_weight.to(hidden_states.device)
+            return torch.nn.functional.linear(
+                hidden_states.to(dtype),
+                initial_weight
+                + (torch.mm(self.up.flatten(start_dim=1), self.down.flatten(start_dim=1)))
+                .reshape(self.initial_weight.shape)
+                .type(orig_dtype),
+                self.initial_bias,
+            )
 
 
 class LoRAConv2dLayer(nn.Module):
     def __init__(
-        self, in_features, out_features, rank=4, kernel_size=(1, 1), stride=(1, 1), padding=0, network_alpha=None
+        self,
+        in_features,
+        out_features,
+        rank=4,
+        kernel_size=(1, 1),
+        stride=(1, 1),
+        padding=0,
+        network_alpha=None,
+        initial_weight=None,
+        initial_bias=None,
     ):
         super().__init__()
 
@@ -84,6 +120,13 @@ class LoRAConv2dLayer(nn.Module):
         self.network_alpha = network_alpha
         self.rank = rank
 
+        # Control-LoRA specific.
+        self.initial_weight = initial_weight
+        self.initial_bias = initial_bias
+        self.stride = stride
+        self.kernel_size = kernel_size
+        self.padding = padding
+
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
 
@@ -91,13 +134,28 @@ class LoRAConv2dLayer(nn.Module):
         orig_dtype = hidden_states.dtype
         dtype = self.down.weight.dtype
 
-        down_hidden_states = self.down(hidden_states.to(dtype))
-        up_hidden_states = self.up(down_hidden_states)
+        if not (self.initial_weight and self.initial_bias):
+            down_hidden_states = self.down(hidden_states.to(dtype))
+            up_hidden_states = self.up(down_hidden_states)
 
-        if self.network_alpha is not None:
-            up_hidden_states *= self.network_alpha / self.rank
+            if self.network_alpha is not None:
+                up_hidden_states *= self.network_alpha / self.rank
 
-        return up_hidden_states.to(orig_dtype)
+            return up_hidden_states.to(orig_dtype)
+        else:
+            initial_weight = self.initial_weight
+            if initial_weight.device != hidden_states.device:
+                initial_weight = initial_weight.to(hidden_states.device)
+            return torch.nn.functional.conv2d(
+                hidden_states,
+                initial_weight
+                + (torch.mm(self.up.flatten(start_dim=1), self.down.flatten(start_dim=1)))
+                .reshape(self.initial_weight.shape)
+                .type(orig_dtype),
+                self.initial_bias,
+                self.stride,
+                self.padding,
+            )
 
 
 class LoRACompatibleConv(nn.Conv2d):
