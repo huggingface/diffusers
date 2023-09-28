@@ -73,7 +73,7 @@ class LoRALinearLayer(nn.Module):
         orig_dtype = hidden_states.dtype
         dtype = self.down.weight.dtype
 
-        if not (self.initial_weight and self.initial_bias):
+        if self.initial_weight is None and self.initial_bias is None:
             down_hidden_states = self.down(hidden_states.to(dtype))
             up_hidden_states = self.up(down_hidden_states)
 
@@ -134,7 +134,7 @@ class LoRAConv2dLayer(nn.Module):
         orig_dtype = hidden_states.dtype
         dtype = self.down.weight.dtype
 
-        if not (self.initial_weight and self.initial_bias):
+        if self.initial_weight is None and self.initial_bias is None:
             down_hidden_states = self.down(hidden_states.to(dtype))
             up_hidden_states = self.up(down_hidden_states)
 
