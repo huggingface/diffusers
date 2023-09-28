@@ -2165,7 +2165,7 @@ class LoraLoaderMixin:
             self.unet.unfuse_lora()
 
         if self.use_peft_backend:
-            from peft.tuners.tuner_utils import BaseTunerLayer
+            from peft.tuners.tuners_utils import BaseTunerLayer
 
             def unfuse_text_encoder_lora(text_encoder):
                 for module in text_encoder.modules():
