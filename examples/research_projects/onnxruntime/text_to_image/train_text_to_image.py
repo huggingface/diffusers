@@ -44,7 +44,7 @@ from transformers.utils import ContextManagers
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
+from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -524,30 +524,6 @@ def main():
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    def compute_snr(timesteps):
-        """
-        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
-        """
-        alphas_cumprod = noise_scheduler.alphas_cumprod
-        sqrt_alphas_cumprod = alphas_cumprod**0.5
-        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
-
-        # Expand the tensors.
-        # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
-        sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
-        alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
-
-        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
-        sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
-
-        # Compute SNR.
-        snr = (alpha / sigma) ** 2
-        return snr
-
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
@@ -871,13 +847,22 @@ def main():
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
-                    snr = compute_snr(timesteps)
-                    mse_loss_weights = (
+                    snr = compute_snr(noise_scheduler, timesteps)
+                    base_weight = (
                         torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
                     if noise_scheduler.config.prediction_type == "v_prediction":
                         # velocity objective prediction requires SNR weights to be floored to a min value of 1.
-                        mse_loss_weights = mse_loss_weights + 1
+                        mse_loss_weights = base_weight + 1
+                    else:
+                        # Epsilon and sample prediction use the base weights.
+                        mse_loss_weights = base_weight
+
+                    # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
+                    # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
+                    # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
+                    mse_loss_weights[snr == 0] = 1.0
+
                     # We first calculate the original loss. Then we mean over the non-batch dimensions and
                     # rebalance the sample-wise losses with their respective loss weights.
                     # Finally, we take the mean of the rebalanced loss.

@@ -51,7 +51,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
+from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -326,6 +326,55 @@ def parse_args(input_args=None):
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument(
+        "--timestep_bias_strategy",
+        type=str,
+        default="none",
+        choices=["earlier", "later", "range", "none"],
+        help=(
+            "The timestep bias strategy, which may help direct the model toward learning low or high frequency details."
+            " Choices: ['earlier', 'later', 'range', 'none']."
+            " The default is 'none', which means no bias is applied, and training proceeds normally."
+            " The value of 'later' will increase the frequency of the model's final training timesteps."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_bias_multiplier",
+        type=float,
+        default=1.0,
+        help=(
+            "The multiplier for the bias. Defaults to 1.0, which means no bias is applied."
+            " A value of 2.0 will double the weight of the bias, and a value of 0.5 will halve it."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_bias_begin",
+        type=int,
+        default=0,
+        help=(
+            "When using `--timestep_bias_strategy=range`, the beginning (inclusive) timestep to bias."
+            " Defaults to zero, which equates to having no specific bias."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_bias_end",
+        type=int,
+        default=1000,
+        help=(
+            "When using `--timestep_bias_strategy=range`, the final timestep (inclusive) to bias."
+            " Defaults to 1000, which is the number of timesteps that Stable Diffusion is trained on."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_bias_portion",
+        type=float,
+        default=0.25,
+        help=(
+            "The portion of timesteps to bias. Defaults to 0.25, which 25% of timesteps will be biased."
+            " A value of 0.5 will bias one half of the timesteps. The value provided for `--timestep_bias_strategy` determines"
+            " whether the biased portions are in the earlier or later timesteps."
+        ),
+    )
+    parser.add_argument(
         "--snr_gamma",
         type=float,
         default=None,
@@ -479,6 +528,47 @@ def compute_vae_encodings(batch, vae):
     return {"model_input": model_input.cpu()}
 
 
+def generate_timestep_weights(args, num_timesteps):
+    weights = torch.ones(num_timesteps)
+
+    # Determine the indices to bias
+    num_to_bias = int(args.timestep_bias_portion * num_timesteps)
+
+    if args.timestep_bias_strategy == "later":
+        bias_indices = slice(-num_to_bias, None)
+    elif args.timestep_bias_strategy == "earlier":
+        bias_indices = slice(0, num_to_bias)
+    elif args.timestep_bias_strategy == "range":
+        # Out of the possible 1000 timesteps, we might want to focus on eg. 200-500.
+        range_begin = args.timestep_bias_begin
+        range_end = args.timestep_bias_end
+        if range_begin < 0:
+            raise ValueError(
+                "When using the range strategy for timestep bias, you must provide a beginning timestep greater or equal to zero."
+            )
+        if range_end > num_timesteps:
+            raise ValueError(
+                "When using the range strategy for timestep bias, you must provide an ending timestep smaller than the number of timesteps."
+            )
+        bias_indices = slice(range_begin, range_end)
+    else:  # 'none' or any other string
+        return weights
+    if args.timestep_bias_multiplier <= 0:
+        return ValueError(
+            "The parameter --timestep_bias_multiplier is not intended to be used to disable the training of specific timesteps."
+            " If it was intended to disable timestep bias, use `--timestep_bias_strategy none` instead."
+            " A timestep bias multiplier less than or equal to 0 is not allowed."
+        )
+
+    # Apply the bias
+    weights[bias_indices] *= args.timestep_bias_multiplier
+
+    # Normalize
+    weights /= weights.sum()
+
+    return weights
+
+
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -601,30 +691,6 @@ def main(args):
             unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
-
-    def compute_snr(timesteps):
-        """
-        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
-        """
-        alphas_cumprod = noise_scheduler.alphas_cumprod
-        sqrt_alphas_cumprod = alphas_cumprod**0.5
-        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
-
-        # Expand the tensors.
-        # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
-        sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
-        alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
-
-        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
-        sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
-
-        # Compute SNR.
-        snr = (alpha / sigma) ** 2
-        return snr
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -935,11 +1001,18 @@ def main(args):
                     )
 
                 bsz = model_input.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
-                )
-                timesteps = timesteps.long()
+                if args.timestep_bias_strategy == "none":
+                    # Sample a random timestep for each image without bias.
+                    timesteps = torch.randint(
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
+                    )
+                else:
+                    # Sample a random timestep for each image, potentially biased by the timestep weights.
+                    # Biasing the timestep weights allows us to spend less time training irrelevant timesteps.
+                    weights = generate_timestep_weights(args, noise_scheduler.config.num_train_timesteps).to(
+                        model_input.device
+                    )
+                    timesteps = torch.multinomial(weights, bsz, replacement=True).long()
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
@@ -991,7 +1064,7 @@ def main(args):
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
-                    snr = compute_snr(timesteps)
+                    snr = compute_snr(noise_scheduler, timesteps)
                     base_weight = (
                         torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
@@ -1002,6 +1075,11 @@ def main(args):
                     else:
                         # Epsilon and sample both use the same loss weights.
                         mse_loss_weights = base_weight
+
+                    # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
+                    # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
+                    # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
+                    mse_loss_weights[snr == 0] = 1.0
 
                     # We first calculate the original loss. Then we mean over the non-batch dimensions and
                     # rebalance the sample-wise losses with their respective loss weights.

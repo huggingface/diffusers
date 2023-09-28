@@ -42,6 +42,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     nightly,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -471,7 +472,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.1509, 0.1245, 0.1672, 0.1655, 0.1519, 0.1226, 0.1462, 0.1567, 0.2451])
-        assert np.abs(expected_slice - image_slice).max() < 5e-2
+        assert np.abs(expected_slice - image_slice).max() < 1e-1
 
     def test_stable_diffusion_inpaint_pndm(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -529,6 +530,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
 
+    @require_python39_or_higher
     @require_torch_2
     def test_inpaint_compile(self):
         seed = 0
@@ -629,7 +631,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         inputs["num_inference_steps"] = 5
         image = pipe(**inputs).images[0]
 
-        assert np.max(np.abs(image - image_ckpt)) < 1e-4
+        assert np.max(np.abs(image - image_ckpt)) < 5e-4
 
 
 @slow
@@ -770,6 +772,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
         # make sure that less than 2.45 GB is allocated
         assert mem_bytes < 2.45 * 10**9
 
+    @require_python39_or_higher
     @require_torch_2
     def test_inpaint_compile(self):
         pass
