@@ -66,6 +66,7 @@ export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet_sdxl.py \
  --pretrained_model_name_or_path=$MODEL_DIR \
+ --pretrained_vae_model_name_or_path "madebyollin/sdxl-vae-fp16-fix" \ # Vae fix is required to converge with dataset "fusing/fill50k"
  --output_dir=$OUTPUT_DIR \
  --dataset_name=fusing/fill50k \
  --mixed_precision="fp16" \
