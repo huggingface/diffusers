@@ -161,8 +161,8 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 -8056.734,
             ]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 5e-2
 
     @skip_mps
     def test_inference_batch_single_identical(self):

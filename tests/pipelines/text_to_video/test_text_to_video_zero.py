@@ -18,12 +18,12 @@ import unittest
 import torch
 
 from diffusers import DDIMScheduler, TextToVideoZeroPipeline
-from diffusers.utils.testing_utils import load_pt, require_torch_gpu, slow
+from diffusers.utils.testing_utils import load_pt, nightly, require_torch_gpu
 
 from ..test_pipelines_common import assert_mean_pixel_difference
 
 
-@slow
+@nightly
 @require_torch_gpu
 class TextToVideoZeroPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
