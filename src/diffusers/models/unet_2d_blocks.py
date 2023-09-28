@@ -250,7 +250,7 @@ def get_up_block(
     add_upsample,
     resnet_eps,
     resnet_act_fn,
-    resolution_idx,
+    resolution_idx=None,
     transformer_layers_per_block=1,
     num_attention_heads=None,
     resnet_groups=None,
