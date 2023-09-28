@@ -31,9 +31,9 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     is_flaky,
+    nightly,
     numpy_cosine_similarity_distance,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -195,7 +195,7 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return super().test_progress_bar()
 
 
-@slow
+@nightly
 @skip_mps
 class VideoToVideoSDPipelineSlowTests(unittest.TestCase):
     def test_two_step_model(self):

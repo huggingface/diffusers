@@ -48,7 +48,6 @@ from diffusers.utils.testing_utils import (
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
-    slow,
     torch_device,
 )
 
@@ -566,7 +565,7 @@ class StableDiffusionPipelineFastTests(
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def setUp(self):
@@ -1003,7 +1002,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=inputs)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def tearDown(self):
