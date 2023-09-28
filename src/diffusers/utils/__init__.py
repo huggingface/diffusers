@@ -84,7 +84,14 @@ from .import_utils import (
 from .loading_utils import load_image
 from .logging import get_logger
 from .outputs import BaseOutput
-from .peft_utils import recurse_remove_peft_layers
+from .peft_utils import (
+    get_adapter_name,
+    get_peft_kwargs,
+    recurse_remove_peft_layers,
+    scale_lora_layers,
+    set_adapter_layers,
+    set_weights_and_activate_adapters,
+)
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
 from .state_dict_utils import convert_state_dict_to_diffusers, convert_state_dict_to_peft
 
