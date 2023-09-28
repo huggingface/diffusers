@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 from torch.nn.functional import grid_sample

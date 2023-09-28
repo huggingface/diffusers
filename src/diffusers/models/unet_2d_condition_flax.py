@@ -92,6 +92,9 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             Enable memory efficient attention as described [here](https://arxiv.org/abs/2112.05682).
+        split_head_dim (`bool`, *optional*, defaults to `False`):
+            Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
+            enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
     """
 
     sample_size: int = 32
@@ -116,6 +119,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
     use_memory_efficient_attention: bool = False
+    split_head_dim: bool = False
     transformer_layers_per_block: Union[int, Tuple[int]] = 1
     addition_embed_type: Optional[str] = None
     addition_time_embed_dim: Optional[int] = None
@@ -134,8 +138,18 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         added_cond_kwargs = None
         if self.addition_embed_type == "text_time":
-            # TODO: how to get this from the config? It's no longer cross_attention_dim
-            text_embeds_dim = 1280
+            # we retrieve the expected `text_embeds_dim` by first checking if the architecture is a refiner
+            # or non-refiner architecture and then by "reverse-computing" from `projection_class_embeddings_input_dim`
+            is_refiner = (
+                5 * self.config.addition_time_embed_dim + self.config.cross_attention_dim
+                == self.config.projection_class_embeddings_input_dim
+            )
+            num_micro_conditions = 5 if is_refiner else 6
+
+            text_embeds_dim = self.config.projection_class_embeddings_input_dim - (
+                num_micro_conditions * self.config.addition_time_embed_dim
+            )
+
             time_ids_channels = self.projection_class_embeddings_input_dim - text_embeds_dim
             time_ids_dims = time_ids_channels // self.addition_time_embed_dim
             added_cond_kwargs = {
@@ -221,6 +235,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
+                    split_head_dim=self.split_head_dim,
                     dtype=self.dtype,
                 )
             else:
@@ -244,6 +259,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             transformer_layers_per_block=transformer_layers_per_block[-1],
             use_linear_projection=self.use_linear_projection,
             use_memory_efficient_attention=self.use_memory_efficient_attention,
+            split_head_dim=self.split_head_dim,
             dtype=self.dtype,
         )
 
@@ -274,6 +290,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
+                    split_head_dim=self.split_head_dim,
                     dtype=self.dtype,
                 )
             else:
