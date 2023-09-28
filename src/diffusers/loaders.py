@@ -2599,7 +2599,7 @@ class ControlNetLoaderMixin(LoraLoaderMixin):
                 raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
 
             value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
-            lora.load_state_dict(value_dict)
+            lora.load_state_dict(value_dict, strict=False)
             lora_layers_list.append((attn_processor, lora))
 
             # set correct dtype & device
