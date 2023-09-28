@@ -88,7 +88,7 @@ class LoRALinearLayer(nn.Module):
             return torch.nn.functional.linear(
                 hidden_states.to(dtype),
                 initial_weight
-                + (torch.mm(self.up.flatten(start_dim=1), self.down.flatten(start_dim=1)))
+                + (torch.mm(self.up.weight.data.flatten(start_dim=1), self.down.weight.data.flatten(start_dim=1)))
                 .reshape(self.initial_weight.shape)
                 .type(orig_dtype),
                 self.initial_bias,
@@ -149,7 +149,7 @@ class LoRAConv2dLayer(nn.Module):
             return torch.nn.functional.conv2d(
                 hidden_states,
                 initial_weight
-                + (torch.mm(self.up.flatten(start_dim=1), self.down.flatten(start_dim=1)))
+                + (torch.mm(self.up.weight.flatten(start_dim=1), self.down.weight.flatten(start_dim=1)))
                 .reshape(self.initial_weight.shape)
                 .type(orig_dtype),
                 self.initial_bias,
