@@ -82,7 +82,7 @@ class LoRALinearLayer(nn.Module):
 
             return up_hidden_states.to(orig_dtype)
         else:
-            print(f"{self.__class__} is running Control LoRA.")
+            # print(f"{self.__class__} is running Control LoRA.")
             initial_weight = self.initial_weight
             if initial_weight.device != hidden_states.device:
                 initial_weight = initial_weight.to(hidden_states.device)
@@ -144,7 +144,7 @@ class LoRAConv2dLayer(nn.Module):
 
             return up_hidden_states.to(orig_dtype)
         else:
-            print(f"{self.__class__} is running Control LoRA.")
+            # print(f"{self.__class__} is running Control LoRA.")
             initial_weight = self.initial_weight
             if initial_weight.device != hidden_states.device:
                 initial_weight = initial_weight.to(hidden_states.device)
