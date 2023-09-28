@@ -1644,7 +1644,7 @@ class UpBlockFlat(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
-        resolution_idx: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
