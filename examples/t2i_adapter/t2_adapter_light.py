@@ -57,6 +57,7 @@ from io import BytesIO
 import torch
 import random
 
+from kornia import rgb_to_lab
 
 ## Utils functions for light generation
 def generate_points(n):
