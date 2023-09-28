@@ -33,7 +33,7 @@ from .modeling_wuerstchen_common import AttnBlock, ResBlock, TimestepBlock, Wuer
 
 
 class WuerstchenPrior(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
-    UNET_NAME = "prior"
+    unet_name = "prior"
 
     @register_to_config
     def __init__(self, c_in=16, c=1280, c_cond=1024, c_r=64, depth=16, nhead=16, dropout=0.1):
