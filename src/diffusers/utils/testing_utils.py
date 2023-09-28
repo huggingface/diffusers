@@ -69,7 +69,8 @@ if is_torch_available():
             ) from e
         logger.info(f"torch_device overrode to {torch_device}")
     else:
-        torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        # torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        torch_device = "cpu"
         is_torch_higher_equal_than_1_12 = version.parse(
             version.parse(torch.__version__).base_version
         ) >= version.parse("1.12")
