@@ -95,8 +95,6 @@ def modulate_luminance_with_curve(luminance: torch.Tensor, control_points):
     noise = torch.randn_like(luminance)  # Bx1xHxW
     modulated_luminance = luminance + noise * luminance_modulated   # Bx1xHxW
 
-    print(f"Min and Max Luminance before modulation: {luminance.min()}, {luminance.max()}")
-    print(f"Min and Max Luminance after modulation: {luminance_modulated.min()}, {luminance_modulated.max()}")
 
     return modulated_luminance
 
