@@ -14,16 +14,16 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Inpainting replaces or edits specified areas of an image. This makes it a useful tool for restoring old images, removing defects and artifacts, or even replacing areas of an image with something entirely new. Inpainting relies on a mask to determine which regions of an image to fill in; the area to replace is represented by white pixels and the area to keep is represented by black pixels. Areas containing the missing pixels are filled in by the prompt.
+Inpainting replaces or edits specific areas of an image. This makes it a useful tool for image restoration like removing defects and artifacts, or even replacing an image area with something entirely new. Inpainting relies on a mask to determine which regions of an image to fill in; the area to inpaint is represented by white pixels and the area to keep is represented by black pixels. The white pixels are filled in by the prompt.
 
 With 🤗 Diffusers, here is how you can quickly start inpainting:
 
 1. Load an inpainting checkpoint with the [`AutoPipelineForInpainting`] class. This'll automatically detect the appropriate pipeline class to load based on the checkpoint:
 
 ```py
+import torch
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
-import torch
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
@@ -34,7 +34,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 <Tip>
 
-You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, then you don't need to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention).
+You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu_offload`] and [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`], to save memory and increase inference speed. If you're using PyTorch 2.0, it's not necessary to call [`~DiffusionPipeline.enable_xformers_memory_efficient_attention`] on your pipeline because it'll already be using PyTorch 2.0's native [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention).
 
 </Tip>
 
@@ -51,7 +51,6 @@ mask_image = load_image("https://huggingface.co/datasets/huggingface/documentati
 prompt = "a black cat with glowing eyes, cute, adorable, disney, pixar, highly detailed, 8k"
 negative_prompt = "bad anatomy, deformed, ugly, disfigured"
 image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=init_image, mask_image=mask_image).images[0]
-image
 ```
 
 <div class="flex gap-4">
@@ -67,16 +66,16 @@ image
 
 ## Popular models
 
-[Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images thanks to an image prior model that creates better embeddings.
+[Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images thanks to an image prior model.
 
 ### Stable Diffusion v1.5
 
 Stable Diffusion v1.5 is a latent diffusion model finetuned on 512x512 images. It is a good starting point for inpainting because it is relatively fast and generates good quality images. To use this model for inpainting, you'll need to pass a prompt, base and mask image to the pipeline:
 
 ```py
+import torch
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
-import torch
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
@@ -95,12 +94,12 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generat
 
 ### Stable Diffusion XL (SDXL)
 
-SDXL is a larger and more powerful version of Stable Diffusion v1.5. It employs a two-stage model process (though each model can also be used alone); the base model generates an image, and a refiner model takes that image and further enhances the details and quality of it. Take a look at the [SDXL](sdxl) guide for a more comprehensive guide on how to use SDXL and configure it's parameters.
+SDXL is a larger and more powerful version of Stable Diffusion v1.5. This model can follow a two-stage model process (though each model can also be used alone); the base model generates an image, and a refiner model takes that image and further enhances its details and quality. Take a look at the [SDXL](sdxl) guide for a more comprehensive guide on how to use SDXL and configure it's parameters.
 
 ```py
+import torch
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
-import torch
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16"
@@ -119,12 +118,12 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generat
 
 ### Kandinsky 2.2
 
-The Kandinsky model family is similar to SDXL in the sense that it uses two models; the image prior model generates image embeddings, and the diffusion model uses these embeddings to generate higher quality images. You can load the image prior and diffusion model separately, but the easiest way to use Kandinsky 2.2 is to load it into the [`AutoPipelineForInpainting`] class which uses the [`KandinskyV22InpaintCombinedPipeline`] under the hood.
+The Kandinsky model family is similar to SDXL in the sense that it uses two models; the image prior model generates image embeddings, and the diffusion model uses these embeddings to generate images. You can load the image prior and diffusion model separately, but the easiest way to use Kandinsky 2.2 is to load it into the [`AutoPipelineForInpainting`] class which uses the [`KandinskyV22InpaintCombinedPipeline`] under the hood.
 
 ```py
+import torch
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
-import torch
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16
@@ -162,11 +161,11 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generat
 
 ## Configure pipeline parameters
 
-Image generation features - like quality and "creativity" - are dependent on pipeline parameters. Knowing what these parameters do is important for getting the results you want. Let's take a look at the most important parameters and see how changing them affects the generated image.
+Image features - like quality and "creativity" - are dependent on pipeline parameters. Knowing what these parameters do is important for getting the results you want. Let's take a look at the most important parameters and see how changing them affects the output.
 
 ## Strength
 
-`strength` is a measure of how much noise is added to the base image which means it'll affect how similar the generated image is to it.
+`strength` is a measure of how much noise is added to the base image, which influences how similar the output is to the base image.
 
 * 📈 a high `strength` value means more noise is added to an image and the denoising process takes longer, but you'll get higher quality images that are more different from the base image
 * 📉 a low `strength` value means less noise is added to an image and the denoising process is faster, but the image quality may not be as great and the generated image resembles the base image more
@@ -207,10 +206,10 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strengt
 
 ## Guidance scale
 
-`guidance_scale` affects how aligned the text prompt and generated image are. 
+`guidance_scale` affects how aligned the text prompt and generated image are.
 
-* 📈 a high `guidance_scale` value means the prompt and generated image are closely aligned so the output is a stricter interpretation of the prompt
-* 📉 a low `guidance_scale` value means the prompt and generated image are more loosely aligned so the output may be more creative
+* 📈 a high `guidance_scale` value means the prompt and generated image are closely aligned, so the output is a stricter interpretation of the prompt
+* 📉 a low `guidance_scale` value means the prompt and generated image are more loosely aligned, so the output may be more varied from the prompt
 
 You can use `strength` and `guidance_scale` together for more granular control over how expressive the model is. For example, using high `strength` and `guidance_scale` values gives the model the most creative freedom.
 
@@ -250,7 +249,7 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, guidanc
 
 ### Negative prompt
 
-A negative prompt performs the opposite function of a prompt; it guides the model away from generating certain things in an image. This is useful for quickly improving image quality and preventing the model from generating things you don't want.
+A negative prompt assumes the opposite role of a prompt; it guides the model away from generating certain things in an image. This is useful for quickly improving image quality and preventing the model from generating things you don't want.
 
 ```py
 import torch
@@ -279,7 +278,7 @@ image
 
 ## Preserve unmasked areas
 
-The [`StableDiffusionInpaintPipeline`] (and other inpainting pipelines) generally also changes the unmasked part of an image to create a more natural transition between the masked and unmasked region. If this behavior is undesirable, you can force the unmasked area to remain the same. However, forcing the unmasked portion of the image to remain the same might result in some weird transitions between the unmasked and masked areas.
+The [`AutoPipelineForInpainting`] (and other inpainting pipelines) generally changes the unmasked parts of an image to create a more natural transition between the masked and unmasked region. If this behavior is undesirable, you can force the unmasked area to remain the same. However, forcing the unmasked portion of the image to remain the same may result in some weird transitions between the unmasked and masked areas.
 
 ```py
 import PIL
@@ -327,9 +326,9 @@ unmasked_unchanged_image.save("force_unmasked_unchanged.png")
 
 ### Text-to-image-to-inpaint
 
-Chaining a text-to-image and inpainting pipeline allows you to inpaint and edit the generated image without having to generate an entirely new one.
+Chaining a text-to-image and inpainting pipeline allows you to inpaint the generated image, and you don't have to provide a base image to begin with. This makes it convenient to edit your favorite text-to-image outputs without having to generate an entirely new image.
 
-Start by generating an image with the text-to-image pipeline:
+Start with the text-to-image pipeline to create a castle:
 
 ```py
 import torch
@@ -351,7 +350,7 @@ Load the mask image of the output from above:
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_text-chain-mask.png").convert("RGB")
 ```
 
-Let's replace the masked area with a waterfall:
+And let's inpaint the masked area with a waterfall:
 
 ```py
 pipeline = AutoPipelineForInpainting.from_pretrained(
@@ -379,9 +378,9 @@ image
 
 ### Image-to-image-to-inpaint
 
-You can also chain an inpainting pipeline before or after an image-to-image pipeline. Depending on the position (first or last) of the inpainting pipeline in the chain, you can use it to make sure the image is ready for the image-to-image pipeline or you can use it to fix and modify the output from the image-to-image pipeline. This example uses the inpainting pipeline last.
+You can also chain an inpainting pipeline before or after an image-to-image pipeline. Depending on the position (first or last) of the inpainting pipeline in the chain, you can use it to make sure the image is ready for the image-to-image pipeline or you can use it to edit its output. This example uses the inpainting pipeline last.
 
-Begin by generating an image with the image-to-image pipeline:
+Begin by generating an image of a castle with the image-to-image pipeline:
 
 ```py
 import torch
@@ -399,7 +398,6 @@ init_image = load_image("https://huggingface.co/datasets/huggingface/documentati
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 
 # pass prompt and image to pipeline
-generator = torch.Generator("cuda").manual_seed(41)
 image = pipeline(prompt, image=init_image, output_type="latent").images[0]
 ```
 
@@ -409,7 +407,7 @@ It is important to specify `output_type="latent"` in the pipeline to keep all th
 
 </Tip>
 
-Let's inpaint the tree on the right side of the image with some mountains:
+Now let's inpaint the tree on the right side of the image with some mountains:
 
 ```py
 pipeline = AutoPipelineForInpainting.from_pretrained(
@@ -420,8 +418,6 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/image-to-inpaint-chain-mask.png").convert("RGB")
 prompt = "digital painting of clouds above mountains, snowy, fantasy, soft"
-
-generator = torch.Generator("cuda").manual_seed(48)
 image = pipeline(prompt=prompt, image=image, mask_image=mask_image).images[0]
 ```
 
@@ -440,7 +436,7 @@ image = pipeline(prompt=prompt, image=image, mask_image=mask_image).images[0]
   </div>
 </div>
 
-Image-to-image and inpainting are actually very similar tasks. Image-to-image takes an existing image and generates a new one that resembles it. Inpainting also takes an existing image, but it only transforms the image region defined by the mask and the rest of the image is unchanged. You can think of inpainting as a more precise tool for making changes and image-to-image has a broader scope for making more sweeping changes.
+Image-to-image and inpainting are actually very similar tasks. Image-to-image generates a new image that resembles the existing provided image. Inpainting does the same thing, but it only transforms the image area defined by the mask and the rest of the image is unchanged. You can think of inpainting as a more precise tool for making specific changes and image-to-image has a broader scope for making more sweeping changes.
 
 ## Control image generation
 
@@ -448,13 +444,13 @@ Getting an image to look exactly the way you want is challenging because the den
 
 ### Prompt weighting
 
-Prompt weighting provides a quantifiable way to scale the representation of concepts in a prompt. You can use it to increase or decrease the magnitude of the text embedding vector for each concept in the prompt, which subsequently affects how much each concept is generated. The [Compel](https://github.com/damian0815/compel) library offers an intuitive syntax for scaling the prompt weights and generating the embeddings. Learn how to create the embeddings in the [Prompt weighting](../using-diffusers/weighted_prompts) guide.
+Prompt weighting provides a quantifiable way to scale the representation of concepts in a prompt. You can use it to increase or decrease the magnitude of the text embedding vector for each concept in the prompt, which subsequently determines how much of each concept is generated. The [Compel](https://github.com/damian0815/compel) library offers an intuitive syntax for scaling the prompt weights and generating the embeddings. Learn how to create the embeddings in the [Prompt weighting](../using-diffusers/weighted_prompts) guide.
 
-Once you've generated the embeddings, pass them to the `prompt_embeds` (and `negative_prompt_embeds` if you're using a negative prompt) parameter in the [`AutoPipelineForInpainting`]. The embeddings replaces the `prompt` parameter:
+Once you've generated the embeddings, pass them to the `prompt_embeds` (and `negative_prompt_embeds` if you're using a negative prompt) parameter in the [`AutoPipelineForInpainting`]. The embeddings replace the `prompt` parameter:
 
 ```py
-from diffusers import AutoPipelineForInpainting
 import torch
+from diffusers import AutoPipelineForInpainting
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16,
@@ -471,18 +467,20 @@ image = pipeline(prompt_emebds=prompt_embeds, # generated from Compel
 
 ### ControlNet
 
-ControlNet models provide an even more flexible and accurate way to control how an image is generated, and it is used with other diffusion models like Stable Diffusion. The ControlNet accepts an additional conditioning image input to guide the diffusion model to preserve the features in it.
+ControlNet models are used with other diffusion models like Stable Diffusion, and they provide an even more flexible and accurate way to control how an image is generated. A ControlNet accepts an additional conditioning image input that guides the diffusion model to preserve the features in it.
 
 For example, let's condition an image with a ControlNet pretrained on inpaint images:
 
 ```py
-from diffusers import ControlNetModel, StableDiffusionControlNetInpaintPipeline
-from diffusers.utils import load_image
 import torch
 import numpy as np
+from diffusers import ControlNetModel, StableDiffusionControlNetInpaintPipeline
+from diffusers.utils import load_image
 
+# load ControlNet
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16, variant="fp16")
 
+# pass ControlNet to the pipeline
 pipeline = StableDiffusionControlNetInpaintPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
@@ -503,6 +501,7 @@ def make_inpaint_condition(init_image, mask_image):
     init_image = np.expand_dims(init_image, 0).transpose(0, 3, 1, 2)
     init_image = torch.from_numpy(init_image)
     return init_image
+
 control_image = make_inpaint_condition(init_image, mask_image)
 ```
 
@@ -549,19 +548,19 @@ image
 
 ## Optimize
 
-It can be difficult and slow to run diffusion models if you're resource constrained, but it dosen't have to be with a few optimization tricks. One of the biggest (and easiest) optimizations you can enable is switching to a more memory-efficient attention. If you're using PyTorch 2.0, [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention) is automatically enabled and you don't need to do anything else. For non-PyTorch 2.0 users, you can install and use [xFormers](../optimization/xformers)'s implementation of memory-efficient attention. Both options will reduce memory usage and speed-up inference.
+It can be difficult and slow to run diffusion models if you're resource constrained, but it dosen't have to be with a few optimization tricks. One of the biggest (and easiest) optimizations you can enable is switching to memory-efficient attention. If you're using PyTorch 2.0, [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention) is automatically enabled and you don't need to do anything else. For non-PyTorch 2.0 users, you can install and use [xFormers](../optimization/xformers)'s implementation of memory-efficient attention. Both options reduce memory usage and accelerate inference.
 
 You can also offload the model to the GPU to save even more memory:
 
 ```diff
-+ pipeline.enable_model_cpu_offload()
 + pipeline.enable_xformers_memory_efficient_attention()
++ pipeline.enable_model_cpu_offload()
 ```
 
-Speed-up your inference code even more with [`torch_compile`](../optimization/torch2.0#torch.compile). You should wrap `torch.compile` around the most intensive component in the pipeline which is typically the UNet:
+To speed-up your inference code even more, use [`torch_compile`](../optimization/torch2.0#torch.compile). You should wrap `torch.compile` around the most intensive component in the pipeline which is typically the UNet:
 
 ```py
 pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-Learn more by reading the [Reduce memory usage](../optimization/memory) and [Torch 2.0](../optimization/torch2.0) guides.
+Learn more in the [Reduce memory usage](../optimization/memory) and [Torch 2.0](../optimization/torch2.0) guides.
