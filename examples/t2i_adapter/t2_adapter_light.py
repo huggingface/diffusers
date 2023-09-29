@@ -1001,11 +1001,11 @@ def main(args):
         torch.backends.cuda.matmul.allow_tf32 = True
 
     if args.scale_lr:
-        print("pre scale lr": args.learning_rate)
+        print("pre scale lr", args.learning_rate)
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
-        print("post scale lr": args.learning_rate)
+        print("post scale lr", args.learning_rate)
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
