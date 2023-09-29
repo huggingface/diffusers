@@ -91,7 +91,7 @@ def scale_lora_layers(model, weight):
 
 def unscale_lora_layers(model):
     """
-    Adjust bacl the weightage given to the LoRA layers of the model.
+    Removes the previously passed weight given to the LoRA layers of the model.
 
     Args:
         model (`torch.nn.Module`):
