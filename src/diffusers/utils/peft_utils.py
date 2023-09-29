@@ -89,6 +89,23 @@ def scale_lora_layers(model, weight):
             module.scale_layer(weight)
 
 
+def unscale_lora_layers(model):
+    """
+    Removes the previously passed weight given to the LoRA layers of the model.
+
+    Args:
+        model (`torch.nn.Module`):
+            The model to scale.
+        weight (`float`):
+            The weight to be given to the LoRA layers.
+    """
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            module.unscale_layer()
+
+
 def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
     rank_pattern = {}
     alpha_pattern = {}
