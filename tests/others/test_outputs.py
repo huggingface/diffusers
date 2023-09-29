@@ -1,3 +1,4 @@
+import pickle as pkl
 import unittest
 from dataclasses import dataclass
 from typing import List, Union
@@ -58,3 +59,13 @@ class ConfigTester(unittest.TestCase):
         assert isinstance(outputs["images"][0], PIL.Image.Image)
         assert isinstance(outputs[0], list)
         assert isinstance(outputs[0][0], PIL.Image.Image)
+
+    def test_outputs_serialization(self):
+        outputs_orig = CustomOutput(images=[PIL.Image.new("RGB", (4, 4))])
+        serialized = pkl.dumps(outputs_orig)
+        outputs_copy = pkl.loads(serialized)
+
+        # Check original and copy are equal
+        assert dir(outputs_orig) == dir(outputs_copy)
+        assert dict(outputs_orig) == dict(outputs_copy)
+        assert vars(outputs_orig) == vars(outputs_copy)
