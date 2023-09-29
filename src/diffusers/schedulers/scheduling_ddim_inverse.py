@@ -333,7 +333,9 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         # 1. get previous step value (=t+1)
         prev_timestep = timestep
-        timestep = min(timestep - self.config.num_train_timesteps // self.num_inference_steps, self.num_train_timesteps-1)
+        timestep = min(
+            timestep - self.config.num_train_timesteps // self.num_inference_steps, self.num_train_timesteps - 1
+        )
 
         # 2. compute alphas, betas
         # change original implementation to exactly match noise levels for analogous forward process
