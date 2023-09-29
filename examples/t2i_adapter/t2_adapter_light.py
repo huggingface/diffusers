@@ -77,8 +77,20 @@ def compute_curve_value(x, points, sigma=0.05):
         y += Ai * torch.exp(-((x - xi) ** 2) / (2 * sigma ** 2))
     return y
 
+# From J. Whittaker
+def pyramid_noise_like(x, discount=0.9):
+  b, c, w, h = x.shape # EDIT: w and h get over-written, rename for a different variant!
+  u = nn.Upsample(size=(w, h), mode='bilinear')
+  noise = torch.randn_like(x)
+  for i in range(10):
+    #r = random.random()*2+2 # Rather than always going 2x, 
+    r = 2 # We want this to be deterministic. Only the noise should be random not it's distribution
+    w, h = max(1, int(w/(r**i))), max(1, int(h/(r**i)))
+    noise += u(torch.randn(b, c, w, h).to(x)) * discount**i
+    if w==1 or h==1: break # Lowest resolution is 1x1
+  return noise/noise.std() # Scaled back to roughly unit variance
 
-# Function to Generate Luminance Features
+
 # Function to Generate Luminance Features and Normalize Them
 def generate_luminance_features(img_tensor):
     lab_img = rgb_to_lab(img_tensor)  # Bx3xHxW
@@ -90,26 +102,43 @@ def generate_luminance_features(img_tensor):
     return luminance
 
 
-def modulate_luminance_with_curve(luminance: torch.Tensor, control_points):
+def modulate_luminance_with_curve(luminance: torch.Tensor, control_points, args):
     luminance_modulated = compute_curve_value(luminance, control_points)  # Bx1xHxW
-    noise = torch.randn_like(luminance)  # Bx1xHxW
-    modulated_luminance = luminance + noise * luminance_modulated   # Bx1xHxW
+
+    # Options for masking
+    mask_type = args.mask_type
+    # White noise 
+    if mask_type == "white":
+        noise = torch.randn_like(luminance)  # Bx1xHxW
+    elif mask_type == "pyramid":
+        noise = pyramid_noise_like(luminance)
+    else:
+        raise Exception("No matching")
+
+    a = luminance_modulated
+    
+    # Increase the obscuring of the image.
+    if args.sqrt_mask:
+        a = a * a
+    
+    modulated_luminance = luminance * (1 - a) + noise * a   # Bx1xHxW
 
 
     return modulated_luminance
 
 point_count_choices = [2,3,4]
     
-def make_condition(image, resolution):
+def make_condition(image, args):
+    resolution = args.resolution
     transform = transforms.Compose([transforms.Resize((resolution, resolution)), transforms.ToTensor()])
     img_tensor = transform(image).unsqueeze(0)
-    luminance = generate_luminance_features(img_tensor)
+    luminance = generate_luminance_features(img_tensor, mask_type)
 
 
     point_count = random.choice(point_count_choices)
     control_points = generate_points(point_count)
 
-    modulated_luminance = modulate_luminance_with_curve(luminance, control_points)
+    modulated_luminance = modulate_luminance_with_curve(luminance, control_points, args)
 
     modulated_image = modulated_luminance.repeat(1, 3, 1, 1)  # Bx3xWx
     modulated_image = modulated_image.squeeze(0).permute(1, 2, 0)  # Remove batch dimension and permute to WxHxC
@@ -356,6 +385,18 @@ def parse_args(input_args=None):
             " resolution"
         ),
     )
+    parser.add_argument(
+        "--mask_type",
+        type="string",
+        default="white",
+        help=("Options are 'white' or 'pyramid'"),
+    )
+    parser.add_argument(
+        "--sqrt_mask",
+        type=bool,
+        default=False,
+        help="Boolean flag to apply square root to mask. Default is False."
+    )      
     parser.add_argument(
         "--detection_resolution",
         type=int,
@@ -802,7 +843,7 @@ def prepare_train_dataset(dataset, accelerator):
         images = [image_transforms(image) for image in images]
 
         # first transform input images into a single. Then
-        conditioning_images = [make_condition(image.convert("RGB"), args.resolution) for image in examples[args.image_column]]
+        conditioning_images = [make_condition(image.convert("RGB"), args) for image in examples[args.image_column]]
         conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
 
         examples["pixel_values"] = images
