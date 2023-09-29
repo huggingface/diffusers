@@ -27,6 +27,7 @@ from huggingface_hub import hf_hub_download, model_info
 from packaging import version
 from torch import nn
 
+from . import __version__
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
     DIFFUSERS_CACHE,
@@ -48,7 +49,6 @@ from .utils import (
     set_weights_and_activate_adapters,
 )
 from .utils.import_utils import BACKENDS_MAPPING
-from . import __version__
 
 
 if is_transformers_available():
