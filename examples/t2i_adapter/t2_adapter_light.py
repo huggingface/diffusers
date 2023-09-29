@@ -387,7 +387,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--mask_type",
-        type="string",
+        type=str,
         default="white",
         help="Options are 'white' or 'pyramid'",
     )
