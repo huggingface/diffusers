@@ -107,7 +107,7 @@ class BaseOutput(OrderedDict):
         callable, _args, state, istate, dstate = super().__reduce__()
         args = tuple(getattr(self, field.name) for field in fields(self))
         return callable, args, state, istate, dstate
-    
+
     def to_tuple(self) -> Tuple[Any]:
         """
         Convert self to a tuple containing all the attributes/keys that are not `None`.
