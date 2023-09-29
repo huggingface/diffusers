@@ -147,7 +147,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 512,
-        prior_num_inference_steps: int = 60,
+        prior_num_inference_steps: int = 30,
         prior_timesteps: Optional[List[float]] = None,
         prior_guidance_scale: float = 4.0,
         num_inference_steps: int = 12,
