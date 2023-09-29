@@ -389,7 +389,7 @@ def parse_args(input_args=None):
         "--mask_type",
         type="string",
         default="white",
-        help=("Options are 'white' or 'pyramid'"),
+        help="Options are 'white' or 'pyramid'",
     )
     parser.add_argument(
         "--sqrt_mask",
