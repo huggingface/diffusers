@@ -16,7 +16,7 @@ Generic utilities
 """
 
 from collections import OrderedDict
-from dataclasses import fields
+from dataclasses import fields, is_dataclass
 from typing import Any, Tuple
 
 import numpy as np
@@ -101,6 +101,13 @@ class BaseOutput(OrderedDict):
         # Don't call self.__setattr__ to avoid recursion errors
         super().__setattr__(key, value)
 
+    def __reduce__(self):
+        if not is_dataclass(self):
+            return super().__reduce__()
+        callable, _args, state, istate, dstate = super().__reduce__()
+        args = tuple(getattr(self, field.name) for field in fields(self))
+        return callable, args, state, istate, dstate
+    
     def to_tuple(self) -> Tuple[Any]:
         """
         Convert self to a tuple containing all the attributes/keys that are not `None`.
