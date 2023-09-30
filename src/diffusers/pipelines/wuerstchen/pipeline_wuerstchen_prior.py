@@ -82,6 +82,12 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
+        latent_mean ('float', *optional*, defaults to 42.0):
+            Mean value for latent diffusers
+        latent_std ('float', *optional*, defaults to 1.0):
+             Standard value for latent diffusers
+        resolution_multiple ('float', *optional*, defaults to 42.67):
+             default resolution for multiple images generated
     """
 
     model_cpu_offload_seq = "text_encoder->prior"
