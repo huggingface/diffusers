@@ -78,6 +78,8 @@
       title: Community pipelines
     - local: using-diffusers/contribute_pipeline
       title: How to contribute a community pipeline
+    - local: ddpo
+      title: Fine-tuning Stable Diffusion using Reinforcement Learning with DDPO
     title: Pipelines for Inference
   - sections:
     - local: training/overview
