@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import is_torch_version, logging
-from ..utils.torch_utils import fourier_filter
+from ..utils.torch_utils import apply_freeu
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
@@ -2224,21 +2224,17 @@ class CrossAttnUpBlock2D(nn.Module):
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
 
-            # Courtesy:
-            # https://github.com/ChenyangSi/FreeU
-            # https://github.com/lyn-rgb/FreeU_Diffusers
-            if is_freeu_enabled is not None:
-                # --------------- FreeU code -----------------------
-                # Only operate on the first two stages
-                if self.resolution_idx == 0:
-                    num_half_channels = hidden_states.shape[1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b1
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s1)
-                if self.resolution_idx == 1:
-                    num_half_channels = hidden_states.shape[1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b2
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s2)
-                # ---------------------------------------------------------
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -2349,20 +2345,17 @@ class UpBlock2D(nn.Module):
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
 
-            # Courtesy:
-            # https://github.com/ChenyangSi/FreeU
-            # https://github.com/lyn-rgb/FreeU_Diffusers
+            # FreeU: Only operate on the first two stages
             if is_freeu_enabled:
-                # --------------- FreeU code -----------------------
-                # Only operate on the first two stages
-                if self.resolution_idx == 0:
-                    num_half_channels = hidden_states.shape[-1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b1
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s1)
-                if self.resolution_idx == 1:
-                    num_half_channels = hidden_states.shape[-1] // 2
-                    hidden_states[:, :num_half_channels] = hidden_states[:, :num_half_channels] * self.b2
-                    res_hidden_states = fourier_filter(res_hidden_states, threshold=1, scale=self.s2)
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
 
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
