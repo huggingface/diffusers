@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ..utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -252,7 +253,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["spectrogram_diffusion"] = ["MidiProcessor", "SpectrogramDiffusionPipeline"]
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()

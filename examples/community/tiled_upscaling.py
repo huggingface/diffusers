@@ -16,7 +16,7 @@ import math
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer

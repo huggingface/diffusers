@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import flax
 import numpy as np
-import PIL
+import PIL.Image
 from flax.core.frozen_dict import FrozenDict
 from huggingface_hub import create_repo, snapshot_download
 from PIL import Image
@@ -280,9 +280,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         <Tip>
 
         To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`. You can also activate the special
-        [“offline-mode”](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
-        firewalled environment.
+        `huggingface-cli login`.
 
         </Tip>
 
@@ -323,6 +321,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         revision = kwargs.pop("revision", None)
         from_pt = kwargs.pop("from_pt", False)
         use_memory_efficient_attention = kwargs.pop("use_memory_efficient_attention", False)
+        split_head_dim = kwargs.pop("split_head_dim", False)
         dtype = kwargs.pop("dtype", None)
 
         # 1. Download the checkpoints and configs
@@ -501,6 +500,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                         loadable_folder,
                         from_pt=from_pt,
                         use_memory_efficient_attention=use_memory_efficient_attention,
+                        split_head_dim=split_head_dim,
                         dtype=dtype,
                     )
                     params[name] = loaded_params

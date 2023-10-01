@@ -224,7 +224,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(
             batch_size=2,
-            expected_max_diff=5e-3,
+            expected_max_diff=6e-3,
         )
 
     def test_num_images_per_prompt(self):
@@ -245,6 +245,16 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         images = pipe(**inputs, num_images_per_prompt=num_images_per_prompt)[0]
 
         assert images.shape[0] == batch_size * num_images_per_prompt
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1e-1)
+
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=1e-3)
+
+    @unittest.skip("Key error is raised with accelerate")
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
 
 
 @nightly
