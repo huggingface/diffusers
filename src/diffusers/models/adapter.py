@@ -258,6 +258,12 @@ class T2IAdapter(ModelMixin, ConfigMixin):
             )
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        r"""
+        This function processes the input tensor `x` through the adapter model and returns a list of feature tensors, 
+        each representing information extracted at a different scale from the input.
+        The length of the list is determined by the number of downsample blocks in the Adapter, as specified
+        by the `channels` and `num_res_blocks` parameters during initialization.
+        """
         return self.adapter(x)
 
     @property
@@ -296,6 +302,12 @@ class FullAdapter(nn.Module):
         self.total_downscale_factor = downscale_factor * 2 ** (len(channels) - 1)
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        r"""
+        This function processes the input tensor `x` through the FullAdapter model and performs operations including 
+        pixel unshuffling, convolution, and a stack of AdapterBlocks. It returns a list of feature tensors, each capturing information at a different stage of processing within 
+        the FullAdapter model. The number of feature tensors in the list is determined by the number of downsample blocks
+        specified during initialization.
+        """
         x = self.unshuffle(x)
         x = self.conv_in(x)
 
