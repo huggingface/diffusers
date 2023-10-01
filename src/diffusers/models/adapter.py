@@ -303,7 +303,7 @@ class FullAdapter(nn.Module):
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         r"""
-        This function processes the input tensor `x` through the FullAdapter model and performs operations including 
+        This method processes the input tensor `x` through the FullAdapter model and performs operations including 
         pixel unshuffling, convolution, and a stack of AdapterBlocks. It returns a list of feature tensors, each capturing information at a different stage of processing within 
         the FullAdapter model. The number of feature tensors in the list is determined by the number of downsample blocks
         specified during initialization.
@@ -350,6 +350,11 @@ class FullAdapterXL(nn.Module):
         self.total_downscale_factor = downscale_factor * 2
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        r"""
+        This method takes the tensor x as input and processes it through FullAdapterXL model. FullAdapterXL 
+        extracts extra-large (XL) features from the input image. It consists of multiple blocks, each responsible for 
+        processing and downsampling the input. The feature tensors in the list correspond to the output of each processing block.
+        """
         x = self.unshuffle(x)
         x = self.conv_in(x)
 
@@ -379,6 +384,11 @@ class AdapterBlock(nn.Module):
         )
 
     def forward(self, x):
+        r"""
+        This method takes tensor x as input and performs operations downsampling and convolutional layers if the 
+        self.downsample and self.in_conv properties of AdapterBlock model are specified. Then it applies a series 
+        of residual blocks to the input tensor.
+        """
         if self.downsample is not None:
             x = self.downsample(x)
 
