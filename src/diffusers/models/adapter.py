@@ -304,9 +304,9 @@ class FullAdapter(nn.Module):
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         r"""
         This method processes the input tensor `x` through the FullAdapter model and performs operations including 
-        pixel unshuffling, convolution, and a stack of AdapterBlocks. It returns a list of feature tensors, each capturing information at a different stage of processing within 
-        the FullAdapter model. The number of feature tensors in the list is determined by the number of downsample blocks
-        specified during initialization.
+        pixel unshuffling, convolution, and a stack of AdapterBlocks. It returns a list of feature tensors, each capturing information 
+        at a different stage of processing within the FullAdapter model. The number of feature tensors in the list is determined 
+        by the number of downsample blocks specified during initialization.
         """
         x = self.unshuffle(x)
         x = self.conv_in(x)
@@ -351,9 +351,8 @@ class FullAdapterXL(nn.Module):
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
         r"""
-        This method takes the tensor x as input and processes it through FullAdapterXL model. FullAdapterXL 
-        extracts extra-large (XL) features from the input image. It consists of multiple blocks, each responsible for 
-        processing and downsampling the input. The feature tensors in the list correspond to the output of each processing block.
+        This method takes the tensor x as input and processes it through FullAdapterXL model. It consists of operations 
+        including unshuffling pixels, applying convolution layer and appending each block into list of feature tensors.
         """
         x = self.unshuffle(x)
         x = self.conv_in(x)
@@ -408,6 +407,10 @@ class AdapterResnetBlock(nn.Module):
         self.block2 = nn.Conv2d(channels, channels, kernel_size=1)
 
     def forward(self, x):
+        r"""
+        This method takes input tensor x and applies a convolutional layer, ReLU activation, 
+        and another convolutional layer on the input tensor. It returns addition with the input tensor.
+        """
         h = x
         h = self.block1(h)
         h = self.act(h)
@@ -447,6 +450,10 @@ class LightAdapter(nn.Module):
         self.total_downscale_factor = downscale_factor * (2 ** len(channels))
 
     def forward(self, x):
+        r"""
+        This method takes the input tensor x and performs downscaling and appends it in list of feature tensors.
+        Each feature tensor corresponds to a different level of processing within the LightAdapter.
+        """
         x = self.unshuffle(x)
 
         features = []
@@ -472,6 +479,10 @@ class LightAdapterBlock(nn.Module):
         self.out_conv = nn.Conv2d(mid_channels, out_channels, kernel_size=1)
 
     def forward(self, x):
+        r"""
+        This method takes tensor x as input and performs downsampling if required. 
+        Then it applies in convolution layer, a sequence of residual blocks, and out convolutional layer.
+        """
         if self.downsample is not None:
             x = self.downsample(x)
 
@@ -490,6 +501,10 @@ class LightAdapterResnetBlock(nn.Module):
         self.block2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
 
     def forward(self, x):
+        r"""
+        This function takes input tensor x and processes it through one convolutional layer, ReLU activation,
+        and another convolutional layer and adds it to input tensor.
+        """
         h = x
         h = self.block1(h)
         h = self.act(h)
