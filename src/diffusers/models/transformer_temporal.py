@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
+import math
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .attention import BasicTransformerBlock
+from .attention import BasicTransformerBlock, Attention, FeedForward
 from .modeling_utils import ModelMixin
 
 
@@ -73,6 +74,9 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         activation_fn: str = "geglu",
         norm_elementwise_affine: bool = True,
         double_self_attention: bool = True,
+        attention_block_types: Optional[Tuple[str]] = None,
+        temporal_position_encoding: bool = False,
+        temporal_position_encoding_max_len: int = 24,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -86,7 +90,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         # 3. Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
-            [
+            [   
                 BasicTransformerBlock(
                     inner_dim,
                     num_attention_heads,
@@ -97,7 +101,21 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
                     attention_bias=attention_bias,
                     double_self_attention=double_self_attention,
                     norm_elementwise_affine=norm_elementwise_affine,
-                )
+                ) 
+                if attention_block_types is None
+                else
+                TemporalTransformerBlock(
+                inner_dim,
+                num_attention_heads,
+                attention_head_dim,
+                attention_block_types=attention_block_types,
+                dropout=dropout,
+                cross_attention_dim=cross_attention_dim,
+                activation_fn=activation_fn,
+                attention_bias=attention_bias,
+                temporal_position_encoding=temporal_position_encoding,
+                temporal_position_encoding_max_len=temporal_position_encoding_max_len
+            )
                 for d in range(num_layers)
             ]
         )
@@ -177,3 +195,125 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             return (output,)
 
         return TransformerTemporalModelOutput(sample=output)
+
+
+class TemporalTransformerBlock(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        attention_block_types=(
+            "Temporal_Self",
+            "Temporal_Self",
+        ),
+        dropout=0.0,
+        norm_num_groups: int = 32,
+        cross_attention_dim: int = 768,
+        activation_fn: str = "geglu",
+        attention_bias: bool = False,
+        upcast_attention: bool = False,
+        temporal_position_encoding: bool = False,
+        temporal_position_encoding_max_len: int = 24,
+    ):
+        super().__init__()
+
+        attention_blocks = []
+        norms = []
+
+        for block_name in attention_block_types:
+            attention_blocks.append(
+                VersatileAttention(
+                    attention_mode=block_name.split("_")[0],
+                    cross_attention_dim=cross_attention_dim if block_name.endswith("_Cross") else None,
+                    query_dim=dim,
+                    heads=num_attention_heads,
+                    dim_head=attention_head_dim,
+                    dropout=dropout,
+                    bias=attention_bias,
+                    upcast_attention=upcast_attention,
+                    temporal_position_encoding=temporal_position_encoding,
+                    temporal_position_encoding_max_len=temporal_position_encoding_max_len,
+                )
+            )
+            norms.append(nn.LayerNorm(dim))
+
+        self.attention_blocks = nn.ModuleList(attention_blocks)
+        self.norms = nn.ModuleList(norms)
+
+        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
+        self.ff_norm = nn.LayerNorm(dim)
+
+    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        for attention_block, norm in zip(self.attention_blocks, self.norms):
+            norm_hidden_states = norm(hidden_states)
+            hidden_states = (
+                attention_block(
+                    norm_hidden_states,
+                    encoder_hidden_states=encoder_hidden_states
+                    if attention_block.is_cross_attention
+                    else None,
+                )
+                + hidden_states
+            )
+
+        hidden_states = self.ff(self.ff_norm(hidden_states)) + hidden_states
+
+        output = hidden_states
+        return output
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout: float = 0.0, max_len: int = 24):
+        super().__init__()
+        self.dropout: nn.Module = nn.Dropout(p=dropout)
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe: torch.Tensor = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x: torch.Tensor):
+        x = x + self.pe[:, : x.size(1)]
+        return self.dropout(x)
+    
+
+class VersatileAttention(Attention):
+    def __init__(
+        self,
+        attention_mode: str = None,
+        temporal_position_encoding: bool = False,
+        temporal_position_encoding_max_len: int = 24,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        if attention_mode.lower() != "temporal":
+            raise ValueError(f"Attention mode {attention_mode} is not supported.")
+
+        self.attention_mode = attention_mode
+        self.is_cross_attention = kwargs["cross_attention_dim"] is not None
+
+        self.pos_encoder = (
+            PositionalEncoding(kwargs["query_dim"], dropout=0.0, max_len=temporal_position_encoding_max_len)
+            if (temporal_position_encoding and attention_mode == "Temporal")
+            else None
+        )
+
+    def extra_repr(self):
+        return f"(Module Info) Attention_Mode: {self.attention_mode}, Is_Cross_Attention: {self.is_cross_attention}"
+
+    def forward(
+        self, hidden_states: torch.Tensor, encoder_hidden_states=None, attention_mask=None
+    ):
+        if self.attention_mode == "Temporal":
+            if self.pos_encoder is not None:
+                hidden_states = self.pos_encoder(hidden_states)
+        else:
+            raise NotImplementedError
+
+        # attention processor makes this easy so that's nice
+        hidden_states = self.processor(self, hidden_states, encoder_hidden_states, attention_mask)
+
+        return hidden_states

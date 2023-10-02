@@ -95,7 +95,6 @@ class BasicTransformerBlock(nn.Module):
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
         attention_type: str = "default",
-        unet_use_temporal_attention: bool = False,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
