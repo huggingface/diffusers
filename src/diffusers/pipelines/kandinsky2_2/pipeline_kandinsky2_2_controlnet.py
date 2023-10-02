@@ -295,7 +295,8 @@ class KandinskyV22ControlnetPipeline(DiffusionPipeline):
             )[0]
 
             if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                step_idx = i // getattr(self.scheduler, "order", 1)
+                callback(step_idx, t, latents)
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
