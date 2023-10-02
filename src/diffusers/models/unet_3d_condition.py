@@ -461,6 +461,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
             module.gradient_checkpointing = value
 
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1, s2, b1, b2):
         for i, upsample_block in enumerate(self.up_blocks):
             setattr(upsample_block, "s1", s1)
@@ -468,6 +469,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             setattr(upsample_block, "b1", b1)
             setattr(upsample_block, "b2", b2)
 
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.disable_freeu
     def disable_freeu(self):
         freeu_keys = {"s1", "s2", "b1", "b2"}
         for i, upsample_block in enumerate(self.up_blocks):

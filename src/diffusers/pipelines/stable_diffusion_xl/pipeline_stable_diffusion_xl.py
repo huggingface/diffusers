@@ -559,8 +559,12 @@ class StableDiffusionXLPipeline(
         that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
 
         Args:
-            s1 (`float`): Scaling factor for stage 1 to attenuate the contributions of the skip features.
-            s2 (`float`): Scaling factor for stage 2 to attenuate the contributions of the skip features.
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
             b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
             b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
         """

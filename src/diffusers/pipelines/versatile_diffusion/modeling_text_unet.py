@@ -32,7 +32,7 @@ from ...models.embeddings import (
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import is_torch_version, logging
-from ...utils.torch_utils import fourier_filter
+from ...utils.torch_utils import apply_freeu
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

@@ -469,6 +469,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
 
@@ -478,8 +479,12 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
 
         Args:
-            s1 (`float`): Scaling factor for stage 1 to attenuate the contributions of the skip features.
-            s2 (`float`): Scaling factor for stage 2 to attenuate the contributions of the skip features.
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
             b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
             b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
         """
@@ -487,6 +492,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             raise ValueError("The pipeline must have `unet` for using FreeU.")
         self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_freeu
     def disable_freeu(self):
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
