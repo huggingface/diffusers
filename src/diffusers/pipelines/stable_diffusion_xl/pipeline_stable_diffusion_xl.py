@@ -440,6 +440,8 @@ class StableDiffusionXLPipeline(
         height,
         width,
         callback_steps,
+        num_inference_steps,
+        guidance_scale,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -506,6 +508,11 @@ class StableDiffusionXLPipeline(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
+        if hasattr(guidance_scale, "__len__") and len(guidance_scale) != num_inference_steps:
+            raise ValueError(
+                f"`guidance_scale` must be a single float value or a list of exactly `num_inference_steps` ({num_inference_steps}) floats"
+            )
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
@@ -570,7 +577,7 @@ class StableDiffusionXLPipeline(
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         denoising_end: Optional[float] = None,
-        guidance_scale: float = 5.0,
+        guidance_scale: Union[float, List[float]] = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -625,12 +632,13 @@ class StableDiffusionXLPipeline(
                 scheduler. The denoising_end parameter should ideally be utilized when this pipeline forms a part of a
                 "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
                 Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output)
-            guidance_scale (`float`, *optional*, defaults to 5.0):
+            guidance_scale (`float` or `List[float]`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                usually at the expense of lower image quality. Guidance scale may be controlled with step granularity
+                by passing a list of scales, one per inference step.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
@@ -736,6 +744,8 @@ class StableDiffusionXLPipeline(
             height,
             width,
             callback_steps,
+            num_inference_steps,
+            guidance_scale,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -757,7 +767,9 @@ class StableDiffusionXLPipeline(
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
+        if isinstance(guidance_scale, (int, float)):
+            guidance_scale = [guidance_scale] * num_inference_steps
+        do_classifier_free_guidance = any([gs > 1.0 for gs in guidance_scale])
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
@@ -821,9 +833,9 @@ class StableDiffusionXLPipeline(
             negative_add_time_ids = add_time_ids
 
         if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
+            negative_prompt_embeds = negative_prompt_embeds.to(device)
+            negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.to(device)
+            negative_add_time_ids = negative_add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
@@ -845,17 +857,32 @@ class StableDiffusionXLPipeline(
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # reevaluate whether to do CFG with step granularity
+                do_classifier_free_guidance = guidance_scale[i] > 1.0
+
+                if do_classifier_free_guidance:
+                    encoder_hidden_states = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+                    added_cond_kwargs = {
+                        "text_embeds": torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0),
+                        "time_ids": torch.cat([negative_add_time_ids, add_time_ids], dim=0),
+                    }
+                else:
+                    encoder_hidden_states = prompt_embeds
+                    added_cond_kwargs = {
+                        "text_embeds": add_text_embeds,
+                        "time_ids": add_time_ids,
+                    }
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
@@ -864,7 +891,7 @@ class StableDiffusionXLPipeline(
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale[i] * (noise_pred_text - noise_pred_uncond)
 
                 if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
