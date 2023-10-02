@@ -270,6 +270,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 315.5757) < 1e-2, f" expected result sum 315.5757, but get {result_sum}"
         assert abs(result_mean.item() - 0.4109) < 1e-3, f" expected result mean 0.4109, but get {result_mean}"
 
+
 class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
     @property
     def dummy_sample(self):
@@ -278,6 +279,20 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
         width = 8
 
         sample = torch.rand((batch_size, num_channels, width))
+
+        return sample
+
+    @property
+    def dummy_noise_deter(self):
+        batch_size = 4
+        num_channels = 3
+        width = 8
+
+        num_elems = batch_size * num_channels * width
+        sample = torch.arange(num_elems).flip(-1)
+        sample = sample.reshape(num_channels, width, batch_size)
+        sample = sample / num_elems
+        sample = sample.permute(2, 0, 1)
 
         return sample
 
@@ -337,3 +352,30 @@ class UniPCMultistepScheduler1DTest(UniPCMultistepSchedulerTest):
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.1944) < 1e-3
+
+    def test_full_loop_with_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = 10
+        t_start = 8
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
+
+        # add noise
+        noise = self.dummy_noise_deter
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
+        sample = scheduler.add_noise(sample, noise, timesteps[:1])
+
+        for i, t in enumerate(timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample).prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 39.0870) < 1e-2, f" expected result sum 39.0870, but get {result_sum}"
+        assert abs(result_mean.item() - 0.4072) < 1e-3, f" expected result mean 0.4072, but get {result_mean}"
