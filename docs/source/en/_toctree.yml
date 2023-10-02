@@ -17,6 +17,8 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
+  - local: tutorials/freeu.md
+    title: FreeU to improve generation quality
   title: Tutorials
 - sections:
   - sections:
