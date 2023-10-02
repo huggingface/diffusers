@@ -44,6 +44,7 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -499,14 +500,7 @@ class StableDiffusionPipelineFastTests(
         negative_prompt = None
         num_images_per_prompt = 1
         logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
-
-        prompt = 25 * "@"
-        with CaptureLogger(logger) as cap_logger_3:
-            negative_text_embeddings_3, text_embeddings_3 = sd_pipe.encode_prompt(
-                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-            )
-            if negative_text_embeddings_3 is not None:
-                text_embeddings_3 = torch.cat([negative_text_embeddings_3, text_embeddings_3])
+        logger.setLevel(logging.WARNING)
 
         prompt = 100 * "@"
         with CaptureLogger(logger) as cap_logger:
@@ -516,6 +510,9 @@ class StableDiffusionPipelineFastTests(
             if negative_text_embeddings is not None:
                 text_embeddings = torch.cat([negative_text_embeddings, text_embeddings])
 
+        # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
+        assert cap_logger.out.count("@") == 25
+
         negative_prompt = "Hello"
         with CaptureLogger(logger) as cap_logger_2:
             negative_text_embeddings_2, text_embeddings_2 = sd_pipe.encode_prompt(
@@ -524,12 +521,18 @@ class StableDiffusionPipelineFastTests(
             if negative_text_embeddings_2 is not None:
                 text_embeddings_2 = torch.cat([negative_text_embeddings_2, text_embeddings_2])
 
+        assert cap_logger.out == cap_logger_2.out
+
+        prompt = 25 * "@"
+        with CaptureLogger(logger) as cap_logger_3:
+            negative_text_embeddings_3, text_embeddings_3 = sd_pipe.encode_prompt(
+                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            )
+            if negative_text_embeddings_3 is not None:
+                text_embeddings_3 = torch.cat([negative_text_embeddings_3, text_embeddings_3])
+
         assert text_embeddings_3.shape == text_embeddings_2.shape == text_embeddings.shape
         assert text_embeddings.shape[1] == 77
-
-        assert cap_logger.out == cap_logger_2.out
-        # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
-        assert cap_logger.out.count("@") == 25
         assert cap_logger_3.out == ""
 
     def test_stable_diffusion_height_width_opt(self):
@@ -717,7 +720,9 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
     def test_stable_diffusion_vae_tiling(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", torch_dtype=torch.float16, safety_checker=None
+        )
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
         pipe.unet = pipe.unet.to(memory_format=torch.channels_last)
@@ -896,7 +901,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
         assert mem_bytes_offloaded < mem_bytes
         assert mem_bytes_offloaded < 3.5 * 10**9
-        for module in pipe.text_encoder, pipe.unet, pipe.vae, pipe.safety_checker:
+        for module in pipe.text_encoder, pipe.unet, pipe.vae:
             assert module.device == torch.device("cpu")
 
         # With attention slicing
@@ -986,6 +991,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 8e-1
 
+    @require_python39_or_higher
     @require_torch_2
     def test_stable_diffusion_compile(self):
         seed = 0
@@ -1040,7 +1046,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)

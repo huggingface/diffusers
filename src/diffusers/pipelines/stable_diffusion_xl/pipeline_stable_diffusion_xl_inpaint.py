@@ -16,7 +16,7 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
@@ -36,10 +36,12 @@ from ...utils import (
     is_invisible_watermark_available,
     logging,
     replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionXLPipelineOutput
+from .pipeline_output import StableDiffusionXLPipelineOutput
 
 
 if is_invisible_watermark_available():
@@ -420,8 +422,12 @@ class StableDiffusionXLInpaintPipeline(
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+            if not self.use_peft_backend:
+                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+            else:
+                scale_lora_layers(self.text_encoder, lora_scale)
+                scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -557,6 +563,11 @@ class StableDiffusionXLInpaintPipeline(
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
                 bs_embed * num_images_per_prompt, -1
             )
+
+        if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
+            # Retrieve the original scale by scaling back the LoRA layers
+            unscale_lora_layers(self.text_encoder)
+            unscale_lora_layers(self.text_encoder_2)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
@@ -1028,7 +1039,7 @@ class StableDiffusionXLInpaintPipeline(
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
-                `original_size` defaults to `(width, height)` if not specified. Part of SDXL's micro-conditioning as
+                `original_size` defaults to `(height, width)` if not specified. Part of SDXL's micro-conditioning as
                 explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
@@ -1038,7 +1049,7 @@ class StableDiffusionXLInpaintPipeline(
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 For most cases, `target_size` should be set to the desired height and width of the generated image. If
-                not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
+                not specified it will default to `(height, width)`. Part of SDXL's micro-conditioning as explained in
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             negative_original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 To negatively condition the generation process based on a specific image resolution. Part of SDXL's

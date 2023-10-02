@@ -16,12 +16,10 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
-
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
@@ -38,9 +36,12 @@ from ...utils import (
     is_invisible_watermark_available,
     logging,
     replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from .multicontrolnet import MultiControlNetModel
 
 
@@ -315,8 +316,12 @@ class StableDiffusionXLControlNetInpaintPipeline(
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-            adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+            if not self.use_peft_backend:
+                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+            else:
+                scale_lora_layers(self.text_encoder, lora_scale)
+                scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -452,6 +457,11 @@ class StableDiffusionXLControlNetInpaintPipeline(
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
                 bs_embed * num_images_per_prompt, -1
             )
+
+        if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
+            # Retrieve the original scale by scaling back the LoRA layers
+            unscale_lora_layers(self.text_encoder)
+            unscale_lora_layers(self.text_encoder_2)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 

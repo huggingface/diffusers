@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import flax
 import numpy as np
-import PIL
+import PIL.Image
 from flax.core.frozen_dict import FrozenDict
 from huggingface_hub import create_repo, snapshot_download
 from PIL import Image
@@ -280,9 +280,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         <Tip>
 
         To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`. You can also activate the special
-        [“offline-mode”](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
-        firewalled environment.
+        `huggingface-cli login`.
 
         </Tip>
 
@@ -323,6 +321,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         revision = kwargs.pop("revision", None)
         from_pt = kwargs.pop("from_pt", False)
         use_memory_efficient_attention = kwargs.pop("use_memory_efficient_attention", False)
+        split_head_dim = kwargs.pop("split_head_dim", False)
         dtype = kwargs.pop("dtype", None)
 
         # 1. Download the checkpoints and configs
@@ -342,8 +341,8 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
-            # make sure we don't download PyTorch weights, unless when using from_pt
-            ignore_patterns = "*.bin" if not from_pt else []
+            ignore_patterns = ["*.bin", "*.safetensors"] if not from_pt else []
+            ignore_patterns += ["*.onnx", "*.onnx_data", "*.xml", "*.pb"]
 
             if cls != FlaxDiffusionPipeline:
                 requested_pipeline_class = cls.__name__
@@ -394,10 +393,29 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         # extract them here
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
 
-        init_dict, _, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
-        init_kwargs = {}
+        # define init kwargs
+        init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict}
+        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
+
+        # remove `null` components
+        def load_module(name, value):
+            if value[0] is None:
+                return False
+            if name in passed_class_obj and passed_class_obj[name] is None:
+                return False
+            return True
+
+        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+
+        # Throw nice warnings / errors for fast accelerate loading
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+            )
 
         # inference_params
         params = {}
@@ -482,6 +500,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                         loadable_folder,
                         from_pt=from_pt,
                         use_memory_efficient_attention=use_memory_efficient_attention,
+                        split_head_dim=split_head_dim,
                         dtype=dtype,
                     )
                     params[name] = loaded_params

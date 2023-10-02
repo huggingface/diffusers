@@ -29,8 +29,8 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    nightly,
     require_torch_gpu,
-    slow,
     torch_device,
 )
 
@@ -188,7 +188,7 @@ class StableDiffusionParadigmsPipelineFastTests(PipelineLatentTesterMixin, Pipel
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
-@slow
+@nightly
 @require_torch_gpu
 class StableDiffusionParadigmsPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
