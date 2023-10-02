@@ -385,6 +385,12 @@ def parse_args(input_args=None):
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
+        "--learning_rate_text",
+        type=float,
+        default=5e-4,
+        help="Initial learning rate (after the potential warmup period) to use.",
+    )
+    parser.add_argument(
         "--scale_lr",
         action="store_true",
         default=False,
@@ -1021,9 +1027,32 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+    # params_to_optimize = (
+    #     itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+    # )
+    
+    # Add different learning rates for UNet and Text encoder
+    text_lr = (
+        args.learning_rate
+        if args.learning_rate_text is None
+        else args.learning_rate_text
     )
+
+    params_to_optimize = (
+        [
+            {
+                "params": itertools.chain(unet.parameters()), 
+                "lr": args.learning_rate
+            },
+            {
+                "params": itertools.chain(text_encoder.parameters()),
+                "lr": text_lr,
+            },
+        ]
+        if args.train_text_encoder
+        else itertools.chain(unet.parameters())
+    )
+
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
