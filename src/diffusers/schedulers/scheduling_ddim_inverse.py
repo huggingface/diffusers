@@ -288,9 +288,6 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
                 f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'leading' or 'trailing'."
             )
 
-        # Roll timesteps array by one to reflect reversed origin and destination semantics for each step
-        timesteps = np.roll(timesteps, 1)
-        timesteps[0] = int(timesteps[1] - step_ratio)
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
     def step(
@@ -335,7 +332,10 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
 
         """
         # 1. get previous step value (=t+1)
-        prev_timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
+        prev_timestep = timestep
+        timestep = min(
+            timestep - self.config.num_train_timesteps // self.num_inference_steps, self.num_train_timesteps - 1
+        )
 
         # 2. compute alphas, betas
         # change original implementation to exactly match noise levels for analogous forward process

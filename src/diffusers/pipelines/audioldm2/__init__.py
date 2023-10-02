@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -25,7 +26,7 @@ else:
     _import_structure["pipeline_audioldm2"] = ["AudioLDM2Pipeline"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.27.0")):
             raise OptionalDependencyNotAvailable()

@@ -36,6 +36,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
     load_numpy,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -84,16 +85,17 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
         prompt = "bird"
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-        )
+        ).resize((512, 512))
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, num_inference_steps=10, generator=generator, output_type="np")
         image = output.images[0]
 
-        assert image.shape == (768, 512, 3)
+        assert image.shape == (512, 512, 3)
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out_full.npy"
         )
+        expected_image = np.resize(expected_image, (512, 512, 3))
 
         assert np.abs(expected_image - image).max() < 1.0
 
@@ -894,6 +896,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.1655, 0.1721, 0.1623, 0.1685, 0.1711, 0.1646, 0.1651, 0.1631, 0.1494])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @require_python39_or_higher
     @require_torch_2
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
