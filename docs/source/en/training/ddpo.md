@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Denoising Diffusion Policy Optimization
+# Reinforcement learning training with DDPO
 
 It is possible to leverage the 🤗 `trl` library along with `diffusers` to fine-tune Stable Diffusion on a reward function via reinforcement learning. This is done via an algorithm called Denoising Diffusion Policy Optimization (DDPO), introduced by Black et al. in [Training Diffusion Models with Reinforcement Learning](https://arxiv.org/abs/2305.13301). 🤗 `trl` implements a dedicated trainer class for this `DDPOTrainer`.
 
