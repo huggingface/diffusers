@@ -18,7 +18,7 @@ from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, logging
+from ...utils import deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.outputs import BaseOutput
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
