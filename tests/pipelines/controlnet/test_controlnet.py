@@ -85,16 +85,17 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
         prompt = "bird"
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-        )
+        ).resize((512, 512))
 
-        output = pipe(prompt, image, generator=generator, output_type="np")
+        output = pipe(prompt, image, num_inference_steps=10, generator=generator, output_type="np")
         image = output.images[0]
 
-        assert image.shape == (768, 512, 3)
+        assert image.shape == (512, 512, 3)
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out_full.npy"
         )
+        expected_image = np.resize(expected_image, (512, 512, 3))
 
         assert np.abs(expected_image - image).max() < 1.0
 

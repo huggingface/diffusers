@@ -22,9 +22,9 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    nightly,
     require_torch_gpu,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -206,7 +206,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(
         self._test_xformers_attention_forwardGenerator_pass(test_max_difference=False)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
