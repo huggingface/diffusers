@@ -158,27 +158,6 @@ class BasicTransformerBlock(nn.Module):
         if attention_type == "gated" or attention_type == "gated-text-image":
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
-        # 5. Temporal-Attnention
-        if unet_use_temporal_attention:
-            self.norm3 = (
-                AdaLayerNorm(dim, num_embeds_ada_norm)
-                if self.use_ada_layer_norm
-                else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
-            )
-
-            self.attn3 = Attention(
-                query_dim=dim,
-                heads=num_attention_heads,
-                dim_head=attention_head_dim,
-                dropout=dropout,
-                bias=attention_bias,
-                upcast_attention=upcast_attention,
-            )
-            nn.init.zeros_(self.attn3.to_out[0].weight.data)
-        else:
-            self.norm3 = None
-            self.attn3 = None
-
         # let chunk size default to None
         self._chunk_size = None
         self._chunk_dim = 0
@@ -215,7 +194,6 @@ class BasicTransformerBlock(nn.Module):
         # 2. Prepare GLIGEN inputs
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
         gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
-        animatediff_kwargs = cross_attention_kwargs.pop("animatediff", None)
 
         attn_output = self.attn1(
             norm_hidden_states,
@@ -274,31 +252,6 @@ class BasicTransformerBlock(nn.Module):
             ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
-
-        # 5. Temporal-Attention
-        if self.attn3 is not None:
-            d = hidden_states.shape[1]
-            assert (
-                "video_length" in animatediff_kwargs
-            ), "AnimateDiff pipeline requires 'video_length' value to be specified."
-            from einops import rearrange
-
-            print("Before rearrange#1: ", hidden_states.shape)
-            hidden_states = rearrange(
-                hidden_states,
-                "(b f) d c -> (b d) f c",
-                f=animatediff_kwargs["video_length"],
-            )
-            print("After rearrange#1: ", hidden_states.shape)
-            norm_hidden_states = (
-                self.norm3(hidden_states, timestep)
-                if self.use_ada_layer_norm
-                else self.norm3(hidden_states)
-            )
-            hidden_states = self.attn3(norm_hidden_states) + hidden_states
-            print("Before rearrange#2: ", hidden_states.shape)
-            hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
-            print("After rearrange#2: ", hidden_states.shape)
 
         return hidden_states
 

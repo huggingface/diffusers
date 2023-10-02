@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional, Dict, Any, Tuple
+
 import torch
 from torch import nn
 
@@ -38,6 +40,9 @@ def get_down_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
+    use_temporal_module=True,
+    use_temporal_conv=True,
+    temporal_module_kwargs=None,
 ):
     if down_block_type == "DownBlock3D":
         return DownBlock3D(
@@ -51,6 +56,9 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            use_temporal_module=use_temporal_module,
+            use_temporal_conv=use_temporal_conv,
+            temporal_module_kwargs=temporal_module_kwargs,
         )
     elif down_block_type == "CrossAttnDownBlock3D":
         if cross_attention_dim is None:
@@ -72,6 +80,9 @@ def get_down_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            use_temporal_module=use_temporal_module,
+            use_temporal_conv=use_temporal_conv,
+            temporal_module_kwargs=temporal_module_kwargs,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -94,6 +105,9 @@ def get_up_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
+    use_temporal_module=True,
+    use_temporal_conv=True,
+    temporal_module_kwargs=None,
 ):
     if up_block_type == "UpBlock3D":
         return UpBlock3D(
@@ -107,6 +121,9 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            use_temporal_module=use_temporal_module,
+            use_temporal_conv=use_temporal_conv,
+            temporal_module_kwargs=temporal_module_kwargs,
         )
     elif up_block_type == "CrossAttnUpBlock3D":
         if cross_attention_dim is None:
@@ -128,6 +145,9 @@ def get_up_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            use_temporal_module=use_temporal_module,
+            use_temporal_conv=use_temporal_conv,
+            temporal_module_kwargs=temporal_module_kwargs,
         )
     raise ValueError(f"{up_block_type} does not exist.")
 
@@ -150,6 +170,9 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         dual_cross_attention=False,
         use_linear_projection=True,
         upcast_attention=False,
+        use_temporal_module=True,
+        use_temporal_conv=True,
+        temporal_module_kwargs=None,
     ):
         super().__init__()
 
@@ -177,7 +200,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 in_channels,
                 in_channels,
                 dropout=0.1,
-            )
+            ) if use_temporal_conv else None
         ]
         attentions = []
         temp_attentions = []
@@ -203,7 +226,8 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                )
+                    **temporal_module_kwargs
+                ) if use_temporal_module else None
             )
             resnets.append(
                 ResnetBlock2D(
@@ -224,7 +248,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     in_channels,
                     in_channels,
                     dropout=0.1,
-                )
+                ) if use_temporal_conv else None
             )
 
         self.resnets = nn.ModuleList(resnets)
@@ -234,15 +258,17 @@ class UNetMidBlock3DCrossAttn(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        temb=None,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        num_frames=1,
-        cross_attention_kwargs=None,
-    ):
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        num_frames: Optional[int] = 1,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+    ) -> torch.FloatTensor:
         hidden_states = self.resnets[0](hidden_states, temb)
-        hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
+        if self.temp_convs[0] is not None:
+            hidden_states = self.temp_convs[0](hidden_states, num_frames=num_frames)
         for attn, temp_attn, resnet, temp_conv in zip(
             self.attentions, self.temp_attentions, self.resnets[1:], self.temp_convs[1:]
         ):
@@ -250,13 +276,17 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                encoder_attention_mask=encoder_attention_mask,
                 return_dict=False,
             )[0]
-            hidden_states = temp_attn(
-                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
-            )[0]
+            if temp_attn is not None:
+                hidden_states = temp_attn(
+                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+                )[0]
             hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+            if temp_conv is not None:
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
         return hidden_states
 
@@ -283,6 +313,9 @@ class CrossAttnDownBlock3D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        use_temporal_module=True,
+        use_temporal_conv=True,
+        temporal_module_kwargs=None,
     ):
         super().__init__()
         resnets = []
@@ -314,7 +347,7 @@ class CrossAttnDownBlock3D(nn.Module):
                     out_channels,
                     out_channels,
                     dropout=0.1,
-                )
+                ) if use_temporal_conv else None
             )
             attentions.append(
                 Transformer2DModel(
@@ -337,7 +370,8 @@ class CrossAttnDownBlock3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                )
+                    **temporal_module_kwargs
+                ) if use_temporal_module else None
             )
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
@@ -359,12 +393,13 @@ class CrossAttnDownBlock3D(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        temb=None,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        num_frames=1,
-        cross_attention_kwargs=None,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        num_frames: Optional[int] = 1,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         # TODO(Patrick, William) - attention mask is not used
         output_states = ()
@@ -373,16 +408,20 @@ class CrossAttnDownBlock3D(nn.Module):
             self.resnets, self.temp_convs, self.attentions, self.temp_attentions
         ):
             hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+            if temp_conv is not None:
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                encoder_attention_mask=encoder_attention_mask,
                 return_dict=False,
             )[0]
-            hidden_states = temp_attn(
-                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
-            )[0]
+            if temp_attn is not None:
+                hidden_states = temp_attn(
+                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+                )[0]
 
             output_states += (hidden_states,)
 
@@ -411,6 +450,7 @@ class DownBlock3D(nn.Module):
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
+        use_temporal_conv=True,
     ):
         super().__init__()
         resnets = []
@@ -437,7 +477,7 @@ class DownBlock3D(nn.Module):
                     out_channels,
                     out_channels,
                     dropout=0.1,
-                )
+                ) if use_temporal_conv else None
             )
 
         self.resnets = nn.ModuleList(resnets)
@@ -456,12 +496,13 @@ class DownBlock3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, temb=None, num_frames=1):
+    def forward(self, hidden_states, temb=None, num_frames=1, encoder_hidden_states=None):
         output_states = ()
 
         for resnet, temp_conv in zip(self.resnets, self.temp_convs):
             hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+            if temp_conv is not None:
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
             output_states += (hidden_states,)
 
@@ -496,6 +537,9 @@ class CrossAttnUpBlock3D(nn.Module):
         use_linear_projection=False,
         only_cross_attention=False,
         upcast_attention=False,
+        use_temporal_module=True,
+        use_temporal_conv=True,
+        temporal_module_kwargs=None,
     ):
         super().__init__()
         resnets = []
@@ -529,7 +573,7 @@ class CrossAttnUpBlock3D(nn.Module):
                     out_channels,
                     out_channels,
                     dropout=0.1,
-                )
+                ) if use_temporal_conv else None
             )
             attentions.append(
                 Transformer2DModel(
@@ -552,7 +596,8 @@ class CrossAttnUpBlock3D(nn.Module):
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                )
+                    **temporal_module_kwargs
+                ) if use_temporal_module else None
             )
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
@@ -568,14 +613,15 @@ class CrossAttnUpBlock3D(nn.Module):
 
     def forward(
         self,
-        hidden_states,
-        res_hidden_states_tuple,
-        temb=None,
-        encoder_hidden_states=None,
-        upsample_size=None,
-        attention_mask=None,
-        num_frames=1,
-        cross_attention_kwargs=None,
+        hidden_states: torch.FloatTensor,
+        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
+        temb: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        upsample_size: Optional[int] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        num_frames: Optional[int] = 1,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         # TODO(Patrick, William) - attention mask is not used
         for resnet, temp_conv, attn, temp_attn in zip(
@@ -587,16 +633,20 @@ class CrossAttnUpBlock3D(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+            if temp_conv is not None:
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
             hidden_states = attn(
                 hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                encoder_attention_mask=encoder_attention_mask,
                 return_dict=False,
             )[0]
-            hidden_states = temp_attn(
-                hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
-            )[0]
+            if temp_attn is not None:
+                hidden_states = temp_attn(
+                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+                )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -621,6 +671,7 @@ class UpBlock3D(nn.Module):
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_upsample=True,
+        use_temporal_conv=True,
     ):
         super().__init__()
         resnets = []
@@ -649,7 +700,7 @@ class UpBlock3D(nn.Module):
                     out_channels,
                     out_channels,
                     dropout=0.1,
-                )
+                ) if use_temporal_conv else None
             )
 
         self.resnets = nn.ModuleList(resnets)
@@ -670,7 +721,8 @@ class UpBlock3D(nn.Module):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             hidden_states = resnet(hidden_states, temb)
-            hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+            if temp_conv is not None:
+                hidden_states = temp_conv(hidden_states, num_frames=num_frames)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
