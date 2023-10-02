@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 Inpainting replaces or edits specific areas of an image. This makes it a useful tool for image restoration like removing defects and artifacts, or even replacing an image area with something entirely new. Inpainting relies on a mask to determine which regions of an image to fill in; the area to inpaint is represented by white pixels and the area to keep is represented by black pixels. The white pixels are filled in by the prompt.
 
-With 🤗 Diffusers, here is how you can quickly start inpainting:
+With 🤗 Diffusers, here is how you can do inpainting:
 
 1. Load an inpainting checkpoint with the [`AutoPipelineForInpainting`] class. This'll automatically detect the appropriate pipeline class to load based on the checkpoint:
 
@@ -66,11 +66,11 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=init_imag
 
 ## Popular models
 
-[Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL (SDXL)](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images thanks to an image prior model.
+[Stable Diffusion Inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting), [Stable Diffusion XL (SDXL) Inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images.
 
-### Stable Diffusion v1.5
+### Stable Diffusion Inpainting
 
-Stable Diffusion v1.5 is a latent diffusion model finetuned on 512x512 images. It is a good starting point for inpainting because it is relatively fast and generates good quality images. To use this model for inpainting, you'll need to pass a prompt, base and mask image to the pipeline:
+Stable Diffusion Inpainting is a latent diffusion model finetuned on 512x512 images on inpainting. It is a good starting point because it is relatively fast and generates good quality images. To use this model for inpainting, you'll need to pass a prompt, base and mask image to the pipeline:
 
 ```py
 import torch
@@ -92,7 +92,7 @@ prompt = "concept art digital painting of an elven castle, inspired by lord of t
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
 ```
 
-### Stable Diffusion XL (SDXL)
+### Stable Diffusion XL (SDXL) Inpainting
 
 SDXL is a larger and more powerful version of Stable Diffusion v1.5. This model can follow a two-stage model process (though each model can also be used alone); the base model generates an image, and a refiner model takes that image and further enhances its details and quality. Take a look at the [SDXL](sdxl) guide for a more comprehensive guide on how to use SDXL and configure it's parameters.
 
@@ -102,7 +102,7 @@ from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, variant="fp16"
+    "diffusers/stable-diffusion-xl-1.0-inpainting-0.1", torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
@@ -116,9 +116,9 @@ prompt = "concept art digital painting of an elven castle, inspired by lord of t
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
 ```
 
-### Kandinsky 2.2
+### Kandinsky 2.2 Inpainting
 
-The Kandinsky model family is similar to SDXL in the sense that it uses two models; the image prior model generates image embeddings, and the diffusion model uses these embeddings to generate images. You can load the image prior and diffusion model separately, but the easiest way to use Kandinsky 2.2 is to load it into the [`AutoPipelineForInpainting`] class which uses the [`KandinskyV22InpaintCombinedPipeline`] under the hood.
+The Kandinsky model family is similar to SDXL because it uses two models as well; the image prior model creates image embeddings, and the diffusion model generates images from them. You can load the image prior and diffusion model separately, but the easiest way to use Kandinsky 2.2 is to load it into the [`AutoPipelineForInpainting`] class which uses the [`KandinskyV22InpaintCombinedPipeline`] under the hood.
 
 ```py
 import torch
@@ -147,15 +147,15 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generat
   </div>
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-sdv1.5.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion v1.5</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion Inpainting</figcaption>
   </div>
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-sdxl.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion XL</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Stable Diffusion XL Inpainting</figcaption>
   </div>
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-kandinsky.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">Kandinsky 2.2</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">Kandinsky 2.2 Inpainting</figcaption>
   </div>
 </div>
 
@@ -211,7 +211,7 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strengt
 * 📈 a high `guidance_scale` value means the prompt and generated image are closely aligned, so the output is a stricter interpretation of the prompt
 * 📉 a low `guidance_scale` value means the prompt and generated image are more loosely aligned, so the output may be more varied from the prompt
 
-You can use `strength` and `guidance_scale` together for more granular control over how expressive the model is. For example, using high `strength` and `guidance_scale` values gives the model the most creative freedom.
+You can use `strength` and `guidance_scale` together for more control over how expressive the model is. For example, a combination high `strength` and `guidance_scale` values gives the model the most creative freedom.
 
 ```py
 import torch
@@ -273,12 +273,15 @@ image
 ```
 
 <div class="flex justify-center">
-  <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-negative.png"/>
+  <figure>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-negative.png" />
+    <figcaption class="text-center">negative_prompt = "bad architecture, unstable, poor details, blurry"</figcaption>
+  </figure>
 </div>
 
 ## Preserve unmasked areas
 
-The [`AutoPipelineForInpainting`] (and other inpainting pipelines) generally changes the unmasked parts of an image to create a more natural transition between the masked and unmasked region. If this behavior is undesirable, you can force the unmasked area to remain the same. However, forcing the unmasked portion of the image to remain the same may result in some weird transitions between the unmasked and masked areas.
+The [`AutoPipelineForInpainting`] (and other inpainting pipelines) generally changes the unmasked parts of an image to create a more natural transition between the masked and unmasked region. If this behavior is undesirable, you can force the unmasked area to remain the same. However, forcing the unmasked portion of the image to remain the same may result in some unusual transitions between the unmasked and masked areas.
 
 ```py
 import PIL
@@ -322,7 +325,7 @@ unmasked_unchanged_image.save("force_unmasked_unchanged.png")
 
 ## Chained inpainting pipelines
 
-[`AutoPipelineForInpainting`] can be chained with other 🤗 Diffusers pipelines to edit their outputs.
+[`AutoPipelineForInpainting`] can be chained with other 🤗 Diffusers pipelines to edit their outputs. This is often useful for improving the output quality from your other diffusion pipelines, and if you're using multiple pipelines, it can be more memory-efficient to chain them together to keep the outputs in latent space and reuse the same pipeline components.
 
 ### Text-to-image-to-inpaint
 
@@ -376,29 +379,44 @@ image
 </div>
 
 
-### Image-to-image-to-inpaint
+### Inpaint-to-image-to-image
 
-You can also chain an inpainting pipeline before or after an image-to-image pipeline. Depending on the position (first or last) of the inpainting pipeline in the chain, you can use it to make sure the image is ready for the image-to-image pipeline or you can use it to edit its output. This example uses the inpainting pipeline last.
+You can also chain an inpainting pipeline before another pipeline like image-to-image or an upscaler to improve the quality.
 
-Begin by generating an image of a castle with the image-to-image pipeline:
+Begin by inpainting an image:
 
 ```py
 import torch
-from diffusers import AutoPipelineForImage2Image, AutoPipelineForInpainting
+from diffusers import AutoPipelineForInpainting, AutoPipelineForImage2Image
 from diffusers.utils import load_image
 
-pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
-# prepare image
+# load base and mask image
 init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
 
-# pass prompt and image to pipeline
-image = pipeline(prompt, image=init_image, output_type="latent").images[0]
+prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+
+# resize image to 1024x1024 for SDXL
+image = image.resize((1024, 1024))
+```
+
+Now let's pass the image to another inpainting pipeline with SDXL's refiner model to enhance the image details and quality:
+
+```py
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+pipeline.enable_xformers_memory_efficient_attention()
+
+image = pipeline(prompt=prompt, image=image, mask_image=mask_image, output_type="latent").images[0]
 ```
 
 <Tip>
@@ -407,18 +425,13 @@ It is important to specify `output_type="latent"` in the pipeline to keep all th
 
 </Tip>
 
-Now let's inpaint the tree on the right side of the image with some mountains:
+Finally, you can pass this image to an image-to-image pipeline to put the finishing touches on it. It is more efficient to use the [`~AutoPipelineForImage2Image.from_pipe`] method to reuse the existing pipeline components, and avoid unnecessarily loading all the pipeline components into memory again.
 
 ```py
-pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
-pipeline.enable_model_cpu_offload()
+pipeline = AutoPipelineForImage2Image.from_pipe(pipeline)
 pipeline.enable_xformers_memory_efficient_attention()
 
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/image-to-inpaint-chain-mask.png").convert("RGB")
-prompt = "digital painting of clouds above mountains, snowy, fantasy, soft"
-image = pipeline(prompt=prompt, image=image, mask_image=mask_image).images[0]
+image = pipeline(prompt=prompt, image=image).images[0]
 ```
 
 <div class="flex flex-row gap-4">
@@ -427,12 +440,12 @@ image = pipeline(prompt=prompt, image=image, mask_image=mask_image).images[0]
     <figcaption class="mt-2 text-center text-sm text-gray-500">initial image</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/image-to-inpaint-chain.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">image-to-image</figcaption>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-to-image-chain.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">inpaint</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/image-to-inpaint-final.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">inpaint</figcaption>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-to-image-final.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">image-to-image</figcaption>
   </div>
 </div>
 
@@ -513,7 +526,7 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, control
 image
 ```
 
-You can take this a step further and chain it with an image-to-image pipeline to apply a new style:
+You can take this a step further and chain it with an image-to-image pipeline to apply a new [style](https://huggingface.co/nitrosocke/elden-ring-diffusion):
 
 ```py
 from diffusers import AutoPipelineForImage2Image
