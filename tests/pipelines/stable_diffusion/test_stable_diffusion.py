@@ -574,7 +574,7 @@ class StableDiffusionPipelineFastTests(
         prompt = "hey"
         output = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
 
-        sd_pipe.enable_freeu()
+        sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         output_freeu = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
 
         assert not np.allclose(
@@ -590,7 +590,7 @@ class StableDiffusionPipelineFastTests(
         prompt = "hey"
         output = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
 
-        sd_pipe.enable_freeu()
+        sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         sd_pipe.disable_freeu()
 
         freeu_keys = {"s1", "s2", "b1", "b2"}
