@@ -1088,7 +1088,8 @@ class StableDiffusionLongPromptWeightingPipeline(
                     progress_bar.update()
                     if i % callback_steps == 0:
                         if callback is not None:
-                            callback(i, t, latents)
+                            step_idx = i // getattr(self.scheduler, "order", 1)
+                            callback(step_idx, t, latents)
                         if is_cancelled_callback is not None and is_cancelled_callback():
                             return None
 
