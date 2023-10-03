@@ -104,12 +104,12 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt with num_images_per_prompt->num_waveforms_per_prompt
     def _encode_prompt(
         self,
         prompt,
         device,
-        num_images_per_prompt,
+        num_waveforms_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -123,7 +123,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         prompt_embeds_tuple = self.encode_prompt(
             prompt=prompt,
             device=device,
-            num_images_per_prompt=num_images_per_prompt,
+            num_waveforms_per_prompt=num_waveforms_per_prompt,
             do_classifier_free_guidance=do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
@@ -138,12 +138,12 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         return prompt_embeds
 
     # TODO: may need to edit this to work with CLVP??
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt->num_waveforms_per_prompt
     def encode_prompt(
         self,
         prompt,
         device,
-        num_images_per_prompt,
+        num_waveforms_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -159,7 +159,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
-            num_images_per_prompt (`int`):
+            num_waveforms_per_prompt (`int`):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
@@ -198,27 +198,27 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         if prompt_embeds is None:
             # textual inversion: procecss multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
-                prompt = self.maybe_convert_prompt(prompt, self.clip_tokenizer)
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
-            text_inputs = self.clip_tokenizer(
+            text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
-                max_length=self.clip_tokenizer.model_max_length,
+                max_length=self.tokenizer.model_max_length,
                 truncation=True,
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.clip_tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
 
             if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
                 text_input_ids, untruncated_ids
             ):
-                removed_text = self.clip_tokenizer.batch_decode(
-                    untruncated_ids[:, self.clip_tokenizer.model_max_length - 1 : -1]
+                removed_text = self.tokenizer.batch_decode(
+                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                 )
                 logger.warning(
                     "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.clip_tokenizer.model_max_length} tokens: {removed_text}"
+                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                 )
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
@@ -254,8 +254,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -280,10 +280,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
             # textual inversion: procecss multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.clip_tokenizer)
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
-            uncond_input = self.clip_tokenizer(
+            uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
                 max_length=max_length,
@@ -308,8 +308,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len, -1)
 
         return prompt_embeds, negative_prompt_embeds
 
