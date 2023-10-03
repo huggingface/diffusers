@@ -701,6 +701,9 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         video = torch.from_numpy(video)
         if output_type == "np":
             video = tensor2vid(video)
+            
+            # Offload all models
+            self.maybe_free_model_hooks()
 
         if not return_dict:
             return video
