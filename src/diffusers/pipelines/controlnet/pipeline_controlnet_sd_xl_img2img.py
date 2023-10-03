@@ -35,7 +35,12 @@ from ...models.attention_processor import (
 )
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
@@ -322,6 +327,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
             self._lora_scale = lora_scale
 
+            # dynamically adjust the LoRA scale
             if not self.use_peft_backend:
                 adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
                 adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
@@ -1338,7 +1344,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
         # If we do sequential model offloading, let's offload unet and controlnet
         # manually for max memory savings

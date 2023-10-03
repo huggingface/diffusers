@@ -26,6 +26,7 @@ from huggingface_hub import hf_hub_download, model_info
 from torch import nn
 
 from .models import USE_PEFT_BACKEND
+
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
     DIFFUSERS_CACHE,
@@ -1747,7 +1748,8 @@ class LoraLoaderMixin:
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
-        deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.23", LORA_DEPRECATION_MESSAGE)
+        if version.parse(__version__) > version.parse("0.23"):
+            deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.25", LORA_DEPRECATION_MESSAGE)
 
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
@@ -1775,7 +1777,8 @@ class LoraLoaderMixin:
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
-        deprecate("_modify_text_encoder", "0.23", LORA_DEPRECATION_MESSAGE)
+        if version.parse(__version__) > version.parse("0.23"):
+            deprecate("_modify_text_encoder", "0.25", LORA_DEPRECATION_MESSAGE)
 
         def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
             linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
@@ -2162,7 +2165,8 @@ class LoraLoaderMixin:
                         module.merge()
 
         else:
-            deprecate("fuse_text_encoder_lora", "0.23", LORA_DEPRECATION_MESSAGE)
+            if version.parse(__version__) > version.parse("0.23"):
+                deprecate("fuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
@@ -2204,7 +2208,7 @@ class LoraLoaderMixin:
             self.unet.unfuse_lora()
 
         if self.use_peft_backend:
-            from peft.tuners.tuner_utils import BaseTunerLayer
+            from peft.tuners.tuners_utils import BaseTunerLayer
 
             def unfuse_text_encoder_lora(text_encoder):
                 for module in text_encoder.modules():
@@ -2212,7 +2216,8 @@ class LoraLoaderMixin:
                         module.unmerge()
 
         else:
-            deprecate("unfuse_text_encoder_lora", "0.23", LORA_DEPRECATION_MESSAGE)
+            if version.parse(__version__) > version.parse("0.23"):
+                deprecate("unfuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
 
             def unfuse_text_encoder_lora(text_encoder):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
