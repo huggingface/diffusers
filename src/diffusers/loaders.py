@@ -23,10 +23,11 @@ import requests
 import safetensors
 import torch
 from huggingface_hub import hf_hub_download, model_info
+from packaging import version
 from torch import nn
 
+from . import __version__
 from .models import USE_PEFT_BACKEND
-
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
     DIFFUSERS_CACHE,
