@@ -280,9 +280,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         <Tip>
 
         To use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models), log-in with
-        `huggingface-cli login`. You can also activate the special
-        [“offline-mode”](https://huggingface.co/diffusers/installation.html#offline-mode) to use this method in a
-        firewalled environment.
+        `huggingface-cli login`.
 
         </Tip>
 
@@ -343,8 +341,8 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
-            # make sure we don't download PyTorch weights, unless when using from_pt
-            ignore_patterns = "*.bin" if not from_pt else []
+            ignore_patterns = ["*.bin", "*.safetensors"] if not from_pt else []
+            ignore_patterns += ["*.onnx", "*.onnx_data", "*.xml", "*.pb"]
 
             if cls != FlaxDiffusionPipeline:
                 requested_pipeline_class = cls.__name__
