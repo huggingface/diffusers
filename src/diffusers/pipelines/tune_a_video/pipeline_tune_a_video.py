@@ -19,7 +19,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import is_accelerate_available, is_accelerate_version, logging, replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from . import TuneAVideoPipelineOutput
 
@@ -676,7 +676,7 @@ class TuneAVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
         video = torch.from_numpy(video)
         if output_type == "np":
             video = tensor2vid(video)
-            
+
             # Offload all models
             self.maybe_free_model_hooks()
 
