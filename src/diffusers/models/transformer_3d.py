@@ -132,10 +132,8 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
         if not hidden_states.dim() == 5:
             raise ValueError(f"Expected hidden_states to have ndim=5, but got ndim={hidden_states.dim()}.")
         video_length = hidden_states.shape[2]
-        # hidden_states = rearrange(hidden_states, "b c f h w -> (b f) c h w")
         hidden_states = hidden_states.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
         hidden_states = hidden_states.flatten(0, 1)
-        # encoder_hidden_states = repeat(encoder_hidden_states, "b n c -> (b f) n c", f=video_length)
         encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=video_length, dim=0)
 
         batch, channel, height, weight = hidden_states.shape
@@ -257,14 +255,12 @@ class BasicSparse3DTransformerBlock(nn.Module):
 
         # Temporal-Attention
         d = hidden_states.shape[1]
-        # hidden_states = rearrange(hidden_states, "(b f) d c -> (b d) f c", f=video_length)
         # (b f) d c -> b f d c -> b d f c -> (b d) f c
         hidden_states = hidden_states.reshape([-1, video_length, *hidden_states.shape[1:]])
         hidden_states = hidden_states.movedim((0, 1, 2, 3), (0, 2, 1, 3))
         hidden_states = hidden_states.flatten(0, 1)
         norm_hidden_states = self.norm_temp(hidden_states)
         hidden_states = self.attn_temp(norm_hidden_states) + hidden_states
-        # hidden_states = rearrange(hidden_states, "(b d) f c -> (b f) d c", d=d)
         # (b d) f c -> b d f c ->  b f d c -> (b f) d c
         hidden_states = hidden_states.reshape([-1, d, *hidden_states.shape[1:]])
         hidden_states = hidden_states.movedim((0, 1, 2, 3), (0, 2, 1, 3))
