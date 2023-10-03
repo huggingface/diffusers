@@ -573,8 +573,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--use_deepspeed",
-        type=str,
-        default=False,
+        type="store_true",
         help=(
             "Consider using Deepspeed if the dataset can't fit into a single GPU."
             "Deepspeed compatibility is built into acceelerator however, some changes are required which are activated by setting it to True."
