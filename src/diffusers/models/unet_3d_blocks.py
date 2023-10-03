@@ -171,13 +171,13 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         use_linear_projection=True,
         upcast_attention=False,
         use_temporal_module=True,
-        use_temporal_conv=True,
         temporal_module_kwargs=None,
     ):
         super().__init__()
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
+        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # there is always at least one resnet
@@ -314,7 +314,6 @@ class CrossAttnDownBlock3D(nn.Module):
         only_cross_attention=False,
         upcast_attention=False,
         use_temporal_module=True,
-        use_temporal_conv=True,
         temporal_module_kwargs=None,
     ):
         super().__init__()
@@ -325,6 +324,7 @@ class CrossAttnDownBlock3D(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
+        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -447,14 +447,19 @@ class DownBlock3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads=1,
+        cross_attention_dim=768,
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
-        use_temporal_conv=True,
+        use_temporal_module=False,
+        temporal_module_kwargs=None,
     ):
         super().__init__()
+        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
         resnets = []
         temp_convs = []
+        temp_attentions = []
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -478,6 +483,17 @@ class DownBlock3D(nn.Module):
                     out_channels,
                     dropout=0.1,
                 ) if use_temporal_conv else None
+            )
+            temp_attentions.append(
+                TransformerTemporalModel(
+                    out_channels // num_attention_heads,
+                    num_attention_heads,
+                    in_channels=out_channels,
+                    num_layers=1,
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=resnet_groups,
+                    **temporal_module_kwargs
+                ) if use_temporal_module else None
             )
 
         self.resnets = nn.ModuleList(resnets)
@@ -538,7 +554,6 @@ class CrossAttnUpBlock3D(nn.Module):
         only_cross_attention=False,
         upcast_attention=False,
         use_temporal_module=True,
-        use_temporal_conv=True,
         temporal_module_kwargs=None,
     ):
         super().__init__()
@@ -549,6 +564,7 @@ class CrossAttnUpBlock3D(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
+        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -669,13 +685,18 @@ class UpBlock3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads=1,
+        cross_attention_dim=1280,
         output_scale_factor=1.0,
         add_upsample=True,
-        use_temporal_conv=True,
+        use_temporal_module=False,
+        temporal_module_kwargs=None,
     ):
         super().__init__()
         resnets = []
         temp_convs = []
+        temp_attentions = []
+        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -701,6 +722,17 @@ class UpBlock3D(nn.Module):
                     out_channels,
                     dropout=0.1,
                 ) if use_temporal_conv else None
+            )
+            temp_attentions.append(
+                TransformerTemporalModel(
+                    out_channels // num_attention_heads,
+                    num_attention_heads,
+                    in_channels=out_channels,
+                    num_layers=1,
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=resnet_groups,
+                    **temporal_module_kwargs
+                ) if use_temporal_module else None
             )
 
         self.resnets = nn.ModuleList(resnets)
