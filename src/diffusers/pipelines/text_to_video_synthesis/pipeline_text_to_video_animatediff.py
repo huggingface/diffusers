@@ -20,15 +20,16 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import TextToVideoAnimateDiffPipeline
+        >>> from diffusers import UNet3DConditionModel, TextToVideoAnimateDiffPipeline 
         >>> from diffusers.utils import export_to_video
 
+        >>> unet = UNet3DConditionModel.from_pretrained("<repo>", torch_dtype=torch.float16)
         >>> pipe = TextToVideoAnimateDiffPipeline.from_pretrained(
-        ...     "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16"
+        ...     "runwayml/stable-diffusion-v1-5", unet=unet, torch_dtype=torch.float16, variant="fp16"
         ... )
         >>> pipe.enable_model_cpu_offload()
 
-        >>> prompt = "Spiderman is surfing"
+        >>> prompt = "portrait photo of a old warrior chief"
         >>> video_frames = pipe(prompt).frames
         >>> video_path = export_to_video(video_frames)
         >>> video_path
@@ -234,8 +235,7 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
         clip_skip: Optional[int] = None,
         context_frames: Optional[int] = None,
         context_stride: Optional[int] = None,
-        context_overlap: Optional[int] = None,
-        latents_device: Optional[str] = None
+        context_overlap: Optional[int] = None
     ):
         r"""
         The call function to the pipeline for generation.
@@ -307,8 +307,6 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
         context_frames, context_overlap, context_stride = get_context_params(num_frames, context_frames, context_overlap, context_stride)
 
-        sequential_mode = num_frames is not None and num_frames > 16
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
@@ -323,10 +321,6 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        if latents_device is None:
-            latents_device = torch.device("cpu") if sequential_mode else device
-        else:
-            latents_device = torch.device(latents_device)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -367,7 +361,7 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
             height,
             width,
             prompt_embeds.dtype,
-            latents_device,
+            device,
             generator,
             latents,
         )
@@ -375,55 +369,22 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 6.5 - Infinite context loop shenanigans
-        context_scheduler = uniform
-        total_steps = get_total_steps(
-            context_scheduler,
-            timesteps,
-            num_inference_steps,
-            latents.shape[2],
-            context_frames,
-            context_stride,
-            context_overlap,
-        )
-
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        with self.progress_bar(total=total_steps) as progress_bar:
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                noise_pred = torch.zeros(
-                    (latents.shape[0] * (2 if do_classifier_free_guidance else 1), *latents.shape[1:]),
-                    device=latents.device,
-                    dtype=latents.dtype,
-                )
-                counter = torch.zeros(
-                    (1, 1, latents.shape[2], 1, 1), device=latents.device, dtype=latents.dtype
-                )
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                for context in context_scheduler(
-                    i, num_inference_steps, latents.shape[2], context_frames, context_stride, context_overlap
-                ):
-                    # expand the latents if we are doing classifier free guidance
-                    latent_model_input = (
-                        latents[:, :, context]
-                        .to(device)
-                        .repeat(2 if do_classifier_free_guidance else 1, 1, 1, 1, 1)
-                    )
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-                    # predict the noise residual
-                    pred = self.unet(
-                        latent_model_input.to(self.unet.device, self.unet.dtype),
-                        t,
-                        encoder_hidden_states=prompt_embeds,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        return_dict=False,
-                    )[0]
-
-                    pred = pred.to(dtype=latents.dtype, device=latents.device)
-                    noise_pred[:, :, context] = noise_pred[:, :, context] + pred
-                    counter[:, :, context] = counter[:, :, context] + 1
-                    progress_bar.update()
+                # predict the noise residual
+                noise_pred = self.unet(
+                    latent_model_input.to(self.unet.device, self.unet.dtype),
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -436,7 +397,7 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
                 noise_pred = noise_pred.permute(0, 2, 1, 3, 4).reshape(bsz * frames, channel, width, height)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents.to(latents_device), **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # reshape latents back
                 latents = latents[None, :].reshape(bsz, frames, channel, width, height).permute(0, 2, 1, 3, 4)
