@@ -17,10 +17,10 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .modeling_autoregressive import TortoiseTTSAutoregressiveModel
-from .modeling_common import ConditioningEncoder, RandomLatentConverter
+from .modeling_common import RandomLatentConverter
 from .modeling_diffusion import TortoiseTTSDenoisingModel
 
+from transformers import ClvpModelForConditionalGeneration, ClvpConditioningEncoder
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -57,13 +57,13 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     # TODO: get appropriate type annotations for __init__ args
     def __init__(
         self,
-        autoregressive_conditioning_encoder: ConditioningEncoder,
+        autoregressive_conditioning_encoder: ClvpConditioningEncoder,
         autoregressive_random_latent_converter: RandomLatentConverter,
-        autoregressive_model: TortoiseTTSAutoregressiveModel,
+        autoregressive_model: ClvpModelForConditionalGeneration,
         speech_encoder,  # TODO: get appropriate CLVP components
         text_encoder,
         tokenizer,
-        diffusion_conditioning_encoder: ConditioningEncoder,
+        diffusion_conditioning_encoder: ClvpConditioningEncoder
         diffusion_random_latent_converter: RandomLatentConverter,
         diffusion_denoising_model: TortoiseTTSDenoisingModel,
         scheduler: KarrasDiffusionSchedulers,
