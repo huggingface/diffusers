@@ -282,6 +282,7 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "TextToVideoAnimateDiffPipeline"
         ]
     )
 
@@ -620,6 +621,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            TextToVideoAnimateDiffPipeline
         )
 
     try:

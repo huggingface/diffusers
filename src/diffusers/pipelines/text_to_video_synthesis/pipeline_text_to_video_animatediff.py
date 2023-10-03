@@ -58,6 +58,7 @@ def uniform(
         yield list(range(num_frames))
         return
 
+    print(context_stride, num_frames, context_size)
     context_stride = min(context_stride, int(np.ceil(np.log2(num_frames / context_size))) + 1)
 
     for context_step in 1 << np.arange(context_stride):
@@ -95,6 +96,21 @@ def get_total_steps(
         )
         for i in range(len(timesteps))
     )
+
+
+def get_context_params(
+    length: int,
+    context: Optional[int] = None,
+    overlap: Optional[int] = None,
+    stride: Optional[int] = None,
+):
+    if context is None:
+        context = min(length, 16)
+    if overlap is None:
+        overlap = context // 2
+    if stride is None:
+        stride = 4
+    return context, overlap, stride
 
 
 def tensor2vid(video: torch.Tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) -> List[np.ndarray]:
@@ -165,7 +181,7 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
             .permute(0, 2, 1, 3, 4)
         )
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        video = video.cpu().float().numpy()
+        video = video.cpu().float()
         return video
     
     def prepare_latents(
@@ -216,9 +232,9 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
-        context_frames: Optional[int] = -1,
-        context_stride: Optional[int] = 3,
-        context_overlap: Optional[int] = 4,
+        context_frames: Optional[int] = None,
+        context_stride: Optional[int] = None,
+        context_overlap: Optional[int] = None,
         latents_device: Optional[str] = None
     ):
         r"""
@@ -289,6 +305,7 @@ class TextToVideoAnimateDiffPipeline(StableDiffusionPipeline):
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
+        context_frames, context_overlap, context_stride = get_context_params(num_frames, context_frames, context_overlap, context_stride)
 
         sequential_mode = num_frames is not None and num_frames > 16
 

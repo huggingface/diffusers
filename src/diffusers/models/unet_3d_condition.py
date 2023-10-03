@@ -217,7 +217,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             input_channel = output_channel
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
-
+            
             down_block = get_down_block(
                 down_block_type,
                 num_layers=layers_per_block,
@@ -239,7 +239,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 use_temporal_module=use_temporal_module
                 and (res in temporal_module_resolutions)
                 and (not temporal_module_decoder_only),
-                temporal_module_kwargs=temporal_module_kwargs,
+                **temporal_module_kwargs,
             )
             self.down_blocks.append(down_block)
 
@@ -258,7 +258,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
             use_temporal_module=use_temporal_module and temporal_module_mid_block,
-            temporal_module_kwargs=temporal_module_kwargs,
+            **temporal_module_kwargs,
         )
 
         # count how many layers upsample the images
@@ -303,7 +303,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 use_temporal_module=use_temporal_module and (res in temporal_module_resolutions),
-                temporal_module_kwargs=temporal_module_kwargs,
+                **temporal_module_kwargs,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -569,10 +569,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        # 0. center input if necessary
-        if self.config.center_input_sample:
-            sample = 2 * sample - 1.0
-
         # 1. time
         timesteps = timestep
         if not torch.is_tensor(timesteps):
@@ -693,8 +689,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
-                    upsample_size=upsample_size,
                     attention_mask=attention_mask,
+                    upsample_size=upsample_size,
                     num_frames=num_frames,
                     cross_attention_kwargs=cross_attention_kwargs,
                 )
@@ -705,7 +701,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     res_hidden_states_tuple=res_samples,
                     upsample_size=upsample_size,
                     num_frames=num_frames,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=encoder_hidden_states
                 )
 
         # 6. post-process

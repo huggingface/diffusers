@@ -105,17 +105,17 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
                 if attention_block_types is None
                 else
                 TemporalTransformerBlock(
-                inner_dim,
-                num_attention_heads,
-                attention_head_dim,
-                attention_block_types=attention_block_types,
-                dropout=dropout,
-                cross_attention_dim=cross_attention_dim,
-                activation_fn=activation_fn,
-                attention_bias=attention_bias,
-                temporal_position_encoding=temporal_position_encoding,
-                temporal_position_encoding_max_len=temporal_position_encoding_max_len
-            )
+                    inner_dim,
+                    num_attention_heads,
+                    attention_head_dim,
+                    attention_block_types=attention_block_types,
+                    dropout=dropout,
+                    cross_attention_dim=cross_attention_dim,
+                    activation_fn=activation_fn,
+                    attention_bias=attention_bias,
+                    temporal_position_encoding=temporal_position_encoding,
+                    temporal_position_encoding_max_len=temporal_position_encoding_max_len
+                )
                 for d in range(num_layers)
             ]
         )
@@ -171,13 +171,19 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(
-                hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                timestep=timestep,
-                cross_attention_kwargs=cross_attention_kwargs,
-                class_labels=class_labels,
-            )
+            if isinstance(block, TemporalTransformerBlock):
+                hidden_states = block(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                )
+            else:
+                hidden_states = block(
+                    hidden_states,
+                    # encoder_hidden_states=encoder_hidden_states,
+                    timestep=timestep,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    class_labels=class_labels,
+                )
 
         # 3. Output
         hidden_states = self.proj_out(hidden_states)
@@ -244,7 +250,10 @@ class TemporalTransformerBlock(nn.Module):
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
         self.ff_norm = nn.LayerNorm(dim)
 
-    def forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None):
+    def forward(self, 
+        hidden_states, 
+        encoder_hidden_states=None
+    ):
         for attention_block, norm in zip(self.attention_blocks, self.norms):
             norm_hidden_states = norm(hidden_states)
             hidden_states = (

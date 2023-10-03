@@ -41,8 +41,7 @@ def get_down_block(
     upcast_attention=False,
     resnet_time_scale_shift="default",
     use_temporal_module=True,
-    use_temporal_conv=True,
-    temporal_module_kwargs=None,
+    **temporal_module_kwargs,
 ):
     if down_block_type == "DownBlock3D":
         return DownBlock3D(
@@ -56,9 +55,10 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            cross_attention_dim=cross_attention_dim,
+            num_attention_heads=num_attention_heads,
             use_temporal_module=use_temporal_module,
-            use_temporal_conv=use_temporal_conv,
-            temporal_module_kwargs=temporal_module_kwargs,
+            **temporal_module_kwargs,
         )
     elif down_block_type == "CrossAttnDownBlock3D":
         if cross_attention_dim is None:
@@ -81,8 +81,7 @@ def get_down_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             use_temporal_module=use_temporal_module,
-            use_temporal_conv=use_temporal_conv,
-            temporal_module_kwargs=temporal_module_kwargs,
+            **temporal_module_kwargs,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -106,8 +105,7 @@ def get_up_block(
     upcast_attention=False,
     resnet_time_scale_shift="default",
     use_temporal_module=True,
-    use_temporal_conv=True,
-    temporal_module_kwargs=None,
+    **temporal_module_kwargs,
 ):
     if up_block_type == "UpBlock3D":
         return UpBlock3D(
@@ -121,9 +119,10 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
+            cross_attention_dim=cross_attention_dim,
+            num_attention_heads=num_attention_heads,
             use_temporal_module=use_temporal_module,
-            use_temporal_conv=use_temporal_conv,
-            temporal_module_kwargs=temporal_module_kwargs,
+            **temporal_module_kwargs,
         )
     elif up_block_type == "CrossAttnUpBlock3D":
         if cross_attention_dim is None:
@@ -146,8 +145,7 @@ def get_up_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             use_temporal_module=use_temporal_module,
-            use_temporal_conv=use_temporal_conv,
-            temporal_module_kwargs=temporal_module_kwargs,
+            **temporal_module_kwargs,
         )
     raise ValueError(f"{up_block_type} does not exist.")
 
@@ -171,13 +169,13 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         use_linear_projection=True,
         upcast_attention=False,
         use_temporal_module=True,
-        temporal_module_kwargs=None,
+        **temporal_module_kwargs,
     ):
         super().__init__()
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
+        use_temporal_conv = temporal_module_kwargs.pop("use_temporal_conv", True)
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # there is always at least one resnet
@@ -282,7 +280,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             )[0]
             if temp_attn is not None:
                 hidden_states = temp_attn(
-                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+                    hidden_states, num_frames=num_frames, encoder_hidden_states=encoder_hidden_states, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
                 )[0]
             hidden_states = resnet(hidden_states, temb)
             if temp_conv is not None:
@@ -314,7 +312,7 @@ class CrossAttnDownBlock3D(nn.Module):
         only_cross_attention=False,
         upcast_attention=False,
         use_temporal_module=True,
-        temporal_module_kwargs=None,
+        **temporal_module_kwargs,
     ):
         super().__init__()
         resnets = []
@@ -324,7 +322,7 @@ class CrossAttnDownBlock3D(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
+        use_temporal_conv = temporal_module_kwargs.pop("use_temporal_conv", True)
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -420,7 +418,7 @@ class CrossAttnDownBlock3D(nn.Module):
             )[0]
             if temp_attn is not None:
                 hidden_states = temp_attn(
-                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+                    hidden_states, num_frames=num_frames, encoder_hidden_states=encoder_hidden_states, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
                 )[0]
 
             output_states += (hidden_states,)
@@ -453,10 +451,10 @@ class DownBlock3D(nn.Module):
         add_downsample=True,
         downsample_padding=1,
         use_temporal_module=False,
-        temporal_module_kwargs=None,
+        **temporal_module_kwargs,
     ):
         super().__init__()
-        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
+        use_temporal_conv = temporal_module_kwargs.pop("use_temporal_conv", True)
         resnets = []
         temp_convs = []
         temp_attentions = []
@@ -498,6 +496,7 @@ class DownBlock3D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
@@ -515,10 +514,15 @@ class DownBlock3D(nn.Module):
     def forward(self, hidden_states, temb=None, num_frames=1, encoder_hidden_states=None):
         output_states = ()
 
-        for resnet, temp_conv in zip(self.resnets, self.temp_convs):
+        for resnet, temp_conv, temp_attn in zip(self.resnets, self.temp_convs, self.temp_attentions):
             hidden_states = resnet(hidden_states, temb)
             if temp_conv is not None:
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+
+            if temp_attn is not None:
+                hidden_states = temp_attn(
+                    hidden_states, num_frames=num_frames, encoder_hidden_states=encoder_hidden_states, return_dict=False
+                )[0]
 
             output_states += (hidden_states,)
 
@@ -554,7 +558,7 @@ class CrossAttnUpBlock3D(nn.Module):
         only_cross_attention=False,
         upcast_attention=False,
         use_temporal_module=True,
-        temporal_module_kwargs=None,
+        **temporal_module_kwargs,
     ):
         super().__init__()
         resnets = []
@@ -564,7 +568,7 @@ class CrossAttnUpBlock3D(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
+        use_temporal_conv = temporal_module_kwargs.pop("use_temporal_conv", True)
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -661,7 +665,7 @@ class CrossAttnUpBlock3D(nn.Module):
             )[0]
             if temp_attn is not None:
                 hidden_states = temp_attn(
-                    hidden_states, num_frames=num_frames, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
+                    hidden_states, num_frames=num_frames, encoder_hidden_states=encoder_hidden_states, cross_attention_kwargs=cross_attention_kwargs, return_dict=False
                 )[0]
 
         if self.upsamplers is not None:
@@ -690,14 +694,14 @@ class UpBlock3D(nn.Module):
         output_scale_factor=1.0,
         add_upsample=True,
         use_temporal_module=False,
-        temporal_module_kwargs=None,
+        **temporal_module_kwargs,
     ):
         super().__init__()
         resnets = []
         temp_convs = []
         temp_attentions = []
-        use_temporal_conv = temporal_module_kwargs.get("use_temporal_conv", True)
-
+        use_temporal_conv = temporal_module_kwargs.pop("use_temporal_conv", True)
+        
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
@@ -737,6 +741,7 @@ class UpBlock3D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
         self.temp_convs = nn.ModuleList(temp_convs)
+        self.temp_attentions = nn.ModuleList(temp_attentions)
 
         if add_upsample:
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
@@ -745,8 +750,8 @@ class UpBlock3D(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, num_frames=1):
-        for resnet, temp_conv in zip(self.resnets, self.temp_convs):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, num_frames=1, encoder_hidden_states=None,):
+        for resnet, temp_conv, temp_attn in zip(self.resnets, self.temp_convs, self.temp_attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -755,6 +760,11 @@ class UpBlock3D(nn.Module):
             hidden_states = resnet(hidden_states, temb)
             if temp_conv is not None:
                 hidden_states = temp_conv(hidden_states, num_frames=num_frames)
+
+            if temp_attn is not None:
+                hidden_states = temp_attn(
+                    hidden_states, num_frames=num_frames, encoder_hidden_states=encoder_hidden_states, return_dict=False
+                )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
