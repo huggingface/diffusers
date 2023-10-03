@@ -374,6 +374,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TextToVideoZeroPipeline,
             VideoToVideoSDPipeline,
         )
+        from .tune_a_video import TuneAVideoPipeline
         from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
         from .unidiffuser import (
             ImageTextPipelineOutput,
