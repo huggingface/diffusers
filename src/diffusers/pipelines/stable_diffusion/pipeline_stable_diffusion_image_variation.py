@@ -13,10 +13,9 @@
 # limitations under the License.
 
 import inspect
-import warnings
 from typing import Callable, List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
@@ -25,7 +24,8 @@ from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import deprecate, logging, randn_tensor
+from ...utils import deprecate, logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -65,6 +65,8 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     # TODO: feature_extractor is required to encode images (if they are in PIL format),
     # we should give a descriptive message if the pipeline doesn't have one.
     _optional_components = ["safety_checker"]
+    model_cpu_offload_seq = "image_encoder->unet->vae"
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
@@ -169,11 +171,9 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
-            FutureWarning,
-        )
+        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
+        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
+
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
@@ -392,7 +392,10 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
+
+        self.maybe_free_model_hooks()
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]

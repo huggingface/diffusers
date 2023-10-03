@@ -27,7 +27,7 @@ import torch
 from huggingface_hub import hf_hub_download
 from packaging import version
 
-from ..utils import is_safetensors_available, logging
+from ..utils import logging
 from . import BaseDiffusersCLICommand
 
 
@@ -68,12 +68,7 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
         self.local_ckpt_dir = f"/tmp/{ckpt_id}"
         self.fp16 = fp16
 
-        if is_safetensors_available():
-            self.use_safetensors = use_safetensors
-        else:
-            raise ImportError(
-                "When `use_safetensors` is set to True, the `safetensors` library needs to be installed. Install it via `pip install safetensors`."
-            )
+        self.use_safetensors = use_safetensors
 
         if not self.use_safetensors and not self.fp16:
             raise NotImplementedError(

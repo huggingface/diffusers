@@ -175,22 +175,12 @@ images = pipeline(
 ).images
 ```
 
-Finally, create a helper function to display the images:
+Display the images:
 
 ```py
-from PIL import Image
+from diffusers.utils import make_image_grid
 
-
-def image_grid(imgs, rows=2, cols=2):
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
-
-
-image_grid(images)
+make_image_grid(images, 2, 2)
 ```
 
 <div class="flex justify-center">

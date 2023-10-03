@@ -13,26 +13,19 @@
 # limitations under the License.
 
 import inspect
-import warnings
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    PIL_INTERPOLATION,
-    deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
-    logging,
-    randn_tensor,
-)
+from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -43,11 +36,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def preprocess(image):
-    warnings.warn(
-        "The preprocess method is deprecated and will be removed in a future version. Please"
-        " use VaeImageProcessor.preprocess instead",
-        FutureWarning,
-    )
+    deprecation_message = "The preprocess method is deprecated and will be removed in diffusers 1.0.0. Please use VaeImageProcessor.preprocess(...) instead"
+    deprecate("preprocess", "1.0.0", deprecation_message, standard_warn=False)
     if isinstance(image, torch.Tensor):
         return image
     elif isinstance(image, PIL.Image.Image):
@@ -99,7 +89,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
@@ -147,14 +139,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[
-            torch.FloatTensor,
-            PIL.Image.Image,
-            np.ndarray,
-            List[torch.FloatTensor],
-            List[PIL.Image.Image],
-            List[np.ndarray],
-        ] = None,
+        image: PipelineImageInput = None,
         num_inference_steps: int = 100,
         guidance_scale: float = 7.5,
         image_guidance_scale: float = 1.5,
@@ -393,7 +378,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
@@ -409,43 +395,13 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
-        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
-        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
-        iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     def _encode_prompt(
         self,
@@ -629,11 +585,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
-            FutureWarning,
-        )
+        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
+        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
+
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)

@@ -21,7 +21,9 @@ import re
 from functools import partial
 from typing import Any, Callable, List, Optional, Tuple, Union
 
+import safetensors
 import torch
+from huggingface_hub import create_repo
 from torch import Tensor, device, nn
 
 from .. import __version__
@@ -36,10 +38,10 @@ from ..utils import (
     _get_model_file,
     deprecate,
     is_accelerate_available,
-    is_safetensors_available,
     is_torch_version,
     logging,
 )
+from ..utils.hub_utils import PushToHubMixin
 
 
 logger = logging.get_logger(__name__)
@@ -55,9 +57,6 @@ if is_accelerate_available():
     import accelerate
     from accelerate.utils import set_module_tensor_to_device
     from accelerate.utils.versions import is_torch_version
-
-if is_safetensors_available():
-    import safetensors
 
 
 def get_parameter_device(parameter: torch.nn.Module):
@@ -129,6 +128,31 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
             )
 
 
+def load_model_dict_into_meta(model, state_dict, device=None, dtype=None, model_name_or_path=None):
+    device = device or torch.device("cpu")
+    dtype = dtype or torch.float32
+
+    unexpected_keys = []
+    empty_state_dict = model.state_dict()
+    for param_name, param in state_dict.items():
+        if param_name not in empty_state_dict:
+            unexpected_keys.append(param_name)
+            continue
+
+        if empty_state_dict[param_name].shape != param.shape:
+            model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
+            raise ValueError(
+                f"Cannot load {model_name_or_path_str}because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
+            )
+
+        accepts_dtype = "dtype" in set(inspect.signature(set_module_tensor_to_device).parameters.keys())
+        if accepts_dtype:
+            set_module_tensor_to_device(model, param_name, device, value=param, dtype=dtype)
+        else:
+            set_module_tensor_to_device(model, param_name, device, value=param)
+    return unexpected_keys
+
+
 def _load_state_dict_into_model(model_to_load, state_dict):
     # Convert old format to new format if needed from a PyTorch state_dict
     # copy state_dict so _load_from_state_dict can modify it
@@ -150,7 +174,7 @@ def _load_state_dict_into_model(model_to_load, state_dict):
     return error_msgs
 
 
-class ModelMixin(torch.nn.Module):
+class ModelMixin(torch.nn.Module, PushToHubMixin):
     r"""
     Base class for all models.
 
@@ -273,8 +297,10 @@ class ModelMixin(torch.nn.Module):
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
         save_function: Callable = None,
-        safe_serialization: bool = False,
+        safe_serialization: bool = True,
         variant: Optional[str] = None,
+        push_to_hub: bool = False,
+        **kwargs,
     ):
         """
         Save a model and its configuration file to a directory so that it can be reloaded using the
@@ -291,20 +317,32 @@ class ModelMixin(torch.nn.Module):
                 The function to use to save the state dictionary. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
-            safe_serialization (`bool`, *optional*, defaults to `False`):
+            safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
             variant (`str`, *optional*):
                 If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
-        if safe_serialization and not is_safetensors_available():
-            raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
-
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
         os.makedirs(save_directory, exist_ok=True)
 
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", False)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+
+        # Only save the model itself if we are using distributed training
         model_to_save = self
 
         # Attach architecture to the config
@@ -327,6 +365,15 @@ class ModelMixin(torch.nn.Module):
             torch.save(state_dict, os.path.join(save_directory, weights_name))
 
         logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
+
+        if push_to_hub:
+            self._upload_folder(
+                save_directory,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
+            )
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -454,14 +501,9 @@ class ModelMixin(torch.nn.Module):
         variant = kwargs.pop("variant", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
 
-        if use_safetensors and not is_safetensors_available():
-            raise ValueError(
-                "`use_safetensors`=True but safetensors is not installed. Please install safetensors with `pip install safetensors"
-            )
-
         allow_pickle = False
         if use_safetensors is None:
-            use_safetensors = is_safetensors_available()
+            use_safetensors = True
             allow_pickle = True
 
         if low_cpu_mem_usage and not is_accelerate_available():
@@ -607,29 +649,14 @@ class ModelMixin(torch.nn.Module):
                             " `low_cpu_mem_usage=False` and `device_map=None` if you want to randomly initialize"
                             " those weights or else make sure your checkpoint file is correct."
                         )
-                    unexpected_keys = []
 
-                    empty_state_dict = model.state_dict()
-                    for param_name, param in state_dict.items():
-                        accepts_dtype = "dtype" in set(
-                            inspect.signature(set_module_tensor_to_device).parameters.keys()
-                        )
-
-                        if param_name not in empty_state_dict:
-                            unexpected_keys.append(param_name)
-                            continue
-
-                        if empty_state_dict[param_name].shape != param.shape:
-                            raise ValueError(
-                                f"Cannot load {pretrained_model_name_or_path} because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
-                            )
-
-                        if accepts_dtype:
-                            set_module_tensor_to_device(
-                                model, param_name, param_device, value=param, dtype=torch_dtype
-                            )
-                        else:
-                            set_module_tensor_to_device(model, param_name, param_device, value=param)
+                    unexpected_keys = load_model_dict_into_meta(
+                        model,
+                        state_dict,
+                        device=param_device,
+                        dtype=torch_dtype,
+                        model_name_or_path=pretrained_model_name_or_path,
+                    )
 
                     if cls._keys_to_ignore_on_load_unexpected is not None:
                         for pat in cls._keys_to_ignore_on_load_unexpected:

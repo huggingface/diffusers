@@ -34,7 +34,7 @@ the attention layers of a language model is sufficient to obtain good downstream
 
 [cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository. 🧨 Diffusers now supports finetuning with LoRA for [text-to-image generation](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image#training-with-lora) and [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#training-with-low-rank-adaptation-of-large-language-models-lora). This guide will show you how to do both.
 
-If you'd like to store or share your model with the community, login to your Hugging Face account (create [one](hf.co/join) if you don't have one already):
+If you'd like to store or share your model with the community, login to your Hugging Face account (create [one](https://hf.co/join) if you don't have one already):
 
 ```bash
 huggingface-cli login
@@ -276,20 +276,167 @@ Note that the use of [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] is
 
 * LoRA parameters that have separate identifiers for the UNet and the text encoder such as: [`"sayakpaul/dreambooth"`](https://huggingface.co/sayakpaul/dreambooth).
 
-**Note** that it is possible to provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`]. To know about the supported inputs,
-refer to the respective docstrings.
+<Tip>
+
+You can also provide a local directory path to [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] as well as [`~diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs`].
+
+</Tip>
+
+## Stable Diffusion XL
+
+We support fine-tuning with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the following docs:
+
+* [text_to_image/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md)
+* [dreambooth/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md)
 
 ## Unloading LoRA parameters
 
 You can call [`~diffusers.loaders.LoraLoaderMixin.unload_lora_weights`] on a pipeline to unload the LoRA parameters.
 
-## Supporting A1111 themed LoRA checkpoints from Diffusers
+## Fusing LoRA parameters
 
-This support was made possible because of our amazing contributors: [@takuma104](https://github.com/takuma104) and [@isidentical](https://github.com/isidentical).
+You can call [`~diffusers.loaders.LoraLoaderMixin.fuse_lora`] on a pipeline to merge the LoRA parameters with the original parameters of the underlying model(s). This can lead to a potential speedup in the inference latency.
 
-To provide seamless interoperability with A1111 to our users, we support loading A1111 formatted
-LoRA checkpoints using [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] in a limited capacity.
-In this section, we explain how to load an A1111 formatted LoRA checkpoint from [CivitAI](https://civitai.com/)
+## Unfusing LoRA parameters
+
+To undo `fuse_lora`, call [`~diffusers.loaders.LoraLoaderMixin.unfuse_lora`] on a pipeline.
+
+## Working with different LoRA scales when using LoRA fusion
+
+If you need to use `scale` when working with `fuse_lora()` to control the influence of the LoRA parameters on the outputs, you should specify `lora_scale` within `fuse_lora()`. Passing the `scale` parameter to `cross_attention_kwargs` when you call the pipeline won't work.  
+
+To use a different `lora_scale` with `fuse_lora()`, you should first call `unfuse_lora()` on the corresponding pipeline and call `fuse_lora()` again with the expected `lora_scale`.
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+# This uses a default `lora_scale` of 1.0.
+pipe.fuse_lora()
+
+generator = torch.manual_seed(0)
+images_fusion = pipe(
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
+).images
+
+# To work with a different `lora_scale`, first reverse the effects of `fuse_lora()`.
+pipe.unfuse_lora()
+
+# Then proceed as follows.
+pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+pipe.fuse_lora(lora_scale=0.5)
+
+generator = torch.manual_seed(0)
+images_fusion = pipe(
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
+).images
+```
+
+## Serializing pipelines with fused LoRA parameters
+
+Let's say you want to load the pipeline above that has its UNet fused with the LoRA parameters. You can easily do so by simply calling the `save_pretrained()` method on `pipe`. 
+
+After loading the LoRA parameters into a pipeline, if you want to serialize the pipeline such that the affected model components are already fused with the LoRA parameters, you should:
+
+* call `fuse_lora()` on the pipeline with the desired `lora_scale`, given you've already loaded the LoRA parameters into it.
+* call `save_pretrained()` on the pipeline. 
+
+Here is a complete example:
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
+lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+# First, fuse the LoRA parameters.
+pipe.fuse_lora()
+
+# Then save.
+pipe.save_pretrained("my-pipeline-with-fused-lora")
+```
+
+Now, you can load the pipeline and directly perform inference without having to load the LoRA parameters again:
+
+```python
+from diffusers import DiffusionPipeline
+import torch 
+
+pipe = DiffusionPipeline.from_pretrained("my-pipeline-with-fused-lora", torch_dtype=torch.float16).to("cuda")
+
+generator = torch.manual_seed(0)
+images_fusion = pipe(
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
+).images
+```
+
+## Working with multiple LoRA checkpoints
+
+With the `fuse_lora()` method as described above, it's possible to load multiple LoRA checkpoints. Let's work through a complete example. First we load the base pipeline:
+
+```python
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+import torch
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+)
+pipe.to("cuda")
+```
+
+Then let's two LoRA checkpoints and fuse them with specific `lora_scale` values:
+
+```python
+# LoRA one.
+pipe.load_lora_weights("goofyai/cyborg_style_xl")
+pipe.fuse_lora(lora_scale=0.7)
+
+# LoRA two.
+pipe.load_lora_weights("TheLastBen/Pikachu_SDXL")
+pipe.fuse_lora(lora_scale=0.7)
+```
+
+<Tip>
+
+Play with the `lora_scale` parameter when working with multiple LoRAs to control the amount of their influence on the final outputs.
+
+</Tip>
+
+Let's see them in action:
+
+```python
+prompt = "cyborg style pikachu"
+image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
+```
+
+![cyborg_pikachu](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/cyborg_pikachu.png)
+
+<Tip warning={true}>
+
+Currently, unfusing multiple LoRA checkpoints is not possible. 
+
+</Tip>
+
+## Supporting different LoRA checkpoints from Diffusers
+
+🤗 Diffusers supports loading checkpoints from popular LoRA trainers such as [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). In this section, we outline the current API's details and limitations. 
+
+### Kohya
+
+This support was made possible because of the amazing contributors: [@takuma104](https://github.com/takuma104) and [@isidentical](https://github.com/isidentical).
+
+We support loading Kohya LoRA checkpoints using [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`]. In this section, we explain how to load such a checkpoint from [CivitAI](https://civitai.com/)
 in Diffusers and perform inference with it. 
 
 First, download a checkpoint. We'll use
@@ -356,9 +503,9 @@ lora_filename = "light_and_shadow.safetensors"
 pipeline.load_lora_weights(lora_model_id, weight_name=lora_filename)
 ```
 
-### Supporting Stable Diffusion XL LoRAs trained using the Kohya-trainer
+### Kohya + Stable Diffusion XL
 
-With this [PR](https://github.com/huggingface/diffusers/pull/4287), there should now be better support for loading Kohya-style LoRAs trained on Stable Diffusion XL (SDXL).
+After the release of [Stable Diffusion XL](https://huggingface.co/papers/2307.01952), the community contributed some amazing LoRA checkpoints trained on top of it with the Kohya trainer.  
 
 Here are some example checkpoints we tried out:
 
@@ -399,14 +546,33 @@ If you notice carefully, the inference UX is exactly identical to what we presen
 
 Thanks to [@isidentical](https://github.com/isidentical) for helping us on integrating this feature.
 
-### Known limitations specific to the Kohya-styled LoRAs
+<Tip warning={true}>
+
+**Known limitations specific to the Kohya LoRAs**: 
 
 * When images don't looks similar to other UIs, such as ComfyUI, it can be because of multiple reasons, as explained [here](https://github.com/huggingface/diffusers/pull/4287/#issuecomment-1655110736).
 * We don't fully support [LyCORIS checkpoints](https://github.com/KohakuBlueleaf/LyCORIS). To the best of our knowledge, our current `load_lora_weights()` should support LyCORIS checkpoints that have LoRA and LoCon modules but not the other ones, such as Hada, LoKR, etc. 
 
-## Stable Diffusion XL
+</Tip>
 
-We support fine-tuning with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the following docs:
+### TheLastBen
 
-* [text_to_image/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md)
-* [dreambooth/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md)
+Here is an example:
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline_id = "Lykon/dreamshaper-xl-1-0"
+
+pipe = DiffusionPipeline.from_pretrained(pipeline_id, torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+
+lora_model_id = "TheLastBen/Papercut_SDXL"
+lora_filename = "papercut.safetensors"
+pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+
+prompt = "papercut sonic"
+image = pipe(prompt=prompt, num_inference_steps=20, generator=torch.manual_seed(0)).images[0]
+image
+```

@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # 파이프라인, 모델 및 스케줄러 이해하기
 
-[[colab에서 열기]]
+[[open-in-colab]]
 
 🧨 Diffusers는 사용자 친화적이며 유연한 도구 상자로, 사용사례에 맞게 diffusion 시스템을 구축 할 수 있도록 설계되었습니다. 이 도구 상자의 핵심은 모델과 스케줄러입니다. [`DiffusionPipeline`]은 편의를 위해 이러한 구성 요소를 번들로 제공하지만, 파이프라인을 분리하고 모델과 스케줄러를 개별적으로 사용해 새로운 diffusion 시스템을 만들 수도 있습니다. 
 

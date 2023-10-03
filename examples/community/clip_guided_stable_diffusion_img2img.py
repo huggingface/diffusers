@@ -2,7 +2,7 @@ import inspect
 from typing import List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -19,11 +19,8 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.utils import (
-    PIL_INTERPOLATION,
-    deprecate,
-    randn_tensor,
-)
+from diffusers.utils import PIL_INTERPOLATION, deprecate
+from diffusers.utils.torch_utils import randn_tensor
 
 
 EXAMPLE_DOC_STRING = """

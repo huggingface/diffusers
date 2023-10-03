@@ -50,7 +50,7 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -58,20 +58,9 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.20.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__)
-
-
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step):
@@ -205,7 +194,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             validation_image.save(os.path.join(repo_folder, "image_control.png"))
             img_str += f"prompt: {validation_prompt}\n"
             images = [validation_image] + images
-            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     yaml = f"""
@@ -851,16 +840,17 @@ def main(args):
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
-            i = len(weights) - 1
+            if accelerator.is_main_process:
+                i = len(weights) - 1
 
-            while len(weights) > 0:
-                weights.pop()
-                model = models[i]
+                while len(weights) > 0:
+                    weights.pop()
+                    model = models[i]
 
-                sub_dir = "controlnet"
-                model.save_pretrained(os.path.join(output_dir, sub_dir))
+                    sub_dir = "controlnet"
+                    model.save_pretrained(os.path.join(output_dir, sub_dir))
 
-                i -= 1
+                    i -= 1
 
         def load_model_hook(models, input_dir):
             while len(models) > 0:

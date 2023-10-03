@@ -22,7 +22,13 @@ import torch.utils.checkpoint
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
-from .attention_processor import AttentionProcessor, AttnProcessor
+from .attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnProcessor,
+)
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .transformer_temporal import TransformerTemporalModel
@@ -280,8 +286,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         processors = {}
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "set_processor"):
-                processors[f"{name}.processor"] = module.processor
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -360,7 +366,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(
+        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
+    ):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -384,9 +392,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor)
+                    module.set_processor(processor, _remove_lora=_remove_lora)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
+                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -439,7 +447,16 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        self.set_attn_processor(AttnProcessor())
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnAddedKVProcessor()
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnProcessor()
+        else:
+            raise ValueError(
+                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
+            )
+
+        self.set_attn_processor(processor, _remove_lora=True)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):

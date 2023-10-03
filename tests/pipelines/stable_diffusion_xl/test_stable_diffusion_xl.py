@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import copy
+import tempfile
 import unittest
 
 import numpy as np
@@ -31,8 +32,7 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
@@ -128,7 +128,7 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -260,6 +260,42 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
+
+    def test_stable_diffusion_xl_img2img_prompt_embeds_only(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # forward without prompt embeds
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["prompt"] = 3 * [inputs["prompt"]]
+
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with prompt embeds
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        prompt = 3 * [inputs.pop("prompt")]
+
+        (
+            prompt_embeds,
+            _,
+            pooled_prompt_embeds,
+            _,
+        ) = sd_pipe.encode_prompt(prompt)
+
+        output = sd_pipe(
+            **inputs,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+        )
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # make sure that it's equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
     def test_stable_diffusion_two_xl_mixture_of_denoiser(self):
         components = self.get_dummy_components()
@@ -689,3 +725,46 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
         # ensure the results are not equal
         assert np.abs(image_slice_1.flatten() - image_slice_3.flatten()).max() > 1e-4
+
+    def test_stable_diffusion_xl_negative_conditions(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice_with_no_neg_cond = image[0, -3:, -3:, -1]
+
+        image = sd_pipe(
+            **inputs,
+            negative_original_size=(512, 512),
+            negative_crops_coords_top_left=(0, 0),
+            negative_target_size=(1024, 1024),
+        ).images
+        image_slice_with_neg_cond = image[0, -3:, -3:, -1]
+
+        self.assertTrue(np.abs(image_slice_with_no_neg_cond - image_slice_with_neg_cond).max() > 1e-2)
+
+    def test_stable_diffusion_xl_save_from_pretrained(self):
+        pipes = []
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**components).to(torch_device)
+        pipes.append(sd_pipe)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd_pipe.save_pretrained(tmpdirname)
+            sd_pipe = StableDiffusionXLPipeline.from_pretrained(tmpdirname).to(torch_device)
+        pipes.append(sd_pipe)
+
+        image_slices = []
+        for pipe in pipes:
+            pipe.unet.set_default_attn_processor()
+
+            inputs = self.get_dummy_inputs(torch_device)
+            image = pipe(**inputs).images
+
+            image_slices.append(image[0, -3:, -3:, -1].flatten())
+
+        assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3

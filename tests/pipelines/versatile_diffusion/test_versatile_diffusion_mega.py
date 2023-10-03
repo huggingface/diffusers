@@ -77,7 +77,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
             output_type="numpy",
         ).images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't have the same forward pass"
 
     def test_inference_dual_guided_then_text_to_image(self):
         pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)

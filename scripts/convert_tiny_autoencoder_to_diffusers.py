@@ -1,12 +1,6 @@
 import argparse
 
-from diffusers.utils import is_safetensors_available
-
-
-if is_safetensors_available():
-    import safetensors.torch
-else:
-    raise ImportError("Please install `safetensors`.")
+import safetensors.torch
 
 from diffusers import AutoencoderTiny
 

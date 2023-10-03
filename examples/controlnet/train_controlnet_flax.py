@@ -47,7 +47,7 @@ from diffusers import (
     FlaxStableDiffusionControlNetPipeline,
     FlaxUNet2DConditionModel,
 )
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 
 
 # To prevent an error that occurs when there are abnormally large compressed data chunk in the png image
@@ -59,21 +59,9 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.20.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = logging.getLogger(__name__)
-
-
-def image_grid(imgs, rows, cols):
-    assert len(imgs) == rows * cols
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-    grid_w, grid_h = grid.size
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 def log_validation(pipeline, pipeline_params, controlnet_params, tokenizer, args, rng, weight_dtype):
@@ -154,7 +142,7 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             validation_image.save(os.path.join(repo_folder, "image_control.png"))
             img_str += f"prompt: {validation_prompt}\n"
             images = [validation_image] + images
-            image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
+            make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
     yaml = f"""
@@ -919,7 +907,17 @@ def main():
 
             if args.snr_gamma is not None:
                 snr = jnp.array(compute_snr(timesteps))
-                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
+                base_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
+                if noise_scheduler.config.prediction_type == "v_prediction":
+                    snr_loss_weights = base_weights + 1
+                else:
+                    # Epsilon and sample prediction use the base weights.
+                    snr_loss_weights = base_weights
+                # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
+                # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
+                # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
+                snr_loss_weights[snr == 0] = 1.0
+
                 loss = loss * snr_loss_weights
 
             loss = loss.mean()

@@ -18,8 +18,8 @@ import tqdm
 
 from ...models.unet_1d import UNet1DModel
 from ...pipelines import DiffusionPipeline
-from ...utils import randn_tensor
 from ...utils.dummy_pt_objects import DDPMScheduler
+from ...utils.torch_utils import randn_tensor
 
 
 class ValueGuidedRLPipeline(DiffusionPipeline):
@@ -76,7 +76,7 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         return x_in * self.stds[key] + self.means[key]
 
     def to_torch(self, x_in):
-        if type(x_in) is dict:
+        if isinstance(x_in, dict):
             return {k: self.to_torch(v) for k, v in x_in.items()}
         elif torch.is_tensor(x_in):
             return x_in.to(self.unet.device)

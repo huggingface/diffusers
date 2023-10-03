@@ -16,12 +16,12 @@ import math
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
 
-from ..utils import BaseOutput
+from ..utils import BaseOutput, PushToHubMixin
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
@@ -37,6 +37,7 @@ class FlaxKarrasDiffusionSchedulers(Enum):
     FlaxPNDMScheduler = 3
     FlaxLMSDiscreteScheduler = 4
     FlaxDPMSolverMultistepScheduler = 5
+    FlaxEulerDiscreteScheduler = 6
 
 
 @dataclass
@@ -53,7 +54,7 @@ class FlaxSchedulerOutput(BaseOutput):
     prev_sample: jnp.ndarray
 
 
-class FlaxSchedulerMixin:
+class FlaxSchedulerMixin(PushToHubMixin):
     """
     Mixin containing common functions for the schedulers.
 
@@ -71,7 +72,7 @@ class FlaxSchedulerMixin:
     @classmethod
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Dict[str, Any] = None,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
         subfolder: Optional[str] = None,
         return_unused_kwargs=False,
         **kwargs,
@@ -156,6 +157,12 @@ class FlaxSchedulerMixin:
         Args:
             save_directory (`str` or `os.PathLike`):
                 Directory where the configuration JSON file will be saved (will be created if it does not exist).
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
 

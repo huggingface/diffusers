@@ -30,8 +30,7 @@ from transformers import (
 )
 
 from diffusers import KandinskyV22PriorEmb2EmbPipeline, PriorTransformer, UnCLIPScheduler
-from diffusers.utils import floats_tensor, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, skip_mps, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -48,7 +47,6 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
         "strength",
         "generator",
         "num_inference_steps",
-        "latents",
         "negative_prompt",
         "guidance_scale",
         "output_type",
@@ -236,15 +234,7 @@ class KandinskyV22PriorEmb2EmbPipelineFastTests(PipelineTesterMixin, unittest.Te
 
     @skip_mps
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
-        test_mean_pixel_difference = False
-
-        self._test_inference_batch_single_identical(
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
-            test_mean_pixel_difference=test_mean_pixel_difference,
-        )
+        self._test_inference_batch_single_identical(expected_max_diff=1e-2)
 
     @skip_mps
     def test_attention_slicing_forward_pass(self):

@@ -28,8 +28,15 @@ from diffusers import (
     UNet2DConditionModel,
     VQModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 
@@ -224,6 +231,9 @@ class KandinskyV22Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         assert (
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=2e-1)
 
 
 @slow

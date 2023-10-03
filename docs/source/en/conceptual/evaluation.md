@@ -334,7 +334,7 @@ image_processor = CLIPImageProcessor.from_pretrained(clip_id)
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(clip_id).to(device)
 ```
 
-Notice that we are using a particular CLIP checkpoint, i.e., `openai/clip-vit-large-patch14`. This is because the Stable Diffusion pre-training was performed with this CLIP variant. For more details, refer to the [documentation](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix#diffusers.StableDiffusionInstructPix2PixPipeline.text_encoder).
+Notice that we are using a particular CLIP checkpoint, i.e., `openai/clip-vit-large-patch14`. This is because the Stable Diffusion pre-training was performed with this CLIP variant. For more details, refer to the [documentation](https://huggingface.co/docs/transformers/model_doc/clip).
 
 Next, we prepare a PyTorch `nn.Module` to compute directional similarity:
 

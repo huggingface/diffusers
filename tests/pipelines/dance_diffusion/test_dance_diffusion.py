@@ -20,8 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
-from diffusers.utils import nightly, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, skip_mps, torch_device
 
 from ..pipeline_params import UNCONDITIONAL_AUDIO_GENERATION_BATCH_PARAMS, UNCONDITIONAL_AUDIO_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
