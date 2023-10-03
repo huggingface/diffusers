@@ -72,8 +72,8 @@ class ControlNetImg2ImgPipelineFastTests(
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
+            block_out_channels=(16,),
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -83,8 +83,8 @@ class ControlNetImg2ImgPipelineFastTests(
         )
         torch.manual_seed(0)
         controlnet = ControlNetModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
+            block_out_channels=(16,),
+            layers_per_block=1,
             in_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             cross_attention_dim=32,
