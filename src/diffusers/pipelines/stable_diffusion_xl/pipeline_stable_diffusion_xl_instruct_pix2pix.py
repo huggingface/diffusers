@@ -44,6 +44,12 @@ from .pipeline_output import StableDiffusionXLPipelineOutput
 if is_invisible_watermark_available():
     from .watermark import StableDiffusionXLWatermarker
 
+try:
+    import torch_xla.core.xla_model as xm
+    XLA_AVAILABLE = True
+except:
+    XLA_AVAILABLE = False
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -925,6 +931,9 @@ class StableDiffusionXLInstructPix2PixPipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
