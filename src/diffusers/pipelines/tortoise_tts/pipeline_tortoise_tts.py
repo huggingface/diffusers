@@ -47,6 +47,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     Args:
         TODO
     """
+    model_cpu_offload_seq = (
+        "autoregressive_random_latent_converter->diffusion_random_latent_converter->"
+        "autoregressive_conditioning_encoder->autoregressive_model->text_encoder->speech_encoder->"
+        "diffusion_conditioning_encoder->diffusion_denoising_model->vocoder"
+    )
 
     # TODO: get appropriate type annotations for __init__ args
     def __init__(
@@ -78,69 +83,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             scheduler=scheduler,
             vocoder=vocoder,
         )
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
-        time to the GPU when its `forward` method is called, and the model remains in GPU until the next model runs.
-        Memory savings are lower than using `enable_sequential_cpu_offload`, but performance is much better due to the
-        iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        models_to_offload = [
-            self.autoregressive_conditioning_encoder,
-            self.autoregressive_random_latent_converter,
-            self.autoregressive_model,
-            self.speech_encoder,
-            self.text_encoder,
-            self.diffusion_conditioning_encoder,
-            self.diffusion_random_latent_converter,
-            self.diffusion_denoising_model,
-            self.vocoder,
-        ]
-        for cpu_offloaded_model in models_to_offload:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and vocoder have their state dicts saved to CPU and then are moved to a `torch.device('meta')
-        and loaded to GPU only when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        models_to_offload = [
-            self.autoregressive_conditioning_encoder,
-            self.autoregressive_random_latent_converter,
-            self.autoregressive_model,
-            self.speech_encoder,
-            self.text_encoder,
-            self.diffusion_conditioning_encoder,
-            self.diffusion_random_latent_converter,
-            self.diffusion_denoising_model,
-            self.vocoder,
-        ]
-        for cpu_offloaded_model in models_to_offload:
-            cpu_offload(cpu_offloaded_model, device)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
