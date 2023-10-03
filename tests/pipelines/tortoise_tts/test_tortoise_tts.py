@@ -6,8 +6,7 @@ import torch
 from diffusers import (
     TortoiseTTSPipeline,
 )
-from diffusers.utils import slow
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism, slow
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin

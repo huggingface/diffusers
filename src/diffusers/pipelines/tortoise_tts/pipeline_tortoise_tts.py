@@ -13,8 +13,8 @@ from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    randn_tensor,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_autoregressive import TortoiseTTSAutoregressiveModel
 from .modeling_common import ConditioningEncoder, RandomLatentConverter
