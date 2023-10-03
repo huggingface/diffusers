@@ -208,3 +208,40 @@ def check_peft_version(min_version: str) -> None:
             f"The version of PEFT you are using is not compatible, please use a version that is greater"
             f" than {min_version}"
         )
+
+
+def transform_state_dict_to_peft(state_dict, config, adapter_name):
+    """
+    Transformers the raw state dict to a peft format that expects a prefix for the adapter layers.
+
+    Args:
+        state_dict (`dict`):
+            The raw state dict of the model.
+        config (`PeftConfig`):
+            The peft config used to create the adapter weights
+        adapter_name (`str`):
+            The name of the adapter to be used.
+    """
+    from peft import PeftType
+
+    if config.peft_type in (PeftType.LORA, PeftType.LOHA, PeftType.ADALORA, PeftType.IA3):
+        peft_model_state_dict = {}
+        parameter_prefix = {
+            PeftType.IA3: "ia3_",
+            PeftType.LORA: "lora_",
+            PeftType.ADALORA: "lora_",
+            PeftType.LOHA: "hada_",
+        }[config.peft_type]
+        for k, v in state_dict.items():
+            if parameter_prefix in k:
+                suffix = k.split(parameter_prefix)[1]
+                if "." in suffix:
+                    suffix_to_replace = ".".join(suffix.split(".")[1:])
+                    k = k.replace(suffix_to_replace, f"{adapter_name}.{suffix_to_replace}")
+                else:
+                    k = f"{k}.{adapter_name}"
+                peft_model_state_dict[k] = v
+            else:
+                peft_model_state_dict[k] = v
+
+    return peft_model_state_dict
