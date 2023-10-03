@@ -80,9 +80,6 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    if args.enable_xformers_memory_efficient_attention:
-        pipeline.enable_xformers_memory_efficient_attention()
-
     if args.seed is None:
         generator = None
     else:
@@ -103,7 +100,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         )
 
     image_logs = []
-
+    negative_prompt = "anime, low quality, bad quality, sketches, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured"
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
         validation_image = validation_image.resize((args.resolution, args.resolution))
@@ -111,10 +108,14 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         images = []
 
         for _ in range(args.num_validation_images):
-            with torch.autocast("cuda"):
-                image = pipeline(
-                    prompt=validation_prompt, image=validation_image, num_inference_steps=20, generator=generator
-                ).images[0]
+            image = pipeline(
+                prompt=validation_prompt,
+                image=validation_image,
+                negative_prompt=negative_prompt,
+                num_inference_steps=30,
+                controlnet_conditioning_scale=0.5,
+                generator=generator,
+            ).images[0]
             images.append(image)
 
         image_logs.append(
@@ -549,6 +550,15 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+    parser.add_argument(
+        "--use_deepspeed",
+        type=str,
+        default=False,
+        help=(
+            "Consider using Deepspeed if the dataset can't fit into a single GPU."
+            "Deepspeed compatibility is built into acceelerator however, some changes are required which are activated by setting it to True."
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -927,13 +937,23 @@ def main(args):
 
     # Optimizer creation
     params_to_optimize = controlnet.parameters()
-    optimizer = optimizer_class(
-        params_to_optimize,
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+
+    if args.use_deepspeed:
+        optimizer = accelerate.utils.DummyOptim(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+    else:
+        optimizer = optimizer_class(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -1019,14 +1039,19 @@ def main(args):
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
 
-    lr_scheduler = get_scheduler(
-        args.lr_scheduler,
-        optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps * accelerator.num_processes,
-        num_cycles=args.lr_num_cycles,
-        power=args.lr_power,
-    )
+    if args.use_deepspeed:
+        lr_scheduler = accelerate.utils.DummyScheduler(
+            optimizer, total_num_steps=args.max_train_steps, warmup_num_steps=args.lr_warmup_steps
+        )
+    else:
+        lr_scheduler = get_scheduler(
+            args.lr_scheduler,
+            optimizer=optimizer,
+            num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+            num_training_steps=args.max_train_steps * accelerator.num_processes,
+            num_cycles=args.lr_num_cycles,
+            power=args.lr_power,
+        )
 
     # Prepare everything with our `accelerator`.
     controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
@@ -1171,31 +1196,30 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if accelerator.is_main_process:
-                    if global_step % args.checkpointing_steps == 0:
-                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                        if args.checkpoints_total_limit is not None:
-                            checkpoints = os.listdir(args.output_dir)
-                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+                if global_step % args.checkpointing_steps == 0:
+                    # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                    if args.checkpoints_total_limit is not None:
+                        checkpoints = os.listdir(args.output_dir)
+                        checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                        checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                            if len(checkpoints) >= args.checkpoints_total_limit:
-                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                                removing_checkpoints = checkpoints[0:num_to_remove]
+                        # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                        if len(checkpoints) >= args.checkpoints_total_limit:
+                            num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                            removing_checkpoints = checkpoints[0:num_to_remove]
 
-                                logger.info(
-                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                                )
-                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                            logger.info(
+                                f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                            )
+                            logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                                for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                    shutil.rmtree(removing_checkpoint)
+                            for removing_checkpoint in removing_checkpoints:
+                                removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                    save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                    accelerator.save_state(save_path)
+                    logger.info(f"Saved state to {save_path}")
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         image_logs = log_validation(
