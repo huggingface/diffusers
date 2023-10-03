@@ -157,6 +157,7 @@ else:
         "TextToVideoZeroPipeline",
         "VideoToVideoSDPipeline",
     ]
+    _import_structure["tortoise_tts"] = ["TortoiseTTSPipeline"]
     _import_structure["unclip"] = ["UnCLIPImageVariationPipeline", "UnCLIPPipeline"]
     _import_structure["unidiffuser"] = [
         "ImageTextPipelineOutput",
