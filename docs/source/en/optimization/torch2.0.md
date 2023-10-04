@@ -276,6 +276,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 22.24 | 23.23 | 43.76 | 49.25 |
 | SD - controlnet | 15.02 | 15.82 | 32.13 | 36.08 |
 | IF | 20.21 / <br>13.84 / <br>24.00 | 20.12 / <br>13.70 / <br>24.03 | ❌ | 97.34 / <br>27.23 / <br>111.66 |
+| SDXL - txt2img | 8.64 | 9.9 | - | - |
 
 ### A100 (batch size: 4)
 
@@ -286,6 +287,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 11.67 | 13.31 | 14.88 | 17.48 |
 | SD - controlnet | 8.28 | 9.38 | 10.51 | 12.41 |
 | IF | 25.02 | 18.04 | ❌ | 48.47 |
+| SDXL - txt2img | 2.44 | 2.74 | - | - |
 
 ### A100 (batch size: 16)
 
@@ -296,6 +298,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 3.04 | 3.66 | 3.9 | 4.76 |
 | SD - controlnet | 2.15 | 2.58 | 2.74 | 3.35 |
 | IF | 8.78 | 9.82 | ❌ | 16.77 |
+| SDXL - txt2img | 0.64 | 0.72 | - | - |
 
 ### V100 (batch size: 1)
 
@@ -336,6 +339,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 6.91 | 6.7 | 7.01 | 7.37 |
 | SD - controlnet | 4.89 | 4.86 | 5.35 | 5.48 |
 | IF | 17.42 / <br>2.47 / <br>18.52 | 16.96 / <br>2.45 / <br>18.69 | ❌ | 24.63 / <br>2.47 / <br>23.39 |
+| SDXL - txt2img | 1.15 | 1.16 | - | - |
 
 ### T4 (batch size: 4)
 
@@ -346,6 +350,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 1.81 | 1.82 | 2.09 | 2.09 |
 | SD - controlnet | 1.34 | 1.27 | 1.47 | 1.46 |
 | IF | 5.79 |  5.61 | ❌ | 7.39 |
+| SDXL - txt2img | 0.288 | 0.289 | - | - |
 
 ### T4 (batch size: 16)
 
@@ -356,6 +361,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 2.30s | 2.26s | OOM after 2nd iteration | 1.95s |
 | SD - controlnet | OOM after 2nd iteration | OOM after 2nd iteration | OOM after warmup | OOM after warmup |
 | IF * | 1.44 | 1.44 | ❌ | 1.94 |
+| SDXL - txt2img | OOM | OOM | - | - |
 
 ### RTX 3090 (batch size: 1)
 
@@ -396,6 +402,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 40.51 | 41.88 | 44.58 | 49.72 |
 | SD - controlnet | 29.27 | 30.29 | 32.26 | 36.03 |
 | IF | 69.71 / <br>18.78 / <br>85.49 | 69.13 / <br>18.80 / <br>85.56 | ❌ | 124.60 / <br>26.37 / <br>138.79 |
+| SDXL - txt2img | 6.8 | 8.18 | - | - |
 
 ### RTX 4090 (batch size: 4)
 
@@ -406,6 +413,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 12.65 | 12.81 | 15.3 | 15.58 |
 | SD - controlnet | 9.1 | 9.25 | 11.03 | 11.22 |
 | IF | 31.88 | 31.14 | ❌ | 43.92 |
+| SDXL - txt2img | 2.19 | 2.35 | - | - |
 
 ### RTX 4090 (batch size: 16)
 
@@ -416,6 +424,7 @@ In the following tables, we report our findings in terms of the *number of itera
 | SD - inpaint | 3.17 | 3.2 | 3.85 | 3.85 |
 | SD - controlnet | 2.23 | 2.3 | 2.7 | 2.75 |
 | IF | 9.26 | 9.2 | ❌ | 13.31 |
+| SDXL - txt2img | 0.52 | 0.53 | - | - |
 
 ## Notes 
 

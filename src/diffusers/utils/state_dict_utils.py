@@ -37,6 +37,8 @@ DIFFUSERS_TO_PEFT = {
     ".v_proj.lora_linear_layer.down": ".v_proj.lora_A",
     ".out_proj.lora_linear_layer.up": ".out_proj.lora_B",
     ".out_proj.lora_linear_layer.down": ".out_proj.lora_A",
+    ".lora_linear_layer.up": ".lora_B",
+    ".lora_linear_layer.down": ".lora_A",
 }
 
 DIFFUSERS_OLD_TO_PEFT = {

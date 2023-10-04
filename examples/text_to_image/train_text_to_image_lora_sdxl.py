@@ -52,6 +52,7 @@ from diffusers import (
 from diffusers.loaders import LoraLoaderMixin, text_encoder_lora_state_dict
 from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -632,30 +633,6 @@ def main(args):
 
     unet.set_attn_processor(unet_lora_attn_procs)
 
-    def compute_snr(timesteps):
-        """
-        Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
-        """
-        alphas_cumprod = noise_scheduler.alphas_cumprod
-        sqrt_alphas_cumprod = alphas_cumprod**0.5
-        sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
-
-        # Expand the tensors.
-        # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
-        sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
-        alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
-
-        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
-        while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
-            sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
-        sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
-
-        # Compute SNR.
-        snr = (alpha / sigma) ** 2
-        return snr
-
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
@@ -970,18 +947,25 @@ def main(args):
                 f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
             )
             args.resume_from_checkpoint = None
+            initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
-            resume_global_step = global_step * args.gradient_accumulation_steps
+            initial_global_step = global_step
             first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
 
-    # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
-    progress_bar.set_description("Steps")
+    else:
+        initial_global_step = 0
+
+    progress_bar = tqdm(
+        range(0, args.max_train_steps),
+        initial=initial_global_step,
+        desc="Steps",
+        # Only show the progress bar once on each machine.
+        disable=not accelerator.is_local_main_process,
+    )
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
@@ -990,12 +974,6 @@ def main(args):
             text_encoder_two.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
-            # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                if step % args.gradient_accumulation_steps == 0:
-                    progress_bar.update(1)
-                continue
-
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 if args.pretrained_vae_model_name_or_path is not None:
@@ -1071,13 +1049,23 @@ def main(args):
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
-                    snr = compute_snr(timesteps)
-                    mse_loss_weights = (
+                    snr = compute_snr(noise_scheduler, timesteps)
+                    base_weight = (
                         torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
+
                     if noise_scheduler.config.prediction_type == "v_prediction":
-                        # velocity objective prediction requires SNR weights to be floored to a min value of 1.
-                        mse_loss_weights = mse_loss_weights + 1
+                        # Velocity objective needs to be floored to an SNR weight of one.
+                        mse_loss_weights = base_weight + 1
+                    else:
+                        # Epsilon and sample both use the same loss weights.
+                        mse_loss_weights = base_weight
+
+                    # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
+                    # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
+                    # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
+                    mse_loss_weights[snr == 0] = 1.0
+
                     # We first calculate the original loss. Then we mean over the non-batch dimensions and
                     # rebalance the sample-wise losses with their respective loss weights.
                     # Finally, we take the mean of the rebalanced loss.
