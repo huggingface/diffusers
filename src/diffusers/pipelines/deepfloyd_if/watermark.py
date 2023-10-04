@@ -1,6 +1,6 @@
 from typing import List
 
-import PIL
+import PIL.Image
 import torch
 from PIL import Image
 

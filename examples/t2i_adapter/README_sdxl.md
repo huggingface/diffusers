@@ -20,7 +20,7 @@ pip install -e .
 
 Then cd in the `examples/t2i_adapter` folder and run
 ```bash
-pip install -r requirements_sdxl.txt
+pip install -r requirements.txt
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
