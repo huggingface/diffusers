@@ -47,7 +47,6 @@ from .utils import (
     scale_lora_layers,
     set_adapter_layers,
     set_weights_and_activate_adapters,
-    transform_state_dict_to_peft,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
