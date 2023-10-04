@@ -690,6 +690,63 @@ class PeftLoraLoaderMixinTests:
         )
 
 
+    def test_simple_inference_with_text_unet_multi_adapter(self):
+        """
+        Tests a simple inference with lora attached to text encoder and unet, attaches
+        multiple adapters and set them 
+        """
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+
+
+        pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+            pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+            )
+
+        # TODO: should we design an API at the pipeline level?
+        pipe.text_encoder.set_adapter("adapter-1")
+        pipe.unet.set_adapter("adapter-1")
+
+        output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        pipe.text_encoder.set_adapter("adapter-2")
+        pipe.unet.set_adapter("adapter-2")
+        output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+
+        pipe.text_encoder.set_adapter(["adapter-1", "adapter-2"])
+        pipe.unet.set_adapter(["adapter-1", "adapter-2"])
+
+        output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images     
+
+        # Fuse and unfuse should lead to the same results
+        self.assertFalse(
+            np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3), "Adapter 1 and 2 should give different results"
+        )
+
+        self.assertFalse(
+            np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3), "Adapter 1 and mixed adapters should give different results"
+        )
+
+        self.assertFalse(
+            np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3), "Adapter 2 and mixed adapters should give different results"
+        )
+
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
     scheduler_cls = DDIMScheduler
