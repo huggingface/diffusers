@@ -573,7 +573,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--use_deepspeed",
-        type="store_true",
+        action="store_true",
         help=(
             "Consider using Deepspeed if the dataset can't fit into a single GPU."
             "Deepspeed compatibility is built into acceelerator however, some changes are required which are activated by setting it to True."
@@ -848,16 +848,7 @@ def main(args):
     text_encoder_two = text_encoder_cls_two.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
     )
-    vae_path = (
-        args.pretrained_model_name_or_path
-        if args.pretrained_vae_model_name_or_path is None
-        else args.pretrained_vae_model_name_or_path
-    )
-    vae = AutoencoderKL.from_pretrained(
-        vae_path,
-        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-        revision=args.revision,
-    )
+    vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )

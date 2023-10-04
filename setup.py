@@ -125,6 +125,7 @@ _deps = [
     "requests",
     "tensorboard",
     "torch>=1.4",
+    "deepspeed"
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",

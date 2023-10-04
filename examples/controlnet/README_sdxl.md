@@ -61,7 +61,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained ControlNet parameters to Hugging Face Hub.
 
 ```bash
-export MODEL_DIR="madebyollin/sdxl-vae-fp16-fix"
+export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
 export OUTPUT_DIR="path to save model"
 
 accelerate launch train_controlnet_sdxl.py \
