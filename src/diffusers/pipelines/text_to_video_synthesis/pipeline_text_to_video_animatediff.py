@@ -23,9 +23,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import UNet3DConditionModel, TextToVideoAnimateDiffPipeline 
         >>> from diffusers.utils import export_to_video
 
-        >>> unet = UNet3DConditionModel.from_pretrained("<repo>", torch_dtype=torch.float16)
+        >>> unet = UNet3DConditionModel.from_pretrained("itsadarshms/animatediff-v2-stable-diffusion-1.5", torch_dtype=torch.float16)
         >>> pipe = TextToVideoAnimateDiffPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", unet=unet, torch_dtype=torch.float16, variant="fp16"
+        ...     "runwayml/stable-diffusion-v1-5", unet=unet, torch_dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
 
