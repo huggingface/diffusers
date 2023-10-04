@@ -159,7 +159,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         output = hidden_states + residual
 
-        # output = rearrange(output, "(b f) c h w -> b c f h w", f=video_length)
+        # "(b f) c h w -> b c f h w"; f=video_length
         output = output.reshape([-1, video_length, *output.shape[1:]])
         output = output.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
         if not return_dict:

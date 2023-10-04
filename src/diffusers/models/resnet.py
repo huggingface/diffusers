@@ -843,11 +843,11 @@ class ResnetBlock3D(nn.Module):
 
         if self.conv_shortcut is not None:
             video_length = input_tensor.shape[2]
-            # x = rearrange(x, "b c f h w -> (b f) c h w")
+            # "b c f h w -> (b f) c h w"
             input_tensor = input_tensor.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
             input_tensor = input_tensor.flatten(0, 1)
             input_tensor = self.conv_shortcut(input_tensor)
-            # x = rearrange(x, "(b f) c h w -> b c f h w", f=video_length)
+            # "(b f) c h w -> b c f h w"; f=video_length
             input_tensor = input_tensor.reshape([-1, video_length, *input_tensor.shape[1:]])
             input_tensor = input_tensor.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
 
