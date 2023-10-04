@@ -90,6 +90,8 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     out_queue.put(results, timeout=timeout)
     out_queue.join()
 
+# the issue is to make fast test for StableDiffusionPipeline smaller! 
+# TODO : changes to the architecture of UNET/CLIP/VAE
 
 class StableDiffusionPipelineFastTests(
     PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
