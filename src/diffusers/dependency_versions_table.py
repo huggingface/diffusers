@@ -38,6 +38,7 @@ deps = {
     "requests": "requests",
     "tensorboard": "tensorboard",
     "torch": "torch>=1.4",
+    "deepspeed": "deepspeed",
     "torchvision": "torchvision",
     "transformers": "transformers>=4.25.1",
     "urllib3": "urllib3<=2.0.0",

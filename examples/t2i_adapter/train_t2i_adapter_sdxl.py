@@ -42,8 +42,8 @@ from transformers import AutoTokenizer, PretrainedConfig
 import diffusers
 from diffusers import (
     AutoencoderKL,
-    EulerDiscreteScheduler,
     EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
     StableDiffusionXLAdapterPipeline,
     T2IAdapter,
     UNet2DConditionModel,
@@ -80,7 +80,7 @@ def log_validation(vae, unet, adapter, args, accelerator, weight_dtype, step):
 
     adapter = accelerator.unwrap_model(adapter)
     euler_a = EulerAncestralDiscreteScheduler.from_pretrained(
-    args.pretrained_model_name_or_path, subfolder="scheduler"
+        args.pretrained_model_name_or_path, subfolder="scheduler"
     )
     pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -89,7 +89,7 @@ def log_validation(vae, unet, adapter, args, accelerator, weight_dtype, step):
         adapter=adapter,
         revision=args.revision,
         torch_dtype=weight_dtype,
-        variant="fp16"
+        variant="fp16",
     )
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -123,14 +123,14 @@ def log_validation(vae, unet, adapter, args, accelerator, weight_dtype, step):
 
         for _ in range(args.num_validation_images):
             image = pipeline(
-                    prompt=validation_prompt, 
-                    negative_prompt=negative_prompt, 
-                    image=validation_image, 
-                    num_inference_steps=30, 
-                    adapter_conditioning_scale=0.8, 
-                    guidance_scale=7.5, 
-                    generator=generator
-                ).images[0]
+                prompt=validation_prompt,
+                negative_prompt=negative_prompt,
+                image=validation_image,
+                num_inference_steps=30,
+                adapter_conditioning_scale=0.8,
+                guidance_scale=7.5,
+                generator=generator,
+            ).images[0]
             images.append(image)
 
         image_logs.append(
@@ -964,7 +964,7 @@ def main(args):
             betas=(args.adam_beta1, args.adam_beta2),
             weight_decay=args.adam_weight_decay,
             eps=args.adam_epsilon,
-    )
+        )
     else:
         optimizer = optimizer_class(
             params_to_optimize,
@@ -972,7 +972,7 @@ def main(args):
             betas=(args.adam_beta1, args.adam_beta2),
             weight_decay=args.adam_weight_decay,
             eps=args.adam_epsilon,
-    )
+        )
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -1068,10 +1068,8 @@ def main(args):
 
     if args.use_deepspeed:
         lr_scheduler = accelerate.utils.DummyScheduler(
-            optimizer,
-            total_num_steps=args.max_train_steps,
-            warmup_num_steps=args.lr_warmup_steps
-    )
+            optimizer, total_num_steps=args.max_train_steps, warmup_num_steps=args.lr_warmup_steps
+        )
     else:
         lr_scheduler = get_scheduler(
             args.lr_scheduler,
@@ -1080,7 +1078,7 @@ def main(args):
             num_training_steps=args.max_train_steps,
             num_cycles=args.lr_num_cycles,
             power=args.lr_power,
-    )
+        )
 
     # Prepare everything with our `accelerator`.
     t2iadapter, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
@@ -1266,15 +1264,15 @@ def main(args):
                     logger.info(f"Saved state to {save_path}")
 
                 if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                        image_logs = log_validation(
-                            vae,
-                            unet,
-                            t2iadapter,
-                            args,
-                            accelerator,
-                            weight_dtype,
-                            global_step,
-                        )
+                    image_logs = log_validation(
+                        vae,
+                        unet,
+                        t2iadapter,
+                        args,
+                        accelerator,
+                        weight_dtype,
+                        global_step,
+                    )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
