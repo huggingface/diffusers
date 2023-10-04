@@ -680,10 +680,11 @@ class PeftLoraLoaderMixinTests:
         )
 
         if self.has_two_text_encoders:
-            self.assertFalse(
-                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly unloaded in text encoder 2"
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Unfuse should still keep LoRA layers"
             )
 
+        # Fuse and unfuse should lead to the same results
         self.assertTrue(
             np.allclose(output_fused_lora, output_unfused_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
         )
