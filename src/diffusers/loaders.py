@@ -2434,7 +2434,11 @@ class FromSingleFileMixin:
             from .pipelines.controlnet.multicontrolnet import MultiControlNetModel
 
             #  list/tuple or a single instance of ControlNetModel or MultiControlNetModel
-            if not (isinstance(controlnet, (ControlNetModel, MultiControlNetModel)) or isinstance(controlnet, (list, tuple)) and isinstance(controlnet[0], ControlNetModel)):
+            if not (
+                isinstance(controlnet, (ControlNetModel, MultiControlNetModel))
+                or isinstance(controlnet, (list, tuple))
+                and isinstance(controlnet[0], ControlNetModel)
+            ):
                 raise ValueError("ControlNet needs to be passed if loading from ControlNet pipeline.")
         elif "StableDiffusion" in pipeline_name:
             # Model type will be inferred from the checkpoint.
