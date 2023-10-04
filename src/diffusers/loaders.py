@@ -2216,7 +2216,15 @@ class LoraLoaderMixin:
                 LoRA parameters then it won't have any effect.
         """
         if unfuse_unet:
-            self.unet.unfuse_lora()
+            if not self.use_peft_backend:
+                self.unet.unfuse_lora()
+            else:
+                from peft.tuners.tuners_utils import BaseTunerLayer
+
+                for module in self.unet.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        module.unmerge()
+
 
         if self.use_peft_backend:
             from peft.tuners.tuners_utils import BaseTunerLayer
