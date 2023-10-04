@@ -79,6 +79,8 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
+    if args.enable_xformers_memory_efficient_attention:
+        pipeline.enable_xformers_memory_efficient_attention()
 
     if args.seed is None:
         generator = None
