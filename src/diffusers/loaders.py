@@ -1686,14 +1686,13 @@ class LoraLoaderMixin:
                     if adapter_name is None:
                         adapter_name = get_adapter_name(text_encoder)
 
-
                     # inject LoRA layers and load the state dict
                     text_encoder.load_adapter(
                         adapter_name=adapter_name,
                         adapter_state_dict=text_encoder_lora_state_dict,
                         peft_config=lora_config,
                     )
-                    
+
                     # scale LoRA layers with `lora_scale`
                     scale_lora_layers(text_encoder, weight=lora_scale)
 
