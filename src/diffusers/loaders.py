@@ -47,7 +47,6 @@ from .utils import (
     scale_lora_layers,
     set_adapter_layers,
     set_weights_and_activate_adapters,
-    transform_state_dict_to_peft,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
@@ -1524,26 +1523,9 @@ class LoraLoaderMixin:
                 target_modules=target_modules,
             )
 
-            ctx = nullcontext if not low_cpu_mem_usage else init_empty_weights
+            inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
 
-            with ctx():
-                inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
-
-            if low_cpu_mem_usage:
-                device = next(iter(state_dict.values())).device
-                dtype = next(iter(state_dict.values())).dtype
-
-                # import pdb; pdb.set_trace()
-                state_dict = transform_state_dict_to_peft(state_dict, lora_config, adapter_name)
-
-                unexpected_keys = load_model_dict_into_meta(unet, state_dict, device=device, dtype=dtype)
-                incompatible_keys = None
-
-                if len(unexpected_keys) == 0:
-                    # At this point all LoRA layars has been loaded so we init back an empty state_dict
-                    state_dict = {}
-            else:
-                incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
+            incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
 
             if incompatible_keys is not None:
                 # check only for unexpected keys
@@ -1666,27 +1648,12 @@ class LoraLoaderMixin:
                     if adapter_name is None:
                         adapter_name = get_adapter_name(text_encoder)
 
-                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
-                    with ctx():
-                        text_encoder.load_adapter(
-                            adapter_name=adapter_name,
-                            adapter_state_dict=text_encoder_lora_state_dict,
-                            peft_config=lora_config,
-                        )
-
-                    if low_cpu_mem_usage:
-                        device = next(iter(text_encoder_lora_state_dict.values())).device
-                        dtype = next(iter(text_encoder_lora_state_dict.values())).dtype
-
-                        # import pdb; pdb.set_trace()
-                        text_encoder_lora_state_dict = transform_state_dict_to_peft(
-                            text_encoder_lora_state_dict, lora_config, adapter_name
-                        )
-
-                        unexpected_keys = load_model_dict_into_meta(
-                            text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype
-                        )
-
+                    # inject LoRA layers and load the state dict
+                    text_encoder.load_adapter(
+                        adapter_name=adapter_name,
+                        adapter_state_dict=text_encoder_lora_state_dict,
+                        peft_config=lora_config,
+                    )
                     # scale LoRA layers with `lora_scale`
                     scale_lora_layers(text_encoder, weight=lora_scale)
 
