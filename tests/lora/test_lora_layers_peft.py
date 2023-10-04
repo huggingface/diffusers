@@ -641,7 +641,7 @@ class PeftLoraLoaderMixinTests:
         )
 
 
-    def test_simple_inference_with_text_unet_lora_unloaded(self):
+    def test_simple_inference_with_text_unet_lora_unfused(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
         and makes sure it works as expected
