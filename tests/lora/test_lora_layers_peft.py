@@ -710,7 +710,6 @@ class PeftLoraLoaderMixinTests:
                 self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-        # TODO: should we design an API at the pipeline level?
         pipe.set_adapters("adapter-1")
 
         output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
