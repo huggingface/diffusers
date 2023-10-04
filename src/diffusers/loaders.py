@@ -1144,7 +1144,7 @@ class LoraLoaderMixin:
         self.load_lora_into_unet(
             state_dict,
             network_alphas=network_alphas,
-            unet=getattr(self, self.unet_name),
+            unet=getattr(self, self.unet_name, self.unet),
             low_cpu_mem_usage=low_cpu_mem_usage,
             _pipeline=self,
         )
