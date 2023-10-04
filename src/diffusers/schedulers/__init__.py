@@ -38,6 +38,8 @@ except OptionalDependencyNotAvailable:
     _dummy_modules.update(get_objects_from_module(dummy_pt_objects))
 
 else:
+    _import_structure["deprecated.scheduling_karras_ve"] = ["KarrasVeScheduler"]
+    _import_structure["deprecated.scheduling_sde_vp"] = ["ScoreSdeVpScheduler"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
@@ -56,12 +58,10 @@ else:
     _import_structure["scheduling_ipndm"] = ["IPNDMScheduler"]
     _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
-    _import_structure["scheduling_karras_ve"] = ["KarrasVeScheduler"]
     _import_structure["scheduling_lcm"] = ["LCMScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
-    _import_structure["scheduling_sde_vp"] = ["ScoreSdeVpScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
     _import_structure["scheduling_utils"] = ["KarrasDiffusionSchedulers", "SchedulerMixin"]
