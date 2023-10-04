@@ -213,7 +213,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             do_center_crop=False,
             do_normalize=False,
             return_tensors="pt",
-        )["pixel_values"].to(self.device)
+        )["pixel_values"].to(device)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -365,7 +365,7 @@ class BlipDiffusionControlNetPipeline(DiffusionPipeline):
             height=height,
             batch_size=batch_size,
             num_images_per_prompt=1,
-            device=self.device,
+            device=device,
             dtype=self.controlnet.dtype,
             do_classifier_free_guidance=do_classifier_free_guidance,
         )

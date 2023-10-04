@@ -471,7 +471,8 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             latents = init_mask * init_latents_proper + (1 - init_mask) * latents
 
             if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                step_idx = i // getattr(self.scheduler, "order", 1)
+                callback(step_idx, t, latents)
 
         # post-processing
         latents = mask_image[:1] * image[:1] + (1 - mask_image[:1]) * latents
