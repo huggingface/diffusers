@@ -123,13 +123,16 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
         rank_pattern = dict(filter(lambda x: x[1] != r, rank_dict.items()))
         rank_pattern = {k.split(".lora_B.")[0]: v for k, v in rank_pattern.items()}
 
-    if network_alpha_dict is not None and len(set(network_alpha_dict.values())) > 1:
-        # get the alpha occuring the most number of times
-        lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
+    if network_alpha_dict is not None:
+        if len(set(network_alpha_dict.values())) > 1:
+            # get the alpha occuring the most number of times
+            lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
 
-        # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
-        alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
-        alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
+            # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
+            alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
+            alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
+        else:
+            lora_alpha = set(network_alpha_dict.values()).pop()
 
     # layer names without the Diffusers specific
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})

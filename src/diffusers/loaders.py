@@ -679,6 +679,55 @@ class UNet2DConditionLoadersMixin:
         if hasattr(module, "_unfuse_lora"):
             module._unfuse_lora()
 
+    def set_adapters(
+        self,
+        adapter_names: Union[List[str], str],
+        weights: List[float] = None,
+    ):
+        """
+        Sets the adapter layers for the unet.
+
+        Args:
+            adapter_names (`List[str]` or `str`):
+                The names of the adapters to use.
+            weights (`List[float]`, *optional*):
+                The weights to use for the unet. If `None`, the weights are set to `1.0` for all the adapters.
+        """
+        if not self.use_peft_backend:
+            raise ValueError("PEFT backend is required for this method.")
+
+        def process_weights(adapter_names, weights):
+            if weights is None:
+                weights = [1.0] * len(adapter_names)
+            elif isinstance(weights, float):
+                weights = [weights]
+
+            if len(adapter_names) != len(weights):
+                raise ValueError(
+                    f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
+                )
+            return weights
+
+        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+        weights = process_weights(adapter_names, weights)
+        set_weights_and_activate_adapters(self, adapter_names, weights)
+
+    def disable_lora(self):
+        """
+        Disables the LoRA layers for the unet.
+        """
+        if not self.use_peft_backend:
+            raise ValueError("PEFT backend is required for this method.")
+        set_adapter_layers(self, enabled=False)
+
+    def enable_lora(self):
+        """
+        Enables the LoRA layers for the unet.
+        """
+        if not self.use_peft_backend:
+            raise ValueError("PEFT backend is required for this method.")
+        set_adapter_layers(self, enabled=True)
+
 
 def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
     cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
@@ -1448,7 +1497,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def load_lora_into_unet(
-        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, _pipeline=None, adapter_name="default"
+        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, _pipeline=None, adapter_name=None
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
@@ -1468,7 +1517,8 @@ class LoraLoaderMixin:
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
             adapter_name (`str`, *optional*):
-                The name of the adapter to load the weights into. By default we use `"default"`
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
@@ -1500,38 +1550,19 @@ class LoraLoaderMixin:
 
             state_dict = convert_unet_state_dict_to_peft(state_dict)
 
-            target_modules = []
-            ranks = []
+            rank = {}
             for key in state_dict.keys():
-                # filter out the name
-                filtered_name = ".".join(key.split(".")[:-2])
-                target_modules.append(filtered_name)
                 if "lora_B" in key:
-                    rank = state_dict[key].shape[1]
-                    ranks.append(rank)
+                    rank[key] = state_dict[key].shape[1]
 
-            current_rank = ranks[0]
-            if not all(rank == current_rank for rank in ranks):
-                raise ValueError("Multi-rank not supported yet")
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict)
+            lora_config = LoraConfig(**lora_config_kwargs)
 
-            if network_alphas is not None:
-                alphas = set(network_alphas.values())
-                if len(alphas) == 1:
-                    alpha = alphas.pop()
-                # TODO: support multi-alpha
-                else:
-                    raise ValueError("Multi-alpha not supported yet")
-            else:
-                alpha = current_rank
-
-            lora_config = LoraConfig(
-                r=current_rank,
-                lora_alpha=alpha,
-                target_modules=target_modules,
-            )
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(unet)
 
             inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
-
             incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
 
             if incompatible_keys is not None:
@@ -1655,12 +1686,14 @@ class LoraLoaderMixin:
                     if adapter_name is None:
                         adapter_name = get_adapter_name(text_encoder)
 
+
                     # inject LoRA layers and load the state dict
                     text_encoder.load_adapter(
                         adapter_name=adapter_name,
                         adapter_state_dict=text_encoder_lora_state_dict,
                         peft_config=lora_config,
                     )
+                    
                     # scale LoRA layers with `lora_scale`
                     scale_lora_layers(text_encoder, weight=lora_scale)
 
@@ -2258,7 +2291,7 @@ class LoraLoaderMixin:
 
         self.num_fused_loras -= 1
 
-    def set_adapter_for_text_encoder(
+    def set_adapters_for_text_encoder(
         self,
         adapter_names: Union[List[str], str],
         text_encoder: Optional[PreTrainedModel] = None,
@@ -2336,60 +2369,44 @@ class LoraLoaderMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: List[float] = None,
+        unet_weights: List[float] = None,
+        te_weights: List[float] = None,
+        te2_weights: List[float] = None,
     ):
-        """
-        Sets the adapter layers for the unet.
+        # Handle the UNET
+        self.unet.set_adapters(adapter_names, unet_weights)
 
-        Args:
-            adapter_names (`List[str]` or `str`):
-                The names of the adapters to use.
-            weights (`List[float]`, *optional*):
-                The weights to use for the unet. If `None`, the weights are set to `1.0` for all the adapters.
-        """
-        if not self.use_peft_backend:
-            raise ValueError("PEFT backend is required for this method.")
-
-        def process_weights(adapter_names, weights):
-            if weights is None:
-                weights = [1.0] * len(adapter_names)
-            elif isinstance(weights, float):
-                weights = [weights]
-
-            if len(adapter_names) != len(weights):
-                raise ValueError(
-                    f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
-                )
-            return weights
-
-        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
-        weights = process_weights(adapter_names, weights)
-
-        for key, value in self.components.items():
-            if isinstance(value, nn.Module):
-                set_weights_and_activate_adapters(value, adapter_names, weights)
+        # Handle the Text Encoder
+        if hasattr(self, "text_encoder"):
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, te_weights)
+        if hasattr(self, "text_encoder_2"):
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, te2_weights)
 
     def disable_lora(self):
-        """
-        Disables the LoRA layers for the unet.
-        """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for this method.")
 
-        for key, value in self.components.items():
-            if isinstance(value, nn.Module):
-                set_adapter_layers(value, enabled=False)
+        # Disable unet adapters
+        self.unet.disable_lora()
+
+        # Disable text encoder adapters
+        if hasattr(self, "text_encoder"):
+            self.disable_lora_for_text_encoder(self.text_encoder)
+        if hasattr(self, "text_encoder_2"):
+            self.disable_lora_for_text_encoder(self.text_encoder_2)
 
     def enable_lora(self):
-        """
-        Enables the LoRA layers for the unet.
-        """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for this method.")
 
-        for key, value in self.components.items():
-            if isinstance(value, nn.Module):
-                set_adapter_layers(value, enabled=True)
+        # Enable unet adapters
+        self.unet.enable_lora()
+
+        # Enable text encoder adapters
+        if hasattr(self, "text_encoder"):
+            self.enable_lora_for_text_encoder(self.text_encoder)
+        if hasattr(self, "text_encoder_2"):
+            self.enable_lora_for_text_encoder(self.text_encoder_2)
 
 
 class FromSingleFileMixin:
