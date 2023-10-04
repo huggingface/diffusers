@@ -1686,12 +1686,14 @@ class LoraLoaderMixin:
                     if adapter_name is None:
                         adapter_name = get_adapter_name(text_encoder)
 
+
+                    # inject LoRA layers and load the state dict
                     text_encoder.load_adapter(
                         adapter_name=adapter_name,
                         adapter_state_dict=text_encoder_lora_state_dict,
                         peft_config=lora_config,
                     )
-
+                    
                     # scale LoRA layers with `lora_scale`
                     scale_lora_layers(text_encoder, weight=lora_scale)
 
@@ -2157,9 +2159,12 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        for _, module in self.unet.named_modules():
-            if hasattr(module, "set_lora_layer"):
-                module.set_lora_layer(None)
+        if not self.use_peft_backend:
+            for _, module in self.unet.named_modules():
+                if hasattr(module, "set_lora_layer"):
+                    module.set_lora_layer(None)
+        else:
+            recurse_remove_peft_layers(self.unet)
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
@@ -2244,7 +2249,14 @@ class LoraLoaderMixin:
                 LoRA parameters then it won't have any effect.
         """
         if unfuse_unet:
-            self.unet.unfuse_lora()
+            if not self.use_peft_backend:
+                self.unet.unfuse_lora()
+            else:
+                from peft.tuners.tuners_utils import BaseTunerLayer
+
+                for module in self.unet.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        module.unmerge()
 
         if self.use_peft_backend:
             from peft.tuners.tuners_utils import BaseTunerLayer
