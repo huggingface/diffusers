@@ -146,10 +146,8 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5873, 0.6128, 0.4797, 0.5122, 0.5674, 0.4639, 0.5227, 0.5149, 0.4747])
-        max_deviation = np.abs(image_slice.flatten() - expected_slice).max()
-        print(max_deviation)
 
-        assert max_deviation < 1e-1
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-1
 
     def test_stable_diffusion_xl_prompt_embeds(self):
         components = self.get_dummy_components()
