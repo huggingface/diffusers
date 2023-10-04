@@ -701,6 +701,8 @@ class PeftLoraLoaderMixinTests:
         pipe.set_progress_bar_config(disable=None)
         _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images     
+
         pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
         pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
 
@@ -719,18 +721,15 @@ class PeftLoraLoaderMixinTests:
             )
 
         # TODO: should we design an API at the pipeline level?
-        pipe.text_encoder.set_adapter("adapter-1")
-        pipe.unet.set_adapter("adapter-1")
+        pipe.set_adapters("adapter-1")
 
         output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-        pipe.text_encoder.set_adapter("adapter-2")
-        pipe.unet.set_adapter("adapter-2")
+        pipe.set_adapters("adapter-2")
         output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
 
-        pipe.text_encoder.set_adapter(["adapter-1", "adapter-2"])
-        pipe.unet.set_adapter(["adapter-1", "adapter-2"])
+        pipe.set_adapters(["adapter-1", "adapter-2"])
 
         output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images     
 
@@ -746,6 +745,15 @@ class PeftLoraLoaderMixinTests:
         self.assertFalse(
             np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3), "Adapter 2 and mixed adapters should give different results"
         )
+
+        pipe.disable_lora()
+
+        output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images   
+
+        self.assertTrue(
+            np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3), "output with no lora and output with lora disabled should give same results"
+        )
+
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline

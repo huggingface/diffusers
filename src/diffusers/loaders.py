@@ -2365,7 +2365,10 @@ class LoraLoaderMixin:
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
         weights = process_weights(adapter_names, weights)
-        set_weights_and_activate_adapters(self, adapter_names, weights)
+
+        for key, value in self.components.items():
+            if isinstance(value, nn.Module):
+                set_weights_and_activate_adapters(value, adapter_names, weights)
 
     def disable_lora(self):
         """
@@ -2373,7 +2376,11 @@ class LoraLoaderMixin:
         """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for this method.")
-        set_adapter_layers(self, enabled=False)
+        
+        for key, value in self.components.items():
+            if isinstance(value, nn.Module):
+                set_adapter_layers(value, enabled=False)
+        
 
     def enable_lora(self):
         """
@@ -2381,7 +2388,10 @@ class LoraLoaderMixin:
         """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for this method.")
-        set_adapter_layers(self, enabled=True)
+
+        for key, value in self.components.items():
+            if isinstance(value, nn.Module):
+                set_adapter_layers(value, enabled=True)
 
 
 class FromSingleFileMixin:
