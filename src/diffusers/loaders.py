@@ -2126,9 +2126,12 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        for _, module in self.unet.named_modules():
-            if hasattr(module, "set_lora_layer"):
-                module.set_lora_layer(None)
+        if not self.use_peft_backend:
+            for _, module in self.unet.named_modules():
+                if hasattr(module, "set_lora_layer"):
+                    module.set_lora_layer(None)
+        else:
+            recurse_remove_peft_layers(self.unet)
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()

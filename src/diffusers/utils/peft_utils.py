@@ -59,7 +59,6 @@ def recurse_remove_peft_layers(model):
                 module.padding,
                 module.dilation,
                 module.groups,
-                module.bias,
             ).to(module.weight.device)
 
             new_module.weight = module.weight
