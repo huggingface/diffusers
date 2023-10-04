@@ -32,6 +32,7 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_invisible_watermark_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -45,10 +46,10 @@ from .pipeline_output import StableDiffusionXLPipelineOutput
 if is_invisible_watermark_available():
     from .watermark import StableDiffusionXLWatermarker
 
-try:
+if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
     XLA_AVAILABLE = True
-except:
+else:
     XLA_AVAILABLE = False
 
 
