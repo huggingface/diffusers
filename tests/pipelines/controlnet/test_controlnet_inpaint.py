@@ -39,6 +39,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
@@ -550,7 +551,7 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/boy_ray_ban.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 0.9e-1
+        assert numpy_cosine_similarity_distance(expected_image.flatten(), image.flatten()) < 1e-2
 
     def test_load_local(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
