@@ -1514,8 +1514,15 @@ class LoraLoaderMixin:
             if not all(rank == current_rank for rank in ranks):
                 raise ValueError("Multi-rank not supported yet")
 
-            # TODO: support multi-alpha
-            alpha = current_rank
+            if network_alphas is not None:
+                alphas = set(network_alphas.values())
+                if len(alphas) == 1:
+                    alpha = alphas.pop()
+                # TODO: support multi-alpha
+                else:
+                    raise ValueError("Multi-alpha not supported yet")
+            else:
+                alpha = current_rank
 
             lora_config = LoraConfig(
                 r=current_rank,
