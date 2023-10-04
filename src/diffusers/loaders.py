@@ -2225,7 +2225,6 @@ class LoraLoaderMixin:
                     if isinstance(module, BaseTunerLayer):
                         module.unmerge()
 
-
         if self.use_peft_backend:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
@@ -2334,7 +2333,6 @@ class LoraLoaderMixin:
             raise ValueError("Text Encoder not found.")
         set_adapter_layers(self.text_encoder, enabled=True)
 
-    
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
@@ -2342,6 +2340,7 @@ class LoraLoaderMixin:
     ):
         """
         Sets the adapter layers for the unet.
+
         Args:
             adapter_names (`List[str]` or `str`):
                 The names of the adapters to use.
@@ -2376,11 +2375,10 @@ class LoraLoaderMixin:
         """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for this method.")
-        
+
         for key, value in self.components.items():
             if isinstance(value, nn.Module):
                 set_adapter_layers(value, enabled=False)
-        
 
     def enable_lora(self):
         """
