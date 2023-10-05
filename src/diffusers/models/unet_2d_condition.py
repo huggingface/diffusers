@@ -739,8 +739,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         The suffixes after the scaling factors represent the stage blocks where they are being applied.
 
-        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of values
-        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of values that
+        are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
 
         Args:
             s1 (`float`):
