@@ -1210,4 +1210,3 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
-
