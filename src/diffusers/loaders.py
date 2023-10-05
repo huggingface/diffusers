@@ -3137,13 +3137,14 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         if self.use_peft_backend:
             recurse_remove_peft_layers(self.text_encoder)
             # TODO: @younesbelkada handle this in transformers side
-            del self.text_encoder.peft_config
-            self.text_encoder._hf_peft_config_loaded = None
+            if getattr(self.text_encoder, "peft_config", None) is not None:
+                del self.text_encoder.peft_config
+                self.text_encoder._hf_peft_config_loaded = None
 
             recurse_remove_peft_layers(self.text_encoder_2)
-
-            del self.text_encoder_2.peft_config
-            self.text_encoder_2._hf_peft_config_loaded = None
+            if getattr(self.text_encoder_2, "peft_config", None) is not None:
+                del self.text_encoder_2.peft_config
+                self.text_encoder_2._hf_peft_config_loaded = None
         else:
             self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
             self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)
