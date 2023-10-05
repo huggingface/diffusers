@@ -193,3 +193,20 @@ class TextToVideoSDPipelineSlowTests(unittest.TestCase):
         video = video_frames.cpu().numpy()
 
         assert np.abs(expected_video - video).mean() < 5e-2
+
+    def test_two_step_model_with_freeu(self):
+        expected_video = []
+
+        pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
+        pipe = pipe.to(torch_device)
+
+        prompt = "Spiderman is surfing"
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="pt").frames
+        video = video_frames.cpu().numpy()
+        expected_video = video[0, -3:, -3:, -1].flatten()
+        print(", ".join([str(round(x, 4)) for x in expected_video.tolist()]))
+
+        assert np.abs(expected_video - video).mean() < 5e-2
