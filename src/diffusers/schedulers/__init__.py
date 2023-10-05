@@ -15,6 +15,7 @@
 from typing import TYPE_CHECKING
 
 from ..utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -111,7 +112,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["scheduling_dpmsolver_sde"] = ["DPMSolverSDEScheduler"]
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from ..utils import (
         OptionalDependencyNotAvailable,
         is_flax_available,
@@ -162,6 +163,7 @@ if TYPE_CHECKING:
         from .scheduling_ddim_flax import FlaxDDIMScheduler
         from .scheduling_ddpm_flax import FlaxDDPMScheduler
         from .scheduling_dpmsolver_multistep_flax import FlaxDPMSolverMultistepScheduler
+        from .scheduling_euler_discrete_flax import FlaxEulerDiscreteScheduler
         from .scheduling_karras_ve_flax import FlaxKarrasVeScheduler
         from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler
         from .scheduling_pndm_flax import FlaxPNDMScheduler

@@ -11,7 +11,7 @@ import uuid
 from typing import Callable, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from huggingface_hub import delete_repo
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer

@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -34,7 +35,7 @@ else:
     _import_structure["pipeline_kandinsky2_2_prior_emb2emb"] = ["KandinskyV22PriorEmb2EmbPipeline"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
