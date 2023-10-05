@@ -1752,6 +1752,8 @@ class LoraLoaderMixin:
                     if adapter_name is None:
                         adapter_name = get_adapter_name(text_encoder)
 
+                    is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
+
                     # inject LoRA layers and load the state dict
                     text_encoder.load_adapter(
                         adapter_name=adapter_name,
@@ -1761,9 +1763,6 @@ class LoraLoaderMixin:
 
                     # scale LoRA layers with `lora_scale`
                     scale_lora_layers(text_encoder, weight=lora_scale)
-
-                    is_model_cpu_offload = False
-                    is_sequential_cpu_offload = False
                 else:
                     cls._modify_text_encoder(
                         text_encoder,
