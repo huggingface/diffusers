@@ -834,6 +834,65 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
 
+    @slow
+    @require_torch_gpu
+    def test_integration_logits_multi_adapter(self):
+        path = "stabilityai/stable-diffusion-xl-base-1.0"
+        lora_id = "CiroN2022/toy-face"
+
+        pipe = StableDiffusionXLPipeline.from_pretrained(path, torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_id, weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
+        pipe = pipe.to("cuda")
+
+
+        self.assertTrue(
+            self.check_if_lora_correctly_set(pipe.unet),
+            "Lora not correctly set in Unet",
+        )
+
+        prompt = "toy_face of a hacker with a hoodie"
+
+        lora_scale = 0.9
+
+        images = pipe(
+            prompt=prompt, 
+            num_inference_steps=30, 
+            generator=torch.manual_seed(0), 
+            cross_attention_kwargs={"scale": lora_scale},
+            output_type="np"
+        ).images
+        expected_slice_scale = np.array([0.538, 0.539, 0.540, 0.540, 0.542, 0.539, 0.538, 0.541, 0.539])
+
+        predicted_slice = images[0, -3:, -3:, -1].flatten()
+        # import pdb; pdb.set_trace()
+        self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
+
+        pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipe.set_adapters("pixel")
+
+        prompt = "pixel art, a hacker with a hoodie, simple, flat colors"
+        images = pipe(prompt, num_inference_steps=30, guidance_scale=7.5, cross_attention_kwargs={"scale": lora_scale}, generator=torch.manual_seed(0), output_type="np").images
+        
+        predicted_slice = images[0, -3:, -3:, -1].flatten()
+        expected_slice_scale = np.array([0.61973065, 0.62018543, 0.62181497, 0.61933696, 0.6208608, 0.620576, 0.6200281 , 0.62258327, 0.6259889])
+        self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
+        
+
+        # multi-adapter inference
+        pipe.set_adapters(["pixel","toy"], unet_weights=[0.5,1.0])
+        images = pipe(prompt, num_inference_steps=30, guidance_scale=7.5, cross_attention_kwargs={"scale": 1.0}, generator=torch.manual_seed(0), output_type="np").images
+        predicted_slice = images[0, -3:, -3:, -1].flatten()
+        expected_slice_scale = np.array([0.5977, 0.5985, 0.6039, 0.5976, 0.6025, 0.6036, 0.5946, 0.5979, 0.5998])
+        self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
+
+        # Lora disabled
+        pipe.disable_lora()
+        images = pipe(prompt, num_inference_steps=30, guidance_scale=7.5, cross_attention_kwargs={"scale": lora_scale}, generator=torch.manual_seed(0), output_type="np").images
+        predicted_slice = images[0, -3:, -3:, -1].flatten()
+        expected_slice_scale = np.array([0.54625, 0.5473, 0.5495, 0.5465, 0.5476, 0.5461, 0.5452, 0.5485 , 0.5493])
+        self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
+
+
 class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     has_two_text_encoders = True
     pipeline_class = StableDiffusionXLPipeline
