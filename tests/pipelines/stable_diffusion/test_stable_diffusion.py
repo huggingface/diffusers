@@ -646,7 +646,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 2
+        inputs["num_inference_steps"] = 25
 
         sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         image = sd_pipe(**inputs).images
