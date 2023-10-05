@@ -1793,7 +1793,8 @@ class LoraLoaderMixin:
         if hasattr(self, "text_encoder"):
             remove_method(self.text_encoder)
 
-            if self.use_peft_backend:
+            # In case text encoder have no Lora attached
+            if self.use_peft_backend and getattr(self.text_encoder, "peft_config", None) is not None:
                 del self.text_encoder.peft_config
                 self.text_encoder._hf_peft_config_loaded = None
         if hasattr(self, "text_encoder_2"):
