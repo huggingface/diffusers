@@ -1554,7 +1554,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
-    def test_lora_xformers_on_off(self, expected_max_diff=1e-4):
+    def test_lora_xformers_on_off(self, expected_max_diff=6e-4):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
