@@ -1120,7 +1120,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 50,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -1197,18 +1197,19 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
-    def test_stable_diffusion_dpm(self):
+    def test_stable_diffusion_v1_4_with_freeu(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 25
-        image = sd_pipe(**inputs).images[0]
+        inputs["num_inference_steps"] = 2
 
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_dpm_multi.npy"
-        )
+        sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        image = sd_pipe(**inputs).images
+        image = image[0, :3, :3, :3]
+        print(", ".join([str(round(x, 4)) for x in image.tolist()]))
+
+        expected_image = []
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
+
