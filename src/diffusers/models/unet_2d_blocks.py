@@ -453,6 +453,42 @@ def get_up_block(
 
 
 class AutoencoderTinyBlock(nn.Module):
+    """
+        It's tiny autoencoder block. The block consists of three 
+        convolutional layers with ReLU activation, followed by a 
+        skip connection and a final ReLU activation.
+
+        The skip connection helps to preserve the spatial information of the input signal, which
+        can be beneficial for autoencoders that are used for image compression or denoising.
+        This block is designed to be used in autoencoder architectures that are lightweight and
+        fast to train.
+
+        Parameters:
+            * `in_channels:` The number of input channels.
+            * `out_channels:` The number of output channels.
+            * `act_fn:` The activation function to use. Supported values are `relu`, `tanh`, and `sigmoid`.
+      
+        Example:
+        ```python
+            >>> # Define an autoencoder architecture using the AutoencoderTinyBlock.
+            >>> model = nn.Sequential(
+            >>>            AutoencoderTinyBlock(3, 64, "relu"),
+            >>>            AutoencoderTinyBlock(64, 128, "relu"),
+            >>>            AutoencoderTinyBlock(128, 256, "relu"),
+            >>>            )
+
+            >>> # Train the model on a dataset of images.
+            >>> # ...
+
+            >>> # Use the model to reconstruct an image from a noisy input.
+            >>> noisy_image = ...
+            >>> reconstructed_image = model(noisy_image)
+        ```
+        
+        Output:
+            A tensor with the same shape as the input tensor, but with the number of channels equal to `out_channels`.
+    """
+
     def __init__(self, in_channels: int, out_channels: int, act_fn: str):
         super().__init__()
         act_fn = get_activation(act_fn)
