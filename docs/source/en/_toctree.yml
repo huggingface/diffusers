@@ -18,7 +18,7 @@
   - local: tutorials/basic_training
     title: Train a diffusion model
   - local: tutorials/freeu
-    title: FreeU to improve generation quality
+    title: Improve generation quality with FreeU
   title: Tutorials
 - sections:
   - sections:

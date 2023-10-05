@@ -1,19 +1,17 @@
-# FreeU to improve generation quality
+# Improve generation quality with FreeU
 
 [[open-in-colab]]
 
-Usually a UNet is responsible for denoising during the reverse diffusion process. The features inside the UNet can be boradly classified distinctively: 
+The UNet is responsible for denoising during the reverse diffusion process, and there are two distinct features in its architecture: 
 
-1. Backbone features
-2. Skip features
+1. Backbone features primarily contribute to the denoising process
+2. Skip features mainly introduce high-frequency features into the decoder module and can make the network overlook the semantics in the backbone features
 
-In [FreeU: Free Lunch in Diffusion U-Net](https://hf.co/papers/2309.11497), Si et al. investigate the contributions of these features in the context of diffusion. They found out that backbone features primarily contribute to the denoising process while the skip features mainly introduce high-frequency features into the decoder module. Furthermore, the skip features can make the network overlook the semantics baked in the backbone features. 
+However, the skip connection can sometimes introduce unnatural image details. [FreeU](https://hf.co/papers/2309.11497) is a technique for improving image quality by rebalancing the contributions from the UNet’s skip connections and backbone feature maps. 
 
-To mitigate these issues, the authors introduce the **FreeU mechanism** where they simply reweigh the contributions sourced from the UNet’s skip connections and backbone feature maps, to leverage the strengths of both components. 
+FreeU is applied during inference and it does not require any additional training. The technique works for different tasks such as text-to-image, image-to-image, and text-to-video.
 
-FreeU is an inference-time mechanism meaning that it does not require any additional training. It is completely technique that works with different tasks such as text-to-image, image-to-image, and text-to-video.
-
-In this guide, we will discuss how to apply FreeU for different pipelines like [`StableDiffusionPipeline`], [`StableDiffusionXLPipeline`], and [`TextToVideoSDPipeline`].
+In this guide, you will apply FreeU to the [`StableDiffusionPipeline`], [`StableDiffusionXLPipeline`], and [`TextToVideoSDPipeline`].
 
 ## StableDiffusionPipeline
 
@@ -28,17 +26,17 @@ pipeline = DiffusionPipeline.from_pretrained(
 ).to("cuda")
 ```
 
-Then enable the FreeU mechanism with the FreeU-specific hyperparameters:
+Then enable the FreeU mechanism with the FreeU-specific hyperparameters. These values are scaling factors for the backbone and skip features.
 
 ```py
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
 ```
 
-Values for `s1`, `s2`, `b1`, and `b2` come from the official FreeU [code repository](https://github.com/ChenyangSi/FreeU). The authors also provide some guidance on the ranges of these hyperparameters [here](https://github.com/ChenyangSi/FreeU#range-for-more-parameters).  For more details on these hyperparameters, refer to the [original paper](https://hf.co/papers/2309.11497).
+The values above are from the official FreeU [code repository](https://github.com/ChenyangSi/FreeU) where you can also find [reference hyperparameters](https://github.com/ChenyangSi/FreeU#range-for-more-parameters) for different models.
 
 <Tip>
 
-You can disable the FreeU mechanism by calling the `disable_freeu()` on a pipeline.
+Disable the FreeU mechanism by calling `disable_freeu()` on a pipeline.
 
 </Tip>
 
@@ -54,7 +52,6 @@ The figure below compares non-FreeU and FreeU results respectively for the same 
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/freeu/sdv1_5_freeu.jpg)
 
-We can clearly see that the results have improved with FreeU (especially for the final image).
 
 Let's see how Stable Diffusion 2 results are impacted:
 
@@ -73,11 +70,12 @@ pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.1, b2=1.2)
 image = pipeline(prompt, generator=torch.manual_seed(seed)).images[0]
 ```
 
-Here is the non-FreeU vs. FreeU comparison:
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/freeu/sdv2_1_freeu.jpg)
 
 ## Stable Diffusion XL
+
+Finally, let's take a look at how FreeU affects Stable Diffusion XL results:
 
 ```py
 from diffusers import DiffusionPipeline
@@ -96,11 +94,12 @@ pipeline.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
 image = pipeline(prompt, generator=torch.manual_seed(seed)).images[0]
 ```
 
-Here is the non-FreeU vs. FreeU comparison:
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/freeu/sdxl_freeu.jpg)
 
 ## Text-to-video generation
+
+FreeU can also be used to improve video quality:
 
 ```python
 from diffusers import DiffusionPipeline
@@ -121,4 +120,4 @@ video_frames = pipe(prompt, height=320, width=576, num_frames=30, generator=torc
 export_to_video(video_frames, "astronaut_rides_horse.mp4")
 ```
 
-*Thanks [kadirnar](https://github.com/kadirnar/) for helping to integrate the feature. Thanks to [justindujardin](https://github.com/justindujardin) for the helpful discussions.*
+Thanks to [kadirnar](https://github.com/kadirnar/) for helping to integrate the feature, and to [justindujardin](https://github.com/justindujardin) for the helpful discussions.
