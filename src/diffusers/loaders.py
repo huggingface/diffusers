@@ -3028,7 +3028,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
-        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet, _pipeline=self)
+        self.load_lora_into_unet(
+            state_dict, network_alphas=network_alphas, unet=self.unet, adapter_name=adapter_name, _pipeline=self
+        )
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
