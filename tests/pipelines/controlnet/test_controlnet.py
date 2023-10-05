@@ -127,7 +127,7 @@ class ControlNetPipelineFastTests(
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
-            norm_num_groups=1
+            norm_num_groups=1,
         )
         torch.manual_seed(0)
         controlnet = ControlNetModel(
@@ -137,7 +137,7 @@ class ControlNetPipelineFastTests(
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             cross_attention_dim=32,
             conditioning_embedding_out_channels=(16, 32),
-            norm_num_groups=1
+            norm_num_groups=1,
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
@@ -155,7 +155,7 @@ class ControlNetPipelineFastTests(
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
-            norm_num_groups=2
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
