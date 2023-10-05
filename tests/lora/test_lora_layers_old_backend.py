@@ -2256,21 +2256,34 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
     def test_sdxl_1_0_fuse_unfuse_all(self):
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16)
         text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict())
         text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
         unet_sd = copy.deepcopy(pipe.unet.state_dict())
 
         pipe.load_lora_weights(
-            "davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.float16
+            "davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.bfloat16
         )
+
+        fused_te_state_dict = pipe.text_encoder.state_dict()
+        fused_te_2_state_dict = pipe.text_encoder_2.state_dict()
+        unet_state_dict = pipe.unet.state_dict()
+
+        for key, value in text_encoder_1_sd.items():
+            self.assertTrue(torch.allclose(fused_te_state_dict[key], value))
+
+        for key, value in text_encoder_2_sd.items():
+            self.assertTrue(torch.allclose(fused_te_2_state_dict[key], value))
+
+        for key, value in unet_state_dict.items():
+            self.assertTrue(torch.allclose(unet_state_dict[key], value))
+
         pipe.fuse_lora()
         pipe.unload_lora_weights()
-        pipe.unfuse_lora()
 
-        assert state_dicts_almost_equal(text_encoder_1_sd, pipe.text_encoder.state_dict())
-        assert state_dicts_almost_equal(text_encoder_2_sd, pipe.text_encoder_2.state_dict())
-        assert state_dicts_almost_equal(unet_sd, pipe.unet.state_dict())
+        assert not state_dicts_almost_equal(text_encoder_1_sd, pipe.text_encoder.state_dict())
+        assert not state_dicts_almost_equal(text_encoder_2_sd, pipe.text_encoder_2.state_dict())
+        assert not state_dicts_almost_equal(unet_sd, pipe.unet.state_dict())
 
     def test_sdxl_1_0_lora_with_sequential_cpu_offloading(self):
         generator = torch.Generator().manual_seed(0)
@@ -2279,6 +2292,7 @@ class LoraIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
+
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 
         images = pipe(
