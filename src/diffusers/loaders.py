@@ -521,33 +521,40 @@ class UNet2DConditionLoadersMixin:
         # Now we remove any existing hooks to
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
-        if _pipeline is not None:
-            for _, component in _pipeline.components.items():
-                if isinstance(component, nn.Module):
-                    if hasattr(component, "_hf_hook"):
-                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                        logger.info(
-                            "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                        )
-                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-        # only custom diffusion needs to set attn processors
-        if is_custom_diffusion:
-            self.set_attn_processor(attn_processors)
+        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `lora_lora_weights_into_unet`
+        if not self.use_peft_backend:
+            if _pipeline is not None:
+                for _, component in _pipeline.components.items():
+                    if isinstance(component, nn.Module):
+                        if hasattr(component, "_hf_hook"):
+                            is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                            is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
 
-        # set lora layers
-        for target_module, lora_layer in lora_layers_list:
-            target_module.set_lora_layer(lora_layer)
+                            # There is no need to remove the hooks as they have been already attached in case LoRA
+                            # if not self.use_peft_backend:
+                            logger.info(
+                                "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                            )
+                            remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-        self.to(dtype=self.dtype, device=self.device)
+            # only custom diffusion needs to set attn processors
+            if is_custom_diffusion:
+                self.set_attn_processor(attn_processors)
 
-        # Offload back.
-        if is_model_cpu_offload:
-            _pipeline.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            _pipeline.enable_sequential_cpu_offload()
-        # Unsafe code />
+            # set lora layers
+            for target_module, lora_layer in lora_layers_list:
+                target_module.set_lora_layer(lora_layer)
+
+            # if not already_offloaded:
+            self.to(dtype=self.dtype, device=self.device)
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
@@ -1512,6 +1519,38 @@ class LoraLoaderMixin:
         return new_state_dict
 
     @classmethod
+    def _optionally_disable_offloading(cls, _pipeline):
+        """
+        Optionnally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
+
+        Args:
+            _pipeline (`Pipeline`):
+                The pipeline to disable offloading for.
+
+        Returns:
+            tuple:
+                A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
+        """
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+
+        if _pipeline is not None:
+            for _, component in _pipeline.components.items():
+                if isinstance(component, nn.Module):
+                    if hasattr(component, "_hf_hook"):
+                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+
+                        # There is no need to remove the hooks as they have been already attached in case LoRA
+                        # if not self.use_peft_backend:
+                        logger.info(
+                            "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                        )
+                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+        return (is_model_cpu_offload, is_sequential_cpu_offload)
+
+    @classmethod
     def load_lora_into_unet(
         cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, adapter_name=None, _pipeline=None
     ):
@@ -1578,6 +1617,10 @@ class LoraLoaderMixin:
             if adapter_name is None:
                 adapter_name = get_adapter_name(unet)
 
+            # In case the pipeline has been already offloaded to CPU - temporarly remove the hooks
+            # otherwise loading LoRA weights will lead to an error
+            is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
+
             inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
             incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
 
@@ -1591,6 +1634,13 @@ class LoraLoaderMixin:
                 elif hasattr(incompatible_keys, "unexpected_keys") and len(incompatible_keys.unexpected_keys) == 0:
                     # At this point all LoRA layars has been loaded so we init back an empty state_dict
                     state_dict = {}
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
 
         unet.load_attn_procs(
             state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage, _pipeline=_pipeline
