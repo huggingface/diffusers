@@ -158,6 +158,7 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.text_encoder_offload_hook = None
         self.final_offload_hook = None
 
+    # TODO: reformatted parameters
     @torch.no_grad()
     def encode_prompt(
         self,
@@ -538,6 +539,7 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return caption.strip()
 
+    # TODO: Check if any values are also incorrect, and correct them!
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
