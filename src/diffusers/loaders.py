@@ -692,9 +692,6 @@ class UNet2DConditionLoadersMixin:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
             if isinstance(module, BaseTunerLayer):
-                if self.lora_scale != 1.0:
-                    module.unscale_layer()
-
                 module.unmerge()
 
     def set_adapters(
