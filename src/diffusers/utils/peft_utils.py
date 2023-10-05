@@ -130,7 +130,9 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
 
             # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
             alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
-            alpha_pattern = {".".join(k.split(".lora_A.")[0].split(".")).replace(".alpha", ""): v for k, v in alpha_pattern.items()}
+            alpha_pattern = {
+                ".".join(k.split(".lora_A.")[0].split(".")).replace(".alpha", ""): v for k, v in alpha_pattern.items()
+            }
         else:
             lora_alpha = set(network_alpha_dict.values()).pop()
 

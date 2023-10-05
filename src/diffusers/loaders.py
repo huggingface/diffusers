@@ -1613,8 +1613,6 @@ class LoraLoaderMixin:
                 if "lora_B" in key:
                     rank[key] = state_dict[key].shape[1]
 
-
-
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict)
             lora_config = LoraConfig(**lora_config_kwargs)
 
