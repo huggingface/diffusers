@@ -725,7 +725,11 @@ def main():
         set="train",
     )
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers, persistent_workers=True
+        train_dataset,
+        batch_size=args.train_batch_size,
+        shuffle=True,
+        num_workers=args.dataloader_num_workers,
+        persistent_workers=True,
     )
     if args.validation_epochs is not None:
         warnings.warn(
