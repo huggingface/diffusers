@@ -173,7 +173,7 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                     new_k = replace_digits(new_k, "resnets")
                     new_k = new_k.replace("proj.1", "proj")
                 if "transformer_blocks" in new_k:
-                    new_k = replace_digits(new_k, "attentions", num_fix=1)
+                    new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_q=1)
                 elif "layer" in new_k or "time_emb" in new_k or "skip" in new_k:
                     new_k = replace_digits(new_k, "resnets", num_fix=0, reduce_r=False)
                     new_k = new_k.replace("skip_connection", "conv_shortcut")
@@ -187,7 +187,7 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                     new_k = new_k.replace("5.2", "1.upsamplers.0")
                     new_k = new_k.replace("8.2", "2.upsamplers.0")
                 else:
-                    new_k = replace_digits(new_k, "attentions", num_fix=1)
+                    new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_q=1)
             elif "mid" in new_k:
                 if "transformer_blocks" in new_k:
                     new_k = new_k.replace(".1.transformer_blocks.0", ".attentions.0.transformer_blocks.0")
@@ -204,10 +204,11 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                     new_k = new_k.replace(".1.", ".attentions.0.")
             elif "down" in new_k:
                 if "transformer_blocks" in new_k:
-                    new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_r=1)
+                    new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_r=1, reduce_q=-1)
                 if "layer" in new_k or "time_emb" in new_k or "skip" in new_k:
                     new_k = replace_digits(new_k, "resnets", num_fix=0, reduce_r=1)
                     new_k = new_k.replace("skip_connection", "conv_shortcut")
+                    new_k = new_k.replace("down_blocks.2.resnets.0.conv_shortcut", "down_blocks.3.resnets.0.conv_shortcut")
                     new_k = new_k.replace("time_emb_proj.1", "time_emb_proj")
                     new_k = new_k.replace("in_layers.0", "norm1")
                     new_k = new_k.replace("out_layers.0", "norm2")
@@ -222,12 +223,13 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                     elif new_k == "down_blocks.0.0.bias":
                         new_k = "conv_in.bias"
                     else:
-                        new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_r=1)
+                        new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_r=1, reduce_q=-1)
             else:
                 new_k = new_k.replace("time_embed.0", "time_embedding.linear_1")
                 new_k = new_k.replace("time_embed.2", "time_embedding.linear_2")
                 new_k = new_k.replace("out.0", "conv_norm_out")
                 new_k = new_k.replace("out.2", "conv_out")
+                new_k = new_k.replace("label_emb.weight", "class_embedding.weight")
             if new_k in sd_hf_unet:
                 if sd_hf_unet[new_k].shape != v.shape:
                     print(f"Warning: {new_k} - HF:  {sd_hf_unet[new_k].shape} , ldm3d: {v.shape}  ")
@@ -326,4 +328,4 @@ if __name__ == "__main__":
 #python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr_v1_lr_depth/logs/2023-09-06T01-47-29_upscaling_512_ldm3d_test/checkpoints/epoch=000000.ckpt --diffusers_like_checkpoint_path /home/estellea/LDM3D_checkpoint/ldm3d-hr --new_folder_name /home/estellea/LDM3D_checkpoint/ldm3d-hr --use_ema
 
 
-# python convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/checkpoints/stable-diffusion/logs/AE_laion_256_100k/lr/AE_f8_all_loss_i256x256x4_op1_l32x32x4_lr1e4/2023-05-24T01-27-22_autoencoder_kl_32x32x4_depth_all_loss_laion_256_100k_rgbd_4ch_option1_lr1e4/checkpoints/last.ckpt --diffusers_like_checkpoint_path /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr --new_folder_name /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr-updated --model_type upscale 
+#python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_upscale_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr/v1/img_deg_depth_deg/logs/2023-09-06T09-05-45_upscaling_512_ldm3d/checkpoints/epoch=000014.ckpt --diffusers_like_checkpoint_path /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr --new_folder_name /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr-updated 

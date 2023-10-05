@@ -33,6 +33,15 @@ PipelineImageInput = Union[
     List[torch.FloatTensor],
 ]
 
+PipelineDepthInput = Union[
+    PIL.Image.Image,
+    np.ndarray,
+    torch.FloatTensor,
+    List[PIL.Image.Image],
+    List[np.ndarray],
+    List[torch.FloatTensor],
+]
+
 
 class VaeImageProcessor(ConfigMixin):
     """
@@ -474,3 +483,118 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             return self.numpy_to_pil(image), self.numpy_to_depth(image)
         else:
             raise Exception(f"This type {output_type} is not supported")
+
+
+    def preprocess(
+        self,
+        rgb: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        depth: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+    ) -> torch.Tensor:
+        """
+        Preprocess the image input. Accepted formats are PIL images, NumPy arrays or PyTorch tensors.
+        """
+        supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
+
+        # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
+        if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
+            if isinstance(image, torch.Tensor):
+                # if image is a pytorch tensor could have 2 possible shapes:
+                #    1. batch x height x width: we should insert the channel dimension at position 1
+                #    2. channnel x height x width: we should insert batch dimension at position 0,
+                #       however, since both channel and batch dimension has same size 1, it is same to insert at position 1
+                #    for simplicity, we insert a dimension of size 1 at position 1 for both cases
+                image = image.unsqueeze(1)
+            else:
+                # if it is a numpy array, it could have 2 possible shapes:
+                #   1. batch x height x width: insert channel dimension on last position
+                #   2. height x width x channel: insert batch dimension on first position
+                if rgb.shape[-1] == 1:
+                    rgb = np.expand_dims(rgb, axis=0)
+                    depth = np.expand_dims(depth, axis=0)
+
+                else:
+                    rgb = np.expand_dims(rgb, axis=-1)
+                    depth = np.expand_dims(depth, axis=-1)
+
+        if isinstance(rgb, supported_formats):
+            rgb = [rgb]
+            depth = [depth]
+        elif not (isinstance(rgb, list) and all(isinstance(i, supported_formats) for i in rgb)):
+            raise ValueError(
+                f"Input is in incorrect format: {[type(i) for i in rgb]}. Currently, we only support {', '.join(supported_formats)}"
+            )
+
+        if isinstance(rgb[0], PIL.Image.Image):
+            if self.config.do_convert_rgb:
+                rgb = [self.convert_to_rgb(i) for i in rgb]
+                depth = [self.convert_to_depth(i) for i in depth]
+            if self.config.do_resize:
+                height, width = self.get_default_height_width(rgb[0], height, width)
+                rgb = [self.resize(i, height, width) for i in rgb]
+                depth = [self.resize(i, height, width) for i in depth]
+            rgb = self.pil_to_numpy(rgb)  # to np
+            rgb = self.numpy_to_pt(rgb)  # to pt
+
+            depth = self.pil_to_numpy(depth)  # to np
+            depth = self.numpy_to_pt(depth)  # to pt
+
+        elif isinstance(rgb[0], np.ndarray):
+            rgb = np.concatenate(rgb, axis=0) if rgb[0].ndim == 4 else np.stack(rgb, axis=0)
+            rgb = self.numpy_to_pt(rgb)
+            height, width = self.get_default_height_width(rgb, height, width)
+            if self.config.do_resize:
+                rgb = self.resize(rgb, height, width)
+            
+            depth = np.concatenate(depth, axis=0) if rgb[0].ndim == 4 else np.stack(depth, axis=0)
+            depth = self.numpy_to_pt(depth)
+            height, width = self.get_default_height_width(depth, height, width)
+            if self.config.do_resize:
+                depth = self.resize(depth, height, width)
+
+        elif isinstance(rgb[0], torch.Tensor):
+            rgb = torch.cat(rgb, axis=0) if rgb[0].ndim == 4 else torch.stack(rgb, axis=0)
+
+            if self.config.do_convert_grayscale and rgb.ndim == 3:
+                rgb = rgb.unsqueeze(1)
+
+            channel = rgb.shape[1]
+
+
+            height, width = self.get_default_height_width(rgb, height, width)
+            if self.config.do_resize:
+                rgb = self.resize(rgb, height, width)
+
+            depth = torch.cat(depth, axis=0) if depth[0].ndim == 4 else torch.stack(depth, axis=0)
+
+            if self.config.do_convert_grayscale and depth.ndim == 3:
+                depth = depth.unsqueeze(1)
+
+            channel = depth.shape[1]
+            # don't need any preprocess if the image is latents
+            if depth == 4:
+                return rgb, depth
+
+            height, width = self.get_default_height_width(depth, height, width)
+            if self.config.do_resize:
+                depth = self.resize(depth, height, width)
+        # expected range [0,1], normalize to [-1,1]
+        do_normalize = self.config.do_normalize
+        if rgb.min() < 0 and do_normalize:
+            warnings.warn(
+                "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "
+                f"when passing as pytorch tensor or numpy Array. You passed `image` with value range [{image.min()},{image.max()}]",
+                FutureWarning,
+            )
+            do_normalize = False
+
+        if do_normalize:
+            rgb = self.normalize(rgb)
+            depth = self.normalize(depth)
+
+        if self.config.do_binarize:
+            rgb = self.binarize(rgb)
+            depth = self.binarize(depth)
+
+        return rgb, depth

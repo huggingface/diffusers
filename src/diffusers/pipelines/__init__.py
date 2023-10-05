@@ -103,6 +103,7 @@ else:
         StableDiffusionInstructPix2PixPipeline,
         StableDiffusionLatentUpscalePipeline,
         StableDiffusionLDM3DPipeline,
+        StableDiffusionUpscaleLDM3DPipeline,
         StableDiffusionModelEditingPipeline,
         StableDiffusionPanoramaPipeline,
         StableDiffusionParadigmsPipeline,
