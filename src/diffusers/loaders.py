@@ -1187,6 +1187,7 @@ class LoraLoaderMixin:
             network_alphas=network_alphas,
             unet=self.unet,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            adapter_name=adapter_name,
             _pipeline=self,
         )
         self.load_lora_into_text_encoder(
@@ -1497,7 +1498,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def load_lora_into_unet(
-        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, _pipeline=None, adapter_name=None
+        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, adapter_name=None, _pipeline=None
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
@@ -2987,7 +2988,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
     """This class overrides `LoraLoaderMixin` with LoRA loading/saving code that's specific to SDXL"""
 
     # Overrride to properly handle the loading and unloading of the additional text encoder.
-    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_lora_weights(
+        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
+    ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
         `self.text_encoder`.
@@ -3005,6 +3008,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
@@ -3031,6 +3037,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder,
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
+                adapter_name=adapter_name,
                 _pipeline=self,
             )
 
@@ -3042,6 +3049,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder_2,
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
+                adapter_name=adapter_name,
                 _pipeline=self,
             )
 
