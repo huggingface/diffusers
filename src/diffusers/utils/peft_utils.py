@@ -163,9 +163,9 @@ def set_adapter_layers(model, enabled=True):
         if isinstance(module, BaseTunerLayer):
             # The recent version of PEFT needs to call `enable_adapters` instead
             if hasattr(module, "enable_adapters"):
-                module.enable_adapters(enabled=False)
+                module.enable_adapters(enabled=enabled)
             else:
-                module.disable_adapters = True
+                module.disable_adapters = not enabled
 
 
 def set_weights_and_activate_adapters(model, adapter_names, weights):
