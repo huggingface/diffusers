@@ -48,6 +48,7 @@ if is_invisible_watermark_available():
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
+
     XLA_AVAILABLE = True
 else:
     XLA_AVAILABLE = False
