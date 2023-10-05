@@ -23,7 +23,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import UNet3DConditionModel, TextToVideoAnimateDiffPipeline 
         >>> from diffusers.utils import export_to_video
 
-        >>> unet = UNet3DConditionModel.from_pretrained("itsadarshms/animatediff-v2-stable-diffusion-1.5", torch_dtype=torch.float16)
+        >>> unet = UNet3DConditionModel.from_pretrained("itsadarshms/animatediff-v2-stable-diffusion-1.5", subfolder="unet", torch_dtype=torch.float16, use_safetensors=True)
         >>> pipe = TextToVideoAnimateDiffPipeline.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", unet=unet, torch_dtype=torch.float16
         ... )
