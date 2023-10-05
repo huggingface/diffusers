@@ -221,6 +221,9 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=1e-1)
 
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+
 
 @nightly
 @require_torch_gpu

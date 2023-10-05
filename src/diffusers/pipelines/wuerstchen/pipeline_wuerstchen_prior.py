@@ -436,7 +436,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             ).prev_sample
 
             if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                step_idx = i // getattr(self.scheduler, "order", 1)
+                callback(step_idx, t, latents)
 
         # 10. Denormalize the latents
         latents = latents * self.config.latent_mean - self.config.latent_std
