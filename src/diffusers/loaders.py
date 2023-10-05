@@ -669,15 +669,33 @@ class UNet2DConditionLoadersMixin:
         self.apply(self._fuse_lora_apply)
 
     def _fuse_lora_apply(self, module):
-        if hasattr(module, "_fuse_lora"):
-            module._fuse_lora(self.lora_scale)
+        if not self.use_peft_backend:
+            if hasattr(module, "_fuse_lora"):
+                module._fuse_lora(self.lora_scale)
+        else:
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            if isinstance(module, BaseTunerLayer):
+                if self.lora_scale != 1.0:
+                    module.scale_layer(self.lora_scale)
+
+                module.merge()
 
     def unfuse_lora(self):
         self.apply(self._unfuse_lora_apply)
 
     def _unfuse_lora_apply(self, module):
-        if hasattr(module, "_unfuse_lora"):
-            module._unfuse_lora()
+        if not self.use_peft_backend:
+            if hasattr(module, "_unfuse_lora"):
+                module._unfuse_lora()
+        else:
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            if isinstance(module, BaseTunerLayer):
+                if self.lora_scale != 1.0:
+                    module.unscale_layer()
+
+                module.unmerge()
 
     def set_adapters(
         self,
