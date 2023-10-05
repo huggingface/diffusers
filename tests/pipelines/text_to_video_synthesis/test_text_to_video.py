@@ -206,7 +206,8 @@ class TextToVideoSDPipelineSlowTests(unittest.TestCase):
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="pt").frames
         video = video_frames.cpu().numpy()
-        expected_video = video[0, 0, -3:, -3:, -1].flatten()
-        print(", ".join([str(round(x, 4)) for x in expected_video.tolist()]))
+        video = video[0, 0, -3:, -3:, -1].flatten()
+
+        expected_video = [-0.3102, -0.2477, -0.1772, -0.648, -0.6176, -0.5484, -0.0217, -0.056, -0.0177]
 
         assert np.abs(expected_video - video).mean() < 5e-2
