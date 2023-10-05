@@ -17,8 +17,6 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
-  - local: tutorials/freeu
-    title: Improve generation quality with FreeU
   title: Tutorials
 - sections:
   - sections:
@@ -60,6 +58,8 @@
       title: Control image brightness
     - local: using-diffusers/weighted_prompts
       title: Prompt weighting
+    - local: using-diffusers/freeu
+      title: Improve generation quality with FreeU
     title: Techniques
   - sections:
     - local: using-diffusers/pipeline_overview
