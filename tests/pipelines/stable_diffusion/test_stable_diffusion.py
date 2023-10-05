@@ -651,8 +651,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         image = sd_pipe(**inputs).images
         image = image[0, :3, :3, :3]
-        print(", ".join([str(round(x, 4)) for x in image.tolist()]))
-
+        print(", ".join([str(round(x, 4)) for x in image.flatten().tolist()]))
         expected_image = []
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
