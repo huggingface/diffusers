@@ -32,6 +32,7 @@ from ...models.embeddings import (
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import is_torch_version, logging
+from ...utils.torch_utils import apply_freeu
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -749,6 +750,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 add_upsample=add_upsample,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resolution_idx=i,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
@@ -940,6 +942,38 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
+
+    def enable_freeu(self, s1, s2, b1, b2):
+        r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
+
+        The suffixes after the scaling factors represent the stage blocks where they are being applied.
+
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of values that
+        are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+
+        Args:
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate the "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate the "oversmoothing effect" in the enhanced denoising process.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
+        """
+        for i, upsample_block in enumerate(self.up_blocks):
+            setattr(upsample_block, "s1", s1)
+            setattr(upsample_block, "s2", s2)
+            setattr(upsample_block, "b1", b1)
+            setattr(upsample_block, "b2", b2)
+
+    def disable_freeu(self):
+        """Disables the FreeU mechanism."""
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for i, upsample_block in enumerate(self.up_blocks):
+            for k in freeu_keys:
+                if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
+                    setattr(upsample_block, k, None)
 
     def forward(
         self,
@@ -1630,6 +1664,7 @@ class UpBlockFlat(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -1670,12 +1705,33 @@ class UpBlockFlat(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
+
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -1712,6 +1768,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int = 1,
@@ -1790,6 +1847,7 @@ class CrossAttnUpBlockFlat(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
@@ -1803,11 +1861,30 @@ class CrossAttnUpBlockFlat(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
