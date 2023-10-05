@@ -641,6 +641,22 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.43625, 0.43554, 0.36670, 0.40660, 0.39703, 0.38658, 0.43936, 0.43557, 0.40592])
         assert np.abs(image_slice - expected_slice).max() < 3e-3
 
+    def test_stable_diffusion_v1_4_with_freeu(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 2
+
+        sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        image = sd_pipe(**inputs).images
+        image = image[0, :3, :3, :3]
+        print(", ".join([str(round(x, 4)) for x in image.tolist()]))
+
+        expected_image = []
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
     def test_stable_diffusion_1_4_pndm(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
         sd_pipe = sd_pipe.to(torch_device)
@@ -1194,22 +1210,6 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_text2img/stable_diffusion_1_4_euler.npy"
         )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_v1_4_with_freeu(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 2
-
-        sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
-        image = sd_pipe(**inputs).images
-        image = image[0, :3, :3, :3]
-        print(", ".join([str(round(x, 4)) for x in image.tolist()]))
-
-        expected_image = []
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3
 
