@@ -2095,7 +2095,13 @@ class LoraLoaderMixin:
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
 
-    def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True, lora_scale: float = 1.0, safe_fusing: bool = False):
+    def fuse_lora(
+        self,
+        fuse_unet: bool = True,
+        fuse_text_encoder: bool = True,
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+    ):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
@@ -2112,7 +2118,7 @@ class LoraLoaderMixin:
                 LoRA parameters then it won't have any effect.
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
-            safe_fusing (`bool`, defaults to `False`): 
+            safe_fusing (`bool`, defaults to `False`):
                 Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
         """
         if fuse_unet or fuse_text_encoder:
@@ -2129,7 +2135,6 @@ class LoraLoaderMixin:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
-
                 # TODO(Patrick, Younes): enable "safe" fusing
                 for module in text_encoder.modules():
                     if isinstance(module, BaseTunerLayer):
