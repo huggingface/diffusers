@@ -397,7 +397,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         for _, module in self.named_modules():
             if isinstance(module, BaseTunerLayer):
-                module.disable_adapters = True
+                if hasattr(module, "enable_adapters"):
+                    module.enable_adapters(enabled=False)
+                else:
+                    # support for older PEFT versions
+                    module.disable_adapters = True
 
     def enable_adapters(self) -> None:
         """
