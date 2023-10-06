@@ -358,11 +358,8 @@ class GEGLU(nn.Module):
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
     def forward(self, hidden_states, scale: float = 1.0):
-        hidden_states, gate = (
-            self.proj(hidden_states, scale).chunk(2, dim=-1)
-            if not USE_PEFT_BACKEND
-            else self.proj(hidden_states).chunk(2, dim=-1)
-        )
+        args = () if USE_PEFT_BACKEND else (scale,)
+        hidden_states, gate = self.proj(hidden_states, *args).chunk(2, dim=-1)
         return hidden_states * self.gelu(gate)
 
 
