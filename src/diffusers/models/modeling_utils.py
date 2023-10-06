@@ -295,7 +295,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
-    def add_adapter(self, adapter_config, adapter_name: Optional[str] = None) -> None:
+    def add_adapter(self, adapter_config, adapter_name: str = "default") -> None:
         r"""
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
@@ -314,8 +314,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
         from peft import PeftConfig, inject_adapter_in_model
-
-        adapter_name = adapter_name or "default"
 
         if not self._hf_peft_config_loaded:
             self._hf_peft_config_loaded = True
