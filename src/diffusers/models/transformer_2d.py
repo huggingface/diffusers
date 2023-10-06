@@ -240,9 +240,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             attention_mask ( `torch.Tensor`, *optional*):
-                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1`
-                the mask is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds
-                large negative values to the attention scores corresponding to "discard" tokens.
+                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
+                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
+                negative values to the attention scores corresponding to "discard" tokens.
             encoder_attention_mask ( `torch.Tensor`, *optional*):
                 Cross-attention mask applied to `encoder_hidden_states`. Two formats supported:
 
