@@ -1,0 +1,156 @@
+- sections:
+  - local: index
+    title: 🧨 Diffusers
+  - local: quicktour
+    title: บทความฉบับย่อ
+  - local: stable_diffusion
+    title: เพิ่มประสิทธิภาพให้กับ Diffusion
+  - local: installation
+    title: การติดตั้ง
+  title: เริ่มต้น
+- sections:
+  - local: tutorials/tutorial_overview
+    title: ภาพรวม
+  - local: using-diffusers/write_own_pipeline
+    title: ทำความเข้าใจกับโมเดล และ schedulers
+  - local: tutorials/autopipeline
+    title: AutoPipeline
+  - local: tutorials/basic_training
+    title: เทรนโมเดล diffusion
+  title: Tutorials
+- sections:
+  - sections:
+    - local: using-diffusers/loading_overview
+      title: ภาพรวม
+    - local: using-diffusers/loading
+      title: โหลดโมเดล, pipelines, และ schedulers
+    - local: using-diffusers/schedulers
+      title: โหลดและเปรียบเทียบ schedulers ต่างๆ
+    - local: using-diffusers/custom_pipeline_overview
+      title: โหลด community pipelines
+    - local: using-diffusers/using_safetensors
+      title: โหลดไฟล์ safetensors
+    - local: using-diffusers/other-formats
+      title: โหลดไฟล์โมเดลนามสกุลและรูปแบบต่างๆ
+    - local: using-diffusers/push_to_hub
+      title: Push ไฟล์เข้า Hugging Face Hub
+    title: การโหลดโมเดลกับ Hugging Face Hub
+  - sections:
+    - local: using-diffusers/unconditional_image_generation
+      title: การเจนรูปภาพแบบ Unconditional
+    - local: using-diffusers/conditional_image_generation
+      title: การเจนรูปภาพแบบ Text-to-image
+    - local: using-diffusers/img2img
+      title: การเจนรูปภาพแบบ Image-to-image
+    - local: using-diffusers/inpaint
+      title: การเจนรูปภาพแบบ Inpainting
+    - local: using-diffusers/depth2img
+      title: การเจนรูปภาพแบบ Depth-to-image
+    title: การเจนรูปภาพ
+  - sections:
+    - local: using-diffusers/textual_inversion_inference
+      title: การใช้งาน Textual inversion
+    - local: training/distributed_inference
+      title: การทำ Distributed inference ด้วย GPU หลายตัว
+    - local: using-diffusers/reusing_seeds
+      title: เพิ่มคุณภาพกับรูปที่เจนด้วย deterministic generation
+    - local: using-diffusers/control_brightness
+      title: ควบคุมความสว่างของภาพ
+    - local: using-diffusers/weighted_prompts
+      title: การทำ Prompt weighting
+    title: Techniques
+  - sections:
+    - local: using-diffusers/pipeline_overview
+      title: ภาพรวม
+    - local: using-diffusers/sdxl
+      title: Stable Diffusion XL
+    - local: using-diffusers/controlnet
+      title: ControlNet
+    - local: using-diffusers/shap-e
+      title: Shap-E
+    - local: using-diffusers/diffedit
+      title: DiffEdit
+    - local: using-diffusers/distilled_sd
+      title: รัน inference ด้วย Distilled Stable Diffusion
+    - local: using-diffusers/reproducibility
+      title: การสร้าง pipelines
+    - local: using-diffusers/custom_pipeline_examples
+      title: Community pipelines
+    - local: using-diffusers/contribute_pipeline
+      title: วิธีการ contribute community pipeline
+    title: Pipelines สำหรับการรัน inference
+  - sections:
+    - local: training/overview
+      title: ภาพรวม
+    - local: training/create_dataset
+      title: การสร้าง dataset เพื่อเทรนโมเดล
+    - local: training/adapt_a_model
+      title: การ adapt โมเดลให้เข้ากับ task ใหม่
+    - local: training/unconditional_training
+      title: การเทรนด้วย Unconditional image generation
+    - local: training/text_inversion
+      title: การเทรนด้วย Textual Inversion
+    - local: training/dreambooth
+      title: การเทรนด้วย DreamBooth
+    - local: training/text2image
+      title: การเทรน Text-to-image
+    - local: training/lora
+      title: การเทรนด้วย LoRA
+    - local: training/controlnet
+      title: การเทรน ControlNet
+    - local: training/instructpix2pix
+      title: การเทรน InstructPix2Pix
+    - local: training/custom_diffusion
+      title: การเทรน Custom Diffusion
+    - local: training/t2i_adapters
+      title: การเทรน T2I-Adapters
+    title: การเทรน
+  - sections:
+    - local: using-diffusers/other-modalities
+      title: Modalities อื่นๆ
+    title: ใช้ Diffusers กับข้อมูลนอกจากรูปภาพ
+  title: การใช้งาน Diffusers
+- sections:
+  - local: optimization/opt_overview
+    title: ภาพรวม
+  - sections:
+    - local: optimization/fp16
+      title: เร่งการรัน inference
+    - local: optimization/memory
+      title: การลด memory usage
+    - local: optimization/torch2.0
+      title: Torch 2.0
+    - local: optimization/xformers
+      title: xFormers
+    - local: optimization/tome
+      title: Token merging
+    title: Optimizations เบื้องต้น
+  - sections:
+    - local: using-diffusers/stable_diffusion_jax_how_to
+      title: JAX/Flax
+    - local: optimization/onnx
+      title: ONNX
+    - local: optimization/open_vino
+      title: OpenVINO
+    - local: optimization/coreml
+      title: Core ML
+    title: รูปแบบของ Optimized model
+  - sections:
+    - local: optimization/mps
+      title: Metal Performance Shaders (MPS)
+    - local: optimization/habana
+      title: Habana Gaudi
+    title: Optimized hardware ต่างๆ
+  title: การทำ Optimization
+- sections:
+  - local: conceptual/philosophy
+    title: ปรัชญา
+  - local: using-diffusers/controlling_generation
+    title: การคุม generation
+  - local: conceptual/contribution
+    title: วิธีการ contribute
+  - local: conceptual/ethical_guidelines
+    title: จริยธรรมกับ Diffusers
+  - local: conceptual/evaluation
+    title: การประเมินโมเดล Diffusion ต่างๆ
+  title: แนวทางและ Conceptual guides
