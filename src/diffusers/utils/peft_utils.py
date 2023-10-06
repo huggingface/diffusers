@@ -111,10 +111,11 @@ def unscale_lora_layers(model):
             module.unscale_layer()
 
 
-def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
+def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True):
     rank_pattern = {}
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
+
     if len(set(rank_dict.values())) > 1:
         # get the rank occuring the most number of times
         r = collections.Counter(rank_dict.values()).most_common()[0][0]
@@ -130,9 +131,13 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
 
             # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
             alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
-            alpha_pattern = {
-                ".".join(k.split(".lora_A.")[0].split(".")).replace(".alpha", ""): v for k, v in alpha_pattern.items()
-            }
+            if is_unet:
+                alpha_pattern = {
+                    ".".join(k.split(".lora_A.")[0].split(".")).replace(".alpha", ""): v
+                    for k, v in alpha_pattern.items()
+                }
+            else:
+                alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
         else:
             lora_alpha = set(network_alpha_dict.values()).pop()
 

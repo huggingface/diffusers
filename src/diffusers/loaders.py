@@ -1613,7 +1613,7 @@ class LoraLoaderMixin:
                 if "lora_B" in key:
                     rank[key] = state_dict[key].shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict)
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
@@ -1747,7 +1747,9 @@ class LoraLoaderMixin:
                 if cls.use_peft_backend:
                     from peft import LoraConfig
 
-                    lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict)
+                    lora_config_kwargs = get_peft_kwargs(
+                        rank, network_alphas, text_encoder_lora_state_dict, is_unet=False
+                    )
 
                     lora_config = LoraConfig(**lora_config_kwargs)
 
