@@ -1013,7 +1013,8 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, scale=scale) if not USE_PEFT_BACKEND else attn.to_q(hidden_states)
+        args = () if USE_PEFT_BACKEND else (scale,)
+        query = attn.to_q(hidden_states, *args)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
