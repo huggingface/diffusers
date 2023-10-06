@@ -833,7 +833,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
-    @slow
+    @nightly
     @require_torch_gpu
     def test_integration_logits_multi_adapter(self):
         path = "stabilityai/stable-diffusion-xl-base-1.0"
