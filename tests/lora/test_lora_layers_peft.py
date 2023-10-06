@@ -12,35 +12,46 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import os
 import tempfile
-import unittest
 import time
-import copy
+import unittest
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from huggingface_hub.repocard import RepoCard
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
+    ControlNetModel,
     DDIMScheduler,
     DiffusionPipeline,
     EulerDiscreteScheduler,
     StableDiffusionPipeline,
+    StableDiffusionXLControlNetPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
-    StableDiffusionXLControlNetPipeline,
 )
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.attention_processor import (
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
 )
-from diffusers.utils.import_utils import is_peft_available, is_accelerate_available
-from diffusers.utils.testing_utils import floats_tensor, nightly, require_peft_backend, require_torch_gpu, slow, load_image, torch_device
+from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
+from diffusers.utils.testing_utils import (
+    floats_tensor,
+    load_image,
+    nightly,
+    require_peft_backend,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
+
 
 if is_accelerate_available():
     from accelerate.utils import release_memory
@@ -61,6 +72,7 @@ def state_dicts_almost_equal(sd1, sd2):
             models_are_equal = False
 
     return models_are_equal
+
 
 def create_unet_lora_layers(unet: nn.Module):
     lora_attn_procs = {}
@@ -793,9 +805,8 @@ class PeftLoraLoaderMixinTests:
         if self.has_two_text_encoders:
             pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, mode="reduce-overhead", fullgraph=True)
 
-        # Just makes sure it works.. 
+        # Just makes sure it works..
         _ = pipe(**inputs, generator=torch.manual_seed(0)).images
-
 
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
@@ -1111,7 +1122,6 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
         release_memory(pipe)
 
-
     def test_a1111(self):
         generator = torch.Generator().manual_seed(0)
 
@@ -1131,7 +1141,6 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipe)
-
 
     def test_lycoris(self):
         generator = torch.Generator().manual_seed(0)
@@ -1153,7 +1162,6 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipe)
 
-
     def test_a1111_with_model_cpu_offload(self):
         generator = torch.Generator().manual_seed(0)
 
@@ -1173,7 +1181,6 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipe)
 
-
     def test_a1111_with_sequential_cpu_offload(self):
         generator = torch.Generator().manual_seed(0)
 
@@ -1192,7 +1199,6 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipe)
-
 
     def test_kohya_sd_v15_with_higher_dimensions(self):
         generator = torch.Generator().manual_seed(0)
@@ -1214,7 +1220,6 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipe)
 
-
     def test_vanilla_funetuning(self):
         generator = torch.Generator().manual_seed(0)
 
@@ -1234,7 +1239,6 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
         release_memory(pipe)
-
 
     def test_unload_kohya_lora(self):
         generator = torch.manual_seed(0)
@@ -1402,11 +1406,11 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 
-        pipe.fuse_lora()    
+        pipe.fuse_lora()
         # We need to unload the lora weights since in the previous API `fuse_lora` led to lora weights being
         # silently deleted - otherwise this will CPU OOM
         pipe.unload_lora_weights()
-    
+
         pipe.enable_model_cpu_offload()
 
         images = pipe(
@@ -1428,7 +1432,7 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
         pipe.fuse_lora()
-        
+
         pipe.enable_model_cpu_offload()
 
         images = pipe(
@@ -1443,7 +1447,6 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
         images_without_fusion = images[0, -3:, -3:, -1].flatten()
 
-        
         self.assertFalse(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
         release_memory(pipe)
 
