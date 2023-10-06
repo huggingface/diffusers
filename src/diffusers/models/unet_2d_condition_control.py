@@ -18,28 +18,15 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from ..configuration_utils import ConfigMixin, register_to_config
+from ..configuration_utils import ConfigMixin
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
-from .activations import get_activation
-from .attention_processor import (
-    ADDED_KV_ATTENTION_PROCESSORS,
-    CROSS_ATTENTION_PROCESSORS,
-    AttentionProcessor,
-    AttnAddedKVProcessor,
-    AttnProcessor,
-)
+
 from .embeddings import (
     GaussianFourierProjection,
-    ImageHintTimeEmbedding,
-    ImageProjection,
-    ImageTimeEmbedding,
-    PositionNet,
-    TextImageProjection,
-    TextImageTimeEmbedding,
-    TextTimeEmbedding,
     TimestepEmbedding,
     Timesteps,
+    get_timestep_embedding
 )
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
@@ -47,11 +34,6 @@ from .unet_2d_blocks import (
     DownBlock2D,
     CrossAttnUpBlock2D,
     UpBlock2D,
-    UNetMidBlock2DCrossAttn,
-    UNetMidBlock2DSimpleCrossAttn,
-    UNetMidBlock2DCrossAttn,
-    get_down_block,
-    get_up_block,
 )
 from .unet_2d_condition import UNet2DConditionModel
 
@@ -120,6 +102,9 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
 
         self.hint_model = None
 
+        self.flip_sin_to_cos = flip_sin_to_cos
+        self.freq_shift = freq_shift
+        
         # Time embedding
         if time_embedding_type == "fourier":
             time_embed_dim = time_embedding_dim or block_out_channels[0] * 2
@@ -240,12 +225,12 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             zero_module(nn.Conv2d(256, int(model_channels * self.control_model_ratio), 3, padding=1))
         )
     
-        self.scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
-        self.register_buffer('scale_list', torch.tensor(self.scale_list))
+        scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
+        self.register_buffer('scale_list', torch.tensor(scale_list))
 
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, hint: torch.Tensor, no_control=False, **kwargs):
-        # # # Params from unet_2d_condition.UNet2DConditionModel.forward:
+        """ Params from unet_2d_condition.UNet2DConditionModel.forward:
         # self,
         # sample: torch.FloatTensor,
         # timestep: Union[torch.Tensor, float, int],
@@ -259,25 +244,40 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         # mid_block_additional_residual: Optional[torch.Tensor] = None,
         # encoder_attention_mask: Optional[torch.Tensor] = None,
         # return_dict: bool = True,
-        #
+        """
 
+        # # < from forward
         x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
         if x.size(0) // 2 == hint.size(0): hint = torch.cat([hint, hint], dim=0) # for classifier free guidance
         
         timesteps=t
         context=c.get("crossattn", None)
         y=c.get("vector", None)
+        # # />
 
+        # # < from forward_
         if no_control: return self.base_model(x=x, timesteps=timesteps, context=context, y=y, **kwargs)
 
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-        if self.learn_embedding: emb = self.control_model.time_embed(t_emb) * self.control_scale ** 0.3 + self.base_model.time_embed(t_emb) * (1 - control_scale ** 0.3)
-        else: emb = self.base_model.time_embed(t_emb)
+        # # Warning for Umer: What I & cnxs call 'projection', diffusers calls 'embedding'; and vice versa
+        # Code from cnxs:
+        #t_emb = self.time_embedding(timesteps, self.model_channels, repeat_only=False)
+        #if self.learn_embedding: emb = self.control_model.time_embed(t_emb) * self.control_scale ** 0.3 + self.base_model.time_embed(t_emb) * (1 - control_scale ** 0.3)
+        #else: emb = self.base_model.time_embed(t_emb)
+
+        t_emb = get_timestep_embedding(
+            timesteps, 
+            self.model_channels,
+            # # TODO: Undetrstand flip_sin_to_cos / (downscale_)freq_shift
+            flip_sin_to_cos=self.flip_sin_to_cos,
+            downscale_freq_shift=self.freq_shift,
+        )
+        
+        # self.learn_embedding == False
+        emb = self.base_model.time_embedding(t_emb)
 
         if y is not None: emb = emb + self.base_model.label_emb(y)
 
-        if precomputed_hint: guided_hint = hint
-        else: guided_hint = self.input_hint_block(hint, emb, context)
+        guided_hint = self.input_hint_block(hint, emb, context)
 
         h_ctr = h_base = x
         hs_base, hs_ctr = [], []
@@ -285,6 +285,9 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         scales = iter(self.scale_list)
 
         # Cross Control
+        # 0 - conv in
+        h_base = self.base_model.conv_in(h_base)
+        h_ctrl = self.control_model.conv_in(h_ctrl)
         # 1 - input blocks (encoder)
         for module_base, module_ctr in zip(self.base_model.down_blocks, self.control_model.down_blocks):
             h_base = module_base(h_base, emb, context)
@@ -306,7 +309,7 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             h_base = module_base(h_base, emb, context)
 
         return self.base_model.out(h_base)
-
+        # # />
 
 
     def make_zero_conv(self, in_channels, out_channels=None):
