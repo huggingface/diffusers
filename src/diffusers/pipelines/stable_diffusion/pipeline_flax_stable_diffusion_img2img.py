@@ -235,7 +235,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         prompt_ids: jnp.array,
         image: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.KeyArray,
+        prng_seed: jax.Array,
         start_timestep: int,
         num_inference_steps: int,
         height: int,
@@ -340,7 +340,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         prompt_ids: jnp.array,
         image: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.KeyArray,
+        prng_seed: jax.Array,
         strength: float = 0.8,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
@@ -361,7 +361,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
                 Array representing an image batch to be used as the starting point.
             params (`Dict` or `FrozenDict`):
                 Dictionary containing the model parameters/weights.
-            prng_seed (`jax.random.KeyArray` or `jax.Array`):
+            prng_seed (`jax.Array` or `jax.Array`):
                 Array containing random number generator key.
             strength (`float`, *optional*, defaults to 0.8):
                 Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
