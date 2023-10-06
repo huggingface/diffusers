@@ -164,7 +164,10 @@ class LoRACompatibleConv(nn.Conv2d):
                 hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
             )
         else:
-            return super().forward(hidden_states) + (scale * self.lora_layer(hidden_states))
+            original_outputs = F.conv2d(
+                hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
+            )
+            return original_outputs + (scale * self.lora_layer(hidden_states))
 
 
 class LoRACompatibleLinear(nn.Linear):
