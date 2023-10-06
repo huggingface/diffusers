@@ -158,7 +158,7 @@ class StableDiffusionXLPipeline(
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        
+
         if hasattr(self, "unet") and self.unet is not None:
             self.default_sample_size = self.unet.config.sample_size
         else:
@@ -266,16 +266,17 @@ class StableDiffusionXLPipeline(
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
-            self._lora_scale = lora_scale
+        if self.text_encoder is not None:
+            if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
+                self._lora_scale = lora_scale
 
-            # dynamically adjust the LoRA scale
-            if not self.use_peft_backend:
-                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
-            else:
-                scale_lora_layers(self.text_encoder, lora_scale)
-                scale_lora_layers(self.text_encoder_2, lora_scale)
+                # dynamically adjust the LoRA scale
+                if not self.use_peft_backend:
+                    adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+                    adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+                else:
+                    scale_lora_layers(self.text_encoder, lora_scale)
+                    scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -391,7 +392,11 @@ class StableDiffusionXLPipeline(
 
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+        if self.text_encoder_2 is not None:
+            prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+        else:
+            prompt_embeds = prompt_embeds.to(dtype=self.unet.dtype, device=device)
+
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -400,7 +405,12 @@ class StableDiffusionXLPipeline(
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+
+            if self.text_encoder_2 is not None:
+                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+            else:
+                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.unet.dtype, device=device)
+
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
@@ -412,10 +422,11 @@ class StableDiffusionXLPipeline(
                 bs_embed * num_images_per_prompt, -1
             )
 
-        if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
-            # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder)
-            unscale_lora_layers(self.text_encoder_2)
+        if self.text_encoder is not None:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder)
+                unscale_lora_layers(self.text_encoder_2)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
