@@ -346,17 +346,17 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if not self._hf_peft_config_loaded:
             raise ValueError("No adapter loaded. Please load an adapter first.")
-        elif isinstance(adapter_name, list):
-            missing = set(adapter_name) - set(self.peft_config)
-            if len(missing) > 0:
-                raise ValueError(
-                    f"Following adapter(s) could not be found: {', '.join(missing)}. Make sure you are passing the correct adapter name(s)."
-                    f" current loaded adapters are: {list(self.peft_config.keys())}"
-                )
-        elif adapter_name not in self.peft_config:
+
+        if isinstance(adapter_name, str):
+            adapter_name = [adapter_name]
+
+        missing = set(adapter_name) - set(self.peft_config)
+        if len(missing) > 0:
             raise ValueError(
-                f"Adapter with name {adapter_name} not found. Please pass the correct adapter name among {list(self.peft_config.keys())}"
+                f"Following adapter(s) could not be found: {', '.join(missing)}. Make sure you are passing the correct adapter name(s)."
+                f" current loaded adapters are: {list(self.peft_config.keys())}"
             )
+
 
         from peft.tuners.tuners_utils import BaseTunerLayer
 
