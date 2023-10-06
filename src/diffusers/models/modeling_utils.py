@@ -326,8 +326,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
         # Unlike transformers, here we don't need to retrieve the name_or_path of the unet as the loading logic is
-        # handled by the `load_lora_layers` or `LoraLoaderMixin`.
-        # @patrickvonplaten @sayakpaul do we have an equivalent of `model.config.name_or_path` in diffusers?
+        # handled by the `load_lora_layers` or `LoraLoaderMixin`. Therefore we set it to `None` here.
         adapter_config.base_model_name_or_path = None
         inject_adapter_in_model(adapter_config, self, adapter_name)
         self.set_adapter(adapter_name)
