@@ -333,10 +333,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def set_adapter(self, adapter_name: Union[str, List[str]]) -> None:
         """
+        Sets a specific adapter by forcing the model to use a that adapter and disable the other adapters.
+
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
-
-        Sets a specific adapter by forcing the model to use a that adapter and disable the other adapters.
 
         Args:
             adapter_name (Union[str, List[str]])):
