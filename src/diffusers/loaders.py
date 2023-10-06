@@ -137,12 +137,11 @@ class PatchedLoraProjection(nn.Module):
         fused_weight = w_orig + (lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
 
         if safe_fusing and torch.isnan(fused_weight).any().item():
-            logger.warn(
+            raise ValueError(
                 "This LoRA weight seems to be broken. "
                 f"Encountered NaN values when trying to fuse LoRA weights for {self}."
                 "LoRA weights will not be fused."
             )
-            return
 
         self.regular_linear_layer.weight.data = fused_weight.to(device=device, dtype=dtype)
 
