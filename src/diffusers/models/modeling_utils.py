@@ -384,7 +384,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def disable_adapters(self) -> None:
         r"""
         Disable all adapters that are attached to the model. This leads to inferring with the base model only.
-        
+
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
         """
