@@ -41,7 +41,6 @@ UNET_TO_DIFFUSERS = {
     ".to_v_lora.up": ".to_v.lora_B",
     ".lora.up": ".lora_B",
     ".lora.down": ".lora_A",
-    ".processor.": ".",
 }
 
 
@@ -103,6 +102,10 @@ DIFFUSERS_STATE_DICT_MAPPINGS = {
     StateDictType.PEFT: PEFT_TO_DIFFUSERS,
 }
 
+KEYS_TO_ALWAYS_REPLACE = {
+    ".processor.": ".",
+}
+
 
 def convert_state_dict(state_dict, mapping):
     r"""
@@ -122,11 +125,17 @@ def convert_state_dict(state_dict, mapping):
     """
     converted_state_dict = {}
     for k, v in state_dict.items():
+        # First, filter out the keys that we always want to replace
+        for pattern in KEYS_TO_ALWAYS_REPLACE.keys():
+            if pattern in k:
+                new_pattern = KEYS_TO_ALWAYS_REPLACE[pattern]
+                k = k.replace(pattern, new_pattern)
+
         for pattern in mapping.keys():
             if pattern in k:
                 new_pattern = mapping[pattern]
                 k = k.replace(pattern, new_pattern)
-                # break
+                break
         converted_state_dict[k] = v
     return converted_state_dict
 
