@@ -907,17 +907,10 @@ def main():
 
             if args.snr_gamma is not None:
                 snr = jnp.array(compute_snr(timesteps))
-                base_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
                 if noise_scheduler.config.prediction_type == "v_prediction":
-                    snr_loss_weights = base_weights + 1
-                else:
-                    # Epsilon and sample prediction use the base weights.
-                    snr_loss_weights = base_weights
-                # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
-                # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
-                # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
-                snr_loss_weights[snr == 0] = 1.0
-
+                    # Velocity objective requires that we add one to SNR values before we divide by them.
+                    snr = snr + 1
+                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
                 loss = loss * snr_loss_weights
 
             loss = loss.mean()
