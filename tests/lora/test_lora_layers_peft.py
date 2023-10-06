@@ -15,6 +15,8 @@
 import os
 import tempfile
 import unittest
+import time
+import copy
 
 import numpy as np
 import torch
@@ -25,10 +27,12 @@ from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokeniz
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DiffusionPipeline,
     EulerDiscreteScheduler,
     StableDiffusionPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
+    StableDiffusionXLControlNetPipeline,
 )
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.attention_processor import (
@@ -36,7 +40,7 @@ from diffusers.models.attention_processor import (
     LoRAAttnProcessor2_0,
 )
 from diffusers.utils.import_utils import is_peft_available, is_accelerate_available
-from diffusers.utils.testing_utils import floats_tensor, nightly, require_peft_backend, require_torch_gpu, slow
+from diffusers.utils.testing_utils import floats_tensor, nightly, require_peft_backend, require_torch_gpu, slow, load_image, torch_device
 
 if is_accelerate_available():
     from accelerate.utils import release_memory
@@ -46,6 +50,17 @@ if is_peft_available():
     from peft.tuners.tuners_utils import BaseTunerLayer
     from peft.utils import get_peft_model_state_dict
 
+
+def state_dicts_almost_equal(sd1, sd2):
+    sd1 = dict(sorted(sd1.items()))
+    sd2 = dict(sorted(sd2.items()))
+
+    models_are_equal = True
+    for ten1, ten2 in zip(sd1.values(), sd2.values()):
+        if (ten1 - ten2).abs().max() > 1e-3:
+            models_are_equal = False
+
+    return models_are_equal
 
 def create_unet_lora_layers(unet: nn.Module):
     lora_attn_procs = {}
@@ -778,8 +793,9 @@ class PeftLoraLoaderMixinTests:
         if self.has_two_text_encoders:
             pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, mode="reduce-overhead", fullgraph=True)
 
-        # Just makes sure it works..
+        # Just makes sure it works.. 
         _ = pipe(**inputs, generator=torch.manual_seed(0)).images
+
 
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
