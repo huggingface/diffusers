@@ -2479,6 +2479,51 @@ class LoraLoaderMixin:
         if hasattr(self, "text_encoder_2"):
             self.enable_lora_for_text_encoder(self.text_encoder_2)
 
+    def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
+        """
+        Sets the LoRAs that are listed in `adapter_names` into a target device. Usefull for offloading the LoRA in CPU
+        in case one wants to load multiple adapters and free some GPU memory.
+
+        Note this is specific to LoRA and needs some tweaking for new adapter architectures (e.g. IA3, AdaLora..)
+
+        Args:
+            adapter_names (`List[str]`):
+                List of adapters to send device to.
+            device (`Union[torch.device, str, int]`):
+                Device to send the adapters to. Can be either a torch device, a str or an integer.
+        """
+        if not self.use_peft_backend:
+            raise ValueError("PEFT backend is required for this method.")
+
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        # Handle the UNET
+        for unet_module in self.unet.modules():
+            if isinstance(unet_module, BaseTunerLayer):
+                # loop over submodules
+                for name, unet_submodule in unet_module.named_children():
+                    if name in ["lora_A", "lora_B"]:
+                        for adapter_name in adapter_names:
+                            unet_submodule[adapter_name].to(device)
+
+        # Handle the text encoder
+        modules_to_process = []
+        if hasattr(self, "text_encoder"):
+            modules_to_process.append(self.text_encoder)
+
+        if hasattr(self, "text_encoder_2"):
+            modules_to_process.append(self.text_encoder_2)
+
+        for text_encoder in modules_to_process:
+            # loop over submodules
+            for text_encoder_module in text_encoder.modules():
+                if isinstance(text_encoder_module, BaseTunerLayer):
+                    # loop over submodules
+                    for name, text_encoder_submodule in text_encoder_module.named_children():
+                        if name in ["lora_A", "lora_B"]:
+                            for adapter_name in adapter_names:
+                                text_encoder_submodule[adapter_name].to(device)
+
 
 class FromSingleFileMixin:
     """

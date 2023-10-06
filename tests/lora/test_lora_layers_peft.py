@@ -36,7 +36,7 @@ from diffusers.models.attention_processor import (
     LoRAAttnProcessor2_0,
 )
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import floats_tensor, require_peft_backend, require_torch_gpu, slow
+from diffusers.utils.testing_utils import floats_tensor, nightly, require_peft_backend, require_torch_gpu, slow
 
 
 if is_peft_available():
@@ -776,6 +776,63 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
         "latent_channels": 4,
     }
+
+    @slow
+    @require_torch_gpu
+    def test_integration_move_lora_cpu(self):
+        path = "runwayml/stable-diffusion-v1-5"
+        lora_id = "takuma104/lora-test-text-encoder-lora-target"
+
+        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
+        pipe.load_lora_weights(lora_id, adapter_name="adapter-1")
+        pipe.load_lora_weights(lora_id, adapter_name="adapter-2")
+        pipe = pipe.to("cuda")
+
+        self.assertTrue(
+            self.check_if_lora_correctly_set(pipe.text_encoder),
+            "Lora not correctly set in text encoder",
+        )
+
+        self.assertTrue(
+            self.check_if_lora_correctly_set(pipe.unet),
+            "Lora not correctly set in text encoder",
+        )
+
+        pipe.set_lora_device(["adapter-1"], "cpu")
+
+        for name, module in pipe.unet.named_modules():
+            if "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device == torch.device("cpu"))
+            elif "adapter-2" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                # import pdb; pdb.set_trace()
+                self.assertTrue(module.weight.device != torch.device("cpu"))
+
+        for name, module in pipe.text_encoder.named_modules():
+            if "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                self.assertTrue(module.weight.device == torch.device("cpu"))
+            elif "adapter-2" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
+                # import pdb; pdb.set_trace()
+                self.assertTrue(module.weight.device != torch.device("cpu"))
+
+        pipe.set_lora_device(["adapter-1"], 0)
+
+        for n, m in pipe.unet.named_modules():
+            if "adapter-1" in n and not isinstance(m, (nn.Dropout, nn.Identity)):
+                self.assertTrue(m.weight.device != torch.device("cpu"))
+
+        for n, m in pipe.text_encoder.named_modules():
+            if "adapter-1" in n and not isinstance(m, (nn.Dropout, nn.Identity)):
+                self.assertTrue(m.weight.device != torch.device("cpu"))
+
+        pipe.set_lora_device(["adapter-1", "adapter-2"], "cuda")
+
+        for n, m in pipe.unet.named_modules():
+            if ("adapter-1" in n or "adapter-2" in n) and not isinstance(m, (nn.Dropout, nn.Identity)):
+                self.assertTrue(m.weight.device != torch.device("cpu"))
+
+        for n, m in pipe.text_encoder.named_modules():
+            if ("adapter-1" in n or "adapter-2" in n) and not isinstance(m, (nn.Dropout, nn.Identity)):
+                self.assertTrue(m.weight.device != torch.device("cpu"))
 
     @slow
     @require_torch_gpu
