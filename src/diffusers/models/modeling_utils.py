@@ -383,10 +383,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def disable_adapters(self) -> None:
         r"""
+        Disable all adapters that are attached to the model. This leads to inferring with the base model only.
+        
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
-
-        Disable all adapters that are attached to the model. This leads to inferring with the base model only.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
@@ -401,10 +401,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def enable_adapters(self) -> None:
         """
+        Enable adapters that are attached to the model. The model will use `self.active_adapter()`
+
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
-
-        Enable adapters that are attached to the model. The model will use `self.active_adapter()`
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
@@ -419,10 +419,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def active_adapters(self) -> List[str]:
         """
+        Gets the current list of active adapters of the model.
+
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
-
-        Gets the current list of active adapters of the model.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
