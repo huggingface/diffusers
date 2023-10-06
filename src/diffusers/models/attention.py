@@ -26,7 +26,7 @@ from .lora import LoRACompatibleLinear
 
 @maybe_allow_in_graph
 class GatedSelfAttentionDense(nn.Module):
-    """
+    r"""
     A gated self-attention dense layer that combines visual features and object features.
 
     Parameters:
@@ -370,7 +370,7 @@ class GEGLU(nn.Module):
         super().__init__()
         self.proj = LoRACompatibleLinear(dim_in, dim_out * 2)
 
-    def gelu(self, gate):
+    def gelu(self, gate: torch.Tensor) -> torch.Tensor:
         if gate.device.type != "mps":
             return F.gelu(gate)
         # mps: gelu is not implemented for float16
@@ -382,7 +382,7 @@ class GEGLU(nn.Module):
 
 
 class ApproximateGELU(nn.Module):
-    """
+    r"""
     The approximate form of Gaussian Error Linear Unit (GELU). For more details, see section 2:
     https://arxiv.org/abs/1606.08415.
 
@@ -395,13 +395,13 @@ class ApproximateGELU(nn.Module):
         super().__init__()
         self.proj = nn.Linear(dim_in, dim_out)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)
         return x * torch.sigmoid(1.702 * x)
 
 
 class AdaLayerNorm(nn.Module):
-    """
+    r"""
     Norm layer modified to incorporate timestep embeddings.
 
     Parameters:
@@ -424,7 +424,7 @@ class AdaLayerNorm(nn.Module):
 
 
 class AdaLayerNormZero(nn.Module):
-    """
+    r"""
     Norm layer adaptive layer norm zero (adaLN-Zero).
 
     Parameters:
@@ -455,7 +455,7 @@ class AdaLayerNormZero(nn.Module):
 
 
 class AdaGroupNorm(nn.Module):
-    """
+    r"""
     GroupNorm layer modified to incorporate timestep embeddings.
 
     Parameters:
