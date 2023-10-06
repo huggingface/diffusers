@@ -106,6 +106,8 @@
       title: Custom Diffusion
     - local: training/t2i_adapters
       title: T2I-Adapters
+    - local: training/ddpo
+      title: Reinforcement learning training with DDPO
     title: Training
   - sections:
     - local: using-diffusers/other-modalities
