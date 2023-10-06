@@ -1629,12 +1629,13 @@ class LoraLoaderMixin:
 
             if incompatible_keys is not None:
                 # check only for unexpected keys
-                if hasattr(incompatible_keys, "unexpected_keys") and len(incompatible_keys.unexpected_keys) > 0:
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
                     logger.warning(
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
-                        f" {incompatible_keys.unexpected_keys}. "
+                        f" {unexpected_keys}. "
                     )
-                elif hasattr(incompatible_keys, "unexpected_keys") and len(incompatible_keys.unexpected_keys) == 0:
+                elif unexpected_keys is not None:
                     # At this point all LoRA layars has been loaded so we init back an empty state_dict
                     state_dict = {}
 
