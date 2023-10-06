@@ -685,7 +685,6 @@ class UNet2DConditionLoadersMixin:
             if isinstance(module, BaseTunerLayer):
                 if self.lora_scale != 1.0:
                     module.scale_layer(self.lora_scale)
-
                 module.merge()
 
     def unfuse_lora(self):

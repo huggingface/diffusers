@@ -778,9 +778,8 @@ class PeftLoraLoaderMixinTests:
         if self.has_two_text_encoders:
             pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, mode="reduce-overhead", fullgraph=True)
 
-        # Just makes sure it works.. 
+        # Just makes sure it works..
         _ = pipe(**inputs, generator=torch.manual_seed(0)).images
-
 
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
