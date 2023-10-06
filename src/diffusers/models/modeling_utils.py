@@ -297,12 +297,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def add_adapter(self, adapter_config, adapter_name: str = "default") -> None:
         r"""
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-
         Adds a fresh new adapter to the current model for training purpose. If no adapter name is passed, a default
         name is assigned to the adapter to follow the convention of PEFT library (in PEFT we use "default" as the
         default adapter name).
+
+        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
+        official documentation: https://huggingface.co/docs/peft
 
         Args:
             adapter_config (`~peft.PeftConfig`):
