@@ -367,7 +367,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 if hasattr(module, "set_adapter"):
                     module.set_adapter(adapter_name)
                 # Previous versions of PEFT does not support multi-adapter inference
-                elif not hasattr(module, "set_adapter") and isinstance(adapter_name, list):
+                elif not hasattr(module, "set_adapter") and len(adapter_name) != 1:
                     raise ValueError(
                         "You are trying to set multiple adapters and you have a PEFT version that does not support multi-adapter inference. Please upgrade to the latest version of PEFT."
                         " `pip install -U peft` or `pip install -U git+https://github.com/huggingface/peft.git`"
