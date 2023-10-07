@@ -81,6 +81,8 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             time_cond_proj_dim: Optional[int] = None,
             flip_sin_to_cos: bool = True,
             freq_shift: int = 0, 
+            encoder_hid_dim: Optional[int] = 768, # Note Umer: should not be hard coded, but okay for minimal functional run - this comes from the text encoder output shape
+            cross_attention_dim: Union[int, Tuple[int]] = 1280, # Note Umer: should not be hard coded, but okay for minimal functional run - this from the unet shapes
         ):
         super().__init__()
 
@@ -131,6 +133,8 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             post_act_fn=timestep_post_act,
             cond_proj_dim=time_cond_proj_dim,
         )
+        # Text embedding
+        self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
 
         # 2 - Create base and control model
         # TODO 1. create base model, or 2. pass it
@@ -229,7 +233,7 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         self.register_buffer('scale_list', torch.tensor(scale_list))
 
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor, c: dict, hint: torch.Tensor, no_control=False, **kwargs):
+    def forward(self, x: torch.Tensor, t: torch.Tensor, encoder_hidden_states: torch.Tensor, c: dict, hint: torch.Tensor, no_control=False, **kwargs):
         """ Params from unet_2d_condition.UNet2DConditionModel.forward:
         # self,
         # sample: torch.FloatTensor,
@@ -264,23 +268,27 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         #if self.learn_embedding: emb = self.control_model.time_embed(t_emb) * self.control_scale ** 0.3 + self.base_model.time_embed(t_emb) * (1 - control_scale ** 0.3)
         #else: emb = self.base_model.time_embed(t_emb)
 
+        # time embeddings
         t_emb = get_timestep_embedding(
             timesteps, 
             self.model_channels,
             # # TODO: Undetrstand flip_sin_to_cos / (downscale_)freq_shift
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.freq_shift,
-        )
-        
+        )        
         # self.learn_embedding == False
-        emb = self.base_model.time_embedding(t_emb)
+        temb = self.base_model.time_embedding(t_emb)
 
-        if y is not None: emb = emb + self.base_model.label_emb(y)
+        if y is not None: emb = emb + self.base_model.label_emb(y) # ?? - sth with class-conditioning
+        # text embeddings
+        cemb = self.encoder_hid_proj(encoder_hidden_states) # Q: use the base/ctrl models' encoder_hid_proj? Need to make sure dims fit
+
+        emb = temb + cemb
 
         guided_hint = self.input_hint_block(hint, emb, context)
 
-        h_ctr = h_base = x
-        hs_base, hs_ctr = [], []
+        h_ctrl = h_base = x
+        hs_base, hs_ctrl = [], []
         it_enc_convs_in, it_enc_convs_out, it_dec_convs_in, it_dec_convs_out = map(iter, (self.enc_zero_convs_in, self.enc_zero_convs_out, self.dec_zero_convs_in, self.dec_zero_convs_out))
         scales = iter(self.scale_list)
 
@@ -289,22 +297,22 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         h_base = self.base_model.conv_in(h_base)
         h_ctrl = self.control_model.conv_in(h_ctrl)
         # 1 - input blocks (encoder)
-        for module_base, module_ctr in zip(self.base_model.down_blocks, self.control_model.down_blocks):
-            h_base = module_base(h_base, emb, context)
-            h_ctr = module_ctr(h_ctr, emb, context)
+        for module_base, module_ctrl in zip(self.base_model.down_blocks, self.control_model.down_blocks):
+            h_base = module_base(h_base, temb, cemb, context)[0] # Note Umer: module_base returns hidden_states and running output list
+            h_ctrl = module_ctrl(h_ctrl, temb, cemb, context)[0] # see above
             if guided_hint is not None:
-                h_ctr = h_ctr + guided_hint
+                h_ctrl = h_ctrl + guided_hint
                 guided_hint = None
             hs_base.append(h_base)
-            hs_ctr.append(h_ctr)
-            h_ctr = torch.cat([h_ctr, next(it_enc_convs_in)(h_base, emb)], dim=1)
+            hs_ctrl.append(h_ctrl)
+            h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base, emb)], dim=1)
         # 2 - mid blocks (bottleneck)
         h_base = self.base_model.mid_block(h_base, emb, context)
-        h_ctr = self.control_model.mid_block(h_ctr, emb, context)
-        h_base = h_base + self.middle_block_out(h_ctr, emb) * next(scales)
+        h_ctrl = self.control_model.mid_block(h_ctrl, emb, context)
+        h_base = h_base + self.middle_block_out(h_ctrl, emb) * next(scales)
         # 3 - output blocks (decoder)
         for module_base in self.base_model.output_blocks:
-            h_base = h_base + next(it_dec_convs_out)(hs_ctr.pop(), emb) * next(scales)
+            h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop(), emb) * next(scales)
             h_base = torch.cat([h_base, hs_base.pop()], dim=1)
             h_base = module_base(h_base, emb, context)
 
