@@ -139,7 +139,7 @@ def make_condition(image, args):
     resolution = args.resolution
     transform = transforms.Compose([transforms.Resize((resolution, resolution)), transforms.ToTensor()])
     img_tensor = transform(image).unsqueeze(0)
-    luminance = generate_luminance_features(img_tensor, mask_type)
+    luminance = generate_luminance_features(img_tensor)
 
 
     point_count = random.choice(point_count_choices)
