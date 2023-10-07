@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import FromSingleFileMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import deprecate, logging
@@ -59,7 +60,7 @@ def preprocess(image):
     return image
 
 
-class StableDiffusionLatentUpscalePipeline(DiffusionPipeline):
+class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, FromSingleFileMixin):
     r"""
     Pipeline for upscaling Stable Diffusion output image resolution by a factor of 2.
 
