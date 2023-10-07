@@ -25,7 +25,7 @@ from pathlib import Path
 from io import BytesIO
 
 
-
+import torch.nn.functional as nn
 import accelerate
 import numpy as np
 import torch
@@ -113,7 +113,7 @@ def modulate_luminance_with_curve(luminance: torch.Tensor, control_points, args)
     luminance_modulated = compute_curve_value(luminance, control_points)  # Bx1xHxW
 
     # Options for masking
-    mask_type = args.mask_type
+    mask_type = args.control_mask_type
     # White noise 
     if mask_type == "white":
         noise = torch.randn_like(luminance)  # Bx1xHxW
@@ -393,7 +393,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--mask_type",
+        "--control_mask_type",
         type=str,
         default="white",
         help="Options are 'white' or 'pyramid'",
