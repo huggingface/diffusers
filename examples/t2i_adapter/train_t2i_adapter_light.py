@@ -22,6 +22,9 @@ import os
 import random
 import shutil
 from pathlib import Path
+from io import BytesIO
+
+
 
 import accelerate
 import numpy as np
@@ -33,6 +36,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
+from kornia.color import rgb_to_lab
 from packaging import version
 from PIL import Image
 from torchvision import transforms
@@ -51,11 +55,6 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-import requests
-from PIL import Image
-from io import BytesIO
-import torch
-import random
 
 from kornia.color.lab import rgb_to_lab
 
@@ -77,14 +76,22 @@ def compute_curve_value(x, points, sigma=0.05):
         y += Ai * torch.exp(-((x - xi) ** 2) / (2 * sigma ** 2))
     return y
 
-# From J. Whittaker
-def pyramid_noise_like(x, discount=0.9):
+# From J. Whitaker Multi Resolution Noise
+# 
+# https://wandb.ai/johnowhitaker/multires_noise/reports/Multi-Resolution-Noise-for-Diffusion-Model-Training--VmlldzozNjYyOTU2
+#
+# With a slight modification for defaulting to deterministic freq scaling ratios(r)
+# this better suites the use case where we want to generate these later at
+# inference time.
+def pyramid_noise_like(x, discount=0.9, random_multiplier=False):
   b, c, w, h = x.shape # EDIT: w and h get over-written, rename for a different variant!
   u = nn.Upsample(size=(w, h), mode='bilinear')
   noise = torch.randn_like(x)
   for i in range(10):
-    #r = random.random()*2+2 # Rather than always going 2x, 
-    r = 2 # We want this to be deterministic. Only the noise should be random not it's distribution
+    if random_multiplier:
+        r = random.random()*2+2 # Rather than always going 2x, 
+    else:
+        r = 2
     w, h = max(1, int(w/(r**i))), max(1, int(h/(r**i)))
     noise += u(torch.randn(b, c, w, h).to(x)) * discount**i
     if w==1 or h==1: break # Lowest resolution is 1x1

@@ -124,6 +124,11 @@ image = pipe(
 image.save("./output.png")
 ```
 
+### Training on Data Augmentations or Model Inferences Results
+
+Many conditionings can be created on the fly e.g. (Black and White Luminance Diagrams), Depth Maps estimated with [Midas](https://huggingface.co/spaces/pytorch/MiDaS), etc... [label](train_t2i_adapter_light.py) is designed to work on conditioning inputs generated in code rather than pre-generated as a dataset.
+
+
 ## Notes
 
 ### Specifying a better VAE
