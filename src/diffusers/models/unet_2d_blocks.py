@@ -469,11 +469,10 @@ class AutoencoderTinyBlock(nn.Module):
     """
         Tiny Autoencoder block used in [`AutoencoderTiny`]. It is a mini residual module consisting of plain conv + ReLU blocks.  
 
-        Parameters:
-            * `in_channels:` The number of input channels.
-            * `out_channels:` The number of output channels.
-            * `act_fn:` The activation function to use. Supported values are `relu`, `tanh`, and `sigmoid`.
-      
+        Args:
+            in_channels (`int`): The number of input channels.
+            out_channels (`int`): The number of output channels.
+            act_fn (`str`):` The activation function to use. Supported values are `relu`, `tanh`, and `sigmoid`.
         
         Output:
             A tensor with the same shape as the input tensor, but with the number of channels equal to `out_channels`.
