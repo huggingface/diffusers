@@ -481,22 +481,6 @@ class AutoencoderTinyBlock(nn.Module):
             * `out_channels:` The number of output channels.
             * `act_fn:` The activation function to use. Supported values are `relu`, `tanh`, and `sigmoid`.
       
-        Example:
-        ```python
-            >>> # Define an autoencoder architecture using the AutoencoderTinyBlock.
-            >>> model = nn.Sequential(
-            >>>            AutoencoderTinyBlock(3, 64, "relu"),
-            >>>            AutoencoderTinyBlock(64, 128, "relu"),
-            >>>            AutoencoderTinyBlock(128, 256, "relu"),
-            >>>            )
-
-            >>> # Train the model on a dataset of images.
-            >>> # ...
-
-            >>> # Use the model to reconstruct an image from a noisy input.
-            >>> noisy_image = ...
-            >>> reconstructed_image = model(noisy_image)
-        ```
         
         Output:
             A tensor with the same shape as the input tensor, but with the number of channels equal to `out_channels`.
