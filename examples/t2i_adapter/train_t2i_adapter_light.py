@@ -25,7 +25,7 @@ from pathlib import Path
 from io import BytesIO
 
 
-
+import torch.nn.functional as nn
 import accelerate
 import numpy as np
 import torch
