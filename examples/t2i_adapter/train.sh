@@ -1,0 +1,23 @@
+accelerate launch train_t2i_adapter_light.py \
+ --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0" \
+ --output_dir="local" \
+ --dataset_name="Nbardy/Synthetic-V5" \
+ --enable_xformers_memory_efficient_attention \
+ --mixed_precision="fp16" \
+ --resolution=1024 \
+ --learning_rate=2e-6 \
+ --lr_warmup_steps=4 \
+ --lr_scheduler="cosine" \
+ --lr_num_cycles=4 \
+ --max_train_steps=480 \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
+ --validation_prompt "A Raw photo of a perfect breaking wave; warped into an amazing illusion" "A Raw photo of a perfect breaking wave; warped into an amazing illusion" \
+ --validation_steps=20 \
+ --train_batch_size=8 \
+ --gradient_accumulation_steps=4096 \
+ --report_to="wandb" \
+ --seed=42 \
+ --push_to_hub \
+ --pretrained_vae_model_name_or_path "madebyollin/sdxl-vae-fp16-fix" \
+ --caption_column "text" \
+ -conditioning_image_column "image"
