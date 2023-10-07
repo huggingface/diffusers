@@ -1647,7 +1647,7 @@ class LoRAXFormersAttnProcessor(nn.Module):
             "0.26.0",
             (
                 f"Make sure use {self_cls_name[4:]} instead by setting"
-                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                "LoRA layers to `self.{to_q,to_k,to_v,add_k_proj,add_v_proj,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
                 " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
@@ -1697,7 +1697,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
             "0.26.0",
             (
                 f"Make sure use {self_cls_name[4:]} instead by setting"
-                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                "LoRA layers to `self.{to_q,to_k,to_v,add_k_proj,add_v_proj,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
                 " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
