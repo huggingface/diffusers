@@ -467,14 +467,7 @@ def get_up_block(
 
 class AutoencoderTinyBlock(nn.Module):
     """
-        It's tiny autoencoder block. The block consists of three 
-        convolutional layers with ReLU activation, followed by a 
-        skip connection and a final ReLU activation.
-
-        The skip connection helps to preserve the spatial information of the input signal, which
-        can be beneficial for autoencoders that are used for image compression or denoising.
-        This block is designed to be used in autoencoder architectures that are lightweight and
-        fast to train.
+        Tiny Autoencoder block used in [`AutoencoderTiny`]. It is a mini residual module consisting of plain conv + ReLU blocks.  
 
         Parameters:
             * `in_channels:` The number of input channels.
