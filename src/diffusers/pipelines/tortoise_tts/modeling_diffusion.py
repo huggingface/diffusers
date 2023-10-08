@@ -11,10 +11,30 @@ from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.resnet import AdaGroupNorm, Downsample2D, Upsample2D, downsample_2d, partial, upsample_2d
 from ...utils import BaseOutput, logging
 from .modeling_common import ConditioningEncoder, TortoiseTTSAttention
-from transformers.models.clvp.modeling_clvp.ClvpConditioningEncoder import compute_groupnorm_groups
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def compute_groupnorm_groups(channels: int, groups: int = 32):
+    """
+    Calculates the value of `num_groups` for nn.GroupNorm. This logic is taken from the official tortoise repository. link :
+    https://github.com/neonbjb/tortoise-tts/blob/4003544b6ff4b68c09856e04d3eff9da26d023c2/tortoise/models/arch_util.py#L26
+    """
+    if channels <= 16:
+        groups = 8
+    elif channels <= 64:
+        groups = 16
+    while channels % groups != 0:
+        groups = int(groups / 2)
+
+    if groups <= 2:
+        raise ValueError(
+            f"Number of groups for the GroupNorm must be greater than 2, but it is {groups}."
+            f"Please consider using a different `hidden_size`"
+        )
+
+    return groups
 
 
 class Mish(torch.nn.Module):
