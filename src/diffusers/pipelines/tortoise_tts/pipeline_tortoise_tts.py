@@ -63,7 +63,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         speech_encoder,  # TODO: get appropriate CLVP components
         text_encoder,
         tokenizer,
-        diffusion_conditioning_encoder: ClvpConditioningEncoder
+        diffusion_conditioning_encoder: ClvpConditioningEncoder,
         diffusion_random_latent_converter: RandomLatentConverter,
         diffusion_denoising_model: TortoiseTTSDenoisingModel,
         scheduler: KarrasDiffusionSchedulers,

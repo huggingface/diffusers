@@ -17,37 +17,6 @@ from ...utils import BaseOutput, logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Note: for now copy __init__ arguments from Attention + relative_pos_embeddings arg
-# https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py#L35
-class AttentionBlock(nn.Module):
-    def __init__(
-        self,
-        query_dim: int,
-        cross_attention_dim: Optional[int] = None,
-        heads: int = 8,
-        dim_head: int = 64,
-        dropout: float = 0.0,
-        bias=False,
-        upcast_attention: bool = False,
-        upcast_softmax: bool = False,
-        cross_attention_norm: Optional[str] = None,
-        cross_attention_norm_num_groups: int = 32,
-        added_kv_proj_dim: Optional[int] = None,
-        norm_num_groups: Optional[int] = None,
-        spatial_norm_dim: Optional[int] = None,
-        out_bias: bool = True,
-        scale_qk: bool = True,
-        only_cross_attention: bool = False,
-        eps: float = 1e-5,
-        rescale_output_factor: float = 1.0,
-        residual_connection: bool = False,
-        _from_deprecated_attn_block=False,
-        processor: Optional[AttnProcessor] = None,
-        relative_pos_embeddings: bool = False,
-    ):
-        pass
-
-
 class TortoiseTTSAttention(nn.Module):
     def __init__(
         self,
@@ -58,12 +27,10 @@ class TortoiseTTSAttention(nn.Module):
         bias=True,
         out_bias: bool = True,
         scale_qk: bool = True,
-        has_relative_attention_bias: bool = True,
         relative_attention_num_buckets: int = 32,
         relative_attention_max_distance: int = 128,
     ):
         super().__init__()
-        self.has_relative_attention_bias = has_relative_attention_bias
         self.relative_attention_num_buckets = relative_attention_num_buckets
         self.relative_attention_max_distance = relative_attention_max_distance
         self.query_dim = query_dim
@@ -80,8 +47,7 @@ class TortoiseTTSAttention(nn.Module):
         self.v = nn.Linear(self.query_dim, self.inner_dim, bias=bias)
         self.o = nn.Linear(self.inner_dim, self.query_dim, bias=out_bias)
 
-        if self.has_relative_attention_bias:
-            self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads)
+        self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads)
         self.pruned_heads = set()
         self.gradient_checkpointing = False
 
@@ -251,14 +217,7 @@ class TortoiseTTSAttention(nn.Module):
         )  # equivalent of torch.einsum("bnqd,bnkd->bnqk", query_states, key_states), compatible with onnx op>9
 
         if position_bias is None:
-            if not self.has_relative_attention_bias:
-                position_bias = torch.zeros(
-                    (1, self.n_heads, real_seq_length, key_length), device=scores.device, dtype=scores.dtype
-                )
-                if self.gradient_checkpointing and self.training:
-                    position_bias.requires_grad = True
-            else:
-                position_bias = self.compute_bias(real_seq_length, key_length, device=scores.device)
+            position_bias = self.compute_bias(real_seq_length, key_length, device=scores.device)
 
             # if key and values are already calculated
             # we want only the last query position bias
@@ -314,7 +273,6 @@ class TortoiseTTSSelfAttention(nn.Module):
         out_bias: bool = True,
         scale_qk: bool = True,
         norm_num_groups: int = 32,
-        has_relative_attention_bias: bool = True,
         relative_attention_num_buckets: int = 32,
         relative_attention_max_distance: int = 128,
         **kwargs,
@@ -328,7 +286,6 @@ class TortoiseTTSSelfAttention(nn.Module):
             bias=bias,
             out_bias=out_bias,
             scale_qk=scale_qk,
-            has_relative_attention_bias=has_relative_attention_bias,
             relative_attention_num_buckets=relative_attention_num_buckets,
             relative_attention_max_distance=relative_attention_max_distance,
         )
@@ -382,7 +339,7 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
     """
     Conditioning encoder for the Tortoise TTS model with architecture
 
-    (input transform) => [AttentionBlock] x num_layers => (output transform)
+    (input transform) => [TortoiseTTSSelfAttention] x num_layers => (output transform)
     """
 
     @register_to_config
@@ -458,11 +415,10 @@ class ConditioningEncoder(ModelMixin, ConfigMixin):
 
         self.attention = nn.ModuleList(
             [
-                AttentionBlock(
-                    out_channels,
-                    heads=out_channels // attention_head_dim,
+                TortoiseTTSSelfAttention(
+                    query_dim=in_channels,
+                    n_heads=in_channels//attention_head_dim,
                     dim_head=attention_head_dim,
-                    relative_pos_embeddings=relative_pos_embeddings,
                 )
                 for _ in range(num_layers)
             ]

@@ -212,8 +212,8 @@ class AttnEncoderBlock1D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_head_dim=1,
-        relative_pos_embeddings: bool = False,
+        attention_head_dim=32,
+        relative_pos_embeddings: bool = True,
         output_scale_factor: float = 1.0,
     ):
         super().__init__()
@@ -244,17 +244,9 @@ class AttnEncoderBlock1D(nn.Module):
             )
             attentions.append(
                 TortoiseTTSAttention(
-                    out_channels,
-                    heads=out_channels // attention_head_dim,
-                    dim_head=attention_head_dim,
-                    rescale_output_factor=output_scale_factor,
-                    eps=resnet_eps,
-                    norm_num_groups=resnet_groups,
-                    residual_connection=True,
-                    bias=True,
-                    upcast_softmax=True,
-                    _from_deprecated_attn_block=True,
-                    relative_pos_embeddings=relative_pos_embeddings,
+                    query_dim=in_channels,
+                    n_heads=in_channels//in_channels,
+                    dim_head=in_channels,
                 )
             )
 
