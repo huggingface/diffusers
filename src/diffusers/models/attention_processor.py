@@ -21,9 +21,10 @@ from torch import nn
 from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
-from .constants import USE_PEFT_BACKEND
+
 from .lora import LoRACompatibleLinear, LoRALinearLayer
 
+from ..utils import USE_PEFT_BACKEND
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

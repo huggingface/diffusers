@@ -23,9 +23,9 @@ import torch.nn.functional as F
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
-from .constants import USE_PEFT_BACKEND
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 
+from ..utils import USE_PEFT_BACKEND
 
 class Upsample1D(nn.Module):
     """A 1D upsampling layer with an optional convolution.

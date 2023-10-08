@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import importlib
+
+from packaging import version
+
+from .import_utils import is_peft_available
 
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
 
@@ -30,3 +35,16 @@ DIFFUSERS_CACHE = default_cache_path
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(hf_cache_home, "modules"))
 DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
+
+# Below should be `True` if the current version of `peft` and `transformers` are compatible with
+# PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
+# available.
+# For PEFT it is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
+_required_peft_version = is_peft_available() and version.parse(
+    version.parse(importlib.metadata.version("peft")).base_version
+) > version.parse("0.5")
+_required_transformers_version = version.parse(
+    version.parse(importlib.metadata.version("transformers")).base_version
+) > version.parse("4.33")
+
+USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version

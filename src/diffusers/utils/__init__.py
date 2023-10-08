@@ -30,6 +30,7 @@ from .constants import (
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
+    USE_PEFT_BACKEND,
 )
 from .deprecation_utils import deprecate
 from .doc_utils import replace_example_docstring

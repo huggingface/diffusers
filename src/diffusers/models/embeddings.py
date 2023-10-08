@@ -19,9 +19,9 @@ import torch
 from torch import nn
 
 from .activations import get_activation
-from .constants import USE_PEFT_BACKEND
 from .lora import LoRACompatibleLinear
 
+from ..utils import USE_PEFT_BACKEND
 
 def get_timestep_embedding(
     timesteps: torch.Tensor,
