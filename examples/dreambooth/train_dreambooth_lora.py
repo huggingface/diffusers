@@ -56,6 +56,11 @@ from diffusers.loaders import (
     LoraLoaderMixin,
     text_encoder_lora_state_dict,
 )
+from diffusers.models.attention_processor import (
+    AttnAddedKVProcessor,
+    AttnAddedKVProcessor2_0,
+    SlicedAttnAddedKVProcessor,
+)
 from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
@@ -654,7 +659,7 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
 def unet_attn_processors_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
     r"""
     Returns:
-        a state dict containing just the attention processor parameters.
+        A state dict containing just the attention processor parameters.
     """
     lora_state_dict = {}
 
@@ -855,10 +860,10 @@ def main(args):
 
     # Set correct lora layers
     unet_lora_parameters = []
-    for name, attn_processor in unet.attn_processors.items():
+    for attn_processor_name, attn_processor in unet.attn_processors.items():
         # Parse the attention module.
         attn_module = unet
-        for n in name.split(".")[:-1]:
+        for n in attn_processor_name.split(".")[:-1]:
             attn_module = getattr(attn_module, n)
 
         # Set the `lora_layer` attribute of the attention-related matrices.
@@ -890,6 +895,23 @@ def main(args):
             attn_module.to_v.lora_layer.parameters(),
             attn_module.to_out[0].lora_layer.parameters(),
         ]
+        if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
+            attn_module.add_k_proj.set_lora_layer(
+                LoRALinearLayer(
+                    in_features=attn_module.add_k_proj.in_features,
+                    out_features=attn_module.add_k_proj.out_features,
+                    rank=args.rank,
+                )
+            )
+            attn_module.add_v_proj.set_lora_layer(
+                LoRALinearLayer(
+                    in_features=attn_module.add_v_proj.in_features,
+                    out_features=attn_module.add_v_proj.out_features,
+                    rank=args.rank,
+                )
+            )
+            current_params.append(attn_module.add_k_proj.lora_layer.parameters())
+            current_params.append(attn_module.add_v_proj.lora_layer.parameters())
 
         unet_lora_parameters.extend(current_params)
 
