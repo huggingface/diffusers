@@ -76,6 +76,18 @@ def compute_curve_value(x, points, sigma=0.05):
         y += Ai * torch.exp(-((x - xi) ** 2) / (2 * sigma ** 2))
     return y
 
+# Function for generating training noise, defaults to:
+# * "white" = high freq white noise(very stable, does not capture low freq well)
+# * "pyramid" = stable at the right values, covers a range of frequencies
+# 
+# Sample noise that we'll add to the latents
+def get_noise_like(x, noise_type):
+    if noise_type is "white":
+        return torch.randn_like(latents)
+    elif noise_type is "pyramid":
+        noise = pyramid_noise_like(x, discount=0.6, random_multiplier=True)
+        return noise
+
 # From J. Whitaker Multi Resolution Noise
 # 
 # https://wandb.ai/johnowhitaker/multires_noise/reports/Multi-Resolution-Noise-for-Diffusion-Model-Training--VmlldzozNjYyOTU2
@@ -679,6 +691,16 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+    parser.add_argument(
+        "--noise_type".
+        type=str,
+        default="white",
+        help=(
+            "The `project_name` argument passed to Accelerator.init_trackers for"
+            " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
+        ),
+    )
+
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1270,8 +1292,7 @@ def main(args):
                 if args.pretrained_vae_model_name_or_path is None:
                     latents = latents.to(weight_dtype)
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
+                noise = get_noise_like(latents, args.noise_type)
                 bsz = latents.shape[0]
 
                 # Cubic sampling to sample a random timestep for each image.
