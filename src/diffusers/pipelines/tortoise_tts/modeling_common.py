@@ -47,6 +47,8 @@ class TortoiseTTSAttention(nn.Module):
         self.v = nn.Linear(self.query_dim, self.inner_dim, bias=bias)
         self.o = nn.Linear(self.inner_dim, self.query_dim, bias=out_bias)
 
+        self.norm = nn.GroupNorm(num_groups=32, num_channels=self.query_dim)
+
         self.relative_attention_bias = nn.Embedding(self.relative_attention_num_buckets, self.n_heads)
         self.pruned_heads = set()
         self.gradient_checkpointing = False
@@ -150,6 +152,9 @@ class TortoiseTTSAttention(nn.Module):
         # Input is (batch_size, seq_length, dim)
         # Mask is (batch_size, key_length) (non-causal) or (batch_size, key_length, key_length)
         # past_key_value[0] is (batch_size, n_heads, q_len - 1, dim_per_head)
+        hidden_states = hidden_states.transpose(1, 2)
+        hidden_states = self.norm(hidden_states).transpose(1, 2)
+
         batch_size, seq_length = hidden_states.shape[:2]
 
         real_seq_length = seq_length

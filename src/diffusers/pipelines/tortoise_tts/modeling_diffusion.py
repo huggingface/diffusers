@@ -48,9 +48,9 @@ class ResnetBlock1D(nn.Module):
         groups=32,
         groups_out=None,
         pre_norm=True,
-        eps=1e-6,
-        non_linearity="swish",
-        time_embedding_norm="default",  # default, scale_shift, ada_group
+        eps=1e-5,
+        non_linearity="silu",
+        time_embedding_norm="scale_shift",  # default, scale_shift, ada_group
         kernel=None,
         output_scale_factor=1.0,
         use_in_shortcut=None,
@@ -193,7 +193,7 @@ class ResnetBlock1D(nn.Module):
         return output_tensor
 
 
-class AttnEncoderBlock1D(nn.Module):
+class UNetBlock1D(nn.Module):
     """
     1D U-Net style block with architecture (no down/upsampling)
 
@@ -207,24 +207,18 @@ class AttnEncoderBlock1D(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
+        num_heads: int = 16,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_head_dim=32,
         relative_pos_embeddings: bool = True,
         output_scale_factor: float = 1.0,
     ):
         super().__init__()
         resnets = []
         attentions = []
-
-        if attention_head_dim is None:
-            logger.warn(
-                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
-            )
-            attention_head_dim = out_channels
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -245,8 +239,8 @@ class AttnEncoderBlock1D(nn.Module):
             attentions.append(
                 TortoiseTTSAttention(
                     query_dim=in_channels,
-                    n_heads=in_channels//in_channels,
-                    dim_head=in_channels,
+                    n_heads=num_heads,
+                    dim_head=in_channels//num_heads,
                 )
             )
 
@@ -296,7 +290,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         num_post_res_blocks: int = 3,
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
-        attention_head_dim: int = 32,  # hidden_channels / num_heads = 512 / 16 = 32
+        num_heads=16,
         dropout: float = 0.0,
     ):
         super().__init__()
@@ -305,31 +299,29 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
 
         # 1. Define latent conditioner, which processes the latent conditioning information
         # from the autoregressive model
-        self.latent_conditioner = ConditioningEncoder(
-            in_channels=in_latent_channels,
-            out_channels=hidden_channels,
-            num_layers=num_latent_cond_layers,
-            attention_head_dim=attention_head_dim,
-            relative_pos_embeddings=True,
-            input_transform="conv",
-            input_conv_kernel_size=3,
-            input_conv_stride=1,
-            input_conv_padding=1,
-            output_transform="groupnorm",
-            output_num_groups=32,  # TODO: get accurate num_groups
+        self.latent_conditioner = nn.Sequential(
+            nn.Conv1d(in_latent_channels, hidden_channels, 3, padding=1),
+            TortoiseTTSAttention(query_dim=hidden_channels, n_heads=num_heads, dim_head=hidden_channels // num_heads),
+            TortoiseTTSAttention(query_dim=hidden_channels, n_heads=num_heads, dim_head=hidden_channels // num_heads),
+            TortoiseTTSAttention(query_dim=hidden_channels, n_heads=num_heads, dim_head=hidden_channels // num_heads),
+            TortoiseTTSAttention(query_dim=hidden_channels, n_heads=num_heads, dim_head=hidden_channels // num_heads),
         )
+
 
         # 2. Define unconditioned embedding (TODO: add more information)
         self.unconditioned_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
 
         # 3. Define conditioning timestep integrator, which combines the conditioning embedding from the
         # autoregressive model with the time embedding
-        self.conditioning_timestep_integrator = AttnEncoderBlock1D(
+        self.conditioning_timestep_integrator = UNetBlock1D(
             in_channels=hidden_channels,
             out_channels=hidden_channels,
             temb_channels=hidden_channels,
             dropout=dropout,
             num_layers=num_timestep_integrator_layers,
+            num_heads=num_heads,
+            resnet_time_scale_shift="scale_shift",
+            resnet_act_fn="silu",
         )
 
         # 4. Define the timestep embedding. Only support positional embeddings for now.
@@ -341,12 +333,15 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         self.conv_add_cond_emb_to_hidden = nn.Conv1d(2 * hidden_channels, hidden_channels, 1)
 
         # 6. Define the trunk of the denoising model
-        self.blocks = AttnEncoderBlock1D(
+        self.blocks = UNetBlock1D(
             in_channels=hidden_channels,
             out_channels=hidden_channels,
             temb_channels=hidden_channels,
             dropout=dropout,
             num_layers=num_layers,
+            num_heads=num_heads,
+            resnet_time_scale_shift="scale_shift",
+            resnet_act_fn="silu",
         )
         self.post_res_blocks = nn.ModuleList(
             [
@@ -364,6 +359,17 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         # 7. Define the output layers
         self.norm_out = nn.GroupNorm(32, hidden_channels)  # TODO: get right number of groups
         self.conv_out = nn.Conv1d(hidden_channels, out_channels, 3, padding=1)
+
+        # 8. used for get_conditioning
+        self.contextual_embedder = nn.Sequential(
+            nn.Conv1d(in_channels, hidden_channels, 3, padding=1, stride=2),
+            nn.Conv1d(hidden_channels, hidden_channels * 2, 3, padding=1, stride=2),
+            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
+            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
+            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
+            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
+            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
+        )
 
     def forward(
         self,
