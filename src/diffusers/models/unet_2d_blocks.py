@@ -472,7 +472,7 @@ class AutoencoderTinyBlock(nn.Module):
     Args:
         in_channels (`int`): The number of input channels.
         out_channels (`int`): The number of output channels.
-        act_fn (`str`): The activation function to use. Supported values are `relu`, `tanh`, and `sigmoid`.
+        act_fn (`str`):` The activation function to use. Supported values are `"swish"`, `"mish"`, `"gelu"`, and `"relu"`.
         
     Returns:
         `torch.FloatTensor`: A tensor with the same shape as the input tensor, but with the number of channels equal to `out_channels`.
