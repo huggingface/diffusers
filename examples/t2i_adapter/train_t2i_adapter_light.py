@@ -692,7 +692,7 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--noise_type".
+        "--noise_type",
         type=str,
         default="white",
         help=(
