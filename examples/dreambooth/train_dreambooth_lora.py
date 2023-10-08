@@ -881,8 +881,8 @@ def main(args):
         current_params = [
             attn_module.to_q.lora_layer.parameters(),
             attn_module.to_k.lora_layer.parameters(),
-            attn_module.to_v.lora_layer,
-            attn_module.to_out[0].lora_layer,
+            attn_module.to_v.lora_layer.parameters(),
+            attn_module.to_out[0].lora_layer.parameters(),
         ]
 
         if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
