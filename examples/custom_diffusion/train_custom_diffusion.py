@@ -207,7 +207,7 @@ class CustomDiffusionDataset(Dataset):
                     with open(concept["class_prompt"], "r") as f:
                         class_prompt = f.read().splitlines()
 
-                class_img_path = [(x, y) for (x, y) in zip(class_images_path, class_prompt)]
+                class_img_path = list(zip(class_images_path, class_prompt))
                 self.class_images_path.extend(class_img_path[:num_class_images])
 
         random.shuffle(self.instance_images_path)
@@ -1216,7 +1216,7 @@ def main(args):
 
             if accelerator.is_main_process:
                 images = []
-    
+
                 if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                     logger.info(
                         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -1234,14 +1234,16 @@ def main(args):
                     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
                     pipeline = pipeline.to(accelerator.device)
                     pipeline.set_progress_bar_config(disable=True)
-    
+
                     # run inference
                     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
                     images = [
-                        pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.0).images[0]
+                        pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.0).images[
+                            0
+                        ]
                         for _ in range(args.num_validation_images)
                     ]
-    
+
                     for tracker in accelerator.trackers:
                         if tracker.name == "tensorboard":
                             np_images = np.stack([np.asarray(img) for img in images])
@@ -1255,7 +1257,7 @@ def main(args):
                                     ]
                                 }
                             )
-    
+
                     del pipeline
                     torch.cuda.empty_cache()
 
