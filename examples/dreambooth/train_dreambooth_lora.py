@@ -56,11 +56,6 @@ from diffusers.loaders import (
     LoraLoaderMixin,
     text_encoder_lora_state_dict,
 )
-from diffusers.models.attention_processor import (
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    SlicedAttnAddedKVProcessor,
-)
 from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
@@ -656,20 +651,23 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
     return prompt_embeds
 
 
-def unet_attn_processors_state_dict(unet) -> Dict[str, torch.tensor]:
+def unet_attn_processors_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
     r"""
     Returns:
         a state dict containing just the attention processor parameters.
     """
-    attn_processors = unet.attn_processors
+    lora_state_dict = {}
 
-    attn_processors_state_dict = {}
+    for name, module in unet.named_modules():
+        if hasattr(module, "set_lora_layer"):
+            lora_layer = getattr(module, "lora_layer")
+            if lora_layer is not None:
+                current_lora_layer_sd = lora_layer.state_dict()
+                for lora_layer_matrix_name, lora_param in current_lora_layer_sd.items():
+                    # The matrix name can either be "down" or "up".
+                    lora_state_dict[f"unet.{name}.lora.{lora_layer_matrix_name}"] = lora_param
 
-    for attn_processor_key, attn_processor in attn_processors.items():
-        for parameter_key, parameter in attn_processor.state_dict().items():
-            attn_processors_state_dict[f"{attn_processor_key}.{parameter_key}"] = parameter
-
-    return attn_processors_state_dict
+    return lora_state_dict
 
 
 def main(args):
@@ -864,19 +862,27 @@ def main(args):
             attn_module = getattr(attn_module, n)
 
         # Set the `lora_layer` attribute of the attention-related matrices.
-        attn_module.to_q.lora_layer = LoRALinearLayer(
-            in_features=attn_module.to_q.in_features, out_features=attn_module.to_q.out_features, rank=args.rank
+        attn_module.to_q.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_q.in_features, out_features=attn_module.to_q.out_features, rank=args.rank
+            )
         )
-        attn_module.to_k.lora_layer = LoRALinearLayer(
-            in_features=attn_module.to_k.in_features, out_features=attn_module.to_k.out_features, rank=args.rank
+        attn_module.to_k.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_k.in_features, out_features=attn_module.to_k.out_features, rank=args.rank
+            )
         )
-        attn_module.to_v.lora_layer = LoRALinearLayer(
-            in_features=attn_module.to_v.in_features, out_features=attn_module.to_v.out_features, rank=args.rank
+        attn_module.to_v.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_v.in_features, out_features=attn_module.to_v.out_features, rank=args.rank
+            )
         )
-        attn_module.to_out[0].lora_layer = LoRALinearLayer(
-            in_features=attn_module.to_out[0].in_features,
-            out_features=attn_module.to_out[0].out_features,
-            rank=args.rank,
+        attn_module.to_out[0].set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_out[0].in_features,
+                out_features=attn_module.to_out[0].out_features,
+                rank=args.rank,
+            )
         )
         current_params = [
             attn_module.to_q.lora_layer.parameters(),
@@ -884,21 +890,6 @@ def main(args):
             attn_module.to_v.lora_layer.parameters(),
             attn_module.to_out[0].lora_layer.parameters(),
         ]
-
-        if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
-            attn_module.add_k_proj.lora_layer = LoRALinearLayer(
-                in_features=attn_module.add_k_proj.in_features,
-                out_features=attn_module.add_k_proj.out_features,
-                rank=args.rank,
-            )
-            attn_module.add_v_proj.lora_layer = LoRALinearLayer(
-                in_features=attn_module.add_v_proj.in_features,
-                out_features=attn_module.add_v_proj.out_features,
-                rank=args.rank,
-            )
-            current_params.extend(
-                [attn_module.add_k_proj.lora_layer.parameters(), attn_module.add_v_proj.lora_layer.parameters()]
-            )
 
         unet_lora_parameters.extend(current_params)
 
