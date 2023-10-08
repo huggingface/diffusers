@@ -18,6 +18,8 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
+from torch.nn.modules.normalization import GroupNorm
+
 from ..configuration_utils import ConfigMixin
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
@@ -28,6 +30,7 @@ from .embeddings import (
     Timesteps,
     get_timestep_embedding
 )
+from .lora import LoRACompatibleConv
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
@@ -140,7 +143,9 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         # TODO 1. create base model, or 2. pass it
         self.base_model = base_model = UNet2DConditionModel()
         # TODO create control model
-        self.control_model = ctrl_model = UNet2DConditionModel()
+        self.control_model = ctrl_model = UNet2DConditionModel(block_out_channels=[32,64,128,128]) # todo: make variable
+        for i, base_channels in enumerate(block_out_channels[:-1]):
+            increase_block_input(self.control_model, block_no=i+1, by=base_channels)
 
 
         # 3 - Gather Channel Sizes
@@ -296,16 +301,18 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
         h_ctrl = self.control_model.conv_in(h_ctrl)
+
+        if guided_hint is not None:
+            h_ctrl = h_ctrl + guided_hint
+            guided_hint = None
         # 1 - input blocks (encoder)
         for module_base, module_ctrl in zip(self.base_model.down_blocks, self.control_model.down_blocks):
             h_base = module_base(h_base, temb, cemb, context)[0] # Note Umer: module_base returns hidden_states and running output list
             h_ctrl = module_ctrl(h_ctrl, temb, cemb, context)[0] # see above
-            if guided_hint is not None:
-                h_ctrl = h_ctrl + guided_hint
-                guided_hint = None
+
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
-            h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base, emb)], dim=1)
+            h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
         # 2 - mid blocks (bottleneck)
         h_base = self.base_model.mid_block(h_base, emb, context)
         h_ctrl = self.control_model.mid_block(h_ctrl, emb, context)
@@ -326,6 +333,34 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         self.out_channels = out_channels or in_channels
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
 
+
+def increase_block_input(unet, block_no, by):
+        """Double the channels size in a unet down block"""
+        assert block_no!=0, "Only after block 0 do we have info to pass from base to control, so you probably didn't mean block_no=0." 
+        r=unet.down_blocks[block_no].resnets[0]
+        old_norm1, old_conv1, old_conv_shortcut = r.norm1,r.conv1,r.conv_shortcut
+        # norm
+        norm_args = 'num_groups num_channels eps affine'.split(' ')
+        for a in norm_args: assert hasattr(old_norm1, a)
+        norm_kwargs = { a: getattr(old_norm1, a) for a in norm_args }
+        norm_kwargs['num_channels'] += by  # surgery done here
+        # conv1
+        conv1_args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
+        for a in conv1_args: assert hasattr(old_conv1, a)
+        conv1_kwargs = { a: getattr(old_conv1, a) for a in conv1_args }
+        conv1_kwargs['bias'] = 'bias' in conv1_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
+        conv1_kwargs['in_channels'] += by  # surgery done here
+        # conv_shortcut
+        if old_conv_shortcut is not None:
+            conv_shortcut_args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
+            for a in conv_shortcut_args: assert hasattr(old_conv_shortcut, a)
+            conv_shortcut_args_kwargs = { a: getattr(old_conv_shortcut, a) for a in conv_shortcut_args }
+            conv_shortcut_args_kwargs['bias'] = 'bias' in conv_shortcut_args_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
+            conv_shortcut_args_kwargs['in_channels'] += by  # surgery done here
+        # swap old with new modules
+        unet.down_blocks[block_no].resnets[0].norm1 = GroupNorm(**norm_kwargs)
+        unet.down_blocks[block_no].resnets[0].conv1 = LoRACompatibleConv(**conv1_kwargs)
+        if old_conv_shortcut is not None: unet.down_blocks[block_no].resnets[0].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
 
 def zero_module(module):
     for p in module.parameters():
