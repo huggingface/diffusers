@@ -326,8 +326,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
                 argument.
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 whether to use classifier free guidance or not
-            clean_caption (bool, defaults to False):
-                If True, the function will preprocess and clean the provided caption before encoding.
+            clean_caption (bool, defaults to `False`):
+                If `True`, the function will preprocess and clean the provided caption before encoding.
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
         """
