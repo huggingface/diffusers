@@ -11,6 +11,7 @@ from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.resnet import AdaGroupNorm, Downsample2D, Upsample2D, downsample_2d, partial, upsample_2d
 from ...utils import BaseOutput, logging
 from .modeling_common import ConditioningEncoder, TortoiseTTSAttention
+from transformers.models.clvp.modeling_clvp.ClvpConditioningEncoder import compute_groupnorm_groups
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -324,7 +325,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
             resnet_act_fn="silu",
         )
 
-        # 4. Define the timestep embedding. Only support positional embeddings for now.
+        # 4. Define the timestep embedding.
         self.time_proj = Timesteps(hidden_channels, flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift)
         self.time_embedding = TimestepEmbedding(in_channels=hidden_channels, time_embed_dim=hidden_channels)
 
@@ -357,7 +358,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         )
 
         # 7. Define the output layers
-        self.norm_out = nn.GroupNorm(32, hidden_channels)  # TODO: get right number of groups
+        self.norm_out = nn.GroupNorm(compute_groupnorm_groups(hidden_channels), hidden_channels)
         self.conv_out = nn.Conv1d(hidden_channels, out_channels, 3, padding=1)
 
         # 8. used for get_conditioning
@@ -388,7 +389,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
             cond_embedding = self.unconditioned_embedding.repeat(sample.shape[0], 1, sample.shape[-1])
         else:
             cond_scale, cond_shift = torch.chunk(conditioning_audio_latents, 2, dim=1)
-            cond_embedding = self.latent_conditioner(autoregressive_latents).embedding
+            cond_embedding = self.latent_conditioner(autoregressive_latents)
             cond_embedding = cond_embedding * (1 + cond_scale.unsqueeze(-1)) + cond_shift.unsqueeze(-1)
             # Interpolate conditional embeddings...?
             cond_embedding = F.interpolate(cond_embedding, size=sample.shape[-1], mode="nearest")
