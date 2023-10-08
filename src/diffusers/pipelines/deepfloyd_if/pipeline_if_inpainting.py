@@ -186,7 +186,6 @@ class IFInpaintingPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.text_encoder_offload_hook = None
         self.final_offload_hook = None
 
-    @torch.no_grad()
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
     @torch.no_grad()
     def encode_prompt(
