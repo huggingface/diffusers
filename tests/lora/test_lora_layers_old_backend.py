@@ -1028,6 +1028,41 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         sd_pipe.unload_lora_weights()
 
+    def test_lora_fuse_nan(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        orig_image_slice = original_images[0, -3:, -3:, -1]
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        import ipdb; ipdb.set_trace()
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        sd_pipe.fuse_lora()
+        lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        self.assertFalse(np.allclose(orig_image_slice, lora_image_slice, atol=1e-3))
+
     def test_lora_fusion(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
