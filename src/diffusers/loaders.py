@@ -725,7 +725,7 @@ class UNet2DConditionLoadersMixin:
 
             if len(adapter_names) != len(weights):
                 raise ValueError(
-                    f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
+                    f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
                 )
             return weights
 
