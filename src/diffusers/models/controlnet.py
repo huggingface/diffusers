@@ -722,6 +722,7 @@ class ControlNetModel(
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
+        print(f"t_emb: {t_emb}")
 
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
@@ -729,6 +730,8 @@ class ControlNetModel(
         t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
+        print(f"emb: {emb}")
+
         aug_emb = None
 
         if self.class_embedding is not None:
