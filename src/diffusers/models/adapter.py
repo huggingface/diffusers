@@ -506,8 +506,8 @@ class LightAdapter(nn.Module):
 
 class LightAdapterBlock(nn.Module):
     r"""
-    A LightAdapterBlock is a helper model that contains multiple LightAdapterResnetBlocks. It is used in the
-    LightAdapter model.
+    A `LightAdapterBlock` is a helper model that contains multiple `LightAdapterResnetBlocks`. It is used in the
+    `LightAdapter` model.
 
     Parameters:
         in_channels (`int`):
