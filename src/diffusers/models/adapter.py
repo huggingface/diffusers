@@ -380,8 +380,8 @@ class FullAdapterXL(nn.Module):
 
 class AdapterBlock(nn.Module):
     r"""
-    An AdapterBlock is a helper model that contains multiple ResNet-like blocks. It is used in the FullAdapter and
-    FullAdapterXL models.
+    An AdapterBlock is a helper model that contains multiple ResNet-like blocks. It is used in the `FullAdapter` and
+    `FullAdapterXL` models.
 
     Parameters:
         in_channels (`int`):
