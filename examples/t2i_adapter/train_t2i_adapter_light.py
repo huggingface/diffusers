@@ -81,11 +81,14 @@ def compute_curve_value(x, points, sigma=0.05):
 # * "pyramid" = stable at the right values, covers a range of frequencies
 # 
 # Sample noise that we'll add to the latents
-def get_noise_like(x, noise_type):
+def get_noise_like(x, args):
+    noise_type = args.noise_type
+    discount = args.pyramid_noise_discount
+
     if noise_type == "white":
         return torch.randn_like(latents)
     elif noise_type == "pyramid":
-        noise = pyramid_noise_like(x, discount=0.6, random_multiplier=True)
+        noise = pyramid_noise_like(x, discount=discount, random_multiplier=True)
         return noise
 
 # From J. Whitaker Multi Resolution Noise
@@ -99,7 +102,7 @@ def pyramid_noise_like(x, discount=0.9, random_multiplier=False):
   b, c, w, h = x.shape # EDIT: w and h get over-written, rename for a different variant!
   u = nn.Upsample(size=(w, h), mode='bilinear')
   noise = torch.randn_like(x)
-  for i in range(10):
+  for i in range(16):
     if random_multiplier:
         r = random.random()*2+2 # Rather than always going 2x, 
     else:
@@ -696,9 +699,18 @@ def parse_args(input_args=None):
         type=str,
         default="white",
         help=(
-            "The `project_name` argument passed to Accelerator.init_trackers for"
-            " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
+            "Noise type options",
+            "white",
+            "pyramid",
         ),
+    )
+    parser.add_argument(
+        "--pyramid_noise_discount",
+        type=str,
+        default="white",
+        help=(
+            "Pyramid noise discount parameter"
+        )
     )
 
 
@@ -1292,7 +1304,7 @@ def main(args):
                 if args.pretrained_vae_model_name_or_path is None:
                     latents = latents.to(weight_dtype)
 
-                noise = get_noise_like(latents, args.noise_type)
+                noise = get_noise_like(latents, args)
                 bsz = latents.shape[0]
 
                 # Cubic sampling to sample a random timestep for each image.
