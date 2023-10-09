@@ -241,7 +241,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         prompt_ids: jnp.array,
         image: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.KeyArray,
+        prng_seed: jax.Array,
         num_inference_steps: int,
         guidance_scale: float,
         latents: Optional[jnp.array] = None,
@@ -351,7 +351,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
         prompt_ids: jnp.array,
         image: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.KeyArray,
+        prng_seed: jax.Array,
         num_inference_steps: int = 50,
         guidance_scale: Union[float, jnp.array] = 7.5,
         latents: jnp.array = None,
@@ -370,7 +370,7 @@ class FlaxStableDiffusionControlNetPipeline(FlaxDiffusionPipeline):
                 Array representing the ControlNet input condition to provide guidance to the `unet` for generation.
             params (`Dict` or `FrozenDict`):
                 Dictionary containing the model parameters/weights.
-            prng_seed (`jax.random.KeyArray` or `jax.Array`):
+            prng_seed (`jax.Array` or `jax.Array`):
                 Array containing random number generator key.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
