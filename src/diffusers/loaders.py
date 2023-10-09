@@ -1518,10 +1518,10 @@ class LoraLoaderMixin:
     @classmethod
     def _optionally_disable_offloading(cls, _pipeline):
         """
-        Optionnally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
+        Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
 
         Args:
-            _pipeline (`Pipeline`):
+            _pipeline (`DiffusionPipeline`):
                 The pipeline to disable offloading for.
 
         Returns:
