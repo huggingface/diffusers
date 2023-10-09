@@ -207,7 +207,7 @@ class CustomDiffusionDataset(Dataset):
                     with open(concept["class_prompt"], "r") as f:
                         class_prompt = f.read().splitlines()
 
-                class_img_path = [(x, y) for (x, y) in zip(class_images_path, class_prompt)]
+                class_img_path = list(zip(class_images_path, class_prompt))
                 self.class_images_path.extend(class_img_path[:num_class_images])
 
         random.shuffle(self.instance_images_path)
