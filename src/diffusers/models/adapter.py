@@ -428,7 +428,7 @@ class AdapterBlock(nn.Module):
 
 class AdapterResnetBlock(nn.Module):
     r"""
-    An AdapterResnetBlock is a helper model that implements a ResNet-like block.
+    An `AdapterResnetBlock` is a helper model that implements a ResNet-like block.
 
     Parameters:
         channels (`int`):
