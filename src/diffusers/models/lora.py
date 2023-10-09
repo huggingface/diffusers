@@ -132,7 +132,7 @@ class LoRACompatibleConv(nn.Conv2d):
         if safe_fusing and torch.isnan(fused_weight).any().item():
             raise ValueError(
                 "This LoRA weight seems to be broken. "
-                "Encountered NaN values when trying to fuse LoRA weights for {self}."
+                f"Encountered NaN values when trying to fuse LoRA weights for {self}."
                 "LoRA weights will not be fused."
             )
 
