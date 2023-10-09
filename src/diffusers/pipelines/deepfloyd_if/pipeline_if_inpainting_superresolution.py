@@ -336,8 +336,8 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return caption.strip()
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
     @torch.no_grad()
+    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
