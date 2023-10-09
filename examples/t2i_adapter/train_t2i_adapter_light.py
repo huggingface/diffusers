@@ -82,9 +82,9 @@ def compute_curve_value(x, points, sigma=0.05):
 # 
 # Sample noise that we'll add to the latents
 def get_noise_like(x, noise_type):
-    if noise_type is "white":
+    if noise_type == "white":
         return torch.randn_like(latents)
-    elif noise_type is "pyramid":
+    elif noise_type == "pyramid":
         noise = pyramid_noise_like(x, discount=0.6, random_multiplier=True)
         return noise
 
