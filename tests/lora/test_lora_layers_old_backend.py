@@ -2264,7 +2264,7 @@ class LoraIntegrationTests(unittest.TestCase):
         unet_sd = copy.deepcopy(pipe.unet.state_dict())
 
         pipe.load_lora_weights(
-            "davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.bfloat16
+            "davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.float16
         )
 
         fused_te_state_dict = pipe.text_encoder.state_dict()
