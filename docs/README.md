@@ -128,7 +128,7 @@ When adding a new pipeline:
     - Possible an end-to-end example of how to use it
 - Add all the pipeline classes that should be linked in the diffusion model. These classes should be added using our Markdown syntax. By default as follows:
 
-```
+```py
 ## XXXPipeline
 
 [[autodoc]] XXXPipeline
@@ -138,7 +138,7 @@ When adding a new pipeline:
 
 This will include every public method of the pipeline that is documented, as well as the  `__call__` method that is not documented by default. If you just want to add additional methods that are not documented, you can put the list of all methods to add in a list that contains `all`.
 
-```
+```py
 [[autodoc]] XXXPipeline
     - all
 	- __call__
@@ -172,7 +172,7 @@ Arguments should be defined with the `Args:` (or `Arguments:` or `Parameters:`) 
 an indentation. The argument should be followed by its type, with its shape if it is a tensor, a colon, and its
 description:
 
-```
+```py
     Args:
         n_layers (`int`): The number of layers of the model.
 ```
@@ -182,7 +182,7 @@ after the argument.
 
 Here's an example showcasing everything so far:
 
-```
+```py
     Args:
         input_ids (`torch.LongTensor` of shape `(batch_size, sequence_length)`):
             Indices of input sequence tokens in the vocabulary.
@@ -196,13 +196,13 @@ Here's an example showcasing everything so far:
 For optional arguments or arguments with defaults we follow the following syntax: imagine we have a function with the
 following signature:
 
-```
+```py
 def my_function(x: str = None, a: float = 1):
 ```
 
 then its documentation should look like this:
 
-```
+```py
     Args:
         x (`str`, *optional*):
             This argument controls ...
@@ -235,14 +235,14 @@ building the return.
 
 Here's an example of a single value return:
 
-```
+```py
     Returns:
         `List[int]`: A list of integers in the range [0, 1] --- 1 for a special token, 0 for a sequence token.
 ```
 
 Here's an example of a tuple return, comprising several objects:
 
-```
+```py
     Returns:
         `tuple(torch.FloatTensor)` comprising various elements depending on the configuration ([`BertConfig`]) and inputs:
         - ** loss** (*optional*, returned when `masked_lm_labels` is provided) `torch.FloatTensor` of shape `(1,)` --

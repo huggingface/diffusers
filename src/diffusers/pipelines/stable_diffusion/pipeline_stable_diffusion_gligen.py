@@ -803,7 +803,9 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
 
                 if gligen_inpaint_image is not None:
                     gligen_inpaint_latent_with_noise = (
-                        self.scheduler.add_noise(gligen_inpaint_latent, torch.randn_like(gligen_inpaint_latent), t)
+                        self.scheduler.add_noise(
+                            gligen_inpaint_latent, torch.randn_like(gligen_inpaint_latent), torch.tensor([t])
+                        )
                         .expand(latents.shape[0], -1, -1, -1)
                         .clone()
                     )

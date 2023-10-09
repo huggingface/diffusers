@@ -25,8 +25,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
-        torch \
-        torchvision \
+        torch==2.0.1 \
+        torchvision==0.15.2 \
         torchaudio \
         invisible_watermark && \
     python3 -m pip install --no-cache-dir \
