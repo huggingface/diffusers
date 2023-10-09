@@ -404,7 +404,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def enable_adapters(self) -> None:
         """
-        Enable adapters that are attached to the model. The model will use `self.active_adapter()`
+        Enable adapters that are attached to the model. The model will use `self.active_adapters()` to retrieve the
+        list of adapters to enable.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
