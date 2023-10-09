@@ -112,7 +112,7 @@ class LoRACompatibleConv(nn.Conv2d):
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self, lora_scale=1.0):
+    def _fuse_lora(self, lora_scale=1.0, safe_fusing=False):
         if self.lora_layer is None:
             return
 
@@ -128,6 +128,14 @@ class LoRACompatibleConv(nn.Conv2d):
         fusion = torch.mm(w_up.flatten(start_dim=1), w_down.flatten(start_dim=1))
         fusion = fusion.reshape((w_orig.shape))
         fused_weight = w_orig + (lora_scale * fusion)
+
+        if safe_fusing and torch.isnan(fused_weight).any().item():
+            raise ValueError(
+                "This LoRA weight seems to be broken. "
+                f"Encountered NaN values when trying to fuse LoRA weights for {self}."
+                "LoRA weights will not be fused."
+            )
+
         self.weight.data = fused_weight.to(device=device, dtype=dtype)
 
         # we can drop the lora layer now
@@ -182,7 +190,7 @@ class LoRACompatibleLinear(nn.Linear):
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self, lora_scale=1.0):
+    def _fuse_lora(self, lora_scale=1.0, safe_fusing=False):
         if self.lora_layer is None:
             return
 
@@ -196,6 +204,14 @@ class LoRACompatibleLinear(nn.Linear):
             w_up = w_up * self.lora_layer.network_alpha / self.lora_layer.rank
 
         fused_weight = w_orig + (lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
+
+        if safe_fusing and torch.isnan(fused_weight).any().item():
+            raise ValueError(
+                "This LoRA weight seems to be broken. "
+                f"Encountered NaN values when trying to fuse LoRA weights for {self}."
+                "LoRA weights will not be fused."
+            )
+
         self.weight.data = fused_weight.to(device=device, dtype=dtype)
 
         # we can drop the lora layer now
