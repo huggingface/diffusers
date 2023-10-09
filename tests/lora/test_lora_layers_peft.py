@@ -1322,6 +1322,7 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(lora_images, lora_images_again, atol=1e-3))
         release_memory(pipe)
 
+
 @slow
 @require_torch_gpu
 class LoraSDXLIntegrationTests(unittest.TestCase):

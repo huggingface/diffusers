@@ -2260,7 +2260,9 @@ class LoraIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
 
     def test_sdxl_1_0_fuse_unfuse_all(self):
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipe = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict())
         text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
         unet_sd = copy.deepcopy(pipe.unet.state_dict())
