@@ -20,13 +20,12 @@ from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
-from ..utils import BaseOutput, deprecate
+from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate
 from .attention import BasicTransformerBlock
 from .embeddings import PatchEmbed
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 
-from ..utils import USE_PEFT_BACKEND
 
 @dataclass
 class Transformer2DModelOutput(BaseOutput):

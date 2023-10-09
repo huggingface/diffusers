@@ -11,14 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import importlib
-
-from packaging import version
-
-from .import_utils import is_peft_available
+import os
 
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
+from packaging import version
+
+from .import_utils import is_peft_available, is_transformers_available
 
 
 default_cache_path = HUGGINGFACE_HUB_CACHE
@@ -43,7 +42,7 @@ DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
 ) > version.parse("0.5")
-_required_transformers_version = version.parse(
+_required_transformers_version = is_transformers_available() and version.parse(
     version.parse(importlib.metadata.version("transformers")).base_version
 ) > version.parse("4.33")
 

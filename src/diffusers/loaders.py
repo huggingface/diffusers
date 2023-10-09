@@ -31,6 +31,7 @@ from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_i
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
+    USE_PEFT_BACKEND,
     _get_model_file,
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
@@ -46,7 +47,6 @@ from .utils import (
     scale_lora_layers,
     set_adapter_layers,
     set_weights_and_activate_adapters,
-    USE_PEFT_BACKEND,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
