@@ -1036,15 +1036,10 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
 
-        original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
-        orig_image_slice = original_images[0, -3:, -3:, -1]
-
         # Emulate training.
         set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
         set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
         set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
-
-        import ipdb; ipdb.set_trace()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1057,11 +1052,22 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
 
-        sd_pipe.fuse_lora()
-        lora_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
-        lora_image_slice = lora_images[0, -3:, -3:, -1]
+        # corrupt one LoRA weight with `inf` values
+        with torch.no_grad():
+            sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight += float(
+                "inf"
+            )
 
-        self.assertFalse(np.allclose(orig_image_slice, lora_image_slice, atol=1e-3))
+        # with `safe_fusing=True` we should see an Error
+        with self.assertRaises(ValueError):
+            sd_pipe.fuse_lora(safe_fusing=True)
+
+        # without we should not see an error, but every image will be black
+        sd_pipe.fuse_lora(safe_fusing=False)
+
+        out = sd_pipe("test", num_inference_steps=2, output_type="np").images
+
+        assert np.isnan(out).all()
 
     def test_lora_fusion(self):
         pipeline_components, lora_components = self.get_dummy_components()
