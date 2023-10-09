@@ -889,12 +889,13 @@ def main(args):
                 rank=args.rank,
             )
         )
-        current_params = [
-            attn_module.to_q.lora_layer.parameters(),
-            attn_module.to_k.lora_layer.parameters(),
-            attn_module.to_v.lora_layer.parameters(),
-            attn_module.to_out[0].lora_layer.parameters(),
-        ]
+
+        # Accumulate the LoRA params to optimize.
+        unet_lora_parameters.extend(attn_module.to_q.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_k.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
+
         if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
             attn_module.add_k_proj.set_lora_layer(
                 LoRALinearLayer(
@@ -910,10 +911,8 @@ def main(args):
                     rank=args.rank,
                 )
             )
-            current_params.append(attn_module.add_k_proj.lora_layer.parameters())
-            current_params.append(attn_module.add_v_proj.lora_layer.parameters())
-
-        unet_lora_parameters.extend(current_params)
+            unet_lora_parameters.extend(attn_module.add_k_proj.lora_layer.parameters())
+            unet_lora_parameters.extend(attn_module.add_v_proj.lora_layer.parameters())
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
