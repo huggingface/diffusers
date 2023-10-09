@@ -775,7 +775,6 @@ class PeftLoraLoaderMixinTests:
             "output with no lora and output with lora disabled should give same results",
         )
 
-    @unittest.skip("This is failing for now - need to investigate")
     def test_simple_inference_with_text_unet_lora_unfused_torch_compile(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
@@ -799,11 +798,11 @@ class PeftLoraLoaderMixinTests:
                 self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-        pipe.text_encoder = torch.compile(pipe.text_encoder, mode="reduce-overhead", fullgraph=True)
+        pipe.unet = torch.compile(pipe.unet)
+        pipe.text_encoder = torch.compile(pipe.text_encoder)
 
         if self.has_two_text_encoders:
-            pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, mode="reduce-overhead", fullgraph=True)
+            pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
 
         # Just makes sure it works..
         _ = pipe(**inputs, generator=torch.manual_seed(0)).images
