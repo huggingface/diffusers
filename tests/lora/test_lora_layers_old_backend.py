@@ -1825,6 +1825,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
 
 
 @slow
+@deprecate_after_peft_backend
 @require_torch_gpu
 class LoraIntegrationTests(unittest.TestCase):
     def test_dreambooth_old_format(self):
@@ -2257,14 +2258,14 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_sdxl_1_0_fuse_unfuse_all(self):
         pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
+        )
         text_encoder_1_sd = copy.deepcopy(pipe.text_encoder.state_dict())
         text_encoder_2_sd = copy.deepcopy(pipe.text_encoder_2.state_dict())
         unet_sd = copy.deepcopy(pipe.unet.state_dict())
 
         pipe.load_lora_weights(
-            "davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.float16
+            "davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.bfloat16
         )
 
         fused_te_state_dict = pipe.text_encoder.state_dict()

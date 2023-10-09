@@ -1336,7 +1336,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_0_9_lora_one(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
         lora_model_id = "hf-internal-testing/sdxl-0.9-daiton-lora"
         lora_filename = "daiton-xl-lora-test.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -1355,7 +1355,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_0_9_lora_two(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
         lora_model_id = "hf-internal-testing/sdxl-0.9-costumes-lora"
         lora_filename = "saijo.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -1374,7 +1374,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_0_9_lora_three(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-0.9")
         lora_model_id = "hf-internal-testing/sdxl-0.9-kamepan-lora"
         lora_filename = "kame_sdxl_v2-000020-16rank.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -1393,7 +1393,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_1_0_lora(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.enable_model_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
@@ -1412,7 +1412,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_1_0_lora_fusion(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -1438,7 +1438,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_1_0_lora_unfusion(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
@@ -1462,7 +1462,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.enable_model_cpu_offload()
 
         generator = torch.Generator().manual_seed(0)
@@ -1494,12 +1494,13 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(original_image_slice, images_without_fusion_slice, atol=1e-3))
         release_memory(pipe)
 
+    @unittest.skip("This lead to CPU OOM")
     def test_sdxl_1_0_lora_fusion_efficiency(self):
         generator = torch.Generator().manual_seed(0)
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
         pipe.enable_model_cpu_offload()
 
@@ -1587,7 +1588,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_1_0_lora_with_sequential_cpu_offloading(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.enable_sequential_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
