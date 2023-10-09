@@ -194,7 +194,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
                 `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked
                 to the text `prompt`, usually at the expense of lower image quality.
-            prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 30):
+            prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 60):
                 The number of prior denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized
                 `prior_timesteps`
