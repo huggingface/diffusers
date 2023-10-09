@@ -128,6 +128,12 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
                 Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
                 `AdaLayerZeroNorm`.
+            num_frames (`int`, *optional*, defaults to 1):
+                The number of frames to be processed per batch. This is used to reshape the hidden states.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
                 tuple.
