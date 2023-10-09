@@ -51,18 +51,24 @@ EXAMPLE_DOC_STRING = """
         >>> from pretty_midi import PrettyMIDI
         >>> import torch
 
-        >>> midi = PrettyMIDI("test.mid")
-
-        >>> controlnet = ControlNetModel.from_pretrained("lauraibnz/midi-audioldm", torch_dtype=torch.float16)
+        >>> if torch.cuda.is_available():
+        >>>     device = "cuda"
+        >>>     torch_dtype = torch.float16
+        >>> else:
+        >>>     device = "cpu"
+        >>>     torch_dtype = torch.float32
+        
+        >>> controlnet = ControlNetModel.from_pretrained("lauraibnz/midi-audioldm-v2", torch_dtype=torch_dtype)
         >>> pipe = AudioLDMControlNetPipeline.from_pretrained(
         ...     "cvssp/audioldm-m-full", controlnet=controlnet, torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "Techno"
-        >>> audio = pipe(prompt, audio_length_in_s=10, ).audio[0]
+        >>> prompt = "piano"
+        >>> midi = PrettyMIDI("test.mid")
+
         >>> audio = pipe(
-        ...     prompt, audio_length_in_s=10, num_inference_steps=20, midi=midi, controlnet_conditioning_scale=0.7
+        ...     prompt, midi=midi, audio_length_in_s=10, num_inference_steps=20, controlnet_conditioning_scale=1.0
         ... ).audio[0]
         ```
 """
