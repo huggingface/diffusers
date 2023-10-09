@@ -24,7 +24,7 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 ```bash
 accelerate config
 ```
-For this example we want to directly store the trained LoRA embeddings on the Hub, so we need to be logged in and add the `--push_to_hub` flag to the training script. To do so, run:
+For this example we want to directly store the trained LoRA embeddings on the Hub, so we need to be logged in and add the `--push_to_hub` flag to the training script. To log in, run:
 ```bash
 huggingface-cli login
 ```
