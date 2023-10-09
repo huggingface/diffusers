@@ -143,10 +143,15 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         # TODO 1. create base model, or 2. pass it
         self.base_model = base_model = UNet2DConditionModel()
         # TODO create control model
-        self.control_model = ctrl_model = UNet2DConditionModel(block_out_channels=[32,64,128,128]) # todo: make variable
-        for i, base_channels in enumerate(block_out_channels[:-1]):
-            increase_block_input(self.control_model, block_no=i+1, by=base_channels)
-
+        self.control_model = ctrl_model = UNet2DConditionModel(
+            block_out_channels=[32,64,128],
+            down_block_types=("CrossAttnDownBlock2D","CrossAttnDownBlock2D","DownBlock2D",),
+            up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        ) # todo: make variable
+        for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))[:-1]): # todo: make variable (sth like block_out_channels[:-1])
+            e1,e2=extra_channels
+            increase_block_input_in_resnet(self.control_model, block_no=i+1, resnet_idx=0, by=e1)
+            increase_block_input_in_resnet(self.control_model, block_no=i+1, resnet_idx=1, by=e2)
 
         # 3 - Gather Channel Sizes
         ch_inout_ctrl = {'enc': [], 'mid': [], 'dec': []}
@@ -301,10 +306,13 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
         h_ctrl = self.control_model.conv_in(h_ctrl)
-
         if guided_hint is not None:
             h_ctrl = h_ctrl + guided_hint
             guided_hint = None
+        hs_base.append(h_base)
+        hs_ctrl.append(h_ctrl)
+        h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
+
         # 1 - input blocks (encoder)
         for module_base, module_ctrl in zip(self.base_model.down_blocks, self.control_model.down_blocks):
             h_base = module_base(h_base, temb, cemb, context)[0] # Note Umer: module_base returns hidden_states and running output list
@@ -334,10 +342,10 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
 
 
-def increase_block_input(unet, block_no, by):
-        """Double the channels size in a unet down block"""
+def increase_block_input_in_resnet(unet, block_no, resnet_idx, by):
+        """Increase channels sizes to allow for additional concatted information from base model"""
         assert block_no!=0, "Only after block 0 do we have info to pass from base to control, so you probably didn't mean block_no=0." 
-        r=unet.down_blocks[block_no].resnets[0]
+        r=unet.down_blocks[block_no].resnets[resnet_idx]
         old_norm1, old_conv1, old_conv_shortcut = r.norm1,r.conv1,r.conv_shortcut
         # norm
         norm_args = 'num_groups num_channels eps affine'.split(' ')
@@ -358,11 +366,59 @@ def increase_block_input(unet, block_no, by):
             conv_shortcut_args_kwargs['bias'] = 'bias' in conv_shortcut_args_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
             conv_shortcut_args_kwargs['in_channels'] += by  # surgery done here
         # swap old with new modules
-        unet.down_blocks[block_no].resnets[0].norm1 = GroupNorm(**norm_kwargs)
-        unet.down_blocks[block_no].resnets[0].conv1 = LoRACompatibleConv(**conv1_kwargs)
-        if old_conv_shortcut is not None: unet.down_blocks[block_no].resnets[0].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
+        unet.down_blocks[block_no].resnets[resnet_idx].norm1 = GroupNorm(**norm_kwargs)
+        unet.down_blocks[block_no].resnets[resnet_idx].conv1 = LoRACompatibleConv(**conv1_kwargs)
+        if old_conv_shortcut is not None: unet.down_blocks[block_no].resnets[resnet_idx].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
+        unet.down_blocks[block_no].resnets[resnet_idx].in_channels += by  # surgery done here
 
 def zero_module(module):
     for p in module.parameters():
         nn.init.zeros_(p)
     return module
+
+
+# util functions, do delete laters
+def gether_channel_sizes(m, m_type):
+    if m_type == 'base':
+        ch_inout_base = {'enc': [], 'mid': [], 'dec': []}
+        # 3.1 - input convolution
+        ch_inout_base['enc'].append((m.conv_in.in_channels, m.conv_in.out_channels))
+        # 3.2 - encoder blocks
+        for module in m.down_blocks:
+            if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
+                for r in module.resnets:
+                    ch_inout_base['enc'].append((r.in_channels, r.out_channels))
+                if module.downsamplers:
+                    ch_inout_base['enc'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
+            else:
+                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
+        # 3.3 - middle block
+        ch_inout_base['mid'].append((m.mid_block.resnets[0].in_channels, m.mid_block.resnets[0].in_channels))
+        # 3.4 - decoder blocks
+        for module in m.up_blocks:
+            if isinstance(module, (CrossAttnUpBlock2D, UpBlock2D)):
+                for r in module.resnets:
+                    ch_inout_base['dec'].append((r.in_channels, r.out_channels))
+            else:
+                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
+        return ch_inout_base
+    elif m_type == 'control':
+        ch_inout_ctrl = {'enc': [], 'mid': [], 'dec': []}
+        # 3.1 - input convolution
+        ch_inout_ctrl['enc'].append((m.conv_in.in_channels, m.conv_in.out_channels))
+        # 3.2 - encoder blocks
+        for module in m.down_blocks:
+            if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
+                for r in module.resnets:
+                    ch_inout_ctrl['enc'].append((r.in_channels, r.out_channels))
+                if module.downsamplers:
+                    ch_inout_ctrl['enc'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
+            else:
+                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
+        # 3.3 - middle block
+        ch_inout_ctrl['mid'].append((m.mid_block.resnets[0].in_channels, m.mid_block.resnets[0].in_channels))
+        return ch_inout_ctrl
+    else: raise ValueError(f'model_type must be `base` or `control`, not `{m_type}`')
+
+def print_channels(ch_szs):
+    for k,v in ch_szs.items(): print(k,v)
