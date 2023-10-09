@@ -1538,8 +1538,6 @@ class LoraLoaderMixin:
                         is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
                         is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
 
-                        # There is no need to remove the hooks as they have been already attached in case LoRA
-                        # if not self.use_peft_backend:
                         logger.info(
                             "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                         )
