@@ -31,7 +31,7 @@ huggingface-cli login
 
 ## Prior training
 
-You can fine-tune the Würstchen prior model with `train_text_to_image_prior.py` script. Note that we currently do not support `--gradient_checkpointing` for prior model fine-tuning.
+You can fine-tune the Würstchen prior model with `train_text_to_image_prior.py` script. Note that we currently support `--gradient_checkpointing` for prior model fine-tuning so one can utilize it for more GPU memory constrained setups.
 
 <br>
 
@@ -44,6 +44,8 @@ accelerate launch  train_text_to_image_prior.py \
   --dataset_name=$DATASET_NAME \
   --resolution=768 \
   --train_batch_size=4 \
+  --gradient_accumulation_steps=4 \
+  --gradient_checkpointing \
   --dataloader_num_workers=4 \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
