@@ -854,7 +854,7 @@ def main(args):
     # For Stable Diffusion, it should be equal to:
     # - down blocks (2x attention layers) * (2x transformer layers) * (3x down blocks) = 12
     # - mid blocks (2x attention layers) * (1x transformer layers) * (1x mid blocks) = 2
-    # - up blocks (2x attention layers) * (3x transformer layers) * (3x down blocks) = 18
+    # - up blocks (2x attention layers) * (3x transformer layers) * (3x up blocks) = 18
     # => 32 layers
 
     # Set correct lora layers
