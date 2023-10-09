@@ -293,7 +293,37 @@ class LoraLoaderMixinTests(unittest.TestCase):
         )
         self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
 
-    @unittest.skipIf(not torch.cuda.is_available(), reason="xformers requires cuda")
+    @unittest.skipIf(
+        torch.cuda.is_available() != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_stable_diffusion_xformers_attn_processors(self):
+        # disable_full_determinism()
+        device = "cuda"  # ensure determinism for the device-dependent torch.Generator
+        components, _ = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs()
+
+        # run xformers attention
+        sd_pipe.enable_xformers_memory_efficient_attention()
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
+        # run lora xformers attention
+        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
+        attn_processors = {
+            k: LoRAXFormersAttnProcessor(hidden_size=v.hidden_size, cross_attention_dim=v.cross_attention_dim)
+            for k, v in attn_processors.items()
+        }
+        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
+        sd_pipe.unet.set_attn_processor(attn_processors)
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
+    @unittest.skipIf(not torch.cuda.is_available(), reason="Test needs to run on GPU")
     def test_stable_diffusion_attn_processors(self):
         # disable_full_determinism()
         device = "cuda"  # ensure determinism for the device-dependent torch.Generator
@@ -305,11 +335,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         _, _, inputs = self.get_dummy_inputs()
 
         # run normal sd pipe
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run xformers attention
-        sd_pipe.enable_xformers_memory_efficient_attention()
         image = sd_pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 
@@ -329,18 +354,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe.unet.set_attn_processor(attn_processors)
         image = sd_pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
-
-        # run lora xformers attention
-        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
-        attn_processors = {
-            k: LoRAXFormersAttnProcessor(hidden_size=v.hidden_size, cross_attention_dim=v.cross_attention_dim)
-            for k, v in attn_processors.items()
-        }
-        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
-        sd_pipe.unet.set_attn_processor(attn_processors)
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
         # enable_full_determinism()
 
     def test_stable_diffusion_lora(self):
@@ -631,7 +644,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
                 if isinstance(module, Attention):
                     self.assertIsInstance(module.processor, XFormersAttnProcessor)
 
-    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    @unittest.skipIf(
+        torch.cuda.is_available() != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
     def test_lora_save_load_with_xformers(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**pipeline_components)
@@ -2209,7 +2225,7 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
         pipe.enable_model_cpu_offload()
 
@@ -2223,7 +2239,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         del pipe
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
         pipe.fuse_lora()
         pipe.enable_model_cpu_offload()
