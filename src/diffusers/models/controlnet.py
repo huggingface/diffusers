@@ -97,7 +97,7 @@ class ControlNetConditioningEmbedding(nn.Module):
 
     def forward(self, conditioning):
         embedding = self.conv_in(conditioning)
-        print(f"From conv_in embedding of ControlNet: {embedding[0, :5, :5, :5]}")
+        print(f"From conv_in embedding of ControlNet: {embedding[0, :5, :5, -1]}")
         embedding = F.silu(embedding)
 
         for block in self.blocks:
