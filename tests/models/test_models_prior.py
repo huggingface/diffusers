@@ -21,8 +21,7 @@ import torch
 from parameterized import parameterized
 
 from diffusers import PriorTransformer
-from diffusers.utils import floats_tensor, slow, torch_all_close, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, slow, torch_all_close, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 

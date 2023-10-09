@@ -35,7 +35,7 @@ from ...schedulers import (
 )
 from ...utils import deprecate, logging, replace_example_docstring
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
-from . import FlaxStableDiffusionPipelineOutput
+from .pipeline_output import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 
@@ -215,7 +215,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         self,
         prompt_ids: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.KeyArray,
+        prng_seed: jax.Array,
         num_inference_steps: int,
         height: int,
         width: int,
@@ -312,7 +312,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         self,
         prompt_ids: jnp.array,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.KeyArray,
+        prng_seed: jax.Array,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,

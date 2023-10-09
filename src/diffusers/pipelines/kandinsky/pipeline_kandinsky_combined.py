@@ -13,7 +13,7 @@
 # limitations under the License.
 from typing import Callable, List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -142,6 +142,7 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
     """
 
     _load_connected_pipes = True
+    model_cpu_offload_seq = "text_encoder->unet->movq->prior_prior->prior_image_encoder->prior_text_encoder"
 
     def __init__(
         self,
@@ -190,16 +191,6 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        self.prior_pipe.enable_model_cpu_offload()
-        self.decoder_pipe.enable_model_cpu_offload()
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -365,6 +356,7 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
     """
 
     _load_connected_pipes = True
+    model_cpu_offload_seq = "prior_text_encoder->prior_image_encoder->prior_prior->" "text_encoder->unet->movq"
 
     def __init__(
         self,
@@ -413,16 +405,6 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        self.prior_pipe.enable_model_cpu_offload()
-        self.decoder_pipe.enable_model_cpu_offload()
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -611,6 +593,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
     """
 
     _load_connected_pipes = True
+    model_cpu_offload_seq = "prior_text_encoder->prior_image_encoder->prior_prior->" "text_encoder->unet->movq"
 
     def __init__(
         self,
@@ -659,16 +642,6 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
 
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        self.prior_pipe.enable_model_cpu_offload()
-        self.decoder_pipe.enable_model_cpu_offload()
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""

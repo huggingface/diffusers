@@ -24,7 +24,7 @@ from typing import List, Optional, Union
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-import PIL
+import PIL.Image
 import tensorrt as trt
 import torch
 from huggingface_hub import snapshot_download

@@ -34,5 +34,7 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 	- load_lora_weights
 	- save_lora_weights
 
-## StableDiffusionPipelineOutput
-[[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
+## StableDiffusionXLInstructPix2PixPipeline
+[[autodoc]] StableDiffusionXLInstructPix2PixPipeline
+	- __call__
+	- all

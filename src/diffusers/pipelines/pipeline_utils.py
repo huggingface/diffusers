@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from huggingface_hub import ModelCard, create_repo, hf_hub_download, model_info, snapshot_download
 from packaging import version
@@ -51,12 +51,12 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
-    is_compiled_module,
     is_torch_version,
     is_transformers_available,
     logging,
     numpy_to_pil,
 )
+from ..utils.torch_utils import is_compiled_module
 
 
 if is_transformers_available():
@@ -342,7 +342,10 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    pipeline_cls = getattr(diffusers_module, config["_class_name"])
+    class_name = config["_class_name"]
+    class_name = class_name[4:] if class_name.startswith("Flax") else class_name
+
+    pipeline_cls = getattr(diffusers_module, class_name)
 
     if load_connected_pipeline:
         from .auto_pipeline import _get_connected_pipeline
@@ -490,6 +493,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
           pipeline to function (should be overridden by subclasses).
     """
     config_name = "model_index.json"
+    model_cpu_offload_seq = None
     _optional_components = []
     _exclude_from_cpu_offload = []
     _load_connected_pipes = False
@@ -666,14 +670,98 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 create_pr=create_pr,
             )
 
-    def to(
-        self,
-        torch_device: Optional[Union[str, torch.device]] = None,
-        torch_dtype: Optional[torch.dtype] = None,
-        silence_dtype_warnings: bool = False,
-    ):
-        if torch_device is None and torch_dtype is None:
-            return self
+    def to(self, *args, **kwargs):
+        r"""
+        Performs Pipeline dtype and/or device conversion. A torch.dtype and torch.device are inferred from the
+        arguments of `self.to(*args, **kwargs).`
+
+        <Tip>
+
+            If the pipeline already has the correct torch.dtype and torch.device, then it is returned as is. Otherwise,
+            the returned pipeline is a copy of self with the desired torch.dtype and torch.device.
+
+        </Tip>
+
+
+        Here are the ways to call `to`:
+
+        - `to(dtype, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the specified
+          [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
+        - `to(device, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the specified
+          [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
+        - `to(device=None, dtype=None, silence_dtype_warnings=False) → DiffusionPipeline` to return a pipeline with the
+          specified [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device) and
+          [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
+
+        Arguments:
+            dtype (`torch.dtype`, *optional*):
+                Returns a pipeline with the specified
+                [`dtype`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.dtype)
+            device (`torch.Device`, *optional*):
+                Returns a pipeline with the specified
+                [`device`](https://pytorch.org/docs/stable/tensor_attributes.html#torch.device)
+            silence_dtype_warnings (`str`, *optional*, defaults to `False`):
+                Whether to omit warnings if the target `dtype` is not compatible with the target `device`.
+
+        Returns:
+            [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
+        """
+
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        if torch_dtype is not None:
+            deprecate("torch_dtype", "0.25.0", "")
+        torch_device = kwargs.pop("torch_device", None)
+        if torch_device is not None:
+            deprecate("torch_device", "0.25.0", "")
+
+        dtype_kwarg = kwargs.pop("dtype", None)
+        device_kwarg = kwargs.pop("device", None)
+        silence_dtype_warnings = kwargs.pop("silence_dtype_warnings", False)
+
+        if torch_dtype is not None and dtype_kwarg is not None:
+            raise ValueError(
+                "You have passed both `torch_dtype` and `dtype` as a keyword argument. Please make sure to only pass `dtype`."
+            )
+
+        dtype = torch_dtype or dtype_kwarg
+
+        if torch_device is not None and device_kwarg is not None:
+            raise ValueError(
+                "You have passed both `torch_device` and `device` as a keyword argument. Please make sure to only pass `device`."
+            )
+
+        device = torch_device or device_kwarg
+
+        dtype_arg = None
+        device_arg = None
+        if len(args) == 1:
+            if isinstance(args[0], torch.dtype):
+                dtype_arg = args[0]
+            else:
+                device_arg = torch.device(args[0]) if args[0] is not None else None
+        elif len(args) == 2:
+            if isinstance(args[0], torch.dtype):
+                raise ValueError(
+                    "When passing two arguments, make sure the first corresponds to `device` and the second to `dtype`."
+                )
+            device_arg = torch.device(args[0]) if args[0] is not None else None
+            dtype_arg = args[1]
+        elif len(args) > 2:
+            raise ValueError("Please make sure to pass at most two arguments (`device` and `dtype`) `.to(...)`")
+
+        if dtype is not None and dtype_arg is not None:
+            raise ValueError(
+                "You have passed `dtype` both as an argument and as a keyword argument. Please only pass one of the two."
+            )
+
+        dtype = dtype or dtype_arg
+
+        if device is not None and device_arg is not None:
+            raise ValueError(
+                "You have passed `device` both as an argument and as a keyword argument. Please only pass one of the two."
+            )
+
+        device = device or device_arg
 
         # throw warning if pipeline is in "offloaded"-mode but user tries to manually set to GPU.
         def module_is_sequentially_offloaded(module):
@@ -694,14 +782,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         pipeline_is_sequentially_offloaded = any(
             module_is_sequentially_offloaded(module) for _, module in self.components.items()
         )
-        if pipeline_is_sequentially_offloaded and torch.device(torch_device).type == "cuda":
+        if pipeline_is_sequentially_offloaded and device and torch.device(device).type == "cuda":
             raise ValueError(
                 "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
             )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
-        if pipeline_is_offloaded and torch.device(torch_device).type == "cuda":
+        if pipeline_is_offloaded and device and torch.device(device).type == "cuda":
             logger.warning(
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
@@ -714,26 +802,26 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             is_loaded_in_8bit = hasattr(module, "is_loaded_in_8bit") and module.is_loaded_in_8bit
 
-            if is_loaded_in_8bit and torch_dtype is not None:
+            if is_loaded_in_8bit and dtype is not None:
                 logger.warning(
                     f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {torch_dtype} is not yet supported. Module is still in 8bit precision."
                 )
 
-            if is_loaded_in_8bit and torch_device is not None:
+            if is_loaded_in_8bit and device is not None:
                 logger.warning(
                     f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {torch_dtype} via `.to()` is not yet supported. Module is still on {module.device}."
                 )
             else:
-                module.to(torch_device, torch_dtype)
+                module.to(device, dtype)
 
             if (
                 module.dtype == torch.float16
-                and str(torch_device) in ["cpu"]
+                and str(device) in ["cpu"]
                 and not silence_dtype_warnings
                 and not is_offloaded
             ):
                 logger.warning(
-                    "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
+                    "Pipelines loaded with `dtype=torch.float16` cannot run with `cpu` device. It"
                     " is not recommended to move them to `cpu` as running them will fail. Please make"
                     " sure to use an accelerator to run the pipeline in inference, due to the lack of"
                     " support for`float16` operations on this device in PyTorch. Please, remove the"
@@ -755,6 +843,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return module.device
 
         return torch.device("cpu")
+
+    @property
+    def dtype(self) -> torch.dtype:
+        r"""
+        Returns:
+            `torch.dtype`: The torch dtype on which the pipeline is located.
+        """
+        module_names, _ = self._get_signature_keys(self)
+        modules = [getattr(self, n, None) for n in module_names]
+        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+
+        for module in modules:
+            return module.dtype
+
+        return torch.float32
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -930,6 +1033,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
+            if pretrained_model_name_or_path.count("/") > 1:
+                raise ValueError(
+                    f'The provided pretrained_model_name_or_path "{pretrained_model_name_or_path}"'
+                    " is neither a valid local path nor a valid repo id. Please check the parameter."
+                )
             cached_folder = cls.download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
@@ -1012,8 +1120,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
-        # define init kwargs
-        init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict}
+        # define init kwargs and make sure that optional component modules are filtered out
+        init_kwargs = {
+            k: init_dict.pop(k)
+            for k in optional_kwargs
+            if k in init_dict and k not in pipeline_class._optional_components
+        }
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         # remove `null` components
@@ -1071,10 +1183,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         from diffusers import pipelines
 
         # 6. Load each module in the pipeline
-        for name, (library_name, class_name) in tqdm(init_dict.items(), desc="Loading pipeline components..."):
+        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
-            if class_name.startswith("Flax"):
-                class_name = class_name[4:]
+            class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
             # 6.2 Define all importable classes
             is_pipeline_module = hasattr(pipelines, library_name)
@@ -1143,8 +1254,22 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "variant": variant,
                 "use_safetensors": use_safetensors,
             }
+
+            def get_connected_passed_kwargs(prefix):
+                connected_passed_class_obj = {
+                    k.replace(f"{prefix}_", ""): w for k, w in passed_class_obj.items() if k.split("_")[0] == prefix
+                }
+                connected_passed_pipe_kwargs = {
+                    k.replace(f"{prefix}_", ""): w for k, w in passed_pipe_kwargs.items() if k.split("_")[0] == prefix
+                }
+
+                connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
+                return connected_passed_kwargs
+
             connected_pipes = {
-                prefix: DiffusionPipeline.from_pretrained(repo_id, **load_kwargs.copy())
+                prefix: DiffusionPipeline.from_pretrained(
+                    repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix)
+                )
                 for prefix, repo_id in connected_pipes.items()
                 if repo_id is not None
             }
@@ -1201,21 +1326,129 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def enable_sequential_cpu_offload(self, gpu_id: int = 0, device: Union[torch.device, str] = "cuda"):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
+        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
+        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+
+        Arguments:
+            gpu_id (`int`, *optional*):
+                The ID of the accelerator that shall be used in inference. If not specified, it will default to 0.
+            device (`torch.Device` or `str`, *optional*, defaults to "cuda"):
+                The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
+                default to "cuda".
+        """
+        if self.model_cpu_offload_seq is None:
+            raise ValueError(
+                "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set."
+            )
+
+        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
+            from accelerate import cpu_offload_with_hook
+        else:
+            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        torch_device = torch.device(device)
+        device_index = torch_device.index
+
+        if gpu_id is not None and device_index is not None:
+            raise ValueError(
+                f"You have passed both `gpu_id`={gpu_id} and an index as part of the passed device `device`={device}"
+                f"Cannot pass both. Please make sure to either not define `gpu_id` or not pass the index as part of the device: `device`={torch_device.type}"
+            )
+
+        # _offload_gpu_id should be set to passed gpu_id (or id in passed `device`) or default to previously set id or default to 0
+        self._offload_gpu_id = gpu_id or torch_device.index or getattr(self, "_offload_gpu_id", 0)
+
+        device_type = torch_device.type
+        device = torch.device(f"{device_type}:{self._offload_gpu_id}")
+
+        if self.device.type != "cpu":
+            self.to("cpu", silence_dtype_warnings=True)
+            device_mod = getattr(torch, self.device.type, None)
+            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+
+        all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
+
+        self._all_hooks = []
+        hook = None
+        for model_str in self.model_cpu_offload_seq.split("->"):
+            model = all_model_components.pop(model_str, None)
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
+            self._all_hooks.append(hook)
+
+        # CPU offload models that are not in the seq chain unless they are explicitly excluded
+        # these models will stay on CPU until maybe_free_model_hooks is called
+        # some models cannot be in the seq chain because they are iteratively called, such as controlnet
+        for name, model in all_model_components.items():
+            if not isinstance(model, torch.nn.Module):
+                continue
+
+            if name in self._exclude_from_cpu_offload:
+                model.to(device)
+            else:
+                _, hook = cpu_offload_with_hook(model, device)
+                self._all_hooks.append(hook)
+
+    def maybe_free_model_hooks(self):
+        r"""
+        Function that offloads all components, removes all model hooks that were added when using
+        `enable_model_cpu_offload` and then applies them again. In case the model has not been offloaded this function
+        is a no-op. Make sure to add this function to the end of the `__call__` function of your pipeline so that it
+        functions correctly when applying enable_model_cpu_offload.
+        """
+        if not hasattr(self, "_all_hooks") or len(self._all_hooks) == 0:
+            # `enable_model_cpu_offload` has not be called, so silently do nothing
+            return
+
+        for hook in self._all_hooks:
+            # offload model and remove hook from model
+            hook.offload()
+            hook.remove()
+
+        # make sure the model is in the same state as before calling it
+        self.enable_model_cpu_offload()
+
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
+        r"""
+        Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
+        dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
+        and then moved to `torch.device('meta')` and loaded to GPU only when their specific submodule has its `forward`
+        method called. Offloading happens on a submodule basis. Memory savings are higher than with
         `enable_model_cpu_offload`, but performance is lower.
+
+        Arguments:
+            gpu_id (`int`, *optional*):
+                The ID of the accelerator that shall be used in inference. If not specified, it will default to 0.
+            device (`torch.Device` or `str`, *optional*, defaults to "cuda"):
+                The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
+                default to "cuda".
         """
         if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
             from accelerate import cpu_offload
         else:
             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
-        if device == "cuda":
-            device = torch.device(f"{device}:{gpu_id}")
+        torch_device = torch.device(device)
+        device_index = torch_device.index
+
+        if gpu_id is not None and device_index is not None:
+            raise ValueError(
+                f"You have passed both `gpu_id`={gpu_id} and an index as part of the passed device `device`={device}"
+                f"Cannot pass both. Please make sure to either not define `gpu_id` or not pass the index as part of the device: `device`={torch_device.type}"
+            )
+
+        # _offload_gpu_id should be set to passed gpu_id (or id in passed `device`) or default to previously set id or default to 0
+        self._offload_gpu_id = gpu_id or torch_device.index or getattr(self, "_offload_gpu_id", 0)
+
+        device_type = torch_device.type
+        device = torch.device(f"{device_type}:{self._offload_gpu_id}")
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
@@ -1384,10 +1617,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 deprecation_message = (
                     f"You are trying to load the model files of the `variant={variant}`, but no such modeling files are available."
                     f"The default model files: {model_filenames} will be loaded instead. Make sure to not load from `variant={variant}`"
-                    "if such variant modeling files are not available. Doing so will lead to an error in v0.22.0 as defaulting to non-variant"
+                    "if such variant modeling files are not available. Doing so will lead to an error in v0.24.0 as defaulting to non-variant"
                     "modeling files is deprecated."
                 )
-                deprecate("no variant default", "0.22.0", deprecation_message, standard_warn=False)
+                deprecate("no variant default", "0.24.0", deprecation_message, standard_warn=False)
 
             # remove ignored filenames
             model_filenames = set(model_filenames) - set(ignore_filenames)
@@ -1521,6 +1754,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # retrieve pipeline class from local file
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
+            cls_name = cls_name[4:] if cls_name.startswith("Flax") else cls_name
+
             pipeline_class = getattr(diffusers, cls_name, None)
 
             if pipeline_class is not None and pipeline_class._load_connected_pipes:

@@ -26,7 +26,7 @@ import unittest
 import unittest.mock as mock
 
 import numpy as np
-import PIL
+import PIL.Image
 import requests_mock
 import safetensors.torch
 import torch
@@ -57,29 +57,30 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.pipeline_utils import variant_compatible_siblings
+from diffusers.pipelines.pipeline_utils import _get_pipeline_class, variant_compatible_siblings
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
-    floats_tensor,
-    is_compiled_module,
-    nightly,
-    require_torch_2,
-    slow,
-    torch_device,
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    floats_tensor,
     get_tests_dir,
     load_numpy,
+    nightly,
     require_compel,
     require_flax,
     require_onnxruntime,
+    require_python39_or_higher,
+    require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    slow,
+    torch_device,
 )
+from diffusers.utils.torch_utils import is_compiled_module
 
 
 enable_full_determinism()
@@ -122,7 +123,7 @@ def _test_from_save_pretrained_dynamo(in_queue, out_queue, timeout):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
     except Exception:
         error = f"{traceback.format_exc()}"
 
@@ -805,6 +806,14 @@ class DownloadTests(unittest.TestCase):
             assert not any(f in ["vae/diffusion_pytorch_model.bin", "text_encoder/config.json"] for f in files)
             assert len(files) == 14
 
+    def test_get_pipeline_class_from_flax(self):
+        flax_config = {"_class_name": "FlaxStableDiffusionPipeline"}
+        config = {"_class_name": "StableDiffusionPipeline"}
+
+        # when loading a PyTorch Pipeline from a FlaxPipeline `model_index.json`, e.g.: https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-lms-pipe/blob/7a9063578b325779f0f1967874a6771caa973cad/model_index.json#L2
+        # we need to make sure that we don't load the Flax Pipeline class, but instead the PyTorch pipeline class
+        assert _get_pipeline_class(DiffusionPipeline, flax_config) == _get_pipeline_class(DiffusionPipeline, config)
+
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
@@ -1467,6 +1476,89 @@ class PipelineFastTests(unittest.TestCase):
         assert len(variant_model_files) == 0
         assert len(all_model_files) > 0
 
+    def test_pipe_to(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        device_type = torch.device(torch_device).type
+
+        sd1 = sd.to(device_type)
+        sd2 = sd.to(torch.device(device_type))
+        sd3 = sd.to(device_type, torch.float32)
+        sd4 = sd.to(device=device_type)
+        sd5 = sd.to(torch_device=device_type)
+        sd6 = sd.to(device_type, dtype=torch.float32)
+        sd7 = sd.to(device_type, torch_dtype=torch.float32)
+
+        assert sd1.device.type == device_type
+        assert sd2.device.type == device_type
+        assert sd3.device.type == device_type
+        assert sd4.device.type == device_type
+        assert sd5.device.type == device_type
+        assert sd6.device.type == device_type
+        assert sd7.device.type == device_type
+
+        sd1 = sd.to(torch.float16)
+        sd2 = sd.to(None, torch.float16)
+        sd3 = sd.to(dtype=torch.float16)
+        sd4 = sd.to(torch_dtype=torch.float16)
+        sd5 = sd.to(None, dtype=torch.float16)
+        sd6 = sd.to(None, torch_dtype=torch.float16)
+
+        assert sd1.dtype == torch.float16
+        assert sd2.dtype == torch.float16
+        assert sd3.dtype == torch.float16
+        assert sd4.dtype == torch.float16
+        assert sd5.dtype == torch.float16
+        assert sd6.dtype == torch.float16
+
+        sd1 = sd.to(device=device_type, dtype=torch.float16)
+        sd2 = sd.to(torch_device=device_type, torch_dtype=torch.float16)
+        sd3 = sd.to(device_type, torch.float16)
+
+        assert sd1.dtype == torch.float16
+        assert sd2.dtype == torch.float16
+        assert sd3.dtype == torch.float16
+
+        assert sd1.device.type == device_type
+        assert sd2.device.type == device_type
+        assert sd3.device.type == device_type
+
+    def test_pipe_same_device_id_offload(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        sd.enable_model_cpu_offload(gpu_id=5)
+        assert sd._offload_gpu_id == 5
+        sd.maybe_free_model_hooks()
+        assert sd._offload_gpu_id == 5
+
 
 @slow
 @require_torch_gpu
@@ -1543,8 +1635,9 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = new_ddpm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
+    @require_python39_or_higher
     @require_torch_2
     def test_from_save_pretrained_dynamo(self):
         run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
@@ -1568,7 +1661,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     def test_from_pretrained_hub_pass_model(self):
         model_path = "google/ddpm-cifar10-32"
@@ -1591,7 +1684,7 @@ class PipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, num_inference_steps=5, output_type="numpy").images
 
-        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).max() < 1e-5, "Models don't give the same forward pass"
 
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"

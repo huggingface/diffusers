@@ -17,10 +17,12 @@ import inspect
 from collections import OrderedDict
 
 from ..configuration_utils import ConfigMixin
+from ..utils import DIFFUSERS_CACHE
 from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
     StableDiffusionControlNetPipeline,
+    StableDiffusionXLControlNetImg2ImgPipeline,
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
@@ -50,6 +52,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
+from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
@@ -61,6 +64,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22CombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
+        ("wuerstchen", WuerstchenCombinedPipeline),
     ]
 )
 
@@ -72,6 +76,7 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyImg2ImgCombinedPipeline),
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
+        ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
     ]
 )
 
@@ -90,6 +95,7 @@ _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
     [
         ("kandinsky", KandinskyPipeline),
         ("kandinsky22", KandinskyV22Pipeline),
+        ("wuerstchen", WuerstchenDecoderPipeline),
     ]
 )
 _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
@@ -295,7 +301,25 @@ class AutoPipelineForText2Image(ConfigMixin):
         >>> image = pipeline(prompt).images[0]
         ```
         """
-        config = cls.load_config(pretrained_model_or_path)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "resume_download": resume_download,
+            "proxies": proxies,
+            "use_auth_token": use_auth_token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
         if "controlnet" in kwargs:
@@ -303,6 +327,7 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
+        kwargs = {**load_config_kwargs, **kwargs}
         return text_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
@@ -339,6 +364,18 @@ class AutoPipelineForText2Image(ConfigMixin):
 
         # derive the pipeline class to instantiate
         text_2_image_cls = _get_task_class(AUTO_TEXT2IMAGE_PIPELINES_MAPPING, original_cls_name)
+
+        if "controlnet" in kwargs:
+            if kwargs["controlnet"] is not None:
+                text_2_image_cls = _get_task_class(
+                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
+                    text_2_image_cls.__name__.replace("Pipeline", "ControlNetPipeline"),
+                )
+            else:
+                text_2_image_cls = _get_task_class(
+                    AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
+                    text_2_image_cls.__name__.replace("ControlNetPipeline", "Pipeline"),
+                )
 
         # define expected module and optional kwargs given the pipeline signature
         expected_modules, optional_kwargs = _get_signature_keys(text_2_image_cls)
@@ -535,7 +572,25 @@ class AutoPipelineForImage2Image(ConfigMixin):
         >>> image = pipeline(prompt, image).images[0]
         ```
         """
-        config = cls.load_config(pretrained_model_or_path)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "resume_download": resume_download,
+            "proxies": proxies,
+            "use_auth_token": use_auth_token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
         if "controlnet" in kwargs:
@@ -543,6 +598,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, orig_class_name)
 
+        kwargs = {**load_config_kwargs, **kwargs}
         return image_2_image_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
@@ -581,6 +637,18 @@ class AutoPipelineForImage2Image(ConfigMixin):
 
         # derive the pipeline class to instantiate
         image_2_image_cls = _get_task_class(AUTO_IMAGE2IMAGE_PIPELINES_MAPPING, original_cls_name)
+
+        if "controlnet" in kwargs:
+            if kwargs["controlnet"] is not None:
+                image_2_image_cls = _get_task_class(
+                    AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
+                    image_2_image_cls.__name__.replace("Img2ImgPipeline", "ControlNetImg2ImgPipeline"),
+                )
+            else:
+                image_2_image_cls = _get_task_class(
+                    AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
+                    image_2_image_cls.__name__.replace("ControlNetImg2ImgPipeline", "Img2ImgPipeline"),
+                )
 
         # define expected module and optional kwargs given the pipeline signature
         expected_modules, optional_kwargs = _get_signature_keys(image_2_image_cls)
@@ -776,7 +844,25 @@ class AutoPipelineForInpainting(ConfigMixin):
         >>> image = pipeline(prompt, image=init_image, mask_image=mask_image).images[0]
         ```
         """
-        config = cls.load_config(pretrained_model_or_path)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+
+        load_config_kwargs = {
+            "cache_dir": cache_dir,
+            "force_download": force_download,
+            "resume_download": resume_download,
+            "proxies": proxies,
+            "use_auth_token": use_auth_token,
+            "local_files_only": local_files_only,
+            "revision": revision,
+        }
+
+        config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
         orig_class_name = config["_class_name"]
 
         if "controlnet" in kwargs:
@@ -784,6 +870,7 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, orig_class_name)
 
+        kwargs = {**load_config_kwargs, **kwargs}
         return inpainting_cls.from_pretrained(pretrained_model_or_path, **kwargs)
 
     @classmethod
@@ -821,6 +908,18 @@ class AutoPipelineForInpainting(ConfigMixin):
 
         # derive the pipeline class to instantiate
         inpainting_cls = _get_task_class(AUTO_INPAINT_PIPELINES_MAPPING, original_cls_name)
+
+        if "controlnet" in kwargs:
+            if kwargs["controlnet"] is not None:
+                inpainting_cls = _get_task_class(
+                    AUTO_INPAINT_PIPELINES_MAPPING,
+                    inpainting_cls.__name__.replace("InpaintPipeline", "ControlNetInpaintPipeline"),
+                )
+            else:
+                inpainting_cls = _get_task_class(
+                    AUTO_INPAINT_PIPELINES_MAPPING,
+                    inpainting_cls.__name__.replace("ControlNetInpaintPipeline", "InpaintPipeline"),
+                )
 
         # define expected module and optional kwargs given the pipeline signature
         expected_modules, optional_kwargs = _get_signature_keys(inpainting_cls)

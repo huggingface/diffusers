@@ -1,10 +1,9 @@
 import inspect
-import warnings
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -14,50 +13,20 @@ from transformers import (
     GPT2Tokenizer,
 )
 
+from ...image_processor import VaeImageProcessor
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
-    PIL_INTERPOLATION,
-    deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
-    logging,
-    randn_tensor,
-)
+from ...utils import deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.outputs import BaseOutput
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_text_decoder import UniDiffuserTextDecoder
 from .modeling_uvit import UniDiffuserModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
-def preprocess(image):
-    warnings.warn(
-        "The preprocess method is deprecated and will be removed in a future version. Please"
-        " use VaeImageProcessor.preprocess instead",
-        FutureWarning,
-    )
-    if isinstance(image, torch.Tensor):
-        return image
-    elif isinstance(image, PIL.Image.Image):
-        image = [image]
-
-    if isinstance(image[0], PIL.Image.Image):
-        w, h = image[0].size
-        w, h = (x - x % 8 for x in (w, h))  # resize to integer multiple of 8
-
-        image = [np.array(i.resize((w, h), resample=PIL_INTERPOLATION["lanczos"]))[None, :] for i in image]
-        image = np.concatenate(image, axis=0)
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = 2.0 * image - 1.0
-        image = torch.from_numpy(image)
-    elif isinstance(image[0], torch.Tensor):
-        image = torch.cat(image, dim=0)
-    return image
 
 
 # New BaseOutput child class for joint image-text output
@@ -113,12 +82,15 @@ class UniDiffuserPipeline(DiffusionPipeline):
             original UniDiffuser paper uses the [`DPMSolverMultistepScheduler`] scheduler.
     """
 
+    # TODO: support for moving submodules for components with enable_model_cpu_offload
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae->text_decoder"
+
     def __init__(
         self,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         image_encoder: CLIPVisionModelWithProjection,
-        image_processor: CLIPImageProcessor,
+        clip_image_processor: CLIPImageProcessor,
         clip_tokenizer: CLIPTokenizer,
         text_decoder: UniDiffuserTextDecoder,
         text_tokenizer: GPT2Tokenizer,
@@ -137,7 +109,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             vae=vae,
             text_encoder=text_encoder,
             image_encoder=image_encoder,
-            image_processor=image_processor,
+            clip_image_processor=clip_image_processor,
             clip_tokenizer=clip_tokenizer,
             text_decoder=text_decoder,
             text_tokenizer=text_tokenizer,
@@ -146,6 +118,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         )
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
         self.num_channels_latents = vae.config.latent_channels
         self.text_encoder_seq_len = text_encoder.config.max_position_embeddings
@@ -162,35 +135,38 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # TODO: handle safety checking?
         self.safety_checker = None
 
-    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
-    # Add self.image_encoder, self.text_decoder to cpu_offloaded_models list
-    def enable_model_cpu_offload(self, gpu_id=0):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
+    def enable_vae_slicing(self):
         r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+        self.vae.enable_slicing()
 
-        device = torch.device(f"cuda:{gpu_id}")
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
 
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
 
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae, self.image_encoder, self.text_decoder]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -369,8 +345,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 )
         return batch_size, multiplier
 
-    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
-    # self.tokenizer => self.clip_tokenizer
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -380,6 +355,41 @@ class UniDiffuserPipeline(DiffusionPipeline):
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
+        **kwargs,
+    ):
+        deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
+        deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
+
+        prompt_embeds_tuple = self.encode_prompt(
+            prompt=prompt,
+            device=device,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=lora_scale,
+            **kwargs,
+        )
+
+        # concatenate for backwards comp
+        prompt_embeds = torch.cat([prompt_embeds_tuple[1], prompt_embeds_tuple[0]])
+
+        return prompt_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with self.tokenizer->self.clip_tokenizer
+    def encode_prompt(
+        self,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -395,8 +405,8 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
-                Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -404,7 +414,23 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            lora_scale (`float`, *optional*):
+                A LoRA scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
         """
+        # set lora scale so that monkey patched LoRA
+        # function of text encoder can correctly access it
+        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
+            self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            if not self.use_peft_backend:
+                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+            else:
+                scale_lora_layers(self.text_encoder, lora_scale)
+
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -413,6 +439,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.clip_tokenizer)
+
             text_inputs = self.clip_tokenizer(
                 prompt,
                 padding="max_length",
@@ -439,13 +469,31 @@ class UniDiffuserPipeline(DiffusionPipeline):
             else:
                 attention_mask = None
 
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device),
-                attention_mask=attention_mask,
-            )
-            prompt_embeds = prompt_embeds[0]
+            if clip_skip is None:
+                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+                prompt_embeds = prompt_embeds[0]
+            else:
+                prompt_embeds = self.text_encoder(
+                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                )
+                # Access the `hidden_states` first, that contains a tuple of
+                # all the hidden states from the encoder layers. Then index into
+                # the tuple to access the hidden states from the desired layer.
+                prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
+                # We also need to apply the final LayerNorm here to not mess with the
+                # representations. The `last_hidden_states` that we typically use for
+                # obtaining the final prompt representations passes through the LayerNorm
+                # layer.
+                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        if self.text_encoder is not None:
+            prompt_embeds_dtype = self.text_encoder.dtype
+        elif self.unet is not None:
+            prompt_embeds_dtype = self.unet.dtype
+        else:
+            prompt_embeds_dtype = prompt_embeds.dtype
+
+        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -457,7 +505,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
+            elif prompt is not None and type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     f" {type(prompt)}."
@@ -472,6 +520,10 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: procecss multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.clip_tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.clip_tokenizer(
@@ -497,17 +549,16 @@ class UniDiffuserPipeline(DiffusionPipeline):
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        if isinstance(self, LoraLoaderMixin) and self.use_peft_backend:
+            # Retrieve the original scale by scaling back the LoRA layers
+            unscale_lora_layers(self.text_encoder)
 
-        return prompt_embeds
+        return prompt_embeds, negative_prompt_embeds
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix.StableDiffusionInstructPix2PixPipeline.prepare_image_latents
     # Add num_prompts_per_image argument, sample from autoencoder moment distribution
@@ -586,7 +637,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
             )
 
-        preprocessed_image = self.image_processor.preprocess(
+        preprocessed_image = self.clip_image_processor.preprocess(
             image,
             return_tensors="pt",
         )
@@ -626,17 +677,6 @@ class UniDiffuserPipeline(DiffusionPipeline):
             )
 
         return image_latents
-
-    # Note that the CLIP latents are not decoded for image generation.
-    # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    # Rename: decode_latents -> decode_image_latents
-    def decode_image_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
 
     def prepare_text_latents(
         self, batch_size, num_images_per_prompt, seq_len, hidden_size, dtype, device, generator, latents=None
@@ -718,6 +758,17 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
+
+    def decode_text_latents(self, text_latents, device):
+        output_token_list, seq_lengths = self.text_decoder.generate_captions(
+            text_latents, self.text_tokenizer.eos_token_id, device=device
+        )
+        output_list = output_token_list.cpu().numpy()
+        generated_text = [
+            self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
+            for output, length in zip(output_list, seq_lengths)
+        ]
+        return generated_text
 
     def _split(self, x, height, width):
         r"""
@@ -1180,7 +1231,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         # Note that this differs from the formulation in the unidiffusers paper!
-        # do_classifier_free_guidance = guidance_scale > 1.0
+        do_classifier_free_guidance = guidance_scale > 1.0
 
         # check if scheduler is in sigmas space
         # scheduler_is_in_sigma_space = hasattr(self.scheduler, "sigmas")
@@ -1193,15 +1244,18 @@ class UniDiffuserPipeline(DiffusionPipeline):
         if mode in ["text2img"]:
             # 3.1. Encode input prompt, if available
             assert prompt is not None or prompt_embeds is not None
-            prompt_embeds = self._encode_prompt(
+            prompt_embeds, negative_prompt_embeds = self.encode_prompt(
                 prompt=prompt,
                 device=device,
                 num_images_per_prompt=multiplier,
-                do_classifier_free_guidance=False,  # don't support standard classifier-free guidance for now
+                do_classifier_free_guidance=do_classifier_free_guidance,
                 negative_prompt=negative_prompt,
                 prompt_embeds=prompt_embeds,
                 negative_prompt_embeds=negative_prompt_embeds,
             )
+
+            # if do_classifier_free_guidance:
+            #     prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
         else:
             # 3.2. Prepare text latent variables, if input not available
             prompt_embeds = self.prepare_text_latents(
@@ -1223,7 +1277,7 @@ class UniDiffuserPipeline(DiffusionPipeline):
             # 4.1. Encode images, if available
             assert image is not None, "`img2text` requires a conditioning image"
             # Encode image using VAE
-            image_vae = preprocess(image)
+            image_vae = self.image_processor.preprocess(image)
             height, width = image_vae.shape[-2:]
             image_vae_latents = self.encode_image_vae_latents(
                 image=image_vae,
@@ -1320,49 +1374,46 @@ class UniDiffuserPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
         # 9. Post-processing
-        gen_image = None
-        gen_text = None
+        image = None
+        text = None
         if mode == "joint":
             image_vae_latents, image_clip_latents, text_latents = self._split_joint(latents, height, width)
 
-            # Map latent VAE image back to pixel space
-            gen_image = self.decode_image_latents(image_vae_latents)
+            if not output_type == "latent":
+                # Map latent VAE image back to pixel space
+                image = self.vae.decode(image_vae_latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            else:
+                image = image_vae_latents
 
-            # Generate text using the text decoder
-            output_token_list, seq_lengths = self.text_decoder.generate_captions(
-                text_latents, self.text_tokenizer.eos_token_id, device=device
-            )
-            output_list = output_token_list.cpu().numpy()
-            gen_text = [
-                self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
-                for output, length in zip(output_list, seq_lengths)
-            ]
+            text = self.decode_text_latents(text_latents, device)
         elif mode in ["text2img", "img"]:
             image_vae_latents, image_clip_latents = self._split(latents, height, width)
-            gen_image = self.decode_image_latents(image_vae_latents)
+
+            if not output_type == "latent":
+                # Map latent VAE image back to pixel space
+                image = self.vae.decode(image_vae_latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            else:
+                image = image_vae_latents
         elif mode in ["img2text", "text"]:
             text_latents = latents
-            output_token_list, seq_lengths = self.text_decoder.generate_captions(
-                text_latents, self.text_tokenizer.eos_token_id, device=device
-            )
-            output_list = output_token_list.cpu().numpy()
-            gen_text = [
-                self.text_tokenizer.decode(output[: int(length)], skip_special_tokens=True)
-                for output, length in zip(output_list, seq_lengths)
-            ]
+            text = self.decode_text_latents(text_latents, device)
 
-        # 10. Convert to PIL
-        if output_type == "pil" and gen_image is not None:
-            gen_image = self.numpy_to_pil(gen_image)
+        self.maybe_free_model_hooks()
+
+        # 10. Postprocess the image, if necessary
+        if image is not None:
+            do_denormalize = [True] * image.shape[0]
+            image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload last model to CPU
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (gen_image, gen_text)
+            return (image, text)
 
-        return ImageTextPipelineOutput(images=gen_image, text=gen_text)
+        return ImageTextPipelineOutput(images=image, text=text)

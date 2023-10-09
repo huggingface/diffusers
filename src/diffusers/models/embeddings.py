@@ -19,6 +19,7 @@ import torch
 from torch import nn
 
 from .activations import get_activation
+from .lora import LoRACompatibleLinear
 
 
 def get_timestep_embedding(
@@ -166,7 +167,7 @@ class TimestepEmbedding(nn.Module):
     ):
         super().__init__()
 
-        self.linear_1 = nn.Linear(in_channels, time_embed_dim)
+        self.linear_1 = LoRACompatibleLinear(in_channels, time_embed_dim)
 
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
@@ -179,7 +180,7 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = out_dim
         else:
             time_embed_dim_out = time_embed_dim
-        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out)
+        self.linear_2 = LoRACompatibleLinear(time_embed_dim, time_embed_dim_out)
 
         if post_act_fn is None:
             self.post_act = None
@@ -563,7 +564,7 @@ class FourierEmbedder(nn.Module):
 
 
 class PositionNet(nn.Module):
-    def __init__(self, positive_len, out_dim, fourier_freqs=8):
+    def __init__(self, positive_len, out_dim, feature_type="text-only", fourier_freqs=8):
         super().__init__()
         self.positive_len = positive_len
         self.out_dim = out_dim
@@ -573,30 +574,83 @@ class PositionNet(nn.Module):
 
         if isinstance(out_dim, tuple):
             out_dim = out_dim[0]
-        self.linears = nn.Sequential(
-            nn.Linear(self.positive_len + self.position_dim, 512),
-            nn.SiLU(),
-            nn.Linear(512, 512),
-            nn.SiLU(),
-            nn.Linear(512, out_dim),
-        )
 
-        self.null_positive_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
+        if feature_type == "text-only":
+            self.linears = nn.Sequential(
+                nn.Linear(self.positive_len + self.position_dim, 512),
+                nn.SiLU(),
+                nn.Linear(512, 512),
+                nn.SiLU(),
+                nn.Linear(512, out_dim),
+            )
+            self.null_positive_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
+
+        elif feature_type == "text-image":
+            self.linears_text = nn.Sequential(
+                nn.Linear(self.positive_len + self.position_dim, 512),
+                nn.SiLU(),
+                nn.Linear(512, 512),
+                nn.SiLU(),
+                nn.Linear(512, out_dim),
+            )
+            self.linears_image = nn.Sequential(
+                nn.Linear(self.positive_len + self.position_dim, 512),
+                nn.SiLU(),
+                nn.Linear(512, 512),
+                nn.SiLU(),
+                nn.Linear(512, out_dim),
+            )
+            self.null_text_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
+            self.null_image_feature = torch.nn.Parameter(torch.zeros([self.positive_len]))
+
         self.null_position_feature = torch.nn.Parameter(torch.zeros([self.position_dim]))
 
-    def forward(self, boxes, masks, positive_embeddings):
+    def forward(
+        self,
+        boxes,
+        masks,
+        positive_embeddings=None,
+        phrases_masks=None,
+        image_masks=None,
+        phrases_embeddings=None,
+        image_embeddings=None,
+    ):
         masks = masks.unsqueeze(-1)
 
         # embedding position (it may includes padding as placeholder)
         xyxy_embedding = self.fourier_embedder(boxes)  # B*N*4 -> B*N*C
 
         # learnable null embedding
-        positive_null = self.null_positive_feature.view(1, 1, -1)
         xyxy_null = self.null_position_feature.view(1, 1, -1)
 
         # replace padding with learnable null embedding
-        positive_embeddings = positive_embeddings * masks + (1 - masks) * positive_null
         xyxy_embedding = xyxy_embedding * masks + (1 - masks) * xyxy_null
 
-        objs = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1))
+        # positionet with text only information
+        if positive_embeddings is not None:
+            # learnable null embedding
+            positive_null = self.null_positive_feature.view(1, 1, -1)
+
+            # replace padding with learnable null embedding
+            positive_embeddings = positive_embeddings * masks + (1 - masks) * positive_null
+
+            objs = self.linears(torch.cat([positive_embeddings, xyxy_embedding], dim=-1))
+
+        # positionet with text and image infomation
+        else:
+            phrases_masks = phrases_masks.unsqueeze(-1)
+            image_masks = image_masks.unsqueeze(-1)
+
+            # learnable null embedding
+            text_null = self.null_text_feature.view(1, 1, -1)
+            image_null = self.null_image_feature.view(1, 1, -1)
+
+            # replace padding with learnable null embedding
+            phrases_embeddings = phrases_embeddings * phrases_masks + (1 - phrases_masks) * text_null
+            image_embeddings = image_embeddings * image_masks + (1 - image_masks) * image_null
+
+            objs_text = self.linears_text(torch.cat([phrases_embeddings, xyxy_embedding], dim=-1))
+            objs_image = self.linears_image(torch.cat([image_embeddings, xyxy_embedding], dim=-1))
+            objs = torch.cat([objs_text, objs_image], dim=1)
+
         return objs

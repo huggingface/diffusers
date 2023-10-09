@@ -50,12 +50,12 @@ When running `accelerate config`, if we specify torch compile mode to True there
 
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
-export VAE="madebyollin/sdxl-vae-fp16-fix"
+export VAE_NAME="madebyollin/sdxl-vae-fp16-fix"
 export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 
 accelerate launch train_text_to_image_sdxl.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
-  --pretrained_vae_model_name_or_path=$VAE \
+  --pretrained_vae_model_name_or_path=$VAE_NAME \
   --dataset_name=$DATASET_NAME \
   --enable_xformers_memory_efficient_attention \
   --resolution=512 --center_crop --random_flip \
@@ -78,6 +78,7 @@ accelerate launch train_text_to_image_sdxl.py \
 *  The `train_text_to_image_sdxl.py` script pre-computes text embeddings and the VAE encodings and keeps them in memory. While for smaller datasets like [`lambdalabs/pokemon-blip-captions`](https://hf.co/datasets/lambdalabs/pokemon-blip-captions), it might not be a problem, it can definitely lead to memory problems when the script is used on a larger dataset. For those purposes, you would want to serialize these pre-computed representations to disk separately and load them during the fine-tuning process. Refer to [this PR](https://github.com/huggingface/diffusers/pull/4505) for a more in-depth discussion. 
 * The training script is compute-intensive and may not run on a consumer GPU like Tesla T4. 
 * The training command shown above performs intermediate quality validation in between the training epochs and logs the results to Weights and Biases. `--report_to`, `--validation_prompt`, and `--validation_epochs` are the relevant CLI arguments here.
+* SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
 
 ### Inference
 
@@ -111,12 +112,13 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion XL 1.0-base](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
+First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables and, optionally, the `VAE_NAME` variable. Here, we will use [Stable Diffusion XL 1.0-base](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
 
 **___Note: It is quite useful to monitor the training progress by regularly generating sample images during training. [Weights and Biases](https://docs.wandb.ai/quickstart) is a nice solution to easily see generating images during training. All you need to do is to run `pip install wandb` before training to automatically log images.___**
 
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
+export VAE_NAME="madebyollin/sdxl-vae-fp16-fix"
 export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 ```
 
@@ -132,11 +134,13 @@ Now we can start training!
 ```bash
 accelerate launch train_text_to_image_lora_sdxl.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
+  --pretrained_vae_model_name_or_path=$VAE_NAME \
   --dataset_name=$DATASET_NAME --caption_column="text" \
   --resolution=1024 --random_flip \
   --train_batch_size=1 \
   --num_train_epochs=2 --checkpointing_steps=500 \
   --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --mixed_precision="fp16" \
   --seed=42 \
   --output_dir="sd-pokemon-model-lora-sdxl" \
   --validation_prompt="cute dragon creature" --report_to="wandb" \
@@ -144,6 +148,10 @@ accelerate launch train_text_to_image_lora_sdxl.py \
 ```
 
 The above command will also run inference as fine-tuning progresses and log the results to Weights and Biases.
+
+**Notes**: 
+
+* SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
 
 ### Finetuning the text encoder and UNet
 

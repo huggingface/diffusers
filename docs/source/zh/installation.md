@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 在你正在使用的任意深度学习框架中安装 🤗 Diffusers 。
 
-🤗 Diffusers已在Python 3.7+、PyTorch 1.7.0+和Flax上进行了测试。按照下面的安装说明，针对你正在使用的深度学习框架进行安装：
+🤗 Diffusers已在Python 3.8+、PyTorch 1.7.0+和Flax上进行了测试。按照下面的安装说明，针对你正在使用的深度学习框架进行安装：
 
 - [PyTorch](https://pytorch.org/get-started/locally/) installation instructions.
 - [Flax](https://flax.readthedocs.io/en/latest/) installation instructions.
@@ -107,7 +107,7 @@ pip install -e ".[flax]"
 
 这些命令将连接到你克隆的版本库和你的 Python 库路径。
 现在，不只是在通常的库路径，Python 还会在你克隆的文件夹内寻找包。
-例如，如果你的 Python 包通常安装在 `~/anaconda3/envs/main/lib/python3.7/Site-packages/`，Python 也会搜索你克隆到的文件夹。`~/diffusers/`。
+例如，如果你的 Python 包通常安装在 `~/anaconda3/envs/main/lib/python3.8/Site-packages/`，Python 也会搜索你克隆到的文件夹。`~/diffusers/`。
 
 <Tip warning={true}>
 

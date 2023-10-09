@@ -32,13 +32,19 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    nightly,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
     skip_mps,
+    slow,
+    torch_device,
 )
 
 from ..pipeline_params import (
@@ -248,6 +254,9 @@ class StableDiffusionImg2ImgPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=5e-1)
 
 
 @slow
@@ -497,6 +506,7 @@ class StableDiffusionImg2ImgPipelineSlowTests(unittest.TestCase):
         assert out.nsfw_content_detected[0], f"Safety checker should work for prompt: {inputs['prompt']}"
         assert np.abs(out.images[0]).sum() < 1e-5  # should be all zeros
 
+    @require_python39_or_higher
     @require_torch_2
     def test_img2img_compile(self):
         seed = 0

@@ -31,8 +31,14 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.models.attention_processor import AttnProcessor
-from diffusers.utils import load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_numpy,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 
 enable_full_determinism()
@@ -364,7 +370,8 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         # make sure that more than 5.5 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
         assert mem_bytes > 5.5 * 10**9
-        assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-3
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_chunked.flatten())
+        assert max_diff < 1e-3
 
     def test_stable_diffusion_text2img_pipeline_v_pred_default(self):
         expected_image = load_numpy(
@@ -384,7 +391,8 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        assert np.abs(expected_image - image).max() < 9e-1
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
+        assert max_diff < 1e-3
 
     def test_stable_diffusion_text2img_pipeline_unflawed(self):
         expected_image = load_numpy(
@@ -397,17 +405,25 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
             pipe.scheduler.config, timestep_spacing="trailing", rescale_betas_zero_snr=True
         )
         pipe.to(torch_device)
-        pipe.enable_attention_slicing()
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
 
-        generator = torch.manual_seed(0)
-        output = pipe(prompt=prompt, guidance_scale=7.5, guidance_rescale=0.7, generator=generator, output_type="np")
+        generator = torch.Generator("cpu").manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            guidance_scale=7.5,
+            num_inference_steps=10,
+            guidance_rescale=0.7,
+            generator=generator,
+            output_type="np",
+        )
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        assert np.abs(expected_image - image).max() < 5e-1
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
+        assert max_diff < 5e-2
 
     def test_stable_diffusion_text2img_pipeline_v_pred_fp16(self):
         expected_image = load_numpy(
@@ -426,14 +442,15 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 768, 3)
-        assert np.abs(expected_image - image).max() < 7.5e-1
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
+        assert max_diff < 1e-3
 
     def test_download_local(self):
         filename = hf_hub_download("stabilityai/stable-diffusion-2-1", filename="v2-1_768-ema-pruned.safetensors")
 
         pipe = StableDiffusionPipeline.from_single_file(filename, torch_dtype=torch.float16)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.to("cuda")
+        pipe.enable_model_cpu_offload()
 
         image_out = pipe("test", num_inference_steps=1, output_type="np").images[0]
 
@@ -447,20 +464,21 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe_single = StableDiffusionPipeline.from_single_file(single_file_path)
         pipe_single.scheduler = DDIMScheduler.from_config(pipe_single.scheduler.config)
         pipe_single.unet.set_attn_processor(AttnProcessor())
-        pipe_single.to("cuda")
+        pipe_single.enable_model_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe_single("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+        image_ckpt = pipe_single("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
         pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
+        pipe.enable_model_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image = pipe("a turtle", num_inference_steps=5, generator=generator, output_type="np").images[0]
+        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        assert np.max(np.abs(image - image_ckpt)) < 1e-3
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+        assert max_diff < 1e-3
 
     def test_stable_diffusion_text2img_intermediate_state_v_pred(self):
         number_of_steps = 0

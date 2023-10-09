@@ -28,11 +28,12 @@ This model was contributed by the community contributor [HimariO](https://github
 
 | Pipeline | Tasks | Demo
 |---|---|:---:|
-| [StableDiffusionAdapterPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_adapter.py) | *Text-to-Image Generation with T2I-Adapter Conditioning* | -
+| [StableDiffusionAdapterPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/t2i_adapter/pipeline_stable_diffusion_adapter.py) | *Text-to-Image Generation with T2I-Adapter Conditioning* | -
+| [StableDiffusionXLAdapterPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/t2i_adapter/pipeline_stable_diffusion_xl_adapter.py) | *Text-to-Image Generation with T2I-Adapter Conditioning on StableDiffusion-XL* | -
 
-## Usage example
+## Usage example with the base model of StableDiffusion-1.4/1.5
 
-In the following we give a simple example of how to use a *T2IAdapter* checkpoint with Diffusers for inference.
+In the following we give a simple example of how to use a *T2IAdapter* checkpoint with Diffusers for inference based on StableDiffusion-1.4/1.5.
 All adapters use the same pipeline.
 
  1. Images are first converted into the appropriate *control image* format.
@@ -93,6 +94,62 @@ out_image = pipe(
 
 ![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_output.png)
 
+## Usage example with the base model of StableDiffusion-XL
+
+In the following we give a simple example of how to use a *T2IAdapter* checkpoint with Diffusers for inference based on StableDiffusion-XL.
+All adapters use the same pipeline.
+
+ 1. Images are first downloaded into the appropriate *control image* format.
+ 2. The *control image* and *prompt* are passed to the [`StableDiffusionXLAdapterPipeline`].
+
+Let's have a look at a simple example using the [Sketch Adapter](https://huggingface.co/Adapter/t2iadapter/tree/main/sketch_sdxl_1.0).
+
+```python
+from diffusers.utils import load_image
+
+sketch_image = load_image("https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png").convert("L")
+```
+
+![img](https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png)
+
+Then, create the adapter pipeline
+
+```py
+import torch
+from diffusers import (
+    T2IAdapter,
+    StableDiffusionXLAdapterPipeline,
+    DDPMScheduler
+)
+from diffusers.models.unet_2d_condition import UNet2DConditionModel
+
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+adapter = T2IAdapter.from_pretrained("Adapter/t2iadapter", subfolder="sketch_sdxl_1.0",torch_dtype=torch.float16, adapter_type="full_adapter_xl")
+scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
+
+pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
+    model_id, adapter=adapter, safety_checker=None, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
+)
+
+pipe.to("cuda")
+```
+
+Finally, pass the prompt and control image to the pipeline
+
+```py
+# fix the random seed, so you will get the same result as the example
+generator = torch.Generator().manual_seed(42)
+
+sketch_image_out = pipe(
+    prompt="a photo of a dog in real world, high quality", 
+    negative_prompt="extra digit, fewer digits, cropped, worst quality, low quality", 
+    image=sketch_image, 
+    generator=generator, 
+    guidance_scale=7.5
+).images[0]
+```
+
+![img](https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch_output.png)
 
 ## Available checkpoints
 
@@ -113,6 +170,9 @@ Non-diffusers checkpoints can be found under [TencentARC/T2I-Adapter](https://hu
 |[TencentARC/t2iadapter_depth_sd15v2](https://huggingface.co/TencentARC/t2iadapter_depth_sd15v2)||
 |[TencentARC/t2iadapter_sketch_sd15v2](https://huggingface.co/TencentARC/t2iadapter_sketch_sd15v2)||
 |[TencentARC/t2iadapter_zoedepth_sd15v1](https://huggingface.co/TencentARC/t2iadapter_zoedepth_sd15v1)||
+|[Adapter/t2iadapter, subfolder='sketch_sdxl_1.0'](https://huggingface.co/Adapter/t2iadapter/tree/main/sketch_sdxl_1.0)||
+|[Adapter/t2iadapter, subfolder='canny_sdxl_1.0'](https://huggingface.co/Adapter/t2iadapter/tree/main/canny_sdxl_1.0)||
+|[Adapter/t2iadapter, subfolder='openpose_sdxl_1.0'](https://huggingface.co/Adapter/t2iadapter/tree/main/openpose_sdxl_1.0)||
 
 ## Combining multiple adapters
 
@@ -177,6 +237,17 @@ However, T2I-Adapter performs slightly worse than ControlNet.
 
 ## StableDiffusionAdapterPipeline
 [[autodoc]] StableDiffusionAdapterPipeline
+	- all
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+	- enable_vae_slicing
+	- disable_vae_slicing
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention
+
+## StableDiffusionXLAdapterPipeline
+[[autodoc]] StableDiffusionXLAdapterPipeline
 	- all
 	- __call__
 	- enable_attention_slicing

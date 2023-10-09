@@ -3,7 +3,7 @@
     title: "🧨 Diffusers"
   - local: quicktour
     title: "훑어보기"
-  - local: in_translation
+  - local: stable_diffusion
     title: Stable Diffusion
   - local: installation
     title: "설치"
@@ -13,12 +13,14 @@
     title: 개요
   - local: using-diffusers/write_own_pipeline
     title: 모델과 스케줄러 이해하기
+  - local: in_translation
+    title: AutoPipeline
   - local: tutorials/basic_training
     title: Diffusion 모델 학습하기
   title: Tutorials
 - sections:
   - sections:
-    - local: in_translation
+    - local: using-diffusers/loading_overview
       title: 개요
     - local: using-diffusers/loading
       title: 파이프라인, 모델, 스케줄러 불러오기
@@ -30,13 +32,15 @@
       title: 세이프텐서 불러오기
     - local: using-diffusers/other-formats
       title: 다른 형식의 Stable Diffusion 불러오기
+    - local: in_translation
+      title: Hub에 파일 push하기
     title: 불러오기 & 허브
   - sections:
     - local: using-diffusers/pipeline_overview
       title: 개요
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional 이미지 생성
-    - local: in_translation
+    - local: using-diffusers/conditional_image_generation
       title: Text-to-image 생성
     - local: using-diffusers/img2img
       title: Text-guided image-to-image
@@ -44,27 +48,31 @@
       title: Text-guided 이미지 인페인팅
     - local: using-diffusers/depth2img
       title: Text-guided depth-to-image
-    - local: in_translation
+    - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
-    - local: in_translation
+    - local: training/distributed_inference
       title: 여러 GPU를 사용한 분산 추론
+    - local: in_translation
+      title: Distilled Stable Diffusion 추론
     - local: using-diffusers/reusing_seeds
       title: Deterministic 생성으로 이미지 퀄리티 높이기
-    - local: in_translation
+    - local: using-diffusers/control_brightness
+      title: 이미지 밝기 조정하기
+    - local: using-diffusers/reproducibility
       title: 재현 가능한 파이프라인 생성하기
     - local: using-diffusers/custom_pipeline_examples
       title: 커뮤니티 파이프라인들
-    - local: in_translation
+    - local: using-diffusers/contribute_pipeline
       title: 커뮤티니 파이프라인에 기여하는 방법
-    - local: in_translation
+    - local: using-diffusers/stable_diffusion_jax_how_to
       title: JAX/Flax에서의 Stable Diffusion
-    - local: in_translation
+    - local: using-diffusers/weighted_prompts
       title: Weighting Prompts
     title: 추론을 위한 파이프라인
   - sections:
     - local: training/overview
       title: 개요
-    - local: in_translation
+    - local: training/create_dataset
       title: 학습을 위한 데이터셋 생성하기
     - local: training/adapt_a_model
       title: 새로운 태스크에 모델 적용하기
@@ -78,11 +86,11 @@
       title: Text-to-image
     - local: training/lora
       title: Low-Rank Adaptation of Large Language Models (LoRA)
-    - local: in_translation
+    - local: training/controlnet
       title: ControlNet
-    - local: in_translation
+    - local: training/instructpix2pix
       title: InstructPix2Pix 학습
-    - local: in_translation
+    - local: training/custom_diffusion
       title: Custom Diffusion
     title: Training
   title: Diffusers 사용하기
@@ -99,12 +107,26 @@
     title: ONNX
   - local: optimization/open_vino
     title: OpenVINO
-  - local: in_translation
+  - local: optimization/coreml
     title: Core ML
   - local: optimization/mps
     title: MPS
   - local: optimization/habana
     title: Habana Gaudi
-  - local: in_translation
+  - local: optimization/tome
     title: Token Merging
   title: 최적화/특수 하드웨어
+- sections:
+  - local: using-diffusers/controlling_generation
+    title: 제어된 생성
+  - local: in_translation
+    title: Diffusion Models 평가하기
+  title: 개념 가이드
+- sections:
+  - sections:
+    - sections:
+      - local: api/pipelines/stable_diffusion/stable_diffusion_xl
+        title: Stable Diffusion XL
+      title: Stable Diffusion
+    title: Pipelines
+  title: API

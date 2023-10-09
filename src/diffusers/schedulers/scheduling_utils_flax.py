@@ -16,7 +16,7 @@ import math
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
@@ -37,6 +37,7 @@ class FlaxKarrasDiffusionSchedulers(Enum):
     FlaxPNDMScheduler = 3
     FlaxLMSDiscreteScheduler = 4
     FlaxDPMSolverMultistepScheduler = 5
+    FlaxEulerDiscreteScheduler = 6
 
 
 @dataclass
@@ -71,7 +72,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
     @classmethod
     def from_pretrained(
         cls,
-        pretrained_model_name_or_path: Dict[str, Any] = None,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
         subfolder: Optional[str] = None,
         return_unused_kwargs=False,
         **kwargs,

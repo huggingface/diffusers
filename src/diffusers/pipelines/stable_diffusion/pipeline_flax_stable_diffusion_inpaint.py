@@ -35,7 +35,7 @@ from ...schedulers import (
 )
 from ...utils import PIL_INTERPOLATION, deprecate, logging, replace_example_docstring
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
-from . import FlaxStableDiffusionPipelineOutput
+from .pipeline_output import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 
@@ -270,7 +270,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
         mask: jnp.ndarray,
         masked_image: jnp.ndarray,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.KeyArray,
+        prng_seed: jax.Array,
         num_inference_steps: int,
         height: int,
         width: int,
@@ -398,7 +398,7 @@ class FlaxStableDiffusionInpaintPipeline(FlaxDiffusionPipeline):
         mask: jnp.ndarray,
         masked_image: jnp.ndarray,
         params: Union[Dict, FrozenDict],
-        prng_seed: jax.random.KeyArray,
+        prng_seed: jax.Array,
         num_inference_steps: int = 50,
         height: Optional[int] = None,
         width: Optional[int] = None,

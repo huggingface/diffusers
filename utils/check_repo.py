@@ -23,7 +23,7 @@ from difflib import get_close_matches
 from pathlib import Path
 
 from diffusers.models.auto import get_values
-from diffusers.utils import ENV_VARS_TRUE_VALUES, is_flax_available, is_tf_available, is_torch_available
+from diffusers.utils import ENV_VARS_TRUE_VALUES, is_flax_available, is_torch_available
 
 
 # All paths are set with the intent you should run this script from the root of the repo with the command
@@ -421,10 +421,6 @@ def get_all_auto_configured_models():
         for attr_name in dir(diffusers.models.auto.modeling_auto):
             if attr_name.startswith("MODEL_") and attr_name.endswith("MAPPING_NAMES"):
                 result = result | set(get_values(getattr(diffusers.models.auto.modeling_auto, attr_name)))
-    if is_tf_available():
-        for attr_name in dir(diffusers.models.auto.modeling_tf_auto):
-            if attr_name.startswith("TF_MODEL_") and attr_name.endswith("MAPPING_NAMES"):
-                result = result | set(get_values(getattr(diffusers.models.auto.modeling_tf_auto, attr_name)))
     if is_flax_available():
         for attr_name in dir(diffusers.models.auto.modeling_flax_auto):
             if attr_name.startswith("FLAX_MODEL_") and attr_name.endswith("MAPPING_NAMES"):
@@ -462,8 +458,6 @@ def check_all_models_are_auto_configured():
     missing_backends = []
     if not is_torch_available():
         missing_backends.append("PyTorch")
-    if not is_tf_available():
-        missing_backends.append("TensorFlow")
     if not is_flax_available():
         missing_backends.append("Flax")
     if len(missing_backends) > 0:

@@ -24,18 +24,18 @@ from parameterized import parameterized
 from pytest import mark
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, LoRAAttnProcessor
-from diffusers.utils import (
+from diffusers.models.attention_processor import CustomDiffusionAttnProcessor
+from diffusers.utils import logging
+from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
     floats_tensor,
     load_hf_numpy,
-    logging,
     require_torch_gpu,
     slow,
     torch_all_close,
     torch_device,
 )
-from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism
 
 from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -43,33 +43,6 @@ from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 logger = logging.get_logger(__name__)
 
 enable_full_determinism()
-
-
-def create_lora_layers(model, mock_weights: bool = True):
-    lora_attn_procs = {}
-    for name in model.attn_processors.keys():
-        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-        if name.startswith("mid_block"):
-            hidden_size = model.config.block_out_channels[-1]
-        elif name.startswith("up_blocks"):
-            block_id = int(name[len("up_blocks.")])
-            hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-        elif name.startswith("down_blocks"):
-            block_id = int(name[len("down_blocks.")])
-            hidden_size = model.config.block_out_channels[block_id]
-
-        lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-        lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
-        if mock_weights:
-            # add 1 to weights to mock trained weights
-            with torch.no_grad():
-                lora_attn_procs[name].to_q_lora.up.weight += 1
-                lora_attn_procs[name].to_k_lora.up.weight += 1
-                lora_attn_procs[name].to_v_lora.up.weight += 1
-                lora_attn_procs[name].to_out_lora.up.weight += 1
-
-    return lora_attn_procs
 
 
 def create_custom_diffusion_layers(model, mock_weights: bool = True):
@@ -481,20 +454,20 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             keepall_mask = torch.ones(*cond.shape[:-1], device=cond.device, dtype=mask_dtype)
             full_cond_keepallmask_out = model(**{**inputs_dict, "encoder_attention_mask": keepall_mask}).sample
             assert full_cond_keepallmask_out.allclose(
-                full_cond_out
+                full_cond_out, rtol=1e-05, atol=1e-05
             ), "a 'keep all' mask should give the same result as no mask"
 
             trunc_cond = cond[:, :-1, :]
             trunc_cond_out = model(**{**inputs_dict, "encoder_hidden_states": trunc_cond}).sample
             assert not trunc_cond_out.allclose(
-                full_cond_out
+                full_cond_out, rtol=1e-05, atol=1e-05
             ), "discarding the last token from our cond should change the result"
 
             batch, tokens, _ = cond.shape
             mask_last = (torch.arange(tokens) < tokens - 1).expand(batch, -1).to(cond.device, mask_dtype)
             masked_cond_out = model(**{**inputs_dict, "encoder_attention_mask": mask_last}).sample
             assert masked_cond_out.allclose(
-                trunc_cond_out
+                trunc_cond_out, rtol=1e-05, atol=1e-05
             ), "masking the last token from our cond should be equivalent to truncating that token out of the condition"
 
     # see diffusers.models.attention_processor::Attention#prepare_attention_mask
@@ -526,208 +499,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             assert trunc_mask_out.allclose(
                 keeplast_out
             ), "a mask with fewer tokens than condition, will be padded with 'keep' tokens. a 'discard-all' mask missing the final token is thus equivalent to a 'keep last' mask."
-
-    def test_lora_processors(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        with torch.no_grad():
-            sample1 = model(**inputs_dict).sample
-
-        lora_attn_procs = create_lora_layers(model)
-
-        # make sure we can set a list of attention processors
-        model.set_attn_processor(lora_attn_procs)
-        model.to(torch_device)
-
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
-
-        with torch.no_grad():
-            sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
-            sample3 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
-            sample4 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
-
-        assert (sample1 - sample2).abs().max() < 3e-3
-        assert (sample3 - sample4).abs().max() < 3e-3
-
-        # sample 2 and sample 3 should be different
-        assert (sample2 - sample3).abs().max() > 1e-4
-
-    def test_lora_save_load(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        with torch.no_grad():
-            old_sample = model(**inputs_dict).sample
-
-        lora_attn_procs = create_lora_layers(model)
-        model.set_attn_processor(lora_attn_procs)
-
-        with torch.no_grad():
-            sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname, safe_serialization=False)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-            torch.manual_seed(0)
-            new_model = self.model_class(**init_dict)
-            new_model.to(torch_device)
-            new_model.load_attn_procs(tmpdirname)
-
-        with torch.no_grad():
-            new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
-
-        assert (sample - new_sample).abs().max() < 1e-4
-
-        # LoRA and no LoRA should NOT be the same
-        assert (sample - old_sample).abs().max() > 1e-4
-
-    def test_lora_save_load_safetensors(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        with torch.no_grad():
-            old_sample = model(**inputs_dict).sample
-
-        lora_attn_procs = create_lora_layers(model)
-        model.set_attn_processor(lora_attn_procs)
-
-        with torch.no_grad():
-            sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname, safe_serialization=True)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-            torch.manual_seed(0)
-            new_model = self.model_class(**init_dict)
-            new_model.to(torch_device)
-            new_model.load_attn_procs(tmpdirname)
-
-        with torch.no_grad():
-            new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
-
-        assert (sample - new_sample).abs().max() < 1e-4
-
-        # LoRA and no LoRA should NOT be the same
-        assert (sample - old_sample).abs().max() > 1e-4
-
-    def test_lora_save_safetensors_load_torch(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        lora_attn_procs = create_lora_layers(model, mock_weights=False)
-        model.set_attn_processor(lora_attn_procs)
-        # Saving as torch, properly reloads with directly filename
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname, safe_serialization=True)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-            torch.manual_seed(0)
-            new_model = self.model_class(**init_dict)
-            new_model.to(torch_device)
-            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_lora_weights.safetensors")
-
-    def test_lora_save_torch_force_load_safetensors_error(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        lora_attn_procs = create_lora_layers(model, mock_weights=False)
-        model.set_attn_processor(lora_attn_procs)
-        # Saving as torch, properly reloads with directly filename
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_attn_procs(tmpdirname, safe_serialization=False)
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-            torch.manual_seed(0)
-            new_model = self.model_class(**init_dict)
-            new_model.to(torch_device)
-            with self.assertRaises(IOError) as e:
-                new_model.load_attn_procs(tmpdirname, use_safetensors=True)
-            self.assertIn("Error no file named pytorch_lora_weights.safetensors", str(e.exception))
-
-    def test_lora_on_off(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        with torch.no_grad():
-            old_sample = model(**inputs_dict).sample
-
-        lora_attn_procs = create_lora_layers(model)
-        model.set_attn_processor(lora_attn_procs)
-
-        with torch.no_grad():
-            sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
-
-        model.set_default_attn_processor()
-
-        with torch.no_grad():
-            new_sample = model(**inputs_dict).sample
-
-        assert (sample - new_sample).abs().max() < 1e-4
-        assert (sample - old_sample).abs().max() < 3e-3
-
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
-    def test_lora_xformers_on_off(self):
-        # enable deterministic behavior for gradient checkpointing
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        lora_attn_procs = create_lora_layers(model)
-        model.set_attn_processor(lora_attn_procs)
-
-        # default
-        with torch.no_grad():
-            sample = model(**inputs_dict).sample
-
-            model.enable_xformers_memory_efficient_attention()
-            on_sample = model(**inputs_dict).sample
-
-            model.disable_xformers_memory_efficient_attention()
-            off_sample = model(**inputs_dict).sample
-
-        assert (sample - on_sample).abs().max() < 1e-4
-        assert (sample - off_sample).abs().max() < 1e-4
 
     def test_custom_diffusion_processors(self):
         # enable deterministic behavior for gradient checkpointing
@@ -779,8 +550,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
-            new_model.to(torch_device)
             new_model.load_attn_procs(tmpdirname, weight_name="pytorch_custom_diffusion_weights.bin")
+            new_model.to(torch_device)
 
         with torch.no_grad():
             new_sample = new_model(**inputs_dict).sample

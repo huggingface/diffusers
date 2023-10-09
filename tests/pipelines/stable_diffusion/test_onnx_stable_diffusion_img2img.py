@@ -26,8 +26,8 @@ from diffusers import (
     OnnxStableDiffusionImg2ImgPipeline,
     PNDMScheduler,
 )
-from diffusers.utils import floats_tensor
 from diffusers.utils.testing_utils import (
+    floats_tensor,
     is_onnx_available,
     load_image,
     nightly,

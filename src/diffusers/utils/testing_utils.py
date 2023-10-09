@@ -1,3 +1,5 @@
+import functools
+import importlib
 import inspect
 import io
 import logging
@@ -6,7 +8,9 @@ import os
 import random
 import re
 import struct
+import sys
 import tempfile
+import time
 import unittest
 import urllib.parse
 from contextlib import contextmanager
@@ -19,6 +23,7 @@ import numpy as np
 import PIL.Image
 import PIL.ImageOps
 import requests
+from numpy.linalg import norm
 from packaging import version
 
 from .import_utils import (
@@ -28,9 +33,11 @@ from .import_utils import (
     is_note_seq_available,
     is_onnx_available,
     is_opencv_available,
+    is_peft_available,
     is_torch_available,
     is_torch_version,
     is_torchsde_available,
+    is_transformers_available,
 )
 from .logging import get_logger
 
@@ -38,6 +45,15 @@ from .logging import get_logger
 global_rng = random.Random()
 
 logger = get_logger(__name__)
+
+_required_peft_version = is_peft_available() and version.parse(
+    version.parse(importlib.metadata.version("peft")).base_version
+) > version.parse("0.5")
+_required_transformers_version = is_transformers_available() and version.parse(
+    version.parse(importlib.metadata.version("transformers")).base_version
+) > version.parse("4.33")
+
+USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 
 if is_torch_available():
     import torch
@@ -70,6 +86,13 @@ def torch_all_close(a, b, *args, **kwargs):
     if not torch.allclose(a, b, *args, **kwargs):
         assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
     return True
+
+
+def numpy_cosine_similarity_distance(a, b):
+    similarity = np.dot(a, b) / (norm(a) * norm(b))
+    distance = 1.0 - similarity.mean()
+
+    return distance
 
 
 def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
@@ -226,6 +249,30 @@ def require_torchsde(test_case):
     Decorator marking a test that requires torchsde. These tests are skipped when torchsde isn't installed.
     """
     return unittest.skipUnless(is_torchsde_available(), "test requires torchsde")(test_case)
+
+
+def require_peft_backend(test_case):
+    """
+    Decorator marking a test that requires PEFT backend, this would require some specific versions of PEFT and
+    transformers.
+    """
+    return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
+
+
+def deprecate_after_peft_backend(test_case):
+    """
+    Decorator marking a test that will be skipped after PEFT backend
+    """
+    return unittest.skipUnless(not USE_PEFT_BACKEND, "test skipped in favor of PEFT backend")(test_case)
+
+
+def require_python39_or_higher(test_case):
+    def python39_available():
+        sys_info = sys.version_info
+        major, minor = sys_info.major, sys_info.minor
+        return major == 3 and minor >= 9
+
+    return unittest.skipUnless(python39_available(), "test requires Python 3.9 or higher")(test_case)
 
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
@@ -575,6 +622,43 @@ def pytest_terminal_summary_main(tr, id):
     tr._tw = orig_writer
     tr.reportchars = orig_reportchars
     config.option.tbstyle = orig_tbstyle
+
+
+# Copied from https://github.com/huggingface/transformers/blob/000e52aec8850d3fe2f360adc6fd256e5b47fe4c/src/transformers/testing_utils.py#L1905
+def is_flaky(max_attempts: int = 5, wait_before_retry: Optional[float] = None, description: Optional[str] = None):
+    """
+    To decorate flaky tests. They will be retried on failures.
+
+    Args:
+        max_attempts (`int`, *optional*, defaults to 5):
+            The maximum number of attempts to retry the flaky test.
+        wait_before_retry (`float`, *optional*):
+            If provided, will wait that number of seconds before retrying the test.
+        description (`str`, *optional*):
+            A string to describe the situation (what / where / why is flaky, link to GH issue/PR comments, errors,
+            etc.)
+    """
+
+    def decorator(test_func_ref):
+        @functools.wraps(test_func_ref)
+        def wrapper(*args, **kwargs):
+            retry_count = 1
+
+            while retry_count < max_attempts:
+                try:
+                    return test_func_ref(*args, **kwargs)
+
+                except Exception as err:
+                    print(f"Test failed with {err} at try {retry_count}/{max_attempts}.", file=sys.stderr)
+                    if wait_before_retry is not None:
+                        time.sleep(wait_before_retry)
+                    retry_count += 1
+
+            return test_func_ref(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 # Taken from: https://github.com/huggingface/transformers/blob/3658488ff77ff8d45101293e749263acf437f4d5/src/transformers/testing_utils.py#L1787

@@ -36,9 +36,9 @@ from ...utils import (
     is_accelerate_version,
     is_librosa_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
 
@@ -51,19 +51,33 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import AudioLDM2Pipeline
-        >>> import torch
         >>> import scipy
+        >>> import torch
+        >>> from diffusers import AudioLDM2Pipeline
 
         >>> repo_id = "cvssp/audioldm2"
         >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "Techno music with a strong, upbeat tempo and high melodic riffs"
-        >>> audio = pipe(prompt, num_inference_steps=200, audio_length_in_s=10.0).audios[0]
+        >>> # define the prompts
+        >>> prompt = "The sound of a hammer hitting a wooden surface."
+        >>> negative_prompt = "Low quality."
 
-        >>> # save the audio sample as a .wav file
-        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
+        >>> # set the seed for generator
+        >>> generator = torch.Generator("cuda").manual_seed(0)
+
+        >>> # run the generation
+        >>> audio = pipe(
+        ...     prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     num_inference_steps=200,
+        ...     audio_length_in_s=10.0,
+        ...     num_waveforms_per_prompt=3,
+        ...     generator=generator,
+        ... ).audios
+
+        >>> # save the best audio sample (index 0) as a .wav file
+        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio[0])
         ```
 """
 
@@ -194,12 +208,15 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         model_sequence = [
-            self.text_encoder,
+            self.text_encoder.text_model,
+            self.text_encoder.text_projection,
             self.text_encoder_2,
             self.projection_model,
             self.language_model,
             self.unet,
             self.vae,
+            self.vocoder,
+            self.text_encoder,
         ]
 
         hook = None
@@ -315,6 +332,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         Example:
 
         ```python
+        >>> import scipy
         >>> import torch
         >>> from diffusers import AudioLDM2Pipeline
 
@@ -337,6 +355,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
         ...     num_inference_steps=200,
         ...     audio_length_in_s=10.0,
         ... ).audios[0]
+
+        >>> # save generated audio sample
+        >>> scipy.io.wavfile.write("techno.wav", rate=16000, data=audio)
         ```"""
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -909,7 +930,8 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     encoder_hidden_states=generated_prompt_embeds,
                     encoder_hidden_states_1=prompt_embeds,
                     encoder_attention_mask_1=attention_mask,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -923,7 +945,10 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
+
+        self.maybe_free_model_hooks()
 
         # 8. Post-processing
         if not output_type == "latent":
