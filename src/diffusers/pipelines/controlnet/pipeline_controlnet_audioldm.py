@@ -34,9 +34,9 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_accelerate_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
