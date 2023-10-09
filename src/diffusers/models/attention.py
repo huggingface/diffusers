@@ -17,14 +17,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import get_activation
 from .attention_processor import Attention
-
 from .embeddings import CombinedTimestepLabelEmbeddings
 from .lora import LoRACompatibleLinear
 
-from ..utils import USE_PEFT_BACKEND
 
 @maybe_allow_in_graph
 class GatedSelfAttentionDense(nn.Module):
