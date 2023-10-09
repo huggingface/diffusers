@@ -112,7 +112,7 @@ As you can see, this is already more complex than the DDPM pipeline which only c
 
 <Tip>
 
-💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models.
+💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models work.
 
 </Tip>
 
@@ -214,7 +214,7 @@ Next, generate some initial random noise as a starting point for the diffusion p
 
 ```py
 >>> latents = torch.randn(
-...     (batch_size, unet.in_channels, height // 8, width // 8),
+...     (batch_size, unet.config.in_channels, height // 8, width // 8),
 ...     generator=generator,
 ... )
 >>> latents = latents.to(torch_device)
