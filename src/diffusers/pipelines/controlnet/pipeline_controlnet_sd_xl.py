@@ -1127,7 +1127,6 @@ class StableDiffusionXLControlNetPipeline(
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
-                print(f"ControlNet conditioning dimension: {image.shape}.")
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
                     t,
