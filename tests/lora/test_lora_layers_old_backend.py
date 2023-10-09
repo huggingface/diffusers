@@ -2173,10 +2173,6 @@ class LoraIntegrationTests(unittest.TestCase):
         ).images
         images_without_fusion = images[0, -3:, -3:, -1].flatten()
 
-        import pdb
-
-        pdb.set_trace()
-
         self.assertFalse(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
