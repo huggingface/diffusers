@@ -75,7 +75,7 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             hint_channels,
             num_res_blocks,
             attention_resolutions,
-            block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+            block_out_channels: Tuple[int] = (320, 640, 1280, 1280),#note umer: not used everywhere by me. fix later.
             act_fn: str = "silu",
             time_embedding_type: str = "positional",
             time_embedding_dim: Optional[int] = None,
@@ -141,17 +141,24 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
 
         # 2 - Create base and control model
         # TODO 1. create base model, or 2. pass it
-        self.base_model = base_model = UNet2DConditionModel()
-        # TODO create control model
-        self.control_model = ctrl_model = UNet2DConditionModel(
-            block_out_channels=[32,64,128],
-            down_block_types=("CrossAttnDownBlock2D","CrossAttnDownBlock2D","DownBlock2D",),
+        self.base_model = base_model = UNet2DConditionModel(#todo make variable
+            block_out_channels=(320, 640, 1280),
+            down_block_types=("CrossAttnDownBlock2D","CrossAttnDownBlock2D","DownBlock2D"),
             up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        )
+        # TODO create control model
+        self.control_model = ctrl_model = UNet2DConditionModel(#todo make variable
+            block_out_channels=[32,64,128],
+            down_block_types=("CrossAttnDownBlock2D","CrossAttnDownBlock2D","DownBlock2D"),
+            up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+            time_embedding_dim=1280
         ) # todo: make variable
-        for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))[:-1]): # todo: make variable (sth like block_out_channels[:-1])
+        for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))): # todo: make variable (sth like zip(block_out_channels[:-1],block_out_channels[1:]))
             e1,e2=extra_channels
-            increase_block_input_in_resnet(self.control_model, block_no=i+1, resnet_idx=0, by=e1)
-            increase_block_input_in_resnet(self.control_model, block_no=i+1, resnet_idx=1, by=e2)
+            increase_block_input_in_encoder_resnet(self.control_model, block_no=i, resnet_idx=0, by=e1)
+            increase_block_input_in_encoder_resnet(self.control_model, block_no=i, resnet_idx=1, by=e2)
+            if self.control_model.down_blocks[i].downsamplers: increase_block_input_in_encoder_downsampler(self.control_model, block_no=i, by=e2)
+        increase_block_input_in_mid_resnet(self.control_model, by=1280) # todo: make var
 
         # 3 - Gather Channel Sizes
         ch_inout_ctrl = {'enc': [], 'mid': [], 'dec': []}
@@ -181,8 +188,8 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
                 raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
 
         # 3.3 - middle block
-        ch_inout_ctrl['mid'].append((ctrl_model.mid_block.resnets[0].in_channels, ctrl_model.mid_block.resnets[0].in_channels))
-        ch_inout_base['mid'].append((base_model.mid_block.resnets[0].in_channels, base_model.mid_block.resnets[0].in_channels))
+        ch_inout_ctrl['mid'].append((ctrl_model.mid_block.resnets[0].in_channels, ctrl_model.mid_block.resnets[0].out_channels))
+        ch_inout_base['mid'].append((base_model.mid_block.resnets[0].in_channels, base_model.mid_block.resnets[0].out_channels))
     
         # 3.4 - decoder blocks
         for module in base_model.up_blocks:
@@ -342,11 +349,58 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
 
 
-def increase_block_input_in_resnet(unet, block_no, resnet_idx, by):
+def increase_block_input_in_encoder_resnet(unet, block_no, resnet_idx, by):
         """Increase channels sizes to allow for additional concatted information from base model"""
-        assert block_no!=0, "Only after block 0 do we have info to pass from base to control, so you probably didn't mean block_no=0." 
         r=unet.down_blocks[block_no].resnets[resnet_idx]
         old_norm1, old_conv1, old_conv_shortcut = r.norm1,r.conv1,r.conv_shortcut
+        # norm
+        norm_args = 'num_groups num_channels eps affine'.split(' ')
+        for a in norm_args: assert hasattr(old_norm1, a)
+        norm_kwargs = { a: getattr(old_norm1, a) for a in norm_args }
+        norm_kwargs['num_channels'] += by  # surgery done here
+        # conv1
+        conv1_args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
+        for a in conv1_args: assert hasattr(old_conv1, a)
+        conv1_kwargs = { a: getattr(old_conv1, a) for a in conv1_args }
+        conv1_kwargs['bias'] = 'bias' in conv1_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
+        conv1_kwargs['in_channels'] += by  # surgery done here
+        # conv_shortcut
+        # as we changed the input size of the block, the input and output sizes are likely different,
+        # therefore we need a conv_shortcut (simply adding won't work) 
+        conv_shortcut_args_kwargs = { 
+            'in_channels': conv1_kwargs['in_channels'],
+            'out_channels': conv1_kwargs['out_channels'],
+            # default arguments from resnet.__init__
+            'kernel_size':1, 
+            'stride':1, 
+            'padding':0,
+            'bias':True
+        }
+        # swap old with new modules
+        unet.down_blocks[block_no].resnets[resnet_idx].norm1 = GroupNorm(**norm_kwargs)
+        unet.down_blocks[block_no].resnets[resnet_idx].conv1 = LoRACompatibleConv(**conv1_kwargs)
+        unet.down_blocks[block_no].resnets[resnet_idx].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
+        unet.down_blocks[block_no].resnets[resnet_idx].in_channels += by  # surgery done here
+
+
+def increase_block_input_in_encoder_downsampler(unet, block_no, by):
+        """Increase channels sizes to allow for additional concatted information from base model"""
+        old_down=unet.down_blocks[block_no].downsamplers[0].conv
+        # conv1
+        args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
+        for a in args: assert hasattr(old_down, a)
+        kwargs = { a: getattr(old_down, a) for a in args}
+        kwargs['bias'] = 'bias' in kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
+        kwargs['in_channels'] += by  # surgery done here
+        # swap old with new modules
+        unet.down_blocks[block_no].downsamplers[0].conv = LoRACompatibleConv(**kwargs)
+        unet.down_blocks[block_no].downsamplers[0].channels += by  # surgery done here
+
+
+def increase_block_input_in_mid_resnet(unet, by):
+        """Increase channels sizes to allow for additional concatted information from base model"""
+        m=unet.mid_block.resnets[0]
+        old_norm1, old_conv1, old_conv_shortcut = m.norm1,m.conv1,m.conv_shortcut
         # norm
         norm_args = 'num_groups num_channels eps affine'.split(' ')
         for a in norm_args: assert hasattr(old_norm1, a)
@@ -366,10 +420,10 @@ def increase_block_input_in_resnet(unet, block_no, resnet_idx, by):
             conv_shortcut_args_kwargs['bias'] = 'bias' in conv_shortcut_args_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
             conv_shortcut_args_kwargs['in_channels'] += by  # surgery done here
         # swap old with new modules
-        unet.down_blocks[block_no].resnets[resnet_idx].norm1 = GroupNorm(**norm_kwargs)
-        unet.down_blocks[block_no].resnets[resnet_idx].conv1 = LoRACompatibleConv(**conv1_kwargs)
-        if old_conv_shortcut is not None: unet.down_blocks[block_no].resnets[resnet_idx].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
-        unet.down_blocks[block_no].resnets[resnet_idx].in_channels += by  # surgery done here
+        unet.mid_block.resnets[0].norm1 = GroupNorm(**norm_kwargs)
+        unet.mid_block.resnets[0].conv1 = LoRACompatibleConv(**conv1_kwargs)
+        unet.mid_block.resnets[0].in_channels += by  # surgery done here
+
 
 def zero_module(module):
     for p in module.parameters():
@@ -393,7 +447,7 @@ def gether_channel_sizes(m, m_type):
             else:
                 raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
         # 3.3 - middle block
-        ch_inout_base['mid'].append((m.mid_block.resnets[0].in_channels, m.mid_block.resnets[0].in_channels))
+        ch_inout_base['mid'].append((m.mid_block.resnets[0].in_channels, m.mid_block.resnets[0].out_channels))
         # 3.4 - decoder blocks
         for module in m.up_blocks:
             if isinstance(module, (CrossAttnUpBlock2D, UpBlock2D)):
@@ -416,7 +470,7 @@ def gether_channel_sizes(m, m_type):
             else:
                 raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
         # 3.3 - middle block
-        ch_inout_ctrl['mid'].append((m.mid_block.resnets[0].in_channels, m.mid_block.resnets[0].in_channels))
+        ch_inout_ctrl['mid'].append((m.mid_block.resnets[0].in_channels, m.mid_block.resnets[0].out_channels))
         return ch_inout_ctrl
     else: raise ValueError(f'model_type must be `base` or `control`, not `{m_type}`')
 
