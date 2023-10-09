@@ -531,8 +531,6 @@ class UNet2DConditionLoadersMixin:
                             is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
                             is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
 
-                            # There is no need to remove the hooks as they have been already attached in case LoRA
-                            # if not self.use_peft_backend:
                             logger.info(
                                 "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                             )
@@ -546,7 +544,6 @@ class UNet2DConditionLoadersMixin:
             for target_module, lora_layer in lora_layers_list:
                 target_module.set_lora_layer(lora_layer)
 
-            # if not already_offloaded:
             self.to(dtype=self.dtype, device=self.device)
 
             # Offload back.
@@ -712,7 +709,8 @@ class UNet2DConditionLoadersMixin:
             adapter_names (`List[str]` or `str`):
                 The names of the adapters to use.
             weights (`List[float]`, *optional*):
-                The weights for the adapter(s) to be used with unet. If `None`, the weights are set to `1.0` for all the adapters.
+                The weights for the adapter(s) to be used with unet. If `None`, the weights are set to `1.0` for all
+                the adapters.
         """
         if not self.use_peft_backend:
             raise ValueError("PEFT backend is required for `set_adapters()`.")
