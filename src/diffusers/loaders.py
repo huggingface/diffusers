@@ -712,10 +712,10 @@ class UNet2DConditionLoadersMixin:
             adapter_names (`List[str]` or `str`):
                 The names of the adapters to use.
             weights (`List[float]`, *optional*):
-                The weights to use for the unet. If `None`, the weights are set to `1.0` for all the adapters.
+                The weights for the adapter(s) to be used with unet. If `None`, the weights are set to `1.0` for all the adapters.
         """
         if not self.use_peft_backend:
-            raise ValueError("PEFT backend is required for this method.")
+            raise ValueError("PEFT backend is required for `set_adapters()`.")
 
         def process_weights(adapter_names, weights):
             if weights is None:
