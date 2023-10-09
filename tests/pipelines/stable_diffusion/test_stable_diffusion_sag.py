@@ -23,6 +23,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    EulerAncestralDiscreteScheduler,
     StableDiffusionSAGPipeline,
     UNet2DConditionModel,
 )
@@ -108,12 +109,31 @@ class StableDiffusionSAGPipelineFastTests(PipelineLatentTesterMixin, PipelineTes
             "num_inference_steps": 2,
             "guidance_scale": 1.0,
             "sag_scale": 1.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_stable_diffusion_sag_k_euler_ancestral(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        components["scheduler"] = EulerAncestralDiscreteScheduler.from_config(components["scheduler"].config)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = pipe(**inputs)
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.4505, 0.4877, 0.4604, 0.4598, 0.4861, 0.4517, 0.4783, 0.4697, 0.4871])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @nightly

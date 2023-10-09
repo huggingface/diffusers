@@ -138,7 +138,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
             "generator": generator,
             "num_inference_steps": 1,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "max_iter_to_alter": 2,
             "thresholds": {0: 0.7},
         }
