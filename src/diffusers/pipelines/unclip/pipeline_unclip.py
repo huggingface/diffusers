@@ -22,7 +22,8 @@ from transformers.models.clip.modeling_clip import CLIPTextModelOutput
 
 from ...models import PriorTransformer, UNet2DConditionModel, UNet2DModel
 from ...schedulers import UnCLIPScheduler
-from ...utils import logging, randn_tensor
+from ...utils import logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_proj import UnCLIPTextProjModel
 
@@ -74,6 +75,8 @@ class UnCLIPPipeline(DiffusionPipeline):
     prior_scheduler: UnCLIPScheduler
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
+
+    model_cpu_offload_seq = "text_encoder->text_proj->decoder->super_res_first->super_res_last"
 
     def __init__(
         self,

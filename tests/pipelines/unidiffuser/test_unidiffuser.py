@@ -1,5 +1,6 @@
 import gc
 import random
+import traceback
 import unittest
 
 import numpy as np
@@ -20,17 +21,70 @@ from diffusers import (
     UniDiffuserPipeline,
     UniDiffuserTextDecoder,
 )
-from diffusers.utils import floats_tensor, load_image, nightly, randn_tensor, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    load_image,
+    nightly,
+    require_torch_2,
+    require_torch_gpu,
+    run_test_in_subprocess,
+    torch_device,
+)
+from diffusers.utils.torch_utils import randn_tensor
 
-from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+)
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
-class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+enable_full_determinism()
+
+
+# Will be run via run_test_in_subprocess
+def _test_unidiffuser_compile(in_queue, out_queue, timeout):
+    error = None
+    try:
+        inputs = in_queue.get(timeout=timeout)
+        torch_device = inputs.pop("torch_device")
+        seed = inputs.pop("seed")
+        inputs["generator"] = torch.Generator(device=torch_device).manual_seed(seed)
+
+        pipe = UniDiffuserPipeline.from_pretrained("thu-ml/unidiffuser-v1")
+        # pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe = pipe.to(torch_device)
+
+        pipe.unet.to(memory_format=torch.channels_last)
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        pipe.set_progress_bar_config(disable=None)
+
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.2402, 0.2375, 0.2285, 0.2378, 0.2407, 0.2263, 0.2354, 0.2307, 0.2520])
+        assert np.abs(image_slice - expected_slice).max() < 1e-1
+    except Exception:
+        error = f"{traceback.format_exc()}"
+
+    results = {"error": error}
+    out_queue.put(results, timeout=timeout)
+    out_queue.join()
+
+
+class UniDiffuserPipelineFastTests(
+    PipelineTesterMixin, PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+):
     pipeline_class = UniDiffuserPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    # vae_latents, not latents, is the argument that corresponds to VAE latent inputs
+    image_latents_params = frozenset(["vae_latents"])
 
     def get_dummy_components(self):
         unet = UniDiffuserModel.from_pretrained(
@@ -64,7 +118,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             subfolder="image_encoder",
         )
         # From the Stable Diffusion Image Variation pipeline tests
-        image_processor = CLIPImageProcessor(crop_size=32, size=32)
+        clip_image_processor = CLIPImageProcessor(crop_size=32, size=32)
         # image_processor = CLIPImageProcessor.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         text_tokenizer = GPT2Tokenizer.from_pretrained(
@@ -80,7 +134,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "vae": vae,
             "text_encoder": text_encoder,
             "image_encoder": image_encoder,
-            "image_processor": image_processor,
+            "clip_image_processor": clip_image_processor,
             "clip_tokenizer": clip_tokenizer,
             "text_decoder": text_decoder,
             "text_tokenizer": text_tokenizer,
@@ -109,7 +163,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         generator = torch.Generator(device=device).manual_seed(seed)
         # Hardcode the shapes for now.
@@ -517,7 +571,7 @@ class UniDiffuserPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
 
-@slow
+@nightly
 @require_torch_gpu
 class UniDiffuserPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
@@ -545,7 +599,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         latent_device = torch.device("cpu")
         generator = torch.Generator(device=latent_device).manual_seed(seed)
@@ -619,6 +673,19 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
         expected_text_prefix = "An astronaut"
         assert text[0][: len(expected_text_prefix)] == expected_text_prefix
 
+    @unittest.skip(reason="Skip torch.compile test to speed up the slow test suite.")
+    @require_torch_2
+    def test_unidiffuser_compile(self, seed=0):
+        inputs = self.get_inputs(torch_device, seed=seed, generate_latents=True)
+        # Delete prompt and image for joint inference.
+        del inputs["prompt"]
+        del inputs["image"]
+        # Can't pickle a Generator object
+        del inputs["generator"]
+        inputs["torch_device"] = torch_device
+        inputs["seed"] = seed
+        run_test_in_subprocess(test_case=self, target_func=_test_unidiffuser_compile, inputs=inputs)
+
 
 @nightly
 @require_torch_gpu
@@ -648,7 +715,7 @@ class UniDiffuserPipelineNightlyTests(unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, device, seed=0):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         latent_device = torch.device("cpu")
         generator = torch.Generator(device=latent_device).manual_seed(seed)

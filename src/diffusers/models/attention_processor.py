@@ -18,8 +18,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import deprecate, logging, maybe_allow_in_graph
+from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
+from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 
@@ -172,7 +173,8 @@ class Attention(nn.Module):
             LORA_ATTENTION_PROCESSORS,
         )
         is_custom_diffusion = hasattr(self, "processor") and isinstance(
-            self.processor, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor)
+            self.processor,
+            (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor, CustomDiffusionAttnProcessor2_0),
         )
         is_added_kv_processor = hasattr(self, "processor") and isinstance(
             self.processor,
@@ -188,7 +190,7 @@ class Attention(nn.Module):
         if use_memory_efficient_attention_xformers:
             if is_added_kv_processor and (is_lora or is_custom_diffusion):
                 raise NotImplementedError(
-                    f"Memory efficient attention is currently not supported for LoRA or custom diffuson for attention processor type {self.processor}"
+                    f"Memory efficient attention is currently not supported for LoRA or custom diffusion for attention processor type {self.processor}"
                 )
             if not is_xformers_available():
                 raise ModuleNotFoundError(
@@ -260,7 +262,12 @@ class Attention(nn.Module):
                 processor.load_state_dict(self.processor.state_dict())
                 processor.to(self.processor.to_q_lora.up.weight.device)
             elif is_custom_diffusion:
-                processor = CustomDiffusionAttnProcessor(
+                attn_processor_class = (
+                    CustomDiffusionAttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else CustomDiffusionAttnProcessor
+                )
+                processor = attn_processor_class(
                     train_kv=self.processor.train_kv,
                     train_q_out=self.processor.train_q_out,
                     hidden_size=self.processor.hidden_size,
@@ -303,19 +310,16 @@ class Attention(nn.Module):
 
         self.set_processor(processor)
 
-    def set_processor(self, processor: "AttnProcessor"):
-        if (
-            hasattr(self, "processor")
-            and not isinstance(processor, LORA_ATTENTION_PROCESSORS)
-            and self.to_q.lora_layer is not None
-        ):
+    def set_processor(self, processor: "AttnProcessor", _remove_lora=False):
+        if hasattr(self, "processor") and _remove_lora and self.to_q.lora_layer is not None:
             deprecate(
                 "set_processor to offload LoRA",
                 "0.26.0",
-                "In detail, removing LoRA layers via calling `set_processor` or `set_default_attn_processor` is deprecated. Please make sure to call `pipe.unload_lora_weights()` instead.",
+                "In detail, removing LoRA layers via calling `set_default_attn_processor` is deprecated. Please make sure to call `pipe.unload_lora_weights()` instead.",
             )
             # TODO(Patrick, Sayak) - this can be deprecated once PEFT LoRA integration is complete
             # We need to remove all LoRA layers
+            # Don't forget to remove ALL `_remove_lora` from the codebase
             for module in self.modules():
                 if hasattr(module, "set_lora_layer"):
                     module.set_lora_layer(None)
@@ -381,7 +385,7 @@ class Attention(nn.Module):
             }
 
             if hasattr(self.processor, "attention_op"):
-                kwargs["attention_op"] = self.prcoessor.attention_op
+                kwargs["attention_op"] = self.processor.attention_op
 
             lora_processor = lora_processor_cls(hidden_size, **kwargs)
             lora_processor.to_q_lora.load_state_dict(self.to_q.lora_layer.state_dict())
@@ -476,19 +480,7 @@ class Attention(nn.Module):
 
         return attention_probs
 
-    def prepare_attention_mask(self, attention_mask, target_length, batch_size=None, out_dim=3):
-        if batch_size is None:
-            deprecate(
-                "batch_size=None",
-                "0.22.0",
-                (
-                    "Not passing the `batch_size` parameter to `prepare_attention_mask` can lead to incorrect"
-                    " attention mask preparation and is deprecated behavior. Please make sure to pass `batch_size` to"
-                    " `prepare_attention_mask` when preparing the attention_mask."
-                ),
-            )
-            batch_size = 1
-
+    def prepare_attention_mask(self, attention_mask, target_length, batch_size, out_dim=3):
         head_size = self.heads
         if attention_mask is None:
             return attention_mask
@@ -570,15 +562,15 @@ class AttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, lora_scale=scale)
-        value = attn.to_v(encoder_hidden_states, lora_scale=scale)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
@@ -589,7 +581,7 @@ class AttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -722,17 +714,17 @@ class AttnAddedKVProcessor:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
         query = attn.head_to_batch_dim(query)
 
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states, lora_scale=scale)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states, lora_scale=scale)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states, scale=scale)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states, scale=scale)
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states, lora_scale=scale)
-            value = attn.to_v(hidden_states, lora_scale=scale)
+            key = attn.to_k(hidden_states, scale=scale)
+            value = attn.to_v(hidden_states, scale=scale)
             key = attn.head_to_batch_dim(key)
             value = attn.head_to_batch_dim(value)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
@@ -746,7 +738,7 @@ class AttnAddedKVProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -782,7 +774,7 @@ class AttnAddedKVProcessor2_0:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
         query = attn.head_to_batch_dim(query, out_dim=4)
 
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
@@ -791,8 +783,8 @@ class AttnAddedKVProcessor2_0:
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj, out_dim=4)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states, lora_scale=scale)
-            value = attn.to_v(hidden_states, lora_scale=scale)
+            key = attn.to_k(hidden_states, scale=scale)
+            value = attn.to_v(hidden_states, scale=scale)
             key = attn.head_to_batch_dim(key, out_dim=4)
             value = attn.head_to_batch_dim(value, out_dim=4)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
@@ -809,7 +801,7 @@ class AttnAddedKVProcessor2_0:
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, residual.shape[1])
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -937,15 +929,15 @@ class XFormersAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, lora_scale=scale)
-        value = attn.to_v(encoder_hidden_states, lora_scale=scale)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         query = attn.head_to_batch_dim(query).contiguous()
         key = attn.head_to_batch_dim(key).contiguous()
@@ -958,7 +950,7 @@ class XFormersAttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1015,15 +1007,15 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, lora_scale=scale)
+        query = attn.to_q(hidden_states, scale=scale)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, lora_scale=scale)
-        value = attn.to_v(encoder_hidden_states, lora_scale=scale)
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -1043,7 +1035,7 @@ class AttnProcessor2_0:
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, lora_scale=scale)
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1164,6 +1156,111 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
             hidden_states = attn.to_out[0](hidden_states)
             # dropout
             hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
+class CustomDiffusionAttnProcessor2_0(nn.Module):
+    r"""
+    Processor for implementing attention for the Custom Diffusion method using PyTorch 2.0’s memory-efficient scaled
+    dot-product attention.
+
+    Args:
+        train_kv (`bool`, defaults to `True`):
+            Whether to newly train the key and value matrices corresponding to the text features.
+        train_q_out (`bool`, defaults to `True`):
+            Whether to newly train query matrices corresponding to the latent image features.
+        hidden_size (`int`, *optional*, defaults to `None`):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`, *optional*, defaults to `None`):
+            The number of channels in the `encoder_hidden_states`.
+        out_bias (`bool`, defaults to `True`):
+            Whether to include the bias parameter in `train_q_out`.
+        dropout (`float`, *optional*, defaults to 0.0):
+            The dropout probability to use.
+    """
+
+    def __init__(
+        self,
+        train_kv=True,
+        train_q_out=True,
+        hidden_size=None,
+        cross_attention_dim=None,
+        out_bias=True,
+        dropout=0.0,
+    ):
+        super().__init__()
+        self.train_kv = train_kv
+        self.train_q_out = train_q_out
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+
+        # `_custom_diffusion` id for easy serialization and loading.
+        if self.train_kv:
+            self.to_k_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+            self.to_v_custom_diffusion = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        if self.train_q_out:
+            self.to_q_custom_diffusion = nn.Linear(hidden_size, hidden_size, bias=False)
+            self.to_out_custom_diffusion = nn.ModuleList([])
+            self.to_out_custom_diffusion.append(nn.Linear(hidden_size, hidden_size, bias=out_bias))
+            self.to_out_custom_diffusion.append(nn.Dropout(dropout))
+
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
+        batch_size, sequence_length, _ = hidden_states.shape
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+        if self.train_q_out:
+            query = self.to_q_custom_diffusion(hidden_states)
+        else:
+            query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            crossattn = False
+            encoder_hidden_states = hidden_states
+        else:
+            crossattn = True
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        if self.train_kv:
+            key = self.to_k_custom_diffusion(encoder_hidden_states)
+            value = self.to_v_custom_diffusion(encoder_hidden_states)
+        else:
+            key = attn.to_k(encoder_hidden_states)
+            value = attn.to_v(encoder_hidden_states)
+
+        if crossattn:
+            detach = torch.ones_like(key)
+            detach[:, :1, :] = detach[:, :1, :] * 0.0
+            key = detach * key + (1 - detach) * key.detach()
+            value = detach * value + (1 - detach) * value.detach()
+
+        inner_dim = hidden_states.shape[-1]
+
+        head_dim = inner_dim // attn.heads
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if self.train_q_out:
+            # linear proj
+            hidden_states = self.to_out_custom_diffusion[0](hidden_states)
+            # dropout
+            hidden_states = self.to_out_custom_diffusion[1](hidden_states)
+        else:
+            # linear proj
+            hidden_states = attn.to_out[0](hidden_states)
+            # dropout
+            hidden_states = attn.to_out[1](hidden_states)
+
         return hidden_states
 
 
@@ -1650,6 +1747,7 @@ AttentionProcessor = Union[
     XFormersAttnAddedKVProcessor,
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
+    CustomDiffusionAttnProcessor2_0,
     # depraceted
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,

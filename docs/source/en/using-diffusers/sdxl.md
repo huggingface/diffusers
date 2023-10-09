@@ -61,7 +61,7 @@ refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
 
 ## Text-to-image
 
-For text-to-image, pass a text prompt:
+For text-to-image, pass a text prompt. By default, SDXL generates a 1024x1024 image for the best results. You can try setting the `height` and `width` parameters to 768x768 or 512x512, but anything below 512x512 is not likely to work.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -396,6 +396,8 @@ image = pipeline(prompt=prompt, prompt_2=prompt_2).images[0]
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-double-prompt.png" alt="generated image of an astronaut in a jungle in the style of a van gogh painting"/>
 </div>
+
+The dual text-encoders also support textual inversion embeddings that need to be loaded separately as explained in the [SDXL textual inversion](textual_inversion_inference#stable-diffusion-xl] section.
 
 ## Optimizations
 

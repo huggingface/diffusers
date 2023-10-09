@@ -52,6 +52,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
+from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
@@ -63,6 +64,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky22", KandinskyV22CombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
+        ("wuerstchen", WuerstchenCombinedPipeline),
     ]
 )
 
@@ -93,6 +95,7 @@ _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
     [
         ("kandinsky", KandinskyPipeline),
         ("kandinsky22", KandinskyV22Pipeline),
+        ("wuerstchen", WuerstchenDecoderPipeline),
     ]
 )
 _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
@@ -305,8 +308,6 @@ class AutoPipelineForText2Image(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None)
-        user_agent = kwargs.pop("user_agent", {})
 
         load_config_kwargs = {
             "cache_dir": cache_dir,
@@ -316,8 +317,6 @@ class AutoPipelineForText2Image(ConfigMixin):
             "use_auth_token": use_auth_token,
             "local_files_only": local_files_only,
             "revision": revision,
-            "subfolder": subfolder,
-            "user_agent": user_agent,
         }
 
         config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
@@ -580,8 +579,6 @@ class AutoPipelineForImage2Image(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None)
-        user_agent = kwargs.pop("user_agent", {})
 
         load_config_kwargs = {
             "cache_dir": cache_dir,
@@ -591,8 +588,6 @@ class AutoPipelineForImage2Image(ConfigMixin):
             "use_auth_token": use_auth_token,
             "local_files_only": local_files_only,
             "revision": revision,
-            "subfolder": subfolder,
-            "user_agent": user_agent,
         }
 
         config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
@@ -856,8 +851,6 @@ class AutoPipelineForInpainting(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None)
-        user_agent = kwargs.pop("user_agent", {})
 
         load_config_kwargs = {
             "cache_dir": cache_dir,
@@ -867,8 +860,6 @@ class AutoPipelineForInpainting(ConfigMixin):
             "use_auth_token": use_auth_token,
             "local_files_only": local_files_only,
             "revision": revision,
-            "subfolder": subfolder,
-            "user_agent": user_agent,
         }
 
         config = cls.load_config(pretrained_model_or_path, **load_config_kwargs)
