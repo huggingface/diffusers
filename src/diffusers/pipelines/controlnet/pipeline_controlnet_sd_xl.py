@@ -1070,6 +1070,7 @@ class StableDiffusionXLControlNetPipeline(
         target_size = target_size or (height, width)
 
         add_text_embeds = pooled_prompt_embeds
+        print(f"pooled_prompt_embeds: {pooled_prompt_embeds.shape}")
         add_time_ids = self._get_add_time_ids(
             original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
         )
@@ -1126,6 +1127,7 @@ class StableDiffusionXLControlNetPipeline(
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
+                print(f"ControlNet conditioning dimension: {image.shape}.")
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
                     t,
