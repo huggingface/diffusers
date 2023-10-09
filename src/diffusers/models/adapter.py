@@ -549,8 +549,8 @@ class LightAdapterBlock(nn.Module):
 
 class LightAdapterResnetBlock(nn.Module):
     """
-    A LightAdapterResnetBlock is a helper model that implements a ResNet-like block with a slightly different
-    architecture than AdapterResnetBlock.
+    A `LightAdapterResnetBlock` is a helper model that implements a ResNet-like block with a slightly different
+    architecture than `AdapterResnetBlock`.
 
     Parameters:
         channels (`int`):
