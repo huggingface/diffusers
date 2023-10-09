@@ -1151,7 +1151,7 @@ class LoraLoaderMixin:
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
-            text_encoder=getattr(self, self.text_encoder_name, self.text_encoder_name),
+            text_encoder=getattr(self, self.text_encoder_name, self.text_encoder),
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
             adapter_name=adapter_name,
