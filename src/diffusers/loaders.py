@@ -1631,6 +1631,11 @@ class LoraLoaderMixin:
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
+            if hasattr(unet, "peft_config") and adapter_name in list(unet.peft_config.keys()):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
+                )
+
             inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
             incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
 
@@ -1768,6 +1773,7 @@ class LoraLoaderMixin:
                     is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
                     # inject LoRA layers and load the state dict
+                    # in transformers we automatically check whether the adapter name is already in use or not
                     text_encoder.load_adapter(
                         adapter_name=adapter_name,
                         adapter_state_dict=text_encoder_lora_state_dict,
