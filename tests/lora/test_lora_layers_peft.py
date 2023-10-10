@@ -806,6 +806,32 @@ class PeftLoraLoaderMixinTests:
 
         self.assertTrue(np.isnan(out).all())
 
+    def test_get_adapters(self):
+        """
+        Tests a simple usecase where we attach multiple adapters and check if the results
+        are the expected results
+        """
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+
+        adapter_names = pipe.get_active_adapters()
+        self.assertListEqual(adapter_names, ["adapter-1"])
+
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+
+        adapter_names = pipe.get_active_adapters()
+        self.assertListEqual(adapter_names, ["adapter-2"])
+
+        pipe.set_adapters(["adapter-1", "adapter-2"])
+        self.assertListEqual(pipe.get_active_adapters(), ["adapter-1", "adapter-2"])
+
     @unittest.skip("This is failing for now - need to investigate")
     def test_simple_inference_with_text_unet_lora_unfused_torch_compile(self):
         """
@@ -1035,7 +1061,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
         # multi-adapter inference
-        pipe.set_adapters(["pixel", "toy"], unet_weights=[0.5, 1.0])
+        pipe.set_adapters(["pixel", "toy"], adapter_weights=[0.5, 1.0])
         images = pipe(
             prompt,
             num_inference_steps=30,

@@ -2499,6 +2499,26 @@ class LoraLoaderMixin:
         if hasattr(self, "text_encoder_2"):
             self.enable_lora_for_text_encoder(self.text_encoder_2)
 
+    def get_active_adapters(self) -> Optional[List[str]]:
+        """
+        Gets the list of the current active adapters
+        """
+        if not self.use_peft_backend:
+            raise ValueError(
+                "PEFT backend is required for this method. Please install the latest version of PEFT `pip install -U peft`"
+            )
+
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        active_adapters = None
+
+        for module in self.unet.modules():
+            if isinstance(module, BaseTunerLayer):
+                active_adapters = module.active_adapters
+                break
+
+        return active_adapters
+
     def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
         """
         Sets the LoRAs that are listed in `adapter_names` into a target device. Usefull for offloading the LoRA in CPU
