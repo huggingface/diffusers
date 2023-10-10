@@ -64,6 +64,19 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=init_imag
   </div>
 </div>
 
+## Create a mask image
+
+Throughout this guide, the mask image is provided in all of the code examples for convenience. You can inpaint on your own images, but you'll need to create a mask image for it. Use the Space below to easily create a mask image.
+
+Upload a base image to inpaint on and use the sketch tool to draw a mask. Once you're done, click **Run** to generate and download the mask image.
+
+<iframe
+	src="https://stevhliu-inpaint-mask-maker.hf.space"
+	frameborder="0"
+	width="850"
+	height="450"
+></iframe>
+
 ## Popular models
 
 [Stable Diffusion Inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting), [Stable Diffusion XL (SDXL) Inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images.
