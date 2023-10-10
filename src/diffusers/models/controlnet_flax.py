@@ -168,7 +168,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     controlnet_conditioning_channel_order: str = "rgb"
     conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256)
 
-    def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
+    def init_weights(self, rng: jax.Array) -> FrozenDict:
         # init input tensors
         sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)

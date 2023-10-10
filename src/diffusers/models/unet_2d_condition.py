@@ -790,6 +790,26 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
+            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
+                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
+            timestep_cond: (`torch.Tensor`, *optional*, defaults to `None`):
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
+                through the `self.time_embedding` layer to obtain the timestep embeddings.
+            attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
+                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
+                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
+                negative values to the attention scores corresponding to "discard" tokens.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            added_cond_kwargs: (`dict`, *optional*):
+                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
+                are passed along to the UNet blocks.
+            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
+                A tuple of tensors that if specified are added to the residuals of down unet blocks.
+            mid_block_additional_residual: (`torch.Tensor`, *optional*):
+                A tensor that if specified is added to the residual of the middle unet block.
             encoder_attention_mask (`torch.Tensor`):
                 A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
                 `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
