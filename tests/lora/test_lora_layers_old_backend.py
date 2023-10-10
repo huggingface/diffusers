@@ -662,6 +662,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
 
+@deprecate_after_peft_backend
 class SDXInpaintLoraMixinTests(unittest.TestCase):
     def get_dummy_inputs(self, device, seed=0, img_res=64, output_pil=True):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
@@ -1376,6 +1377,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         ), "The pipeline was serialized with LoRA parameters fused inside of the respected modules. The loaded pipeline should yield proper outputs, henceforth."
 
 
+@deprecate_after_peft_backend
 class UNet2DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
@@ -1624,6 +1626,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         assert max_diff_off_sample < expected_max_diff
 
 
+@deprecate_after_peft_backend
 class UNet3DConditionModelTests(unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
