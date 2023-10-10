@@ -297,17 +297,16 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def add_adapter(self, adapter_config, adapter_name: str = "default") -> None:
         r"""
-        Adds a fresh new adapter to the current model for training purpose. If no adapter name is passed, a default
-        name is assigned to the adapter to follow the convention of PEFT library (in PEFT we use "default" as the
+        Adds a new adapter to the current model for training. If no adapter name is passed, a default
+        name is assigned to the adapter to follow the convention of the PEFT library (in PEFT we use `"default"` as the
         default adapter name).
 
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
+        If you are not familiar with adapters and PEFT methods, we invite you to read more about them in the PEFT [documentation](https://huggingface.co/docs/peft).
 
         Args:
-            adapter_config (`~peft.PeftConfig`):
-                The configuration of the adapter to add, supported adapters are non-prefix tuning and adaption prompts
-                methods
+            adapter_config (`[~peft.PeftConfig]`):
+                The configuration of the adapter to add; supported adapters are non-prefix tuning and adaption prompt
+                methods.
             adapter_name (`str`, *optional*, defaults to `"default"`):
                 The name of the adapter to add. If no name is passed, a default name is assigned to the adapter.
         """
@@ -333,7 +332,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def set_adapter(self, adapter_name: Union[str, List[str]]) -> None:
         """
-        Sets a specific adapter by forcing the model to use a that adapter and disable the other adapters.
+        Sets a specific adapter by forcing the model to only use that adapter and disables the other adapters.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft
@@ -382,7 +381,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
     def disable_adapters(self) -> None:
         r"""
-        Disable all adapters that are attached to the model. This leads to inferring with the base model only.
+        Disable all adapters attached to the model and fallback to inference with the base model only.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         official documentation: https://huggingface.co/docs/peft

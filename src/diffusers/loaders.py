@@ -719,7 +719,7 @@ class UNet2DConditionLoadersMixin:
             adapter_names (`List[str]` or `str`):
                 The names of the adapters to use.
             weights (`List[float]`, *optional*):
-                The weights for the adapter(s) to be used with unet. If `None`, the weights are set to `1.0` for all
+                The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all
                 the adapters.
         """
         if not self.use_peft_backend:
@@ -2549,10 +2549,10 @@ class LoraLoaderMixin:
 
     def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
         """
-        Sets the LoRAs that are listed in `adapter_names` into a target device. Usefull for offloading the LoRA in CPU
-        in case one wants to load multiple adapters and free some GPU memory.
+        Sets the LoRAs listed in `adapter_names` into a target device. Useful for offloading the LoRA in the CPU
+        in case you want to load multiple adapters and free some GPU memory.
 
-        Note this is specific to LoRA and needs some tweaking for new adapter architectures (e.g. IA3, AdaLora..)
+        This is specific to LoRA and needs some tweaking for new adapter architectures (IA3, AdaLora).
 
         Args:
             adapter_names (`List[str]`):
