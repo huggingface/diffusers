@@ -13,6 +13,7 @@
 # limitations under the License.
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
+from itertools import chain, zip_longest
 
 import torch
 import torch.nn as nn
@@ -37,6 +38,10 @@ from .unet_2d_blocks import (
     DownBlock2D,
     CrossAttnUpBlock2D,
     UpBlock2D,
+    ResnetBlock2D,
+    Transformer2DModel,
+    Downsample2D,
+    Upsample2D
 )
 from .unet_2d_condition import UNet2DConditionModel
 
@@ -140,17 +145,15 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
 
         # 2 - Create base and control model
-        # TODO 1. create base model, or 2. pass it
         self.base_model = base_model = UNet2DConditionModel(#todo make variable
             block_out_channels=(320, 640, 1280),
-            down_block_types=("CrossAttnDownBlock2D","CrossAttnDownBlock2D","DownBlock2D"),
-            up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+            down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D","UpBlock2D"),
         )
-        # TODO create control model
         self.control_model = ctrl_model = UNet2DConditionModel(#todo make variable
             block_out_channels=[32,64,128],
-            down_block_types=("CrossAttnDownBlock2D","CrossAttnDownBlock2D","DownBlock2D"),
-            up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+            down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D","UpBlock2D"),
             time_embedding_dim=1280
         ) # todo: make variable
         for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))): # todo: make variable (sth like zip(block_out_channels[:-1],block_out_channels[1:]))
@@ -309,6 +312,11 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         it_enc_convs_in, it_enc_convs_out, it_dec_convs_in, it_dec_convs_out = map(iter, (self.enc_zero_convs_in, self.enc_zero_convs_out, self.dec_zero_convs_in, self.dec_zero_convs_out))
         scales = iter(self.scale_list)
 
+        base_down_block_parts = to_block_parts(self.base_model.down_blocks)
+        ctrl_down_block_parts = to_block_parts(self.control_model.down_blocks)
+        base_mid_block_parts = to_block_parts([self.base_model.mid_block])
+        ctrl_mid_block_parts = to_block_parts([self.control_model.mid_block])
+
         # Cross Control
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
@@ -318,20 +326,23 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             guided_hint = None
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
-        h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
 
         # 1 - input blocks (encoder)
-        for module_base, module_ctrl in zip(self.base_model.down_blocks, self.control_model.down_blocks):
-            h_base = module_base(h_base, temb, cemb, context)[0] # Note Umer: module_base returns hidden_states and running output list
-            h_ctrl = module_ctrl(h_ctrl, temb, cemb, context)[0] # see above
-
+        for i, (m_base, m_ctrl)  in enumerate(zip(base_down_block_parts, ctrl_down_block_parts)):
+            if isinstance(m_ctrl, (ResnetBlock2D, Downsample2D)): # only infuse info from base when passing tru a ResBlock or Downsample (not a Transformer)              
+                conv_base2ctrl = next(it_enc_convs_in)
+                inp_base2ctrl = conv_base2ctrl(h_base)
+                h_ctrl = torch.cat([h_ctrl, inp_base2ctrl], dim=1)
+            h_base = apply_forward(m_base, h_base, temb, cemb, context)
+            h_ctrl = apply_forward(m_ctrl, h_ctrl, temb, cemb, context)
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
-            h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
         # 2 - mid blocks (bottleneck)
-        h_base = self.base_model.mid_block(h_base, emb, context)
-        h_ctrl = self.control_model.mid_block(h_ctrl, emb, context)
-        h_base = h_base + self.middle_block_out(h_ctrl, emb) * next(scales)
+        h_ctrl = torch.concat([h_ctrl, h_base], dim=1)
+        for i, (m_base, m_ctrl)  in enumerate(zip(base_mid_block_parts, ctrl_mid_block_parts)):
+            h_base = apply_forward(m_base, h_base, temb, cemb, context)
+            h_ctrl = apply_forward(m_ctrl, h_ctrl, temb, cemb, context)
+        h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)
         # 3 - output blocks (decoder)
         for module_base in self.base_model.output_blocks:
             h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop(), emb) * next(scales)
@@ -413,15 +424,21 @@ def increase_block_input_in_mid_resnet(unet, by):
         conv1_kwargs['bias'] = 'bias' in conv1_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
         conv1_kwargs['in_channels'] += by  # surgery done here
         # conv_shortcut
-        if old_conv_shortcut is not None:
-            conv_shortcut_args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
-            for a in conv_shortcut_args: assert hasattr(old_conv_shortcut, a)
-            conv_shortcut_args_kwargs = { a: getattr(old_conv_shortcut, a) for a in conv_shortcut_args }
-            conv_shortcut_args_kwargs['bias'] = 'bias' in conv_shortcut_args_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
-            conv_shortcut_args_kwargs['in_channels'] += by  # surgery done here
+        # as we changed the input size of the block, the input and output sizes are likely different,
+        # therefore we need a conv_shortcut (simply adding won't work) 
+        conv_shortcut_args_kwargs = { 
+            'in_channels': conv1_kwargs['in_channels'],
+            'out_channels': conv1_kwargs['out_channels'],
+            # default arguments from resnet.__init__
+            'kernel_size':1, 
+            'stride':1, 
+            'padding':0,
+            'bias':True
+        }
         # swap old with new modules
         unet.mid_block.resnets[0].norm1 = GroupNorm(**norm_kwargs)
         unet.mid_block.resnets[0].conv1 = LoRACompatibleConv(**conv1_kwargs)
+        unet.mid_block.resnets[0].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
         unet.mid_block.resnets[0].in_channels += by  # surgery done here
 
 
@@ -431,48 +448,22 @@ def zero_module(module):
     return module
 
 
-# util functions, do delete laters
-def gether_channel_sizes(m, m_type):
-    if m_type == 'base':
-        ch_inout_base = {'enc': [], 'mid': [], 'dec': []}
-        # 3.1 - input convolution
-        ch_inout_base['enc'].append((m.conv_in.in_channels, m.conv_in.out_channels))
-        # 3.2 - encoder blocks
-        for module in m.down_blocks:
-            if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-                for r in module.resnets:
-                    ch_inout_base['enc'].append((r.in_channels, r.out_channels))
-                if module.downsamplers:
-                    ch_inout_base['enc'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
-            else:
-                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
-        # 3.3 - middle block
-        ch_inout_base['mid'].append((m.mid_block.resnets[0].in_channels, m.mid_block.resnets[0].out_channels))
-        # 3.4 - decoder blocks
-        for module in m.up_blocks:
-            if isinstance(module, (CrossAttnUpBlock2D, UpBlock2D)):
-                for r in module.resnets:
-                    ch_inout_base['dec'].append((r.in_channels, r.out_channels))
-            else:
-                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
-        return ch_inout_base
-    elif m_type == 'control':
-        ch_inout_ctrl = {'enc': [], 'mid': [], 'dec': []}
-        # 3.1 - input convolution
-        ch_inout_ctrl['enc'].append((m.conv_in.in_channels, m.conv_in.out_channels))
-        # 3.2 - encoder blocks
-        for module in m.down_blocks:
-            if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-                for r in module.resnets:
-                    ch_inout_ctrl['enc'].append((r.in_channels, r.out_channels))
-                if module.downsamplers:
-                    ch_inout_ctrl['enc'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
-            else:
-                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
-        # 3.3 - middle block
-        ch_inout_ctrl['mid'].append((m.mid_block.resnets[0].in_channels, m.mid_block.resnets[0].out_channels))
-        return ch_inout_ctrl
-    else: raise ValueError(f'model_type must be `base` or `control`, not `{m_type}`')
+def block_parts(block):
+    modules = list(block.resnets)
+    if hasattr(block, 'attentions') and block.attentions is not None: modules = list(o for o in chain.from_iterable(zip_longest(modules, block.attentions, fillvalue=None)) if o is not None)
+    if hasattr(block, 'downsamplers') and block.downsamplers is not None: modules.extend(block.downsamplers)
+    if hasattr(block, 'upsamplers') and block.upsamplers is not None: modules.extend(block.upsamplers)
+    return modules
 
-def print_channels(ch_szs):
-    for k,v in ch_szs.items(): print(k,v)
+
+def to_block_parts(blocks):
+    '''eg: Down(Res, Res, Conv), CrossAttnDown(Res, Attn, Res, Attn, Conv) -> (Res, Res, Conv, Res, Attn, Res, Attn, Conv)'''
+    parts = [block_parts(b) for b in blocks]
+    return list(chain.from_iterable(parts))
+
+def apply_forward(m, x, temb, cemb, context):
+    if isinstance(m,ResnetBlock2D): return m(x, temb)
+    if isinstance(m,Transformer2DModel): return m(x, cemb).sample # Q: Include temp also?
+    if isinstance(m,Downsample2D): return m(x)
+    if isinstance(m,Upsample2D): return m(x)
+    raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D`, `Upsample2D`')
