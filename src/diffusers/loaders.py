@@ -1610,6 +1610,8 @@ class LoraLoaderMixin:
             state_dict = convert_unet_state_dict_to_peft(state_dict)
 
             if network_alphas is not None:
+                # The alphas state dict have the same structure as Unet, thus we convert it to peft format using 
+                # `convert_unet_state_dict_to_peft` method.
                 network_alphas = convert_unet_state_dict_to_peft(network_alphas)
 
             rank = {}
