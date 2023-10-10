@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-[[open-in-colab]]
+[[open-in-colab]] 
 
 # Using PEFT for LoRA inference in Diffusers
 
@@ -67,7 +67,7 @@ image = pipe(
 image
 ```
 
-![png](diffusers_peft_lora_inference_files/diffusers_peft_lora_inference_8_1.png)
+![toy-face](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_8_1.png)
     
 ## Loading another adapter
 
@@ -90,7 +90,7 @@ image = pipe(
 image
 ```
 
-![png](diffusers_peft_lora_inference_files/diffusers_peft_lora_inference_12_1.png)
+![pixel-art](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_12_1.png)
     
 ## Combining multiple adapters!
 
@@ -126,7 +126,7 @@ image = pipe(
 image
 ```
 
-![png](diffusers_peft_lora_inference_files/diffusers_peft_lora_inference_16_1.png)
+![toy-face-pixel-art](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_16_1.png)
     
 Impressive! As you can see, the model was able to generate an image that mixes the characteritics of both adapters.
 
@@ -145,7 +145,7 @@ image = pipe(
 image
 ```
 
-![png](diffusers_peft_lora_inference_files/diffusers_peft_lora_inference_18_1.png)
+![toy-face-again](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_18_1.png)
 
 ## Disabling all adapters
 
@@ -161,4 +161,4 @@ image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).ima
 image
 ```
 
-![png](diffusers_peft_lora_inference_files/diffusers_peft_lora_inference_20_1.png)
+![no-lora](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_20_1.png)
