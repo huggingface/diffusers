@@ -13,6 +13,7 @@
 # limitations under the License.
 import os
 import re
+import warnings
 from collections import defaultdict
 from contextlib import nullcontext
 from io import BytesIO
@@ -2237,6 +2238,12 @@ class LoraLoaderMixin:
         ```
         """
         if not self.use_peft_backend:
+            if version.parse(__version__) > version.parse("0.23"):
+                warnings.warn(
+                    "You are using `unload_lora_weights` to disable and unload lora weights. If you want to iteratively enable and disable adapter weights, you can use `pipe.enable_lora()` or `pipe.disable_lora()`. After"
+                    " installing the latest version of PEFT."
+                )
+
             for _, module in self.unet.named_modules():
                 if hasattr(module, "set_lora_layer"):
                     module.set_lora_layer(None)
