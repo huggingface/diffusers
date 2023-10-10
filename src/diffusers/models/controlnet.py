@@ -771,6 +771,7 @@ class ControlNetModel(
 
         # 2. pre-process
         sample = self.conv_in(sample)
+        print(f"From ControlNet conv_in: {sample[0, :5, :5, -1]}")
 
         controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
         sample = sample + controlnet_cond
