@@ -803,12 +803,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             added_cond_kwargs: (`dict`, *optional*):
                 A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
                 are passed along to the UNet blocks.
-            down_block_additional_residuals (`tuple` of `torch.Tensor`, *optional*)
+            down_block_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
                 additional residuals to be added to UNet long skip connections from down blocks to up blocks
                 for example from ControlNet side model(s)
-            mid_block_additional_residual (`torch.Tensor`, *optional*)
+            mid_block_additional_residual (`torch.Tensor`, *optional*):
                 additional residual to be added to UNet mid block output, for example from ControlNet side model
-            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*)
+            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
                 additional residuals to be added within UNet down blocks, for example from T2I-Adapter side model(s)
 
         Returns:
