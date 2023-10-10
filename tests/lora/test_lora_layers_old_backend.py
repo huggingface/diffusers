@@ -1028,6 +1028,47 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         sd_pipe.unload_lora_weights()
 
+    def test_lora_fuse_nan(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        # corrupt one LoRA weight with `inf` values
+        with torch.no_grad():
+            sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight += float(
+                "inf"
+            )
+
+        # with `safe_fusing=True` we should see an Error
+        with self.assertRaises(ValueError):
+            sd_pipe.fuse_lora(safe_fusing=True)
+
+        # without we should not see an error, but every image will be black
+        sd_pipe.fuse_lora(safe_fusing=False)
+
+        out = sd_pipe("test", num_inference_steps=2, output_type="np").images
+
+        assert np.isnan(out).all()
+
     def test_lora_fusion(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
