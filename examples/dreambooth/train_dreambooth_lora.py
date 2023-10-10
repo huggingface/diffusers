@@ -24,7 +24,6 @@ import os
 import shutil
 import warnings
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 import torch
@@ -63,6 +62,7 @@ from diffusers.models.attention_processor import (
 )
 from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -656,25 +656,6 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
     return prompt_embeds
 
 
-def unet_attn_processors_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
-    r"""
-    Returns:
-        A state dict containing just the attention processor parameters.
-    """
-    lora_state_dict = {}
-
-    for name, module in unet.named_modules():
-        if hasattr(module, "set_lora_layer"):
-            lora_layer = getattr(module, "lora_layer")
-            if lora_layer is not None:
-                current_lora_layer_sd = lora_layer.state_dict()
-                for lora_layer_matrix_name, lora_param in current_lora_layer_sd.items():
-                    # The matrix name can either be "down" or "up".
-                    lora_state_dict[f"unet.{name}.lora.{lora_layer_matrix_name}"] = lora_param
-
-    return lora_state_dict
-
-
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -930,7 +911,7 @@ def main(args):
 
             for model in models:
                 if isinstance(model, type(accelerator.unwrap_model(unet))):
-                    unet_lora_layers_to_save = unet_attn_processors_state_dict(model)
+                    unet_lora_layers_to_save = unet_lora_state_dict(model)
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
                     text_encoder_lora_layers_to_save = text_encoder_lora_state_dict(model)
                 else:
@@ -1366,7 +1347,7 @@ def main(args):
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
         unet = unet.to(torch.float32)
-        unet_lora_layers = unet_attn_processors_state_dict(unet)
+        unet_lora_layers = unet_lora_state_dict(unet)
 
         if text_encoder is not None and args.train_text_encoder:
             text_encoder = accelerator.unwrap_model(text_encoder)
