@@ -163,7 +163,7 @@ image
 
 ![no-lora](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_20_1.png)
 
-## Monitoring active adapter
+## Monitoring active adapters
 
 You have attached multiple adapters and you are a bit lost on what adapters have been attached to the pipeline's components? You can easily check the list of active adapters using the `get_active_adapters()` method as follows:
 
@@ -172,9 +172,9 @@ active_adapters = pipe.get_active_adapters()
 >>> ["toy", "pixel"]
 `
 
-You can also monitor the list of all attached adapters in your pipeline by simply calling `get_list_adapters()` that will return you a dictionary containing the component name as a key and the corresponding list of adapters as a value
+You can also get a component-wise breakdown of the active adapters like so:
 
-`python
-list_adapters = pipe.get_active_adapters()
+```python
+
+list_adapters_component_wise = pipe. get_list_adapters()
 >>> {"text_encoder": ["toy", "pixel"], "unet": ["toy", "pixel"], "text_encoder_2": ["toy", "pixel"]}
-`
