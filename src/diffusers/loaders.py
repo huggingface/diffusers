@@ -2462,18 +2462,16 @@ class LoraLoaderMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        unet_weights: List[float] = None,
-        te_weights: List[float] = None,
-        te2_weights: List[float] = None,
+        adapter_weights: List[float] = None,
     ):
         # Handle the UNET
-        self.unet.set_adapters(adapter_names, unet_weights)
+        self.unet.set_adapters(adapter_names, adapter_weights)
 
         # Handle the Text Encoder
         if hasattr(self, "text_encoder"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, te_weights)
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, adapter_weights)
         if hasattr(self, "text_encoder_2"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, te2_weights)
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, adapter_weights)
 
     def disable_lora(self):
         if not self.use_peft_backend:
