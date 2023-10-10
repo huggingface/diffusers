@@ -2255,6 +2255,8 @@ class LoraLoaderMixin:
                     module.set_lora_layer(None)
         else:
             recurse_remove_peft_layers(self.unet)
+            if hasattr(self.unet, "peft_config"):
+                del self.unet.peft_config
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()

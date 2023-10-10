@@ -1569,9 +1569,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
         pipe.fuse_lora()
-        # We need to unload the lora weights since in the previous API `fuse_lora` led to lora weights being
-        # silently deleted - otherwise this will CPU OOM
-        pipe.unload_lora_weights()
 
         generator = torch.Generator().manual_seed(0)
         _ = pipe(
@@ -1579,6 +1576,10 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         ).images
 
         pipe.unfuse_lora()
+
+        # We need to unload the lora weights - in the old API unfuse led to unloading the adapter weights
+        pipe.unload_lora_weights()
+
         generator = torch.Generator().manual_seed(0)
         images = pipe(
             "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
@@ -1588,7 +1589,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(original_image_slice, images_without_fusion_slice, atol=1e-3))
         release_memory(pipe)
 
-    @unittest.skip("This lead to CPU OOM")
     def test_sdxl_1_0_lora_fusion_efficiency(self):
         generator = torch.Generator().manual_seed(0)
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
