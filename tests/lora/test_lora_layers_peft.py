@@ -1554,9 +1554,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
-        pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
-        )
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.enable_model_cpu_offload()
 
         generator = torch.Generator().manual_seed(0)
@@ -1567,7 +1565,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
         pipe.fuse_lora()
 
         generator = torch.Generator().manual_seed(0)
