@@ -876,7 +876,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         path = "runwayml/stable-diffusion-v1-5"
         lora_id = "takuma104/lora-test-text-encoder-lora-target"
 
-        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
+        pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
         pipe.load_lora_weights(lora_id, adapter_name="adapter-1")
         pipe.load_lora_weights(lora_id, adapter_name="adapter-2")
         pipe = pipe.to("cuda")
@@ -891,20 +891,20 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             "Lora not correctly set in text encoder",
         )
 
+        # We will offload the first adapter in CPU and check if the offloading
+        # has been performed correctly
         pipe.set_lora_device(["adapter-1"], "cpu")
 
         for name, module in pipe.unet.named_modules():
             if "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
                 self.assertTrue(module.weight.device == torch.device("cpu"))
             elif "adapter-2" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                # import pdb; pdb.set_trace()
                 self.assertTrue(module.weight.device != torch.device("cpu"))
 
         for name, module in pipe.text_encoder.named_modules():
             if "adapter-1" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
                 self.assertTrue(module.weight.device == torch.device("cpu"))
             elif "adapter-2" in name and not isinstance(module, (nn.Dropout, nn.Identity)):
-                # import pdb; pdb.set_trace()
                 self.assertTrue(module.weight.device != torch.device("cpu"))
 
         pipe.set_lora_device(["adapter-1"], 0)
@@ -1493,7 +1493,9 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
+        )
         pipe.enable_model_cpu_offload()
 
         generator = torch.Generator().manual_seed(0)
@@ -1504,7 +1506,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
         pipe.fuse_lora()
         # We need to unload the lora weights since in the previous API `fuse_lora` led to lora weights being
         # silently deleted - otherwise this will CPU OOM
@@ -1531,8 +1533,10 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
+        )
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()
 
         start_time = time.time()
@@ -1545,8 +1549,10 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         del pipe
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
+        )
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
         pipe.fuse_lora()
         # We need to unload the lora weights since in the previous API `fuse_lora` led to lora weights being
         # silently deleted - otherwise this will CPU OOM
@@ -1569,7 +1575,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_1_0_last_ben(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to("cuda")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.enable_model_cpu_offload()
         lora_model_id = "TheLastBen/Papercut_SDXL"
         lora_filename = "papercut.safetensors"
@@ -1615,6 +1621,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         assert not state_dicts_almost_equal(text_encoder_2_sd, pipe.text_encoder_2.state_dict())
         assert not state_dicts_almost_equal(unet_sd, pipe.unet.state_dict())
         release_memory(pipe)
+        del unet_sd, text_encoder_1_sd, text_encoder_2_sd
 
     def test_sdxl_1_0_lora_with_sequential_cpu_offloading(self):
         generator = torch.Generator().manual_seed(0)
@@ -1662,10 +1669,11 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
     @nightly
     def test_sequential_fuse_unfuse(self):
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
 
         # 1. round
-        pipe.load_lora_weights("Pclanglais/TintinIA")
+        pipe.load_lora_weights("Pclanglais/TintinIA", torch_dtype=torch.float16)
+        pipe.to("cuda")
         pipe.fuse_lora()
 
         generator = torch.Generator().manual_seed(0)
@@ -1677,17 +1685,17 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.unfuse_lora()
 
         # 2. round
-        pipe.load_lora_weights("ProomptEngineer/pe-balloon-diffusion-style")
+        pipe.load_lora_weights("ProomptEngineer/pe-balloon-diffusion-style", torch_dtype=torch.float16)
         pipe.fuse_lora()
         pipe.unfuse_lora()
 
         # 3. round
-        pipe.load_lora_weights("ostris/crayon_style_lora_sdxl")
+        pipe.load_lora_weights("ostris/crayon_style_lora_sdxl", torch_dtype=torch.float16)
         pipe.fuse_lora()
         pipe.unfuse_lora()
 
         # 4. back to 1st round
-        pipe.load_lora_weights("Pclanglais/TintinIA")
+        pipe.load_lora_weights("Pclanglais/TintinIA", torch_dtype=torch.float16)
         pipe.fuse_lora()
 
         generator = torch.Generator().manual_seed(0)
