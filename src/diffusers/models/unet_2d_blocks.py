@@ -467,15 +467,18 @@ def get_up_block(
 
 class AutoencoderTinyBlock(nn.Module):
     """
-    Tiny Autoencoder block used in [`AutoencoderTiny`]. It is a mini residual module consisting of plain conv + ReLU blocks.
+    Tiny Autoencoder block used in [`AutoencoderTiny`]. It is a mini residual module consisting of plain conv + ReLU
+    blocks.
 
     Args:
         in_channels (`int`): The number of input channels.
         out_channels (`int`): The number of output channels.
-        act_fn (`str`):` The activation function to use. Supported values are `"swish"`, `"mish"`, `"gelu"`, and `"relu"`.
+        act_fn (`str`):
+            ` The activation function to use. Supported values are `"swish"`, `"mish"`, `"gelu"`, and `"relu"`.
 
     Returns:
-        `torch.FloatTensor`: A tensor with the same shape as the input tensor, but with the number of channels equal to `out_channels`.
+        `torch.FloatTensor`: A tensor with the same shape as the input tensor, but with the number of channels equal to
+        `out_channels`.
     """
 
     def __init__(self, in_channels: int, out_channels: int, act_fn: str):
