@@ -35,6 +35,7 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     is_invisible_watermark_available,
+    is_torch_xla_available,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -47,6 +48,13 @@ from .pipeline_output import StableDiffusionXLPipelineOutput
 
 if is_invisible_watermark_available():
     from .watermark import StableDiffusionXLWatermarker
+
+if is_torch_xla_available():
+    import torch_xla.core.xla_model as xm
+
+    XLA_AVAILABLE = True
+else:
+    XLA_AVAILABLE = False
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -860,7 +868,7 @@ class StableDiffusionXLPipeline(
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        # 7.1 Apply denoising_end
+        # 8.1 Apply denoising_end
         if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
             discrete_timestep_cutoff = int(
                 round(
@@ -907,6 +915,9 @@ class StableDiffusionXLPipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+
+                if XLA_AVAILABLE:
+                    xm.mark_step()
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
