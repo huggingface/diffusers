@@ -159,14 +159,14 @@ image
 
 You have attached multiple adapters in this tutorial, and if you're feeling a bit lost on what adapters have been attached to the pipeline's components, you can easily check the list of active adapters using the `get_active_adapters()` method:
 
-`python
+```python
 active_adapters = pipe.get_active_adapters()
 >>> ["toy", "pixel"]
-`
+```
 
-You can also get the active adapters of each pipeline component with `get_list_adapters`:
+You can also get the active adapters of each pipeline component with `get_list_adapters()`:
 
 ```python
-
 list_adapters_component_wise = pipe.get_list_adapters()
 >>> {"text_encoder": ["toy", "pixel"], "unet": ["toy", "pixel"], "text_encoder_2": ["toy", "pixel"]}
+```
