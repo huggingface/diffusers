@@ -2470,7 +2470,7 @@ class LoraLoaderMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        adapter_weights: List[float] = None,
+        adapter_weights: Optional[List[float]] = None,
     ):
         # Handle the UNET
         self.unet.set_adapters(adapter_names, adapter_weights)
