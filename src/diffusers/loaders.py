@@ -1627,7 +1627,7 @@ class LoraLoaderMixin:
             if adapter_name is None:
                 adapter_name = get_adapter_name(unet)
 
-            # In case the pipeline has been already offloaded to CPU - temporarly remove the hooks
+            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
 
