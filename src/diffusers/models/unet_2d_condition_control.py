@@ -49,27 +49,12 @@ from .unet_2d_condition import UNet2DConditionModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# # # Notes Umer
-# To integrate controlnet-xs, I need to
-# 1. Create an ControlNet-xs class
-# 2. Enable it to load from hub (via .from_pretrained)
-# 3. Make sure it runs with all controlnet pipelines
-#
-# Notes & Questions
-# I: Controlnet-xs has a slightly different architecture than controlnet,
-#       as the encoders of the base and the controller are connected.
-# Q: Do I have to adjust all pipelines?
-#
-# Q: There are controlnet-xs models for sd-xl and sd-2.1. Does that mean I need to have multiple pipelines?
-# A: Yes. For the original controlnet, there are 8 pipelines: {sd-xl, sd-2.1} x {normal, img2img, inpainting} + flax + multicontrolnet
-# # # 
-
-
 @dataclass
 class UNet2DConditionOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
+# Q: better name?
 class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     def __init__(
@@ -282,13 +267,8 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         # # < from forward_
         if no_control: return self.base_model(x=x, timesteps=timesteps, context=context, y=y, **kwargs)
 
-        # # Warning for Umer: What I & cnxs call 'projection', diffusers calls 'embedding'; and vice versa
-        # Code from cnxs:
-        #t_emb = self.time_embedding(timesteps, self.model_channels, repeat_only=False)
-        #if self.learn_embedding: emb = self.control_model.time_embed(t_emb) * self.control_scale ** 0.3 + self.base_model.time_embed(t_emb) * (1 - control_scale ** 0.3)
-        #else: emb = self.base_model.time_embed(t_emb)
-
         # time embeddings
+        timesteps = timesteps[None]
         t_emb = get_timestep_embedding(
             timesteps, 
             self.model_channels,
@@ -305,52 +285,47 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
 
         emb = temb + cemb
 
-        guided_hint = self.input_hint_block(hint, emb, context)
+        guided_hint = self.input_hint_block(hint)
 
         h_ctrl = h_base = x
         hs_base, hs_ctrl = [], []
         it_enc_convs_in, it_enc_convs_out, it_dec_convs_in, it_dec_convs_out = map(iter, (self.enc_zero_convs_in, self.enc_zero_convs_out, self.dec_zero_convs_in, self.dec_zero_convs_out))
         scales = iter(self.scale_list)
 
-        base_down_block_parts = to_block_parts(self.base_model.down_blocks)
-        ctrl_down_block_parts = to_block_parts(self.control_model.down_blocks)
-        base_mid_block_parts = to_block_parts([self.base_model.mid_block])
-        ctrl_mid_block_parts = to_block_parts([self.control_model.mid_block])
+        base_down_subblocks = to_sub_blocks(self.base_model.down_blocks)
+        ctrl_down_subblocks = to_sub_blocks(self.control_model.down_blocks)
+        base_mid_subblocks = to_sub_blocks([self.base_model.mid_block])
+        ctrl_mid_subblocks = to_sub_blocks([self.control_model.mid_block])
+        base_up_subblocks = to_sub_blocks(self.base_model.up_blocks)
 
         # Cross Control
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
         h_ctrl = self.control_model.conv_in(h_ctrl)
-        if guided_hint is not None:
-            h_ctrl = h_ctrl + guided_hint
-            guided_hint = None
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
-
         # 1 - input blocks (encoder)
-        for i, (m_base, m_ctrl)  in enumerate(zip(base_down_block_parts, ctrl_down_block_parts)):
-            if isinstance(m_ctrl, (ResnetBlock2D, Downsample2D)): # only infuse info from base when passing tru a ResBlock or Downsample (not a Transformer)              
-                conv_base2ctrl = next(it_enc_convs_in)
-                inp_base2ctrl = conv_base2ctrl(h_base)
-                h_ctrl = torch.cat([h_ctrl, inp_base2ctrl], dim=1)
-            h_base = apply_forward(m_base, h_base, temb, cemb, context)
-            h_ctrl = apply_forward(m_ctrl, h_ctrl, temb, cemb, context)
+        for m_base, m_ctrl  in zip(base_down_subblocks, ctrl_down_subblocks):
+            inp_base2ctrl = next(it_enc_convs_in)(h_base) # get info from base encoder 
+            if guided_hint is not None: # in first, add hint info if it exists 
+                inp_base2ctrl += guided_hint
+                guided_hint = None
+            h_ctrl = torch.cat([h_ctrl, inp_base2ctrl], dim=1)
+            h_base = m_base(h_base, temb, cemb, context)
+            h_ctrl = m_ctrl(h_ctrl, temb, cemb, context)
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
         # 2 - mid blocks (bottleneck)
         h_ctrl = torch.concat([h_ctrl, h_base], dim=1)
-        for i, (m_base, m_ctrl)  in enumerate(zip(base_mid_block_parts, ctrl_mid_block_parts)):
-            h_base = apply_forward(m_base, h_base, temb, cemb, context)
-            h_ctrl = apply_forward(m_ctrl, h_ctrl, temb, cemb, context)
-        h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)
+        for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
+            h_base = m_base(h_base, temb, cemb, context)
+            h_ctrl = m_ctrl(h_ctrl, temb, cemb, context)
         # 3 - output blocks (decoder)
-        for module_base in self.base_model.output_blocks:
-            h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop(), emb) * next(scales)
-            h_base = torch.cat([h_base, hs_base.pop()], dim=1)
-            h_base = module_base(h_base, emb, context)
-
-        return self.base_model.out(h_base)
-        # # />
+        for m_base in base_up_subblocks:
+            h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales) # add info from ctrl encoder 
+            h_base = torch.cat([h_base, hs_base.pop()], dim=1) # concat info from base encoder+ctrl encoder
+            h_base = m_base(h_base, temb, cemb, context)
+        return self.base_model.conv_out(h_base)
 
 
     def make_zero_conv(self, in_channels, out_channels=None):
@@ -448,22 +423,48 @@ def zero_module(module):
     return module
 
 
-def block_parts(block):
-    modules = list(block.resnets)
-    if hasattr(block, 'attentions') and block.attentions is not None: modules = list(o for o in chain.from_iterable(zip_longest(modules, block.attentions, fillvalue=None)) if o is not None)
-    if hasattr(block, 'downsamplers') and block.downsamplers is not None: modules.extend(block.downsamplers)
-    if hasattr(block, 'upsamplers') and block.upsamplers is not None: modules.extend(block.upsamplers)
-    return modules
+from diffusers.models.unet_2d_blocks import ResnetBlock2D, Transformer2DModel, Downsample2D, Upsample2D
+class EmbedSequential(nn.ModuleList):
+    """Sequential module passing embeddings (time and conditioning) to children if they support it."""
+    def __init__(self,ms,*args,**kwargs):
+        if not is_iterable(ms): ms = [ms]
+        super().__init__(ms,*args,**kwargs)
+    
+    def forward(self,x,temb,cemb,context):
+        for m in self:
+            if isinstance(m,ResnetBlock2D): x=m(x,temb)
+            elif isinstance(m,Transformer2DModel): x=m(x,cemb).sample # Q: Include temp also?
+            elif isinstance(m,Downsample2D): x=m(x)
+            elif isinstance(m,Upsample2D): x=m(x)
+            else: raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D`, `Upsample2D`')
+        return x
 
 
-def to_block_parts(blocks):
-    '''eg: Down(Res, Res, Conv), CrossAttnDown(Res, Attn, Res, Attn, Conv) -> (Res, Res, Conv, Res, Attn, Res, Attn, Conv)'''
-    parts = [block_parts(b) for b in blocks]
-    return list(chain.from_iterable(parts))
+def is_iterable(o):
+    if isinstance(o, str): return False
+    try:
+        iter(o)
+        return True
+    except TypeError:
+        return False
 
-def apply_forward(m, x, temb, cemb, context):
-    if isinstance(m,ResnetBlock2D): return m(x, temb)
-    if isinstance(m,Transformer2DModel): return m(x, cemb).sample # Q: Include temp also?
-    if isinstance(m,Downsample2D): return m(x)
-    if isinstance(m,Upsample2D): return m(x)
-    raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D`, `Upsample2D`')
+
+def to_sub_blocks(blocks):
+    if not is_iterable(blocks): blocks = [blocks]
+    sub_blocks = []
+    for b in blocks:
+        current_subblocks = []
+        if hasattr(b, 'resnets'):
+            if hasattr(b, 'attentions') and b.attentions is not None:
+                current_subblocks = list(zip_longest(b.resnets, b.attentions))
+                 # if we have 1 more resnets than attentions, let the last subblock only be the resnet, not (resnet, None)
+                if current_subblocks[-1][1] is None:
+                    current_subblocks[-1] = current_subblocks[-1][0]
+            else:
+                current_subblocks = list(b.resnets)
+        # upsamplers are part of the same block # q: what if we have multiple upsamplers?
+        if hasattr(b, 'upsamplers') and b.upsamplers is not None: current_subblocks[-1] = list(current_subblocks[-1]) + list(b.upsamplers)
+        # downsamplers are own block
+        if hasattr(b, 'downsamplers') and b.downsamplers is not None: current_subblocks.append(list(b.downsamplers))   
+        sub_blocks += current_subblocks
+    return list(map(EmbedSequential, sub_blocks))
