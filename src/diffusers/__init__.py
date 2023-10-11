@@ -198,6 +198,7 @@ else:
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
             "AudioLDMPipeline",
+            "AudioLDMControlNetPipeline",
             "BlipDiffusionControlNetPipeline",
             "BlipDiffusionPipeline",
             "CLIPImageProjection",
