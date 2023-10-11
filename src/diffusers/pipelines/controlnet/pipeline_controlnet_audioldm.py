@@ -90,15 +90,14 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
             specifically the [RoBERTa HSTAT-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
         tokenizer ([`~transformers.PreTrainedTokenizer`]):
             A [`~transformers.RobertaTokenizer`].
-        unet ([`UNet2DConditionModel`]): U-Net architecture to denoise the encoded audio latents.
+        unet ([`UNet2DConditionModel`]): UNet architecture to denoise the encoded audio latents.
         controlnet ([`ControlNetModel`]:
-            Provides additional conditioning to the unet during the denoising process.
+            Provides additional conditioning to the UNet during the denoising process.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded audio latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        vocoder ([`SpeechT5HifiGan`]):
-            Vocoder of class
-            [SpeechT5HifiGan](https://huggingface.co/docs/transformers/main/en/model_doc/speecht5#transformers.SpeechT5HifiGan).
+        vocoder ([`~transformers.SpeechT5HifiGan`]):
+            Vocoder of class `SpeechT5HifiGan`.
     """
 
     def __init__(
@@ -144,8 +143,8 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and vocoder have their state dicts saved to CPU and then are moved to a `torch.device('meta')
+        Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the `unet`,
+        `text_encoder`, `vae`, and `vocoder` state dicts are saved to the CPU and then moved to `torch.device('meta')`
         and loaded to GPU only when their specific submodule has its `forward` method called.
         """
         if is_accelerate_available():
@@ -520,29 +519,24 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
         include_drums: bool = True,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the audio generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
+                The prompt or prompts to guide the audio generation. you need to pass `prompt_embeds`.
             midi (`PrettyMIDI`):
-                The ControlNet input condition. ControlNet uses this input condition to generate guidance to Unet.
+                The ControlNet input condition. ControlNet uses this input condition to provide guidance to the UNet.
             audio_length_in_s (`int`, *optional*, defaults to 5.12):
                 The length of the generated audio sample in seconds.
             num_inference_steps (`int`, *optional*, defaults to 10):
                 The number of denoising steps. More denoising steps usually lead to a higher quality audio at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 2.5):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
-                1`. Higher guidance scale encourages to generate audios that are closely linked to the text `prompt`,
-                usually at the expense of lower sound quality.
+                A higher guidance scale value encourages the model to generate audio that is closely linked to the text
+                `prompt` at the expense of lower sound quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the audio generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                The prompt or prompts to guide what to not include in audio generation. If not defined, you need to
+                pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
                 The number of waveforms to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -556,14 +550,14 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt
+                weighting). If not provided, `negative_prompt_embeds` will be generated from `negative_prompt` input
                 argument.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                Whether or not to return a [`~pipelines.AudioPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
@@ -576,22 +570,21 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
                 `self.processor` in
                 [diffusers.cross_attention](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/cross_attention.py).
             output_type (`str`, *optional*, defaults to `"np"`):
-                The output format of the generate image. Choose between:
-                - `"np"`: Return Numpy `np.ndarray` objects.
-                - `"pt"`: Return PyTorch `torch.Tensor` objects.
+                The output format of the generated image. Choose between `"np"` to return a NumPy `np.ndarray` or
+                `"pt"` to return a PyTorch `torch.Tensor` object.
             controlnet_conditioning_scale (`float`, *optional*, defaults to 1.0):
-                The outputs of the controlnet are multiplied by `controlnet_conditioning_scale` before they are added
-                to the residual in the original unet.
+                The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
+                to the residual in the original UNet.
             guess_mode (`bool`, *optional*, defaults to `False`):
-                In this mode, the ControlNet encoder will try best to recognize the content of the input even if
-                you remove all prompts. The `guidance_scale` between 3.0 and 5.0 is recommended.
+                In this mode, the ControlNet encoder will try its best to recognize the content of the input even if
+                you remove all prompts. A `guidance_scale` between 3.0 and 5.0 is recommended.
 
         Examples:
 
         Returns:
             [`~pipelines.pipeline_utils.AudioPipelineOutput`] or `tuple`:
-            [`~pipelines.pipeline_utils.AudioPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated audios.
+                If `return_dict` is `True`, [`~pipelines.AudioPipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated audio.
         """
         # 0. Convert audio input length from seconds to spectrogram height
         vocoder_upsample_factor = np.prod(self.vocoder.config.upsample_rates) / self.vocoder.config.sampling_rate
