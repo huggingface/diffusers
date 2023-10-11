@@ -12,17 +12,17 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]] 
 
-# Using PEFT for LoRA inference in Diffusers
+# Inference with PEFT
 
-🤗 `peft` is an open-source library primarily maintained at Hugging Face. From the [official documentation](https://huggingface.co/docs/peft/index) of `peft`:
+From the 🤗 PEFT [documentation](https://huggingface.co/docs/peft/index):
 
 > 🤗 PEFT, or Parameter-Efficient Fine-Tuning (PEFT), is a library for efficiently adapting pre-trained language models (PLMs) to various downstream applications without fine-tuning all the model's parameters. PEFT methods only fine-tune a small number of (extra) model parameters, significantly decreasing computational and storage costs because fine-tuning large-scale PLMs is prohibitively costly. Recent state-of-the-art PEFT techniques achieve performance comparable to that of full fine-tuning.
 
 But guess what? PEFT is not limited to just language models. It is modality-agnostic. This means it can be applied to pure vision models, vision-language models, speech models, and so on.
 
-PEFT is natively integrated into Diffusers allowing users to take advantage of its support for doing efficient multi-adapter inference, swapping in and swapping out adapters, etc. In this guide, we walk through such use cases with [Stable Diffusion XL](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/stable_diffusion_xl), making you fully equipped with how you can take advantage of PEFT for adapter inference when using Diffusers.
+🤗 PEFT is natively integrated with 🤗 Diffusers, enabling efficient multi-adapter inference. In this guide, you'll learn how to use different adapters with [Stable Diffusion XL (SDXL)](./pipelines/stable_diffusion/stable_diffusion_xl) for inference.
 
-Throughout this guide, we will use LoRA as the main adapter technique. As such, we will sometimes refer to LoRA as adapter and vice-versa. This guide assumes that you're familiar with LoRA. If you're not, we welcome you to check out [this guide](https://huggingface.co/docs/diffusers/main/en/training/lora).
+Throughout this guide, you'll use LoRA as the main adapter technique, so we'll use the terms LoRA and adapter interchangeably. You should have some familiarity with LoRA, and if you don't, we welcome you to check out the [LoRA guide](https://huggingface.co/docs/peft/conceptual_guides/lora).
 
 Let's first install all the required libraries.
 
@@ -33,7 +33,7 @@ Let's first install all the required libraries.
 !pip install -q git+https://github.com/younesbelkada/diffusers.git@peft-part-2
 ```
 
-## Load the SDXL pipeline
+Now, let's load a pipeline with a SDXL checkpoint:
 
 ```python
 from diffusers import DiffusionPipeline
@@ -43,13 +43,10 @@ pipe_id = "stabilityai/stable-diffusion-xl-base-1.0"
 pipe = DiffusionPipeline.from_pretrained(pipe_id, torch_dtype=torch.float16).to("cuda")
 ```
 
-## Loading a LoRA checkpoint
 
-We'll start by loading a LoRA checkpoint using the `load_lora_weights()` method. If you have used `diffusers` before for LoRA inference, you're probably already familiar with the method.
+Next, load a LoRA checkpoint with the [`~diffusers.loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] method.
 
-But with our new integration with PEFT, you can do much more with `load_lora_weights()` as you will notice in a moment.
-
-Note that we assign a specific `adapter_name` to the checkpoint, so that we can easily switch between different LoRA checkpoints. Let's call it `"toy"`.
+With the 🤗 PEFT integration, you can assign a specific `adapter_name` to the checkpoint, which let's you easily switch between different LoRA checkpoints. Let's call this adapter `"toy"`.
 
 ```python
 pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
@@ -69,18 +66,17 @@ image
 
 ![toy-face](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_8_1.png)
     
-## Loading another adapter
 
-Next, we load the adapter from `nerijs/pixel-art-xl` that has been fine-tuned to generate pixel art images. Let's call this one `"pixel"`!
+With the `adapter_name` parameter, it is really easy to use another adapter for inference! Load the [nerijs/pixel-art-xl](https://huggingface.co/nerijs/pixel-art-xl) adapter that has been fine-tuned to generate pixel art images, and let's call it `"pixel"`.
 
-The pipeline will automatically set the first loaded adapter as the active adapter. But you can activate the adapter with which you want to run inference with by using the `set_adapters()` method as shown below:
+The pipeline automatically sets the first loaded adapter (`"toy"`) as the active adapter. But you can activate the `"pixel"` adapter with the `set_adapters()` method as shown below:
 
 ```python
 pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
 pipe.set_adapters("pixel")
 ```
 
-Let's now generate the image with the second adapter and check the result:
+Let's now generate an image with the second adapter and check the result:
 
 ```python
 prompt = "a hacker with a hoodie, pixel art"
@@ -92,33 +88,30 @@ image
 
 ![pixel-art](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_12_1.png)
     
-## Combining multiple adapters!
+## Combine multiple adapters
 
-With the PEFT integration, it's easy to perform multi-adapter inference wherein you can combine different adapter checkpoints and perform inference. We discuss that in this section.
+You can also perform multi-adapter inference where you combine different adapter checkpoints for inference.
 
-We use the `set_adapters()` method to activate two LoRA checkpoints specifying weight coefficients with which the checkpoints should be combined.
+Once again, use the `set_adapters()` method to activate two LoRA checkpoints and specify the weight for how the checkpoints should be combined.
 
 ```python
 # Change the argument name to `adapter_weights`.
 pipe.set_adapters(["pixel", "toy"], adapter_weights=[0.5, 1.0])
 ```
 
-Now that we have set these two adapters, let's generate an image by combining the adapters!
+Now that we have set these two adapters, let's generate an image from the combined adapters!
 
 <Tip>
 
-LoRA checkpoints in the diffusion community are almost always obtained with [DreamBooth](https://huggingface.co/docs/diffusers/main/en/training/dreambooth). DreamBooth training often relies on "trigger" words to be present in the input text prompts in order for the generation results to look as expected. So, when combining multiple LoRA checkpoints, it's important to keep this mind and ensure that the trigger words for the corresponding LoRA checkpoints are present in the input text prompts.
+LoRA checkpoints in the diffusion community are almost always obtained with [DreamBooth](https://huggingface.co/docs/diffusers/main/en/training/dreambooth). DreamBooth training often relies on "trigger" words in the input text prompts in order for the generation results to look as expected. When you combine multiple LoRA checkpoints, it's important to ensure the trigger words for the corresponding LoRA checkpoints are present in the input text prompts.
 
 </Tip>
 
-We can know about trigger words of the LoRA checkpoints being used from their repositories:
-
-* [CiroN2022/toy-face](https://hf.co/CiroN2022/toy-face)
-* [nerijs/pixel-art-xl](https://hf.co/nerijs/pixel-art-xl)
+The trigger words for [CiroN2022/toy-face](https://hf.co/CiroN2022/toy-face) and [nerijs/pixel-art-xl](https://hf.co/nerijs/pixel-art-xl) are found in their repositories.
 
 
 ```python
-# Notice how the promopt is constructed.
+# Notice how the prompt is constructed.
 prompt = "toy_face of a hacker with a hoodie, pixel art"
 image = pipe(
     prompt, num_inference_steps=30, cross_attention_kwargs={"scale": 1.0}, generator=torch.manual_seed(0)
@@ -128,9 +121,9 @@ image
 
 ![toy-face-pixel-art](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_16_1.png)
     
-Impressive! As you can see, the model was able to generate an image that mixes the characteritics of both adapters.
+Impressive! As you can see, the model was able to generate an image that mixes the characteristics of both adapters.
 
-After performing multi-adapter inference, it's possible to again go back to single-adapter inference. With the `set_adapters()` method, it's easy:
+If you want to go back to using only one adapter, use the `set_adapters()` method to activate the `"toy"` adapter:
 
 ```python
 # First, set the adapter.
@@ -147,9 +140,8 @@ image
 
 ![toy-face-again](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_18_1.png)
 
-## Disabling all adapters
 
-If you want to switch to the base model, you can disable all LoRAs with the `disable_lora()` method.
+If you want to switch to only the base model, disable all LoRAs with the `disable_lora()` method.
 
 
 ```python
@@ -165,16 +157,16 @@ image
 
 ## Monitoring active adapters
 
-You have attached multiple adapters and you are a bit lost on what adapters have been attached to the pipeline's components? You can easily check the list of active adapters using the `get_active_adapters()` method as follows:
+You have attached multiple adapters in this tutorial, and if you're feeling a bit lost on what adapters have been attached to the pipeline's components, you can easily check the list of active adapters using the `get_active_adapters()` method:
 
 `python
 active_adapters = pipe.get_active_adapters()
 >>> ["toy", "pixel"]
 `
 
-You can also get a component-wise breakdown of the active adapters like so:
+You can also get the active adapters of each pipeline component with `get_list_adapters`:
 
 ```python
 
-list_adapters_component_wise = pipe. get_list_adapters()
+list_adapters_component_wise = pipe.get_list_adapters()
 >>> {"text_encoder": ["toy", "pixel"], "unet": ["toy", "pixel"], "text_encoder_2": ["toy", "pixel"]}
