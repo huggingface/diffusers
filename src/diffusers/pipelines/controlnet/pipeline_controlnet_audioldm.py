@@ -88,9 +88,8 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
             Frozen text-encoder. AudioLDM uses the text portion of
             [CLAP](https://huggingface.co/docs/transformers/main/model_doc/clap#transformers.ClapTextModelWithProjection),
             specifically the [RoBERTa HSTAT-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
-        tokenizer ([`PreTrainedTokenizer`]):
-            Tokenizer of class
-            [RobertaTokenizer](https://huggingface.co/docs/transformers/model_doc/roberta#transformers.RobertaTokenizer).
+        tokenizer ([`~transformers.PreTrainedTokenizer`]):
+            A [`~transformers.RobertaTokenizer`].
         unet ([`UNet2DConditionModel`]): U-Net architecture to denoise the encoded audio latents.
         controlnet ([`ControlNetModel`]:
             Provides additional conditioning to the unet during the denoising process.
