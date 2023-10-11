@@ -1616,9 +1616,9 @@ class LoraLoaderMixin:
                 network_alphas = convert_unet_state_dict_to_peft(network_alphas)
 
             rank = {}
-            for key in state_dict.keys():
+            for key, val in state_dict.items():
                 if "lora_B" in key:
-                    rank[key] = state_dict[key].shape[1]
+                    rank[key] = val.shape[1]
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
             lora_config = LoraConfig(**lora_config_kwargs)
