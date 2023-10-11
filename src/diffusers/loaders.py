@@ -710,7 +710,7 @@ class UNet2DConditionLoadersMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: List[float] = None,
+        weights: Optional[List[float]] = None,
     ):
         """
         Sets the adapter layers for the unet.
