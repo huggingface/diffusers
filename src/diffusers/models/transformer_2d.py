@@ -235,6 +235,14 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
                 Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
                 `AdaLayerZeroNorm`.
+            cross_attention_kwargs ( `Dict[str, Any]`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            attention_mask ( `torch.Tensor`, *optional*):
+                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
+                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
+                negative values to the attention scores corresponding to "discard" tokens.
             encoder_attention_mask ( `torch.Tensor`, *optional*):
                 Cross-attention mask applied to `encoder_hidden_states`. Two formats supported:
 
