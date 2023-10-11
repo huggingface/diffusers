@@ -169,7 +169,7 @@ class LoRACompatibleConv(nn.Conv2d):
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self, lora_scale: float = 1.0, safe_fusing: bool False):
+    def _fuse_lora(self, lora_scale: float = 1.0, safe_fusing: bool = False):
         if self.lora_layer is None:
             return
 
