@@ -84,7 +84,7 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode audios to and from latent representations.
-        text_encoder ([`ClapTextModelWithProjection`]):
+        text_encoder ([`~transformers.ClapTextModelWithProjection`]):
             Frozen text-encoder. AudioLDM uses the text portion of
             [CLAP](https://huggingface.co/docs/transformers/main/model_doc/clap#transformers.ClapTextModelWithProjection),
             specifically the [RoBERTa HSTAT-unfused](https://huggingface.co/laion/clap-htsat-unfused) variant.
