@@ -58,6 +58,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 from kornia.color.lab import rgb_to_lab
 
+
 ## Utils functions for light generation
 def generate_points(n):
     points = []
@@ -712,6 +713,22 @@ def parse_args(input_args=None):
             "Pyramid noise discount parameter"
         )
     )
+    parser.add_argument(
+        "--lion_opt",
+        action="store_true",
+        default=False,
+        help=(
+            "lion opt"
+        )
+    )
+    parser.add_argument(
+        "--lion_weight_decay",
+        type=float
+        default=1e-2,
+        help=(
+            "lion weight decay value"
+        )
+    )
 
 
     if input_args is not None:
@@ -998,6 +1015,8 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
+  
+    
 
     if args.adapter_model_name_or_path:
         logger.info("Loading existing adapter weights.")
@@ -1104,13 +1123,17 @@ def main(args):
 
     # Optimizer creation
     params_to_optimize = t2iadapter.parameters()
-    optimizer = optimizer_class(
-        params_to_optimize,
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+    if args.lion_opt is True:
+        from lion_pytorch import Lion
+        optimizer = Lion(model.parameters(), lr=args.learning_rate, weight_decay=args.lion_weight_decay)
+    else:
+        optimizer = optimizer_class(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
