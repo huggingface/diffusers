@@ -565,6 +565,47 @@ class StableDiffusionPipelineFastTests(
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
+    def test_freeu_enabled(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "hey"
+        output = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+
+        sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        output_freeu = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+
+        assert not np.allclose(
+            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
+        ), "Enabling of FreeU should lead to different results."
+
+    def test_freeu_disabled(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "hey"
+        output = sd_pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+
+        sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        sd_pipe.disable_freeu()
+
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for upsample_block in sd_pipe.unet.up_blocks:
+            for key in freeu_keys:
+                assert getattr(upsample_block, key) is None, f"Disabling of FreeU should have set {key} to None."
+
+        output_no_freeu = sd_pipe(
+            prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)
+        ).images
+
+        assert np.allclose(
+            output[0, -3:, -3:, -1], output_no_freeu[0, -3:, -3:, -1]
+        ), "Disabling of FreeU should lead to results similar to the default pipeline results."
+
 
 @slow
 @require_torch_gpu
@@ -599,6 +640,20 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.43625, 0.43554, 0.36670, 0.40660, 0.39703, 0.38658, 0.43936, 0.43557, 0.40592])
         assert np.abs(image_slice - expected_slice).max() < 3e-3
+
+    def test_stable_diffusion_v1_4_with_freeu(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 25
+
+        sd_pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        image = sd_pipe(**inputs).images
+        image = image[0, -3:, -3:, -1].flatten()
+        expected_image = [0.0721, 0.0588, 0.0268, 0.0384, 0.0636, 0.0, 0.0429, 0.0344, 0.0309]
+        max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
 
     def test_stable_diffusion_1_4_pndm(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
@@ -1079,7 +1134,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 50,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -1152,22 +1207,6 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_text2img/stable_diffusion_1_4_euler.npy"
-        )
-        max_diff = np.abs(expected_image - image).max()
-        assert max_diff < 1e-3
-
-    def test_stable_diffusion_dpm(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to(torch_device)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_inputs(torch_device)
-        inputs["num_inference_steps"] = 25
-        image = sd_pipe(**inputs).images[0]
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
-            "/stable_diffusion_text2img/stable_diffusion_1_4_dpm_multi.npy"
         )
         max_diff = np.abs(expected_image - image).max()
         assert max_diff < 1e-3

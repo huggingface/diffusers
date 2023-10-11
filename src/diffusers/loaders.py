@@ -27,6 +27,7 @@ from huggingface_hub import hf_hub_download, model_info
 from packaging import version
 from torch import nn
 
+from . import __version__
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
     DIFFUSERS_CACHE,
@@ -120,7 +121,7 @@ class PatchedLoraProjection(nn.Module):
 
         return super().state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
 
-    def _fuse_lora(self, lora_scale=1.0):
+    def _fuse_lora(self, lora_scale=1.0, safe_fusing=False):
         if self.lora_linear_layer is None:
             return
 
@@ -134,6 +135,14 @@ class PatchedLoraProjection(nn.Module):
             w_up = w_up * self.lora_linear_layer.network_alpha / self.lora_linear_layer.rank
 
         fused_weight = w_orig + (lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
+
+        if safe_fusing and torch.isnan(fused_weight).any().item():
+            raise ValueError(
+                "This LoRA weight seems to be broken. "
+                f"Encountered NaN values when trying to fuse LoRA weights for {self}."
+                "LoRA weights will not be fused."
+            )
+
         self.regular_linear_layer.weight.data = fused_weight.to(device=device, dtype=dtype)
 
         # we can drop the lora layer now
@@ -671,13 +680,14 @@ class UNet2DConditionLoadersMixin:
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
-    def fuse_lora(self, lora_scale=1.0):
+    def fuse_lora(self, lora_scale=1.0, safe_fusing=False):
         self.lora_scale = lora_scale
+        self._safe_fusing = safe_fusing
         self.apply(self._fuse_lora_apply)
 
     def _fuse_lora_apply(self, module):
         if hasattr(module, "_fuse_lora"):
-            module._fuse_lora(self.lora_scale)
+            module._fuse_lora(self.lora_scale, self._safe_fusing)
 
     def unfuse_lora(self):
         self.apply(self._unfuse_lora_apply)
@@ -1708,7 +1718,8 @@ class LoraLoaderMixin:
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
-        deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.23", LORA_DEPRECATION_MESSAGE)
+        if version.parse(__version__) > version.parse("0.23"):
+            deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.25", LORA_DEPRECATION_MESSAGE)
 
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
@@ -1736,7 +1747,8 @@ class LoraLoaderMixin:
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
-        deprecate("_modify_text_encoder", "0.23", LORA_DEPRECATION_MESSAGE)
+        if version.parse(__version__) > version.parse("0.23"):
+            deprecate("_modify_text_encoder", "0.25", LORA_DEPRECATION_MESSAGE)
 
         def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
             linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
@@ -2083,7 +2095,13 @@ class LoraLoaderMixin:
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
 
-    def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True, lora_scale: float = 1.0):
+    def fuse_lora(
+        self,
+        fuse_unet: bool = True,
+        fuse_text_encoder: bool = True,
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+    ):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
@@ -2100,6 +2118,8 @@ class LoraLoaderMixin:
                 LoRA parameters then it won't have any effect.
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
+            safe_fusing (`bool`, defaults to `False`):
+                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
         """
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
@@ -2109,12 +2129,13 @@ class LoraLoaderMixin:
                 )
 
         if fuse_unet:
-            self.unet.fuse_lora(lora_scale)
+            self.unet.fuse_lora(lora_scale, safe_fusing=safe_fusing)
 
         if self.use_peft_backend:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
-            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0):
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
+                # TODO(Patrick, Younes): enable "safe" fusing
                 for module in text_encoder.modules():
                     if isinstance(module, BaseTunerLayer):
                         if lora_scale != 1.0:
@@ -2123,26 +2144,27 @@ class LoraLoaderMixin:
                         module.merge()
 
         else:
-            deprecate("fuse_text_encoder_lora", "0.23", LORA_DEPRECATION_MESSAGE)
+            if version.parse(__version__) > version.parse("0.23"):
+                deprecate("fuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
 
-            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0):
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
                     if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                        attn_module.q_proj._fuse_lora(lora_scale)
-                        attn_module.k_proj._fuse_lora(lora_scale)
-                        attn_module.v_proj._fuse_lora(lora_scale)
-                        attn_module.out_proj._fuse_lora(lora_scale)
+                        attn_module.q_proj._fuse_lora(lora_scale, safe_fusing)
+                        attn_module.k_proj._fuse_lora(lora_scale, safe_fusing)
+                        attn_module.v_proj._fuse_lora(lora_scale, safe_fusing)
+                        attn_module.out_proj._fuse_lora(lora_scale, safe_fusing)
 
                 for _, mlp_module in text_encoder_mlp_modules(text_encoder):
                     if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                        mlp_module.fc1._fuse_lora(lora_scale)
-                        mlp_module.fc2._fuse_lora(lora_scale)
+                        mlp_module.fc1._fuse_lora(lora_scale, safe_fusing)
+                        mlp_module.fc2._fuse_lora(lora_scale, safe_fusing)
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
-                fuse_text_encoder_lora(self.text_encoder, lora_scale)
+                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing)
             if hasattr(self, "text_encoder_2"):
-                fuse_text_encoder_lora(self.text_encoder_2, lora_scale)
+                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing)
 
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
@@ -2173,7 +2195,8 @@ class LoraLoaderMixin:
                         module.unmerge()
 
         else:
-            deprecate("unfuse_text_encoder_lora", "0.23", LORA_DEPRECATION_MESSAGE)
+            if version.parse(__version__) > version.parse("0.23"):
+                deprecate("unfuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
 
             def unfuse_text_encoder_lora(text_encoder):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
@@ -2428,8 +2451,12 @@ class FromSingleFileMixin:
             from .models.controlnet import ControlNetModel
             from .pipelines.controlnet.multicontrolnet import MultiControlNetModel
 
-            # Model type will be inferred from the checkpoint.
-            if not isinstance(controlnet, (ControlNetModel, MultiControlNetModel)):
+            #  list/tuple or a single instance of ControlNetModel or MultiControlNetModel
+            if not (
+                isinstance(controlnet, (ControlNetModel, MultiControlNetModel))
+                or isinstance(controlnet, (list, tuple))
+                and isinstance(controlnet[0], ControlNetModel)
+            ):
                 raise ValueError("ControlNet needs to be passed if loading from ControlNet pipeline.")
         elif "StableDiffusion" in pipeline_name:
             # Model type will be inferred from the checkpoint.
