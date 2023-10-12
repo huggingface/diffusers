@@ -159,10 +159,7 @@ class StableDiffusionXLPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-        if hasattr(self, "unet") and self.unet is not None:
-            self.default_sample_size = self.unet.config.sample_size
-        else:
-            self.default_sample_size = None
+        self.default_sample_size = self.unet.config.sample_size
 
         add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
 
