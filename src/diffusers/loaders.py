@@ -1540,7 +1540,7 @@ class LoraLoaderMixin:
             for _, component in _pipeline.components.items():
                 if isinstance(component, nn.Module):
                     if hasattr(component, "_hf_hook"):
-                        
+
                         if not is_model_cpu_offload:
                             is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
                         if not is_sequential_cpu_offload:
@@ -1606,6 +1606,11 @@ class LoraLoaderMixin:
         if USE_PEFT_BACKEND and len(state_dict.keys()) > 0:
             from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
+            if adapter_name in getattr(unet, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
+                )
+
             state_dict = convert_unet_state_dict_to_peft(state_dict)
 
             if network_alphas is not None:
@@ -1628,11 +1633,6 @@ class LoraLoaderMixin:
             # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
             # otherwise loading LoRA weights will lead to an error
             is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
-
-            if hasattr(unet, "peft_config") and adapter_name in list(unet.peft_config.keys()):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
-                )
 
             inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
             incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
