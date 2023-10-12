@@ -723,7 +723,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--lion_weight_decay",
-        type=float
+        type=float,
         default=1e-2,
         help=(
             "lion weight decay value"
