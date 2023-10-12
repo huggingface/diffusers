@@ -402,7 +402,7 @@ class UNet2DConditionLoadersMixin:
         # fill attn processors
         lora_layers_list = []
 
-        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys()) and not self.use_peft_backend
+        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys()) and not USE_PEFT_BACKEND
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
@@ -516,7 +516,7 @@ class UNet2DConditionLoadersMixin:
                         cross_attention_dim=cross_attention_dim,
                     )
                     attn_processors[key].load_state_dict(value_dict)
-        elif self.use_peft_backend:
+        elif USE_PEFT_BACKEND:
             # In that case we have nothing to do as loading the adapter weights is already handled above by `set_peft_model_state_dict`
             # on the Unet
             pass
@@ -532,7 +532,7 @@ class UNet2DConditionLoadersMixin:
         is_sequential_cpu_offload = False
 
         # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `lora_lora_weights_into_unet`
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             if _pipeline is not None:
                 for _, component in _pipeline.components.items():
                     if isinstance(component, nn.Module):
@@ -722,7 +722,7 @@ class UNet2DConditionLoadersMixin:
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `set_adapters()`.")
 
         def process_weights(adapter_names, weights):
@@ -1862,7 +1862,7 @@ class LoraLoaderMixin:
             remove_method(self.text_encoder)
 
             # In case text encoder have no Lora attached
-            if self.use_peft_backend and getattr(self.text_encoder, "peft_config", None) is not None:
+            if USE_PEFT_BACKEND and getattr(self.text_encoder, "peft_config", None) is not None:
                 del self.text_encoder.peft_config
                 self.text_encoder._hf_peft_config_loaded = None
         if hasattr(self, "text_encoder_2"):
@@ -2243,9 +2243,9 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             if version.parse(__version__) > version.parse("0.23"):
-                warnings.warn(
+                logger.warn(
                     "You are using `unload_lora_weights` to disable and unload lora weights. If you want to iteratively enable and disable adapter weights, you can use `pipe.enable_lora()` or `pipe.disable_lora()`. After"
                     " installing the latest version of PEFT."
                 )
@@ -2350,7 +2350,7 @@ class LoraLoaderMixin:
                 LoRA parameters then it won't have any effect.
         """
         if unfuse_unet:
-            if not self.use_peft_backend:
+            if not USE_PEFT_BACKEND:
                 self.unet.unfuse_lora()
             else:
                 from peft.tuners.tuners_utils import BaseTunerLayer
@@ -2482,7 +2482,7 @@ class LoraLoaderMixin:
             self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, adapter_weights)
 
     def disable_lora(self):
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
         # Disable unet adapters
@@ -2495,7 +2495,7 @@ class LoraLoaderMixin:
             self.disable_lora_for_text_encoder(self.text_encoder_2)
 
     def enable_lora(self):
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
         # Enable unet adapters
@@ -2509,9 +2509,19 @@ class LoraLoaderMixin:
 
     def get_active_adapters(self) -> Optional[List[str]]:
         """
-        Gets the list of the current active adapters
+        Gets the list of the current active adapters.
+        
+        Example:
+        
+        ```python
+        from diffusers import DiffusionPipeline
+        
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0",).to("cuda")
+        pipeline.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
+        pipeline.get_active_adapters()
+        ```
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError(
                 "PEFT backend is required for this method. Please install the latest version of PEFT `pip install -U peft`"
             )
@@ -2531,7 +2541,7 @@ class LoraLoaderMixin:
         """
         Gets the current list of all available adapters in the pipeline.
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError(
                 "PEFT backend is required for this method. Please install the latest version of PEFT `pip install -U peft`"
             )
@@ -2562,7 +2572,7 @@ class LoraLoaderMixin:
             device (`Union[torch.device, str, int]`):
                 Device to send the adapters to. Can be either a torch device, a str or an integer.
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
         from peft.tuners.tuners_utils import BaseTunerLayer
