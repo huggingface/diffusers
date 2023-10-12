@@ -298,8 +298,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     def add_adapter(self, adapter_config, adapter_name: str = "default") -> None:
         r"""
         Adds a new adapter to the current model for training. If no adapter name is passed, a default name is assigned
-        to the adapter to follow the convention of the PEFT library (in PEFT we use `"default"` as the default adapter
-        name).
+        to the adapter to follow the convention of the PEFT library.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them in the PEFT
         [documentation](https://huggingface.co/docs/peft).
