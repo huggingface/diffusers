@@ -742,6 +742,12 @@ def parse_args(input_args=None):
         default=False,
         help="Rescale Scheduler based on Zero SNR paper during training and sampling",
     )
+    parser.add_argument(
+        "--prediction_type",
+        type=str,
+        default=None,
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
+    )
 
 
     if input_args is not None:
@@ -1381,6 +1387,13 @@ def main(args):
                 # Denoise the latents
                 denoised_latents = model_pred * (-sigmas) + noisy_latents
                 weighing = sigmas**-2.0
+
+
+                # Get the target for loss depending on the prediction type
+                if args.prediction_type is not None:
+                    # set prediction_type of scheduler if defined
+                    noise_scheduler.register_to_config(prediction_type=args.prediction_type)
+                
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
