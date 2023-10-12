@@ -3178,7 +3178,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
 
     # Overrride to properly handle the loading and unloading of the additional text encoder.
     def load_lora_weights(
-        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
+        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name: Optional[str] = None, **kwargs
     ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
