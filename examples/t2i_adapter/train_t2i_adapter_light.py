@@ -706,8 +706,8 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--pyramid_noise_discount",
-        type=str,
-        default="white",
+        type=float,
+        default=0.8,
         help=(
             "Pyramid noise discount parameter"
         )
