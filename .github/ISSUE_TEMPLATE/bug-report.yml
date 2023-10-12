@@ -13,8 +13,9 @@ body:
              *Give your issue a fitting title. Assume that someone which very limited knowledge of diffusers can understand your issue. Add links to the source code, documentation other issues, pull requests etc...*
         - 2. If your issue is about something not working, **always** provide a reproducible code snippet. The reader should be able to reproduce your issue by **only copy-pasting your code snippet into a Python shell**.
              *The community cannot solve your issue if it cannot reproduce it. If your bug is related to training, add your training script and make everything needed to train public. Otherwise, just add a simple Python code snippet.*
-        - 3. Add the **minimum amount of code / context that is needed to understand, reproduce your issue**.
+        - 3. Add the **minimum** amount of code / context that is needed to understand, reproduce your issue.
              *Make the life of maintainers easy. `diffusers` is getting many issues every day. Make sure your issue is about one bug and one bug only. Make sure you add only the context, code needed to understand your issues - nothing more. Generally, every issue is a way of documenting this library, try to make it a good documentation entry.*
+        - 4. For issues related to community pipelines (i.e., the pipelines located in the `examples/community` folder), please tag the author of the pipeline in your issue thread as those pipelines are not maintained.
   - type: markdown
     attributes:
       value: |
@@ -60,21 +61,46 @@ body:
         All issues are read by one of the core maintainers, so if you don't know who to tag, just leave this blank and
         a core maintainer will ping the right person.
         
-        Please tag fewer than 3 people.
-        
-        General library related questions: @patrickvonplaten and @sayakpaul
+        Please tag a maximum of 2 people.
 
-        Questions on the training examples: @williamberman, @sayakpaul, @yiyixuxu
+        Questions on DiffusionPipeline (Saving, Loading, From pretrained, ...):
 
-        Questions on memory optimizations, LoRA, float16, etc.: @williamberman, @patrickvonplaten, and @sayakpaul
+        Questions on pipelines:
+        - Stable Diffusion @yiyixuxu @DN6 @patrickvonplaten @sayakpaul @patrickvonplaten
+        - Stable Diffusion XL @yiyixuxu @sayakpaul @DN6 @patrickvonplaten
+        - Kandinsky @yiyixuxu @patrickvonplaten
+        - ControlNet @sayakpaul @yiyixuxu @DN6 @patrickvonplaten
+        - T2I Adapter @sayakpaul @yiyixuxu @DN6 @patrickvonplaten
+        - IF @DN6 @patrickvonplaten
+        - Text-to-Video / Video-to-Video @DN6 @sayakpaul @patrickvonplaten
+        - Wuerstchen @DN6 @patrickvonplaten
+        - Other: @yiyixuxu @DN6
 
-        Questions on schedulers: @patrickvonplaten and @williamberman
+        Questions on models:
+        - UNet @DN6 @yiyixuxu @sayakpaul @patrickvonplaten
+        - VAE @sayakpaul @DN6 @yiyixuxu @patrickvonplaten
+        - Transformers/Attention @DN6 @yiyixuxu @sayakpaul @DN6 @patrickvonplaten
 
-        Questions on models and pipelines: @patrickvonplaten, @sayakpaul, and @williamberman
+        Questions on Schedulers: @yiyixuxu @patrickvonplaten
+
+        Questions on LoRA: @sayakpaul @patrickvonplaten
+
+        Questions on Textual Inversion: @sayakpaul @patrickvonplaten
+
+        Questions on Training: 
+        - DreamBooth @sayakpaul @patrickvonplaten
+        - Text-to-Image Fine-tuning @sayakpaul @patrickvonplaten
+        - Textual Inversion @sayakpaul @patrickvonplaten
+        - ControlNet @sayakpaul @patrickvonplaten
+
+        Questions on Tests: @DN6 @sayakpaul @yiyixuxu 
+
+        Questions on Documentation: @stevhliu
 
         Questions on JAX- and MPS-related things: @pcuenca
 
-        Questions on audio pipelines: @patrickvonplaten, @kashif, and @sanchit-gandhi 
+        Questions on audio pipelines: @DN6 @patrickvonplaten
         
-        Documentation: @stevhliu and @yiyixuxu
+
+        
       placeholder: "@Username ..."

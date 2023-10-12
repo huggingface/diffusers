@@ -150,7 +150,7 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
                 - equalizer_strengths (`List[float]`, *optional*, default to `None`) Required for edit type `reweight`.
                   Determines which how much the words in `equalizer_words` should be enhanced.
 
-            guidance_rescale (`float`, *optional*, defaults to 0.7):
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
                 Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR.
@@ -254,7 +254,8 @@ class Prompt2PromptPipeline(StableDiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
         # 8. Post-processing
         if not output_type == "latent":
@@ -681,7 +682,7 @@ def get_word_inds(text: str, word_place: int, tokenizer):
     split_text = text.split(" ")
     if isinstance(word_place, str):
         word_place = [i for i, word in enumerate(split_text) if word_place == word]
-    elif isinstance(word_place, str):
+    elif isinstance(word_place, int):
         word_place = [word_place]
     out = []
     if len(word_place) > 0:

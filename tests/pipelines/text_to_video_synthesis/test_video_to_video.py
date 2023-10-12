@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 import unittest
 
 import numpy as np
@@ -22,20 +23,24 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    TextToVideoSDPipeline,
     UNet3DConditionModel,
+    VideoToVideoSDPipeline,
 )
 from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    load_numpy,
-    require_torch_gpu,
+    floats_tensor,
+    is_flaky,
+    nightly,
+    numpy_cosine_similarity_distance,
     skip_mps,
-    slow,
     torch_device,
 )
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..pipeline_params import (
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+)
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -43,10 +48,13 @@ enable_full_determinism()
 
 
 @skip_mps
-class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = TextToVideoSDPipeline
-    params = TEXT_TO_IMAGE_PARAMS
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = VideoToVideoSDPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS.union({"video"}) - {"image", "width", "height"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS.union({"video"}) - {"image"}
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents"}
+    test_attention_slicing = False
+
     # No `output_type`.
     required_optional_params = frozenset(
         [
@@ -76,7 +84,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
-            clip_sample=False,
+            clip_sample=True,
             set_alpha_to_one=False,
         )
         torch.manual_seed(0)
@@ -116,12 +124,16 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        # 3 frames
+        video = floats_tensor((1, 3, 3, 32, 32), rng=random.Random(seed)).to(device)
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "video": video,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
@@ -132,7 +144,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_text_to_video_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
-        sd_pipe = TextToVideoSDPipeline(**components)
+        sd_pipe = VideoToVideoSDPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -141,20 +153,29 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         frames = sd_pipe(**inputs).frames
         image_slice = frames[0][-3:, -3:, -1]
 
-        assert frames[0].shape == (64, 64, 3)
-        expected_slice = np.array([158.0, 160.0, 153.0, 125.0, 100.0, 121.0, 111.0, 93.0, 113.0])
+        assert frames[0].shape == (32, 32, 3)
+        expected_slice = np.array([106, 117, 113, 174, 137, 112, 148, 151, 131])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False, expected_max_diff=3e-3)
+    @is_flaky()
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=0.001)
+
+    @is_flaky()
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent()
+
+    @is_flaky()
+    def test_save_load_local(self):
+        super().test_save_load_local()
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
     def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False, expected_max_diff=1e-2)
+        self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False, expected_max_diff=5e-3)
 
     # (todo): sayakpaul
     @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
@@ -174,22 +195,22 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return super().test_progress_bar()
 
 
-@slow
+@nightly
 @skip_mps
-@require_torch_gpu
-class TextToVideoSDPipelineSlowTests(unittest.TestCase):
+class VideoToVideoSDPipelineSlowTests(unittest.TestCase):
     def test_two_step_model(self):
-        expected_video = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video_2step.npy"
-        )
+        pipe = VideoToVideoSDPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16)
+        pipe.enable_model_cpu_offload()
 
-        pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
-        pipe = pipe.to(torch_device)
+        # 10 frames
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        video = torch.randn((1, 10, 3, 320, 576), generator=generator)
 
         prompt = "Spiderman is surfing"
-        generator = torch.Generator(device="cpu").manual_seed(0)
 
-        video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="pt").frames
-        video = video_frames.cpu().numpy()
+        video_frames = pipe(prompt, video=video, generator=generator, num_inference_steps=3, output_type="pt").frames
 
-        assert np.abs(expected_video - video).mean() < 5e-2
+        expected_array = np.array([-0.9770508, -0.8027344, -0.62646484, -0.8334961, -0.7573242])
+        output_array = video_frames.cpu().numpy()[0, 0, 0, 0, -5:]
+
+        assert numpy_cosine_similarity_distance(expected_array, output_array) < 1e-2

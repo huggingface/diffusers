@@ -907,6 +907,9 @@ def main():
 
             if args.snr_gamma is not None:
                 snr = jnp.array(compute_snr(timesteps))
+                if noise_scheduler.config.prediction_type == "v_prediction":
+                    # Velocity objective requires that we add one to SNR values before we divide by them.
+                    snr = snr + 1
                 snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
                 loss = loss * snr_loss_weights
 
