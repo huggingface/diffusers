@@ -31,7 +31,7 @@ from ...models.embeddings import (
 )
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import apply_freeu
 
 
@@ -1211,7 +1211,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         # 3. down
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-        if self.use_peft_backend:
+        if USE_PEFT_BACKEND:
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
 
@@ -1313,7 +1313,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
-        if self.use_peft_backend:
+        if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
             unscale_lora_layers(self)
 

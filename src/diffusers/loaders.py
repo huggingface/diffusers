@@ -256,7 +256,6 @@ class AttnProcsLayers(torch.nn.Module):
 class UNet2DConditionLoadersMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
-    use_peft_backend = USE_PEFT_BACKEND
 
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
@@ -682,7 +681,7 @@ class UNet2DConditionLoadersMixin:
         self.apply(self._fuse_lora_apply)
 
     def _fuse_lora_apply(self, module):
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             if hasattr(module, "_fuse_lora"):
                 module._fuse_lora(self.lora_scale, self._safe_fusing)
         else:
@@ -697,7 +696,7 @@ class UNet2DConditionLoadersMixin:
         self.apply(self._unfuse_lora_apply)
 
     def _unfuse_lora_apply(self, module):
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             if hasattr(module, "_unfuse_lora"):
                 module._unfuse_lora()
         else:
@@ -744,7 +743,7 @@ class UNet2DConditionLoadersMixin:
         """
         Disables the LoRA layers for the unet.
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
         set_adapter_layers(self, enabled=False)
 
@@ -752,7 +751,7 @@ class UNet2DConditionLoadersMixin:
         """
         Enables the LoRA layers for the unet.
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
         set_adapter_layers(self, enabled=True)
 
@@ -1173,7 +1172,6 @@ class LoraLoaderMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
     num_fused_loras = 0
-    use_peft_backend = USE_PEFT_BACKEND
 
     def load_lora_weights(
         self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
@@ -1604,7 +1602,7 @@ class LoraLoaderMixin:
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
             logger.warn(warn_message)
 
-        if cls.use_peft_backend and len(state_dict.keys()) > 0:
+        if USE_PEFT_BACKEND and len(state_dict.keys()) > 0:
             from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 
             state_dict = convert_unet_state_dict_to_peft(state_dict)
@@ -1719,7 +1717,7 @@ class LoraLoaderMixin:
                 rank = {}
                 text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
-                if cls.use_peft_backend:
+                if USE_PEFT_BACKEND:
                     # convert state dict
                     text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
 
@@ -1756,7 +1754,7 @@ class LoraLoaderMixin:
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                if cls.use_peft_backend:
+                if USE_PEFT_BACKEND:
                     from peft import LoraConfig
 
                     lora_config_kwargs = get_peft_kwargs(
@@ -1852,7 +1850,7 @@ class LoraLoaderMixin:
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
     def _remove_text_encoder_monkey_patch(self):
-        if self.use_peft_backend:
+        if USE_PEFT_BACKEND:
             remove_method = recurse_remove_peft_layers
         else:
             remove_method = self._remove_text_encoder_monkey_patch_classmethod
@@ -1866,7 +1864,7 @@ class LoraLoaderMixin:
                 self.text_encoder._hf_peft_config_loaded = None
         if hasattr(self, "text_encoder_2"):
             remove_method(self.text_encoder_2)
-            if self.use_peft_backend:
+            if USE_PEFT_BACKEND:
                 del self.text_encoder_2.peft_config
                 self.text_encoder_2._hf_peft_config_loaded = None
 
@@ -2296,7 +2294,7 @@ class LoraLoaderMixin:
         if fuse_unet:
             self.unet.fuse_lora(lora_scale, safe_fusing=safe_fusing)
 
-        if self.use_peft_backend:
+        if USE_PEFT_BACKEND:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
@@ -2358,7 +2356,7 @@ class LoraLoaderMixin:
                     if isinstance(module, BaseTunerLayer):
                         module.unmerge()
 
-        if self.use_peft_backend:
+        if USE_PEFT_BACKEND:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
             def unfuse_text_encoder_lora(text_encoder):
@@ -2409,7 +2407,7 @@ class LoraLoaderMixin:
             text_encoder_weights (`List[float]`, *optional*):
                 The weights to use for the text encoder. If `None`, the weights are set to `1.0` for all the adapters.
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
         def process_weights(adapter_names, weights):
@@ -2442,7 +2440,7 @@ class LoraLoaderMixin:
                 The text encoder module to disable the LoRA layers for. If `None`, it will try to get the
                 `text_encoder` attribute.
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
         text_encoder = text_encoder or getattr(self, "text_encoder", None)
@@ -2459,7 +2457,7 @@ class LoraLoaderMixin:
                 The text encoder module to enable the LoRA layers for. If `None`, it will try to get the `text_encoder`
                 attribute.
         """
-        if not self.use_peft_backend:
+        if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
         text_encoder = text_encoder or getattr(self, "text_encoder", None)
         if text_encoder is None:
@@ -3319,7 +3317,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         )
 
     def _remove_text_encoder_monkey_patch(self):
-        if self.use_peft_backend:
+        if USE_PEFT_BACKEND:
             recurse_remove_peft_layers(self.text_encoder)
             # TODO: @younesbelkada handle this in transformers side
             if getattr(self.text_encoder, "peft_config", None) is not None:
