@@ -749,7 +749,12 @@ def parse_args(input_args=None):
         default=None,
         help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
     )
-
+    parser.add_argument(
+        "--adapter_train_delay",
+        type=int,
+        default=0,
+        help="How many steps to delay adapter training by, allows a warmup stage in training the diffusion model",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -1090,7 +1095,9 @@ def main(args):
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
-    t2iadapter.train()
+    # t2iadapter.train will be called at the correct timestep
+    t2iadapter.requires_grad_(False)
+    
     unet.train()
 
     if args.enable_xformers_memory_efficient_attention:
@@ -1334,9 +1341,15 @@ def main(args):
     )
 
     image_logs = None
+    did_unfreeze_adapter_step = False
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(t2iadapter):
+                if step > args.adapter_train_delay and did_unfreeze_adapter_step is False:
+                    t2iadapter.requires_grad_(True)
+                    t2iadapter.train()
+                    did_unfreeze_adapter_step = True
+                    
                 if args.pretrained_vae_model_name_or_path is not None:
                     pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
                 else:
@@ -1384,6 +1397,7 @@ def main(args):
                     added_cond_kwargs=batch["unet_added_conditions"],
                     down_block_additional_residuals=down_block_additional_residuals,
                 ).sample
+
 
                 # Denoise the latents
                 denoised_latents = model_pred * (-sigmas) + noisy_latents
