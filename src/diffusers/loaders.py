@@ -1645,9 +1645,6 @@ class LoraLoaderMixin:
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
                     )
-                elif unexpected_keys is not None:
-                    # At this point all LoRA layars has been loaded so we init back an empty state_dict
-                    state_dict = {}
 
             # Offload back.
             if is_model_cpu_offload:
