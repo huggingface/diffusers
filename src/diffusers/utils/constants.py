@@ -22,6 +22,8 @@ from .import_utils import is_peft_available, is_transformers_available
 
 default_cache_path = HUGGINGFACE_HUB_CACHE
 
+MIN_PEFT_VERSION = "0.5.0"
+
 
 CONFIG_NAME = "config.json"
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
@@ -41,7 +43,7 @@ DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
 # For PEFT it is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse("0.5")
+) > version.parse(MIN_PEFT_VERSION)
 _required_transformers_version = is_transformers_available() and version.parse(
     version.parse(importlib.metadata.version("transformers")).base_version
 ) > version.parse("4.33")

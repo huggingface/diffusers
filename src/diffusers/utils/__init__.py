@@ -26,6 +26,7 @@ from .constants import (
     FLAX_WEIGHTS_NAME,
     HF_MODULES_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    MIN_PEFT_VERSION,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
@@ -87,7 +88,6 @@ from .loading_utils import load_image
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
-    MIN_PEFT_VERSION,
     check_peft_version,
     get_adapter_name,
     get_peft_kwargs,

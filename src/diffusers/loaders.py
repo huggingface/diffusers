@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 import re
-import warnings
 from collections import defaultdict
 from contextlib import nullcontext
 from io import BytesIO
@@ -2510,13 +2509,15 @@ class LoraLoaderMixin:
     def get_active_adapters(self) -> Optional[List[str]]:
         """
         Gets the list of the current active adapters.
-        
+
         Example:
-        
+
         ```python
         from diffusers import DiffusionPipeline
-        
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0",).to("cuda")
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+        ).to("cuda")
         pipeline.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
         pipeline.get_active_adapters()
         ```
