@@ -283,7 +283,7 @@ class TortoiseTTSSelfAttention(nn.Module):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.SelfAttention = TortoiseTTSAttention(
+        self.attention = TortoiseTTSAttention(
             query_dim=query_dim,
             n_heads=n_heads,
             dim_head=dim_head,
@@ -310,7 +310,7 @@ class TortoiseTTSSelfAttention(nn.Module):
         normed_hidden_states = self.layer_norm(hidden_states)
         normed_hidden_states = torch.permute(normed_hidden_states, (0, 2, 1))
 
-        attention_output = self.SelfAttention(
+        attention_output = self.attention(
             normed_hidden_states,
             mask=attention_mask,
             position_bias=position_bias,
