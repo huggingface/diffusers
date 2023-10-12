@@ -2561,8 +2561,6 @@ class LoraLoaderMixin:
         Sets the LoRAs listed in `adapter_names` into a target device. Useful for offloading the LoRA in the CPU in
         case you want to load multiple adapters and free some GPU memory.
 
-        This is specific to LoRA and needs some tweaking for new adapter architectures (IA3, AdaLora).
-
         Args:
             adapter_names (`List[str]`):
                 List of adapters to send device to.
@@ -2577,11 +2575,8 @@ class LoraLoaderMixin:
         # Handle the UNET
         for unet_module in self.unet.modules():
             if isinstance(unet_module, BaseTunerLayer):
-                # loop over submodules
-                for name, unet_submodule in unet_module.named_children():
-                    if name in ["lora_A", "lora_B"]:
-                        for adapter_name in adapter_names:
-                            unet_submodule[adapter_name].to(device)
+                unet_module.lora_A[adapter_name].to(device)
+                unet_module.lora_B[adapter_name].to(device)
 
         # Handle the text encoder
         modules_to_process = []
@@ -2595,11 +2590,8 @@ class LoraLoaderMixin:
             # loop over submodules
             for text_encoder_module in text_encoder.modules():
                 if isinstance(text_encoder_module, BaseTunerLayer):
-                    # loop over submodules
-                    for name, text_encoder_submodule in text_encoder_module.named_children():
-                        if name in ["lora_A", "lora_B"]:
-                            for adapter_name in adapter_names:
-                                text_encoder_submodule[adapter_name].to(device)
+                    text_encoder_module.lora_A[adapter_name].to(device)
+                    text_encoder_module.lora_B[adapter_name].to(device)
 
 
 class FromSingleFileMixin:
