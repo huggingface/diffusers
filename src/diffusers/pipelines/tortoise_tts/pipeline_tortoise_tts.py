@@ -8,6 +8,16 @@ import torch
 import torch.nn.functional as F
 import torchaudio
 
+from transformers import (
+    ClvpConditioningEncoder,
+    ClvpFeatureExtractor,
+    ClvpModelForConditionalGeneration,
+    ClvpTokenizer,
+    GenerationConfig,
+    UnivNetModel,
+)
+
+
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
@@ -20,7 +30,6 @@ from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 from .modeling_common import RandomLatentConverter
 from .modeling_diffusion import TortoiseTTSDenoisingModel
 
-from transformers import ClvpModelForConditionalGeneration, ClvpConditioningEncoder
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -57,33 +66,50 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     # TODO: get appropriate type annotations for __init__ args
     def __init__(
         self,
-        autoregressive_conditioning_encoder: ClvpConditioningEncoder,
+        audio_candidate_model: ClvpModelForConditionalGeneration,
+        audio_processor: ClvpFeatureExtractor,
         autoregressive_random_latent_converter: RandomLatentConverter,
-        autoregressive_model: ClvpModelForConditionalGeneration,
-        speech_encoder,  # TODO: get appropriate CLVP components
-        text_encoder,
-        tokenizer,
+        tokenizer: ClvpTokenizer,
         diffusion_conditioning_encoder: ClvpConditioningEncoder,
         diffusion_random_latent_converter: RandomLatentConverter,
-        diffusion_denoising_model: TortoiseTTSDenoisingModel,
+        unet: TortoiseTTSDenoisingModel,
         scheduler: KarrasDiffusionSchedulers,
-        vocoder,
+        vocoder: UnivNetModel,
     ):
         super().__init__()
 
         self.register_modules(
-            autoregressive_conditioning_encoder=autoregressive_conditioning_encoder,
+            audio_candidate_model=audio_candidate_model,
+            audio_processor=audio_processor,
             autoregressive_random_latent_converter=autoregressive_random_latent_converter,
-            autoregressive_model=autoregressive_model,
-            speech_encoder=speech_encoder,
-            text_encoder=text_encoder,
             tokenizer=tokenizer,
             diffusion_conditioning_encoder=diffusion_conditioning_encoder,
             diffusion_random_latent_converter=diffusion_random_latent_converter,
-            diffusion_denoising_model=diffusion_denoising_model,
+            unet=unet,
             scheduler=scheduler,
             vocoder=vocoder,
         )
+
+        # Autoregressive model
+        self.text_encoder = audio_candidate_model.speech_decoder_model
+
+        self.sampling_rate = audio_processor.sampling_rate
+        self.autoregressive_hidden_dim = audio_candidate_model.config.decoder_config.n_embd
+        self.diffusion_input_dim = unet.config.in_latent_channels
+
+        if self.autoregressive_hidden_dim != autoregressive_random_latent_converter.config.channels:
+            raise ValueError(
+                f"Autoregressive random latent converter has {autoregressive_random_latent_converter.config.channels}"
+                f" channels and autoregressive hidden dim is {self.autoregressive_hidden_dim}, but expected them to be"
+                f" equal."
+            )
+
+        if self.diffusion_input_dim * 2 != diffusion_random_latent_converter.config.channels:
+            raise ValueError(
+                f"Expected diffusion random latent converter channels to be twice the diffusion model input dim, but"
+                f" {self.diffusion_input_dim} * 2 = {self.diffusion_input_dim * 2} !="
+                f" {diffusion_random_latent_converter.config.channels}"
+            )
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -328,15 +354,42 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             resampled_audio = resampled_audio.to(device)
         return resampled_audio
 
+    def prepare_audio_spectrograms(
+        self,
+        audio,
+        batch_size,
+        dtype,
+        device,
+        generator,
+        latents=None,
+    ):
+        if audio is not None:
+            audio_features = self.audio_processor(raw_speech=audio, sampling_rate=self.sampling_rate, return_tensors="pt")
+        else:
+            shape = (batch_size, self.autoregressive_hidden_dim)
+
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            if latents is None:
+                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            else:
+                latents = latents.to(device)
+
+            audio_features = self.autoregressive_random_latent_converter(latents).latents
+
+        return audio_features
+
+    # Based on diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
     # Modified to accept a noise argument in case the vocoder uses input noise (like UnivNet does).
     def mel_spectrogram_to_waveform(self, mel_spectrogram, noise=None):
         if mel_spectrogram.dim() == 4:
             mel_spectrogram = mel_spectrogram.squeeze(1)
 
-        if noise:
-            waveform = self.vocoder(mel_spectrogram, noise)
-        else:
-            waveform = self.vocoder(mel_spectrogram)
+        waveform = self.vocoder(mel_spectrogram, noise)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         waveform = waveform.cpu().float()
         return waveform
@@ -403,41 +456,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # Don't need to scale latents for scheduler
         return latents
 
-    def prepare_spectrogram_latents(
-        self,
-        batch_size,
-        channels,
-        seq_length,
-        dtype,
-        device,
-        generator,
-        latent_conversion_type=None,
-        latents=None,
-    ):
-        """
-        Prepares latents in the shape of a MEL spectrogram.
-        """
-        # TODO: is this the right shape? might be (batch_size, seq_length, channels) or (batch_size, channels)
-        shape = (batch_size, channels, seq_length)
-
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-        else:
-            latents = latents.to(device)
-
-        if latent_conversion_type == "autoregressive":
-            latents = self.autoregressive_random_latent_converter(latents).latents
-        elif latent_conversion_type == "diffusion":
-            latents = self.diffusion_random_latent_converter(latents).latents
-
-        return latents
-
     def prepare_autoregressive_conditioning_embedding(
         self,
         audio,
@@ -474,7 +492,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             )
         return autoregressive_cond_emb
 
-    def prepare_diffusion_conditioning_embedding(
+    def prepare_diffusion_audio_embedding(
         self,
         audio,
         dtype,
@@ -486,12 +504,9 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
     ):
         """
-        Transforms audio samples or a latent audio tensor into a conditioning embedding for the diffusion model.
+        Transforms audio samples or a latent noise into an audio embedding for the diffusion model.
         """
-        if latents:
-            diffusion_cond_emb = latents.to(device)
-            # TODO: handle batch sizes
-        elif audio:
+        if audio is not None:
             target_sampling_rate = self.diffusion_conditioning_encoder.config.input_spectrogram_sampling_rate
             audio = self.prepare_audio_waveforms(audio, target_sampling_rate, device=device)
 
@@ -526,20 +541,24 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                     f"`latent_averaging_mode` is {latent_averaging_mode} but is expected to be an int in [0, 1, 2]."
                 )
 
-            diffusion_cond_emb = self.diffusion_conditioning_encoder(audio_conds).embedding
+            diffusion_audio_emb = self.diffusion_conditioning_encoder(audio_conds).embedding
         else:
             # Neither raw audio or embeddings supplied, randomly generate a conditioning embedding.
-            # TODO: number of channels hardcoded for now, get correct expression based on configs
-            num_channels = 2048
-            diffusion_cond_emb = self.prepare_spectrogram_latents(
-                batch_size,
-                num_channels,
-                self.diffusion_conditioning_encoder.config.input_spectrogram_sampling_rate,
-                dtype,
-                generator,
-                latent_conversion_type="diffusion",
-            )
-        return diffusion_cond_emb
+            shape = (batch_size, self.diffusion_input_dim * 2)
+
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            if latents is None:
+                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            else:
+                latents = latents.to(device)
+
+            diffusion_audio_emb = self.diffusion_random_latent_converter(latents).latents
+        return diffusion_audio_emb
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -559,31 +578,14 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # TODO: for now, copied from AudioLDMPipeline, should be modified for Tortoise TTS
     def check_inputs(
         self,
         prompt,
-        audio_length_in_s,
-        vocoder_upsample_factor,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
-        min_audio_length_in_s = vocoder_upsample_factor * self.vae_scale_factor
-        if audio_length_in_s < min_audio_length_in_s:
-            raise ValueError(
-                f"`audio_length_in_s` has to be a positive value greater than or equal to {min_audio_length_in_s}, but "
-                f"is {audio_length_in_s}."
-            )
-
-        if self.vocoder.config.model_in_dim % self.vae_scale_factor != 0:
-            raise ValueError(
-                f"The number of frequency bins in the vocoder's log-mel spectrogram has to be divisible by the "
-                f"VAE scale factor, but got {self.vocoder.config.model_in_dim} bins and a scale factor of "
-                f"{self.vae_scale_factor}."
-            )
-
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -631,15 +633,9 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        # Autoregressive parameters
-        autoregressive_num_samples: int = 512,
-        autoregressive_batch_size: Optional[int] = None,
-        autoregressive_max_tokens: int = 500,
-        autoregressive_temperature: float = 0.2,
-        autoregressive_top_p: float = 0.8,
-        autoregressive_repetition_penalty: float = 2.0,
-        autoregressive_length_penalty: float = 1.0,
-        autoregressive_generate_kwargs: Optional[Dict[str, Any]] = None,
+        # Autoregressive generation parameters
+        autoregressive_generation_config: Optional[GenerationConfig] = None,
+        autoregressive_generation_kwargs: Optional[Dict[str, Any]] = None,
         # General Tortoise TTS parameters
         latent_averaging_mode: int = 0,
         # diffusers pipeline arguments
@@ -692,31 +688,18 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
-            autoregressive_num_samples (`int`, *optional*, defaults to 512):
-                The number of candidates which will be sampled from the autoregressive model for reranking by the CLVP
-                model. More samples will increase the likelihood of generating good samples, but will be more
-                computationally expensive.
-            autoregressive_batch_size (`int`, *optional*):
-                The batch size to use when generating samples from the autoregressive model. If `None`, this will be
-                set to `autoregressive_num_samples` (e.g., all of the samples will be processed in a single batch).
-            autoregressive_max_tokens (`int`, *optional*, defaults to 500):
-                The maximum number of output MEL tokens from the autoregressive model. Should be an integer in (0, 600].
-            autoregressive_temperature (`float`, *optional*, defaults to 0.8):
-                The softmax temperature used when sampling from the autoregressive model's next-token distribution.
-            autoregressive_top_p (`float`, *optional*, defaults to 0.8):
-                The p parameter used for nucleus sampling from the autoregressive model, which limits the candidate
-                tokens to the smallest set of (and therefore most likely) tokens whose probabilities sum to at least
-                p. Lower values will cause the autoregressive model to produce more "likely" outputs, which are
-                typically more bland.
-            autoregressive_repetition_penalty (`float`, *optional*, defaults to 2.0):
-                A penalty which penalizes the autoregressive model producing repetitive outputs. Higher values will
-                tend to reduce the incidence of long silences, "uhhhs", and other repetitve outputs.
-            autoregressive_length_penalty (`float`, *optional*, defaults to 1.0):
-                A length penalty applied when generating samples from the autoregressive model. Higher values will cause
-                to produce shorter samples.
-            autoregressive_generate_kwargs: (`dict`, *optional*):
-                A dict holding other keyword args to supply to the [`transformers.GenerationMixin.generate`] method.
-                See [`transformers.GenerationConfig`] for documentation of the available options.
+            autoregressive_generation_config: (`transformers.GenerationConfig`, *optional*):
+                The generation configuration which supplies the default parameters for the text-to-speech candidate
+                generation call to the autoregressive model. `**autoregressive_generation_kwargs` attributes will
+                override matching attributes in the config.
+
+                If `generation_config` is not provided, the default will be used, which has the following loading
+                priority: 1) from the `generation_config.json` model file, if it exists; 2) from the model
+                configuration. Please note that unspecified parameters will inherit [`~generation.GenerationConfig`]'s
+                default values, whose documentation should be checked to parameterize generation.
+            autoregressive_generation_kwargs: (`dict`, *optional*):
+                A dict holding keyword args to supply to the [`transformers.GenerationMixin.generate`] method of the
+                autoregressive model. See [`transformers.GenerationConfig`] for documentation of the available options.
             latent_averaging_mode (`int`, *optional*, defaults to 1):
                 The strategy 0/1/2 used to average the conditioning latents:
                 0 - latents will be generated as in original tortoise, using ~4.27s from each voice sample, averaging latent across all samples
@@ -772,17 +755,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             When returning a tuple, the first element is a list with the generated audios.
         """
         # 0. Convert audio input length from seconds to spectrogram height
-        # TODO: right now the sampling rate is hardcoded to 24000, which is the sampling rate of the diffusion model
-        # and vocoder in the original Tortoise TTS checkpoint
-        sampling_rate = 24000
-        vocoder_upsample_factor = np.prod(self.vocoder.config.upsample_rates) / sampling_rate
-        output_seq_length = int(audio_length_in_s / vocoder_upsample_factor)
+        # TODO: handle vocoders which do upsampling (e.g. have an upsample_rates attribute)
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            audio_length_in_s,
-            vocoder_upsample_factor,
             callback_steps,
             negative_prompt,
             prompt_embeds,
@@ -797,7 +774,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        autoregressive_batch_size = autoregressive_batch_size or autoregressive_num_samples
+        output_seq_length = audio_length_in_s * self.sampling_rate
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -806,7 +783,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        # TODO: handle Tortoise TTS conditioning guidance?
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
@@ -822,45 +798,30 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        # 4. Get conditioning embeddings for the autoregressive model
-        autoregressive_cond_audio_emb = self.prepare_autoregressive_conditioning_embedding(
+        # 4. Prepare audio spectrogram features
+        audio_features = self.prepare_audio_spectrograms(
             audio,
+            batch_size,
             prompt_embeds.dtype,
             device,
             generator,
-            batch_size=1,
             latents=audio_ar_latents,
         )
 
-        # 5. Generate candidates using the autoregressive model
-        generate_kwargs = {
-            "do_sample": True,
-            "temperature": autoregressive_temperature,
-            "top_p": autoregressive_top_p,
-            "repetition_penalty": autoregressive_repetition_penalty,
-            "length_penalty": autoregressive_length_penalty,
-            **autoregressive_generate_kwargs,
-        }
-        autoregressive_samples = []
-        # Assume evenly divisible for now
-        num_autoregressive_batches = autoregressive_num_samples // autoregressive_batch_size
-        with self.progress_bar(total=num_autoregressive_batches) as progress_bar:
-            for i in range(num_autoregressive_batches):
-                samples = self.autoregressive_model.generate_samples(
-                    autoregressive_cond_audio_emb,
-                    prompt_embeds,
-                    num_samples=autoregressive_batch_size,  # TODO: handle case where last batch is not same size?
-                    max_sample_length=autoregressive_max_tokens,
-                    **generate_kwargs,
-                )
-                autoregressive_samples.append(samples)
+        # 5. Generate candidates and similarity scores using the autoregressive model + CLVP
+        audio_candidates_and_scores = self.audio_candidate_model.generate(
+            input_ids_with_special_tokens=prompt_embeds,  # TODO: fix
+            input_features=audio_features,
+            attention_mask_with_special_tokens=None,  # TODO: fix
+            generation_config=autoregressive_generation_config,
+            **autoregressive_generation_kwargs,
+        )
+        audio_candidates = audio_candidates_and_scores[0]  # speech_ids
+        similarity_scores = audio_candidates_and_scores[2]  # logits_per_text
 
-                progress_bar.update()
-
-        # 6. Rerank candidates using the CLVP CLIP-like discriminator model
-        # TODO
-        # TODO: placeholder
-        top_k_autoregressive_latents = None
+        # 6. Get the top k speech candidates by text-speech similarity score
+        top_k_audio_candidates = audio_candidates[torch.topk(similarity_scores, k=num_waveforms_per_prompt).indices]
+        top_k_autoregressive_latents = None  # TODO: get these somehow
 
         # 7. Prepare timesteps for diffusion scheduler
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -890,7 +851,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         )
 
         # 10. Get conditioning embeddings for the diffusion model
-        diffusion_cond_audio_emb = self.prepare_diffusion_conditioning_embedding(
+        diffusion_cond_audio_emb = self.prepare_diffusion_audio_embedding(
             audio,
             prompt_embeds.dtype,
             device,
@@ -923,8 +884,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
@@ -937,7 +898,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         # 13. Post-processing
         # TODO: support vocoders which don't use a input noise?
-        # Note: output of diffusion denoising loop should be a valid spectrogram
         audio = self.mel_spectrogram_to_waveform(latents, vocoder_latents)
 
         # audio = audio[:, :original_waveform_length]
