@@ -47,6 +47,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     EulerDiscreteScheduler,
+    DDPMScheduler,
     StableDiffusionXLAdapterPipeline,
     T2IAdapter,
     UNet2DConditionModel,
