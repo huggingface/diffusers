@@ -708,7 +708,7 @@ class UNet2DConditionLoadersMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: Optional[Union[List[float], float]]= None,
+        weights: Optional[Union[List[float], float]] = None,
     ):
         """
         Sets the adapter layers for the unet.
@@ -729,12 +729,12 @@ class UNet2DConditionLoadersMixin:
             weights = [1.0] * len(adapter_names)
         elif isinstance(weights, float):
             weights = [weights] * len(adapter_names)
-        
+
         if len(adapter_names) != len(weights):
             raise ValueError(
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
             )
-        
+
         set_weights_and_activate_adapters(self, adapter_names, weights)
 
     def disable_lora(self):
@@ -1540,7 +1540,6 @@ class LoraLoaderMixin:
             for _, component in _pipeline.components.items():
                 if isinstance(component, nn.Module):
                     if hasattr(component, "_hf_hook"):
-
                         if not is_model_cpu_offload:
                             is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
                         if not is_sequential_cpu_offload:
@@ -2575,8 +2574,9 @@ class LoraLoaderMixin:
         # Handle the UNET
         for unet_module in self.unet.modules():
             if isinstance(unet_module, BaseTunerLayer):
-                unet_module.lora_A[adapter_name].to(device)
-                unet_module.lora_B[adapter_name].to(device)
+                for adapter_name in adapter_names:
+                    unet_module.lora_A[adapter_name].to(device)
+                    unet_module.lora_B[adapter_name].to(device)
 
         # Handle the text encoder
         modules_to_process = []
@@ -2590,8 +2590,9 @@ class LoraLoaderMixin:
             # loop over submodules
             for text_encoder_module in text_encoder.modules():
                 if isinstance(text_encoder_module, BaseTunerLayer):
-                    text_encoder_module.lora_A[adapter_name].to(device)
-                    text_encoder_module.lora_B[adapter_name].to(device)
+                    for adapter_name in adapter_names:
+                        text_encoder_module.lora_A[adapter_name].to(device)
+                        text_encoder_module.lora_B[adapter_name].to(device)
 
 
 class FromSingleFileMixin:
@@ -3178,7 +3179,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
 
     # Overrride to properly handle the loading and unloading of the additional text encoder.
     def load_lora_weights(
-        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name: Optional[str] = None, **kwargs
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        adapter_name: Optional[str] = None,
+        **kwargs,
     ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
