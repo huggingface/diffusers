@@ -729,6 +729,19 @@ def parse_args(input_args=None):
             "lion weight decay value"
         )
     )
+    parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        default=None,
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+        "More details here: https://arxiv.org/abs/2303.09556.",
+    )
+    parser.add_argument(
+        "--scale_scheduler",
+        action="store_true",
+        default=False,
+        help="Rescale Scheduler based on Zero SNR paper during training and sampling",
+    )
 
 
     if input_args is not None:
@@ -995,7 +1008,13 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    #noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="scheduler",
+        rescale_betas_zero_snr=args.scale_scheduler,
+        timestep_spacing="trailing" if args.scale_scheduler else None,
+    )
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
@@ -1015,8 +1034,6 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
-  
-    
 
     if args.adapter_model_name_or_path:
         logger.info("Loading existing adapter weights.")
@@ -1373,12 +1390,36 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                # MSE loss
-                loss = torch.mean(
-                    (weighing.float() * (denoised_latents.float() - target.float()) ** 2).reshape(target.shape[0], -1),
-                    dim=1,
-                )
-                loss = loss.mean()
+                if args.snr_gamma is None:
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                else:
+                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                    # This is discussed in Section 4.2 of the same paper.
+                    snr = compute_snr(noise_scheduler, timesteps)
+                    base_weight = (
+                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
+                    )
+
+                    if noise_scheduler.config.prediction_type == "v_prediction":
+                        # Velocity objective needs to be floored to an SNR weight of one.
+                        mse_loss_weights = base_weight + 1
+                    else:
+                        # Epsilon and sample both use the same loss weights.
+                        mse_loss_weights = base_weight
+
+                    # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
+                    # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
+                    # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
+                    mse_loss_weights[snr == 0] = 1.0
+
+                    # We first calculate the original loss. Then we mean over the non-batch dimensions and
+                    # rebalance the sample-wise losses with their respective loss weights.
+                    # Finally, we take the mean of the rebalanced loss.
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                    loss = loss.mean()
+
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
