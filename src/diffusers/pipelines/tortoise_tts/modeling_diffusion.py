@@ -329,8 +329,9 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         )
 
 
-        # 2. Define unconditioned embedding (TODO: add more information)
-        self.unconditioned_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
+        # 2. Define unconditional diffusion embedding for Tortoise TTS classifier-free guidance
+        # NOTE: unconditional embedding is a learnable parameter of the model, rather than being fixed
+        self.unconditional_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
 
         # 3. Define conditioning timestep integrator, which combines the conditioning embedding from the
         # autoregressive model with the time embedding
@@ -406,7 +407,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         """
         # 1. Handle the conditioning embedding
         if unconditional:
-            cond_embedding = self.unconditioned_embedding.repeat(sample.shape[0], 1, sample.shape[-1])
+            cond_embedding = self.unconditional_embedding.repeat(sample.shape[0], 1, sample.shape[-1])
         else:
             cond_scale, cond_shift = torch.chunk(conditioning_audio_latents, 2, dim=1)
             cond_embedding = self.latent_conditioner(autoregressive_latents)
