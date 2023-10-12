@@ -14,7 +14,7 @@
 
 from typing import List, Optional, Tuple, Union
 
-import PIL
+import PIL.Image
 import torch
 from torchvision import transforms
 

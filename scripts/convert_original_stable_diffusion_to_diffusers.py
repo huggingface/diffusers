@@ -36,6 +36,12 @@ if __name__ == "__main__":
         help="The YAML config file corresponding to the original architecture.",
     )
     parser.add_argument(
+        "--config_files",
+        default=None,
+        type=str,
+        help="The YAML config file corresponding to the architecture.",
+    )
+    parser.add_argument(
         "--num_in_channels",
         default=None,
         type=int,

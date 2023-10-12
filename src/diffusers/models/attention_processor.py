@@ -310,19 +310,16 @@ class Attention(nn.Module):
 
         self.set_processor(processor)
 
-    def set_processor(self, processor: "AttnProcessor"):
-        if (
-            hasattr(self, "processor")
-            and not isinstance(processor, LORA_ATTENTION_PROCESSORS)
-            and self.to_q.lora_layer is not None
-        ):
+    def set_processor(self, processor: "AttnProcessor", _remove_lora=False):
+        if hasattr(self, "processor") and _remove_lora and self.to_q.lora_layer is not None:
             deprecate(
                 "set_processor to offload LoRA",
                 "0.26.0",
-                "In detail, removing LoRA layers via calling `set_processor` or `set_default_attn_processor` is deprecated. Please make sure to call `pipe.unload_lora_weights()` instead.",
+                "In detail, removing LoRA layers via calling `set_default_attn_processor` is deprecated. Please make sure to call `pipe.unload_lora_weights()` instead.",
             )
             # TODO(Patrick, Sayak) - this can be deprecated once PEFT LoRA integration is complete
             # We need to remove all LoRA layers
+            # Don't forget to remove ALL `_remove_lora` from the codebase
             for module in self.modules():
                 if hasattr(module, "set_lora_layer"):
                     module.set_lora_layer(None)
@@ -1650,7 +1647,7 @@ class LoRAXFormersAttnProcessor(nn.Module):
             "0.26.0",
             (
                 f"Make sure use {self_cls_name[4:]} instead by setting"
-                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                "LoRA layers to `self.{to_q,to_k,to_v,add_k_proj,add_v_proj,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
                 " `LoraLoaderMixin.load_lora_weights`"
             ),
         )
@@ -1700,7 +1697,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
             "0.26.0",
             (
                 f"Make sure use {self_cls_name[4:]} instead by setting"
-                "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
+                "LoRA layers to `self.{to_q,to_k,to_v,add_k_proj,add_v_proj,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
                 " `LoraLoaderMixin.load_lora_weights`"
             ),
         )

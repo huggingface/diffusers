@@ -58,6 +58,8 @@
       title: Control image brightness
     - local: using-diffusers/weighted_prompts
       title: Prompt weighting
+    - local: using-diffusers/freeu
+      title: Improve generation quality with FreeU
     title: Techniques
   - sections:
     - local: using-diffusers/pipeline_overview
@@ -104,6 +106,8 @@
       title: Custom Diffusion
     - local: training/t2i_adapters
       title: T2I-Adapters
+    - local: training/ddpo
+      title: Reinforcement learning training with DDPO
     title: Training
   - sections:
     - local: using-diffusers/other-modalities
@@ -216,6 +220,8 @@
       title: AudioLDM 2
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
+    - local: api/pipelines/blip_diffusion
+      title: BLIP Diffusion
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet

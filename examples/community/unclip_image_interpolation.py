@@ -1,7 +1,7 @@
 import inspect
 from typing import List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from torch.nn import functional as F
 from transformers import (
