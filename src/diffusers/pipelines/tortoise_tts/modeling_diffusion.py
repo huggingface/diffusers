@@ -1,3 +1,5 @@
+import math
+import random
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -5,15 +7,32 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from transformers import UnivNetFeatureExtractor
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.resnet import AdaGroupNorm, Downsample2D, Upsample2D, downsample_2d, partial, upsample_2d
 from ...utils import BaseOutput, logging
-from .modeling_common import ConditioningEncoder, TortoiseTTSAttention
+
+from .modeling_common import TortoiseTTSAttention, TortoiseTTSSelfAttention
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def pad_or_truncate(t, length: int, random_start: bool = False):
+    gap = length - t.shape[-1]
+    if gap < 0:
+        return F.pad(t, (0, abs(gap)))
+    elif gap > 0:
+        start = 0
+        if random_start:
+            # TODO: use generator/seed to make this reproducible?
+            start = random.randint(0, gap)
+        return t[:, start : start + length]
+    else:
+        return t
 
 
 def compute_groupnorm_groups(channels: int, groups: int = 32):
@@ -40,6 +59,153 @@ def compute_groupnorm_groups(channels: int, groups: int = 32):
 class Mish(torch.nn.Module):
     def forward(self, hidden_states):
         return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
+
+
+@dataclass
+class DiffusionConditioningEncoderOutput(BaseOutput):
+    """
+    The output of [`DiffusionConditioningEncoder`].
+
+    Args:
+        TODO: fix
+        embedding (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            The hidden states output from the last layer of the model.
+    """
+
+    embedding: torch.FloatTensor
+
+
+class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
+    """
+    Conditioning encoder for the Tortoise TTS diffusion model.
+    """
+
+    @register_to_config
+    def __init__(
+        self,
+        audio_in_channels: int = 100,
+        audio_attention_layers: int = 5,
+        latent_in_channels: int = 1024,
+        latent_attention_layers: int = 4,
+        hidden_channels: int = 1024,
+        num_attention_heads: int = 16,
+        chunk_size: int = 102400  # DURS_CONST in original
+    ):
+        super().__init__()
+
+        # Class to map audio waveforms to log mel spectrograms
+        self.stft = UnivNetFeatureExtractor(
+            sampling_rate=24000,
+            num_mel_bins=100,
+            hop_length=256,
+            win_length=1024,
+            filter_length=1024,
+            fmin=0.0,
+            fmax=12000.0,
+        )
+
+        # Define the contextual embedder, which maps the audio waveforms into the diffusion audio embedding.
+        audio_attentions = [
+            TortoiseTTSSelfAttention(
+                hidden_channels * 2,
+                n_heads=num_attention_heads,
+                dim_head=(hidden_channels * 2) // num_attention_heads,
+            )
+            for _ in range(audio_attention_layers)
+        ]
+
+        self.contextual_embedder = nn.Sequential(
+            nn.Conv1d(audio_in_channels, hidden_channels, 3, padding=1, stride=2),
+            nn.Conv1d(hidden_channels, hidden_channels * 2, 3, padding=1, stride=2),
+            *audio_attentions,
+        )
+
+        # Define the latent conditioner, which maps diffusion audio embeddings and autoregressive latents to the final
+        # diffusion conditioning embedding.
+        latent_attentions = [
+            TortoiseTTSSelfAttention(
+                hidden_channels,
+                n_heads=num_attention_heads,
+                dim_head=hidden_channels // num_attention_heads,
+            )
+            for _ in range(latent_attention_layers)
+        ]
+
+        self.latent_conditioner = nn.Sequential(
+            nn.Conv1d(latent_in_channels, hidden_channels, 3, padding=1),
+            *latent_attentions
+        )
+
+        # The unconditional embedding used for Tortoise TTS spectrogram diffusion classifier-free guidance.
+        self.unconditioned_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
+
+    def convert_and_average_audio_samples(
+        self,
+        audio,
+        latent_averaging_mode: int = 0,
+        chunk_size: Optional[int] = None,
+    ):
+        chunk_size = chunk_size if chunk_size is not None else self.config.chunk_size
+        audio_spectrograms = []
+        for audio_sample in audio:
+            if latent_averaging_mode == 0:
+                # Average across all samples (original Tortoise TTS behavior)
+                audio_sample = pad_or_truncate(audio_sample, chunk_size)
+                spectrogram = self.stft.mel_spectrogram(audio_sample)
+                audio_spectrograms.append(spectrogram)
+            else:
+                if latent_averaging_mode == 2:
+                    sample_audio_spectrograms = []
+                for chunk in range(math.ceil(audio_sample.shape[1] / chunk_size)):
+                    current_chunk = audio_sample[:, chunk * chunk_size : (chunk + 1) * chunk_size]
+                    current_chunk = pad_or_truncate(current_chunk, chunk_size)
+                    chunk_spectrogram = self.stft.mel_spectrogram(current_chunk, chunk_size)
+
+                    if latent_averaging_mode == 1:
+                        # Average across all chunks of all samples
+                        audio_spectrograms.append(chunk_spectrogram)
+                    elif latent_averaging_mode == 2:
+                        # Double average: average across all chunks for each sample, then average among all samples
+                        sample_audio_spectrograms.append(chunk_spectrogram)
+                if latent_averaging_mode == 2:
+                    averaged_sample_spectrogram = torch.stack(sample_audio_spectrograms).mean(0)
+                    audio_spectrograms.append(averaged_sample_spectrogram)
+        audio_spectrograms = torch.stack(audio_spectrograms, dim=1)
+        return audio_spectrograms
+
+    def diffusion_cond_audio_embedding(self, audio, latent_averaging_mode: int = 0, chunk_size: Optional[int] = None):
+        audio_spectrograms = self.convert_and_average_audio_samples(audio, latent_averaging_mode, chunk_size)
+        audio_spectrograms = audio_spectrograms.unsqueeze(1) if len(audio_spectrograms.shape) == 3 else audio_spectrograms
+        # TODO: better name?
+        conds = []
+        for j in range(audio_spectrograms.shape[1]):
+            conds.append(self.contextual_embedder(audio_spectrograms[:, j]))
+        audio_embedding = torch.cat(conds, dim=-1)
+        audio_embedding.mean(dim=-1)
+        return audio_embedding
+
+    def diffusion_cond_embedding(self, audio_embedding, autoregressive_latents):
+        cond_scale, cond_shift = torch.chunk(audio_embedding, 2, dim=1)
+        cond_embedding = self.latent_conditioner(autoregressive_latents)
+        cond_embedding = (1 + cond_scale.unsqueeze(-1)) * cond_embedding + cond_shift.unsqueeze(-1)
+        return cond_embedding
+
+    def forward(
+        self,
+        audio,
+        autoregressive_latents,
+        latent_averaging_mode: int = 0,
+        chunk_size: Optional[int] = None,
+        return_dict: bool = True,
+    ):
+        diffusion_cond_audio_embedding = self.diffusion_cond_audio_embedding(audio, latent_averaging_mode, chunk_size)
+        diffusion_cond_embedding = self.diffusion_cond_embedding(diffusion_cond_audio_embedding, autoregressive_latents)
+
+        if not return_dict:
+            output = (diffusion_cond_embedding,)
+            return output
+
+        return DiffusionConditioningEncoderOutput(embedding=diffusion_cond_embedding)
 
 
 class ResnetBlock1D(nn.Module):
