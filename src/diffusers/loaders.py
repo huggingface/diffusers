@@ -708,7 +708,7 @@ class UNet2DConditionLoadersMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: Optional[List[float]] = None,
+        weights: Optional[Union[List[float], float]]= None,
     ):
         """
         Sets the adapter layers for the unet.
@@ -716,27 +716,25 @@ class UNet2DConditionLoadersMixin:
         Args:
             adapter_names (`List[str]` or `str`):
                 The names of the adapters to use.
-            weights (`List[float]`, *optional*):
+            weights (`Union[List[float], float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `set_adapters()`.")
 
-        def process_weights(adapter_names, weights):
-            if weights is None:
-                weights = [1.0] * len(adapter_names)
-            elif isinstance(weights, float):
-                weights = [weights]
-
-            if len(adapter_names) != len(weights):
-                raise ValueError(
-                    f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
-                )
-            return weights
-
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
-        weights = process_weights(adapter_names, weights)
+
+        if weights is None:
+            weights = [1.0] * len(adapter_names)
+        elif isinstance(weights, float):
+            weights = [weights] * len(adapter_names)
+        
+        if len(adapter_names) != len(weights):
+            raise ValueError(
+                f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
+            )
+        
         set_weights_and_activate_adapters(self, adapter_names, weights)
 
     def disable_lora(self):
