@@ -47,6 +47,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     EulerDiscreteScheduler,
+    DDPMScheduler,
     StableDiffusionXLAdapterPipeline,
     T2IAdapter,
     UNet2DConditionModel,
@@ -57,6 +58,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 from kornia.color.lab import rgb_to_lab
+
 
 ## Utils functions for light generation
 def generate_points(n):
@@ -712,6 +714,41 @@ def parse_args(input_args=None):
             "Pyramid noise discount parameter"
         )
     )
+    parser.add_argument(
+        "--lion_opt",
+        action="store_true",
+        default=False,
+        help=(
+            "lion opt"
+        )
+    )
+    parser.add_argument(
+        "--lion_weight_decay",
+        type=float,
+        default=1e-2,
+        help=(
+            "lion weight decay value"
+        )
+    )
+    parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        default=None,
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+        "More details here: https://arxiv.org/abs/2303.09556.",
+    )
+    parser.add_argument(
+        "--scale_scheduler",
+        action="store_true",
+        default=False,
+        help="Rescale Scheduler based on Zero SNR paper during training and sampling",
+    )
+    parser.add_argument(
+        "--prediction_type",
+        type=str,
+        default=None,
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
+    )
 
 
     if input_args is not None:
@@ -978,7 +1015,13 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    #noise_scheduler = EulerDiscreteScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="scheduler",
+        rescale_betas_zero_snr=args.scale_scheduler,
+        timestep_spacing="trailing" if args.scale_scheduler else None,
+    )
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
@@ -1104,13 +1147,17 @@ def main(args):
 
     # Optimizer creation
     params_to_optimize = t2iadapter.parameters()
-    optimizer = optimizer_class(
-        params_to_optimize,
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+    if args.lion_opt is True:
+        from lion_pytorch import Lion
+        optimizer = Lion(model.parameters(), lr=args.learning_rate, weight_decay=args.lion_weight_decay)
+    else:
+        optimizer = optimizer_class(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -1342,6 +1389,13 @@ def main(args):
                 denoised_latents = model_pred * (-sigmas) + noisy_latents
                 weighing = sigmas**-2.0
 
+
+                # Get the target for loss depending on the prediction type
+                if args.prediction_type is not None:
+                    # set prediction_type of scheduler if defined
+                    noise_scheduler.register_to_config(prediction_type=args.prediction_type)
+                
+
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = latents  # we are computing loss against denoise latents
@@ -1350,12 +1404,36 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                # MSE loss
-                loss = torch.mean(
-                    (weighing.float() * (denoised_latents.float() - target.float()) ** 2).reshape(target.shape[0], -1),
-                    dim=1,
-                )
-                loss = loss.mean()
+                if args.snr_gamma is None:
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                else:
+                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                    # This is discussed in Section 4.2 of the same paper.
+                    snr = compute_snr(noise_scheduler, timesteps)
+                    base_weight = (
+                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
+                    )
+
+                    if noise_scheduler.config.prediction_type == "v_prediction":
+                        # Velocity objective needs to be floored to an SNR weight of one.
+                        mse_loss_weights = base_weight + 1
+                    else:
+                        # Epsilon and sample both use the same loss weights.
+                        mse_loss_weights = base_weight
+
+                    # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
+                    # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
+                    # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
+                    mse_loss_weights[snr == 0] = 1.0
+
+                    # We first calculate the original loss. Then we mean over the non-batch dimensions and
+                    # rebalance the sample-wise losses with their respective loss weights.
+                    # Finally, we take the mean of the rebalanced loss.
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                    loss = loss.mean()
+
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
