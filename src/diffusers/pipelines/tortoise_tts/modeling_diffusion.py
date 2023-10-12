@@ -137,7 +137,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         )
 
         # The unconditional embedding used for Tortoise TTS spectrogram diffusion classifier-free guidance.
-        self.unconditioned_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
+        self.unconditional_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
 
     def convert_and_average_audio_samples(
         self,
@@ -184,10 +184,23 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         audio_embedding.mean(dim=-1)
         return audio_embedding
 
-    def diffusion_cond_embedding(self, audio_embedding, autoregressive_latents):
-        cond_scale, cond_shift = torch.chunk(audio_embedding, 2, dim=1)
-        cond_embedding = self.latent_conditioner(autoregressive_latents)
-        cond_embedding = (1 + cond_scale.unsqueeze(-1)) * cond_embedding + cond_shift.unsqueeze(-1)
+    def diffusion_cond_embedding(
+        self,
+        audio_embedding,
+        autoregressive_latents,
+        unconditional: bool = False,
+        target_size: Optional[int] = None,
+    ):
+        if unconditional:
+            cond_embedding = self.unconditional_embedding
+            if target_size is not None:
+                cond_embedding = cond_embedding.repeat(1, 1, target_size)
+        else:
+            cond_scale, cond_shift = torch.chunk(audio_embedding, 2, dim=1)
+            cond_embedding = self.latent_conditioner(autoregressive_latents)
+            cond_embedding = (1 + cond_scale.unsqueeze(-1)) * cond_embedding + cond_shift.unsqueeze(-1)
+            if target_size is not None:
+                cond_embedding = F.interpolate(cond_embedding, size=target_size, mode="nearest")
         return cond_embedding
 
     def forward(
@@ -196,16 +209,20 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         autoregressive_latents,
         latent_averaging_mode: int = 0,
         chunk_size: Optional[int] = None,
+        unconditional: bool = False,
+        target_size: Optional[int] = None,
         return_dict: bool = True,
     ):
-        diffusion_cond_audio_embedding = self.diffusion_cond_audio_embedding(audio, latent_averaging_mode, chunk_size)
-        diffusion_cond_embedding = self.diffusion_cond_embedding(diffusion_cond_audio_embedding, autoregressive_latents)
+        diffusion_audio_embedding = self.diffusion_cond_audio_embedding(audio, latent_averaging_mode, chunk_size)
+        diffusion_embedding = self.diffusion_cond_embedding(
+            diffusion_audio_embedding, autoregressive_latents, unconditional, target_size
+        )
 
         if not return_dict:
-            output = (diffusion_cond_embedding,)
+            output = (diffusion_embedding,)
             return output
 
-        return DiffusionConditioningEncoderOutput(embedding=diffusion_cond_embedding)
+        return DiffusionConditioningEncoderOutput(embedding=diffusion_embedding)
 
 
 class ResnetBlock1D(nn.Module):
