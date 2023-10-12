@@ -42,21 +42,6 @@ class Mish(torch.nn.Module):
         return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
 
 
-class TortoiseTTSDiffusionLayer(nn.Module):
-    def __init__(self, config, has_relative_attention_bias=True):
-        super().__init__()
-        self.resblk = ResBlock(
-            model_channels, model_channels, dropout, model_channels, dims=1, use_scale_shift_norm=True
-        )
-        self.attn = TortoiseTTSDiffusionModelSelfAttention(
-            config, has_relative_attention_bias=has_relative_attention_bias
-        )
-
-    def forward(self, x, time_emb):
-        x = self.resblk(input_tensor=x, temb=time_emb)
-        return self.attn(x)
-
-
 class ResnetBlock1D(nn.Module):
     def __init__(
         self,
