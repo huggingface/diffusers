@@ -2502,7 +2502,7 @@ class LoraLoaderMixin:
         if hasattr(self, "text_encoder_2"):
             self.enable_lora_for_text_encoder(self.text_encoder_2)
 
-    def get_active_adapters(self) -> Optional[List[str]]:
+    def get_active_adapters(self) -> List[str]:
         """
         Gets the list of the current active adapters.
 
@@ -2525,7 +2525,7 @@ class LoraLoaderMixin:
 
         from peft.tuners.tuners_utils import BaseTunerLayer
 
-        active_adapters = None
+        active_adapters = []
 
         for module in self.unet.modules():
             if isinstance(module, BaseTunerLayer):
