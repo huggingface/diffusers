@@ -739,7 +739,7 @@ class UNet2DConditionLoadersMixin:
 
     def disable_lora(self):
         """
-        Disables the LoRA layers for the unet.
+        Disables the active LoRA layers for the unet.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -747,7 +747,7 @@ class UNet2DConditionLoadersMixin:
 
     def enable_lora(self):
         """
-        Enables the LoRA layers for the unet.
+        Enables the active LoRA layers for the unet.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1540,8 +1540,11 @@ class LoraLoaderMixin:
             for _, component in _pipeline.components.items():
                 if isinstance(component, nn.Module):
                     if hasattr(component, "_hf_hook"):
-                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                        
+                        if not is_model_cpu_offload:
+                            is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
+                        if not is_sequential_cpu_offload:
+                            is_sequential_cpu_offload = isinstance(component._hf_hook, AlignDevicesHook)
 
                         logger.info(
                             "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
