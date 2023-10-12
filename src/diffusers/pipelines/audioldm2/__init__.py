@@ -22,8 +22,13 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modeling_audioldm2"] = ["AudioLDM2ProjectionModel", "AudioLDM2UNet2DConditionModel"]
+    _import_structure["modeling_audioldm2"] = [
+        "AudioLDM2ProjectionModel",
+        "AudioLDM2UNet2DConditionModel",
+        "AudioLDMLearnablePositionalEmbedding",
+    ]
     _import_structure["pipeline_audioldm2"] = ["AudioLDM2Pipeline"]
+    _import_structure["pipeline_audioldm2_tts"] = ["AudioLDM2TTSPipeline"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -34,8 +39,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
 
     else:
-        from .modeling_audioldm2 import AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
+        from .modeling_audioldm2 import (
+            AudioLDM2ProjectionModel,
+            AudioLDM2UNet2DConditionModel,
+            AudioLDMLearnablePositionalEmbedding,
+        )
         from .pipeline_audioldm2 import AudioLDM2Pipeline
+        from .pipeline_audioldm2_tts import AudioLDM2TTSPipeline
 
 else:
     import sys
