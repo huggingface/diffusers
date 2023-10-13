@@ -2328,10 +2328,6 @@ class LoraIntegrationTests(unittest.TestCase):
         assert state_dicts_almost_equal(text_encoder_2_sd, pipe.text_encoder_2.state_dict())
         assert state_dicts_almost_equal(unet_sd, pipe.unet.state_dict())
 
-        assert not state_dicts_almost_equal(text_encoder_1_sd, pipe.text_encoder.state_dict())
-        assert not state_dicts_almost_equal(text_encoder_2_sd, pipe.text_encoder_2.state_dict())
-        assert not state_dicts_almost_equal(unet_sd, pipe.unet.state_dict())
-
     def test_sdxl_1_0_lora_with_sequential_cpu_offloading(self):
         generator = torch.Generator().manual_seed(0)
 
@@ -2339,7 +2335,6 @@ class LoraIntegrationTests(unittest.TestCase):
         pipe.enable_sequential_cpu_offload()
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
-
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 
         images = pipe(
