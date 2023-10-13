@@ -755,17 +755,20 @@ def main(args):
         # Set the `lora_layer` attribute of the attention-related matrices.
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_q.in_features, out_features=attn_module.to_q.out_features, rank=args.rank
+                in_features=attn_module.to_q.in_features, out_features=attn_module.to_q.out_features, rank=args.rank, 
+                # device=accelerator.device, dtype=weight_dtype
             )
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_k.in_features, out_features=attn_module.to_k.out_features, rank=args.rank
+                in_features=attn_module.to_k.in_features, out_features=attn_module.to_k.out_features, rank=args.rank, 
+                # device=accelerator.device, dtype=weight_dtype
             )
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_v.in_features, out_features=attn_module.to_v.out_features, rank=args.rank
+                in_features=attn_module.to_v.in_features, out_features=attn_module.to_v.out_features, rank=args.rank, 
+                # device=accelerator.device, dtype=weight_dtype
             )
         )
         attn_module.to_out[0].set_lora_layer(
@@ -773,6 +776,7 @@ def main(args):
                 in_features=attn_module.to_out[0].in_features,
                 out_features=attn_module.to_out[0].out_features,
                 rank=args.rank,
+                # device=accelerator.device, dtype=weight_dtype
             )
         )
 
