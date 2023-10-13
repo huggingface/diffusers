@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AudioLDM2TTSPipeline
 
         >>> repo_id = "anhnct/audioldm2_giga_speech"
-        >>> pipe = AudioLDM2Pipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
+        >>> pipe = AudioLDM2TTSPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
         >>> # define the prompts
@@ -304,7 +304,7 @@ class AudioLDM2TTSPipeline(DiffusionPipeline):
         negative_generated_prompt_embeds: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
-        max_new_tokens: Optional[int] = None,
+        max_new_tokens: int = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -765,7 +765,7 @@ class AudioLDM2TTSPipeline(DiffusionPipeline):
         negative_generated_prompt_embeds: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
         negative_attention_mask: Optional[torch.LongTensor] = None,
-        max_new_tokens: Optional[int] = None,
+        max_new_tokens: int = 512,
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
@@ -826,7 +826,7 @@ class AudioLDM2TTSPipeline(DiffusionPipeline):
             negative_attention_mask (`torch.LongTensor`, *optional*):
                 Pre-computed attention mask to be applied to the `negative_prompt_embeds`. If not provided, attention
                 mask will be computed from `negative_prompt` input argument.
-            max_new_tokens (`int`, *optional*, defaults to None):
+            max_new_tokens (`int`, *optional*, defaults to 512):
                 Number of new tokens to generate with the GPT2 language model. If not provided, number of tokens will
                 be taken from the config of the model.
             return_dict (`bool`, *optional*, defaults to `True`):
