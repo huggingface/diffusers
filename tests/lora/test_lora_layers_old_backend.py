@@ -2320,22 +2320,13 @@ class LoraIntegrationTests(unittest.TestCase):
         pipe.load_lora_weights(
             "davizca87/sun-flower", weight_name="snfw3rXL-000004.safetensors", torch_dtype=torch.float16
         )
-
-        fused_te_state_dict = pipe.text_encoder.state_dict()
-        fused_te_2_state_dict = pipe.text_encoder_2.state_dict()
-        unet_state_dict = pipe.unet.state_dict()
-
-        for key, value in text_encoder_1_sd.items():
-            self.assertTrue(torch.allclose(fused_te_state_dict[key], value))
-
-        for key, value in text_encoder_2_sd.items():
-            self.assertTrue(torch.allclose(fused_te_2_state_dict[key], value))
-
-        for key, value in unet_state_dict.items():
-            self.assertTrue(torch.allclose(unet_state_dict[key], value))
-
         pipe.fuse_lora()
         pipe.unload_lora_weights()
+        pipe.unfuse_lora()
+
+        assert state_dicts_almost_equal(text_encoder_1_sd, pipe.text_encoder.state_dict())
+        assert state_dicts_almost_equal(text_encoder_2_sd, pipe.text_encoder_2.state_dict())
+        assert state_dicts_almost_equal(unet_sd, pipe.unet.state_dict())
 
         assert not state_dicts_almost_equal(text_encoder_1_sd, pipe.text_encoder.state_dict())
         assert not state_dicts_almost_equal(text_encoder_2_sd, pipe.text_encoder_2.state_dict())
