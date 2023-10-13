@@ -198,6 +198,7 @@ class BasicTransformerBlock(nn.Module):
     ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
+        print(f"Initial hidden states: {hidden_states.dtype}")
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
         elif self.use_ada_layer_norm_zero:
