@@ -533,15 +533,14 @@ class UNet2DConditionLoadersMixin:
         if not USE_PEFT_BACKEND:
             if _pipeline is not None:
                 for _, component in _pipeline.components.items():
-                    if isinstance(component, nn.Module):
-                        if hasattr(component, "_hf_hook"):
-                            is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                            is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
 
-                            logger.info(
-                                "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                            )
-                            remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+                        logger.info(
+                            "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                        )
+                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
             # only custom diffusion needs to set attn processors
             if is_custom_diffusion:
@@ -1538,17 +1537,16 @@ class LoraLoaderMixin:
 
         if _pipeline is not None:
             for _, component in _pipeline.components.items():
-                if isinstance(component, nn.Module):
-                    if hasattr(component, "_hf_hook"):
-                        if not is_model_cpu_offload:
-                            is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
-                        if not is_sequential_cpu_offload:
-                            is_sequential_cpu_offload = isinstance(component._hf_hook, AlignDevicesHook)
+                if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                    if not is_model_cpu_offload:
+                        is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
+                    if not is_sequential_cpu_offload:
+                        is_sequential_cpu_offload = isinstance(component._hf_hook, AlignDevicesHook)
 
-                        logger.info(
-                            "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                        )
-                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
         return (is_model_cpu_offload, is_sequential_cpu_offload)
 
@@ -2557,8 +2555,8 @@ class LoraLoaderMixin:
 
     def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
         """
-        Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in
-        case you want to load multiple adapters and free some GPU memory.
+        Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
+        you want to load multiple adapters and free some GPU memory.
 
         Args:
             adapter_names (`List[str]`):
