@@ -41,6 +41,80 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 enable_full_determinism()
 
 
+def encode_prompt(tokenizers, text_encoders, prompt: str, num_images_per_prompt: int = 1, negative_prompt: str = None):
+    device = text_encoders[0].device
+
+    if isinstance(prompt, str):
+        prompt = [prompt]
+    batch_size = len(prompt)
+
+    prompt_embeds_list = []
+    for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+        text_inputs = tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+
+        text_input_ids = text_inputs.input_ids
+
+        prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+        pooled_prompt_embeds = prompt_embeds[0]
+        prompt_embeds = prompt_embeds.hidden_states[-2]
+        prompt_embeds_list.append(prompt_embeds)
+
+    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
+
+    if negative_prompt is None:
+        negative_prompt_embeds = torch.zeros_like(prompt_embeds)
+        negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
+    else:
+        negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+
+        negative_prompt_embeds_list = []
+        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+            uncond_input = tokenizer(
+                negative_prompt,
+                padding="max_length",
+                max_length=tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+
+            negative_prompt_embeds = text_encoder(uncond_input.input_ids.to(device), output_hidden_states=True)
+            negative_pooled_prompt_embeds = negative_prompt_embeds[0]
+            negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
+            negative_prompt_embeds_list.append(negative_prompt_embeds)
+
+        negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
+
+    bs_embed, seq_len, _ = prompt_embeds.shape
+
+    # duplicate text embeddings for each generation per prompt, using mps friendly method
+    prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+    prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
+    # for classifier-free guidance
+    # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+    seq_len = negative_prompt_embeds.shape[1]
+
+    negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+    negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+    pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+        bs_embed * num_images_per_prompt, -1
+    )
+
+    # for classifier-free guidance
+    negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+        bs_embed * num_images_per_prompt, -1
+    )
+
+    return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+
+
 class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -113,8 +187,6 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            # "safety_checker": None,
-            # "feature_extractor": None,
         }
         return components
 
@@ -225,6 +297,36 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+    def test_stable_diffusion_xl_without_text_encoders(self):
+        components = self.get_dummy_components()
+        inputs = self.get_dummy_inputs(torch_device)
+
+        tokenizer = components.pop("tokenizer")
+        tokenizer_2 = components.pop("tokenizer_2")
+        text_encoder = components.pop("text_encoder")
+        text_encoder_2 = components.pop("text_encoder_2")
+
+        tokenizers = [tokenizer, tokenizer_2]
+        text_encoders = [text_encoder, text_encoder_2]
+        prompt = inputs.pop("prompt")
+        (prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds) = encode_prompt(
+            tokenizers, text_encoders, prompt
+        )
+
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+        inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
+        inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
+
+        sd_pipe = StableDiffusionXLPipeline(
+            **components, text_encoder=None, text_encoder_2=None, tokenizer=None, tokenizer_2=None
+        )
+        output = sd_pipe(**inputs)
+        image_slice = output.images[0, -3:, -3:, -1].flatten()
+
+        expected_image_slice = np.array([0.5849, 0.6108, 0.4788, 0.5089, 0.5648, 0.4639, 0.5217, 0.5131, 0.4748])
+        assert np.allclose(image_slice, expected_image_slice, atol=1e-4)
 
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
