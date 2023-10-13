@@ -38,7 +38,7 @@ except OptionalDependencyNotAvailable:
     _dummy_modules.update(get_objects_from_module(dummy_pt_objects))
 
 else:
-    _import_structure["deprecated"] = ["scheduling_karras_ve", "KarrasVeScheduler"]
+    _import_structure["deprecated.scheduling_karras_ve"] = ["KarrasVeScheduler"]
     _import_structure["deprecated.scheduling_sde_vp"] = ["ScoreSdeVpScheduler"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
