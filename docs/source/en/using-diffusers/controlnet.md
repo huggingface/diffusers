@@ -434,7 +434,7 @@ high_threshold = 200
 
 canny_image = cv2.Canny(canny_image, low_threshold, high_threshold)
 
-# zero out middle columns of image where pose will be overlayed
+# zero out middle columns of image where pose will be overlaid
 zero_start = canny_image.shape[1] // 4
 zero_end = zero_start + canny_image.shape[1] // 2
 canny_image[:, zero_start:zero_end] = 0
