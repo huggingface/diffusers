@@ -2557,7 +2557,7 @@ class LoraLoaderMixin:
 
     def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
         """
-        Sets the LoRAs listed in `adapter_names` into a target device. Useful for offloading the LoRA in the CPU in
+        Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in
         case you want to load multiple adapters and free some GPU memory.
 
         Args:
