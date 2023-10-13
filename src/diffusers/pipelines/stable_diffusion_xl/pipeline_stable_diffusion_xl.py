@@ -420,6 +420,15 @@ class StableDiffusionXLPipeline(
             )
 
         if self.text_encoder is not None:
+           if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder)
+                
+       if self.text_encoder_2 is not None:
+           if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder_2)
+            
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder)
@@ -541,8 +550,6 @@ class StableDiffusionXLPipeline(
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
-        if text_encoder_projection_dim is None:
-            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
 
         passed_add_embed_dim = (
             self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
@@ -855,7 +862,7 @@ class StableDiffusionXLPipeline(
         if self.text_encoder_2 is None:
             text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
         else:
-            text_encoder_projection_dim = None
+            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
         add_time_ids = self._get_add_time_ids(
             original_size,
             crops_coords_top_left,
