@@ -36,6 +36,8 @@ if is_torch_available():
     _import_structure["unet_2d_condition"] = ["UNet2DConditionModel"]
     _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
     _import_structure["vq_model"] = ["VQModel"]
+    _import_structure['hypernet'] = ['Hypernetwork', 'add_hypernet']
+
 
 if is_flax_available():
     _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]
@@ -61,6 +63,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .unet_2d_condition import UNet2DConditionModel
         from .unet_3d_condition import UNet3DConditionModel
         from .vq_model import VQModel
+        from .hypernet import Hypernetwork, add_hypernet
 
     if is_flax_available():
         from .controlnet_flax import FlaxControlNetModel

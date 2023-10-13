@@ -29,6 +29,7 @@ from torch import nn
 
 from . import __version__
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
+from .models import Hypernetwork, add_hypernet
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -387,11 +388,11 @@ class UNet2DConditionLoadersMixin:
                         user_agent=user_agent,
                     )
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                except IOError as e:
+                except (IOError, safetensors.SafetensorError) as e:
                     if not allow_pickle:
                         raise e
                     # try loading non-safetensors weights
-                    pass
+                    state_dict = torch.load(model_file, map_location="cpu")
             if model_file is None:
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
@@ -413,8 +414,9 @@ class UNet2DConditionLoadersMixin:
         # fill attn processors
         lora_layers_list = []
 
-        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
-        is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
+        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys() if isinstance(k, str))
+        is_custom_diffusion = any("custom_diffusion" in str(k) for k in state_dict.keys())
+        is_hypernet = 'layer_structure' in state_dict
 
         if is_lora:
             # correct keys
@@ -527,6 +529,8 @@ class UNet2DConditionLoadersMixin:
                         cross_attention_dim=cross_attention_dim,
                     )
                     attn_processors[key].load_state_dict(value_dict)
+        elif is_hypernet:
+            self.load_hypernet(state_dict, kwargs.get('multiplier', None))
         else:
             raise ValueError(
                 f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
@@ -564,6 +568,15 @@ class UNet2DConditionLoadersMixin:
         elif is_sequential_cpu_offload:
             _pipeline.enable_sequential_cpu_offload()
         # Unsafe code />
+
+    def load_hypernet(self, state_dict, multiplier=None):
+        hypernetwork = Hypernetwork()
+        hypernetwork.load_state_dict(state_dict)
+        hypernetwork.set_multiplier(multiplier if multiplier else 1.0)
+        hypernetwork.to(self.device)
+        hypernetwork.to(self.dtype)
+        hypernetwork.eval()
+        add_hypernet(self, hypernetwork)
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
