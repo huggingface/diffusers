@@ -13,6 +13,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Copied verbatim from: https://github.com/huggingface/transformers/blob/main/utils/check_copies.py
+
+Utility that checks whether the copies defined in the library match the original or not. This includes:
+- All code commented with `# Copied from` comments,
+- The list of models in the main README.md matches the ones in the localized READMEs and in the index.md,
+- Files that are registered as full copies of one another in the `FULL_COPIES` constant of this script.
+
+This also checks the list of models in the README is complete (has all models) and add a line to complete if there is
+a model missing.
+
+Use from the root of the repo with:
+
+```bash
+python utils/check_copies.py
+```
+
+for a check that will error in case of inconsistencies (used by `make repo-consistency`) or
+
+```bash
+python utils/check_copies.py --fix_and_overwrite
+```
+
+for a check that will fix all inconsistencies automatically (used by `make fix-copies`).
+"""
+
 import argparse
 import glob
 import os
@@ -29,7 +55,9 @@ REPO_PATH = "."
 
 
 def _should_continue(line, indent):
-    return line.startswith(indent) or len(line) <= 1 or re.search(r"^\s*\)(\s*->.*:|:)\s*$", line) is not None
+    # Helper function. Returns `True` if `line` is empty, starts with the `indent` or is the end parenthesis of a
+    # function definition
+    return line.startswith(indent) or len(line.strip()) == 0 or re.search(r"^\s*\)(\s*->.*:|:)\s*$", line) is not None
 
 
 def find_code_in_diffusers(object_name):
@@ -64,7 +92,7 @@ def find_code_in_diffusers(object_name):
         raise ValueError(f" {object_name} does not match any function or class in {module}.")
 
     # We found the beginning of the class / func, now let's find the end (when the indent diminishes).
-    start_index = line_index
+    start_index = line_index - 1
     while line_index < len(lines) and _should_continue(lines[line_index], indent):
         line_index += 1
     # Clean up empty lines at the end (if any).
@@ -181,6 +209,10 @@ def is_copy_consistent(filename, overwrite=False):
 
 
 def check_copies(overwrite: bool = False):
+    """
+    Check every file is copy-consistent with the original and maybe `overwrite` content when it is not. Also check the
+    model list in the main README and other READMEs/index.md are consistent.
+    """
     all_files = glob.glob(os.path.join(DIFFUSERS_PATH, "**/*.py"), recursive=True)
     diffs = []
     for filename in all_files:
