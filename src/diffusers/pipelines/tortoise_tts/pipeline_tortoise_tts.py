@@ -17,7 +17,6 @@ from transformers import (
     UnivNetModel,
 )
 
-
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
@@ -27,8 +26,9 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
+
 from .modeling_common import RandomLatentConverter
-from .modeling_diffusion import TortoiseTTSDenoisingModel
+from .modeling_diffusion import DiffusionConditioningEncoder, TortoiseTTSDenoisingModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -58,9 +58,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         TODO
     """
     model_cpu_offload_seq = (
-        "autoregressive_random_latent_converter->diffusion_random_latent_converter->"
-        "autoregressive_conditioning_encoder->autoregressive_model->text_encoder->speech_encoder->"
-        "diffusion_conditioning_encoder->diffusion_denoising_model->vocoder"
+        "autoregressive_random_latent_converter->audio_candidate_model->diffusion_random_latent_converter"
+        "->diffusion_conditioning_encoder->unet->vocoder"
     )
 
     # TODO: get appropriate type annotations for __init__ args
@@ -70,7 +69,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         audio_processor: ClvpFeatureExtractor,
         autoregressive_random_latent_converter: RandomLatentConverter,
         tokenizer: ClvpTokenizer,
-        diffusion_conditioning_encoder: ClvpConditioningEncoder,
+        diffusion_conditioning_encoder: DiffusionConditioningEncoder,
         diffusion_random_latent_converter: RandomLatentConverter,
         unet: TortoiseTTSDenoisingModel,
         scheduler: KarrasDiffusionSchedulers,
@@ -456,109 +455,51 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # Don't need to scale latents for scheduler
         return latents
 
-    def prepare_autoregressive_conditioning_embedding(
+    def prepare_diffusion_cond_embedding(
         self,
         audio,
-        dtype,
-        device,
-        generator,
-        batch_size: int = 1,
-        cond_length: int = 132300,
-        latents: Optional[torch.FloatTensor] = None,
-    ):
-        """
-        Transforms audio samples or a latent audio tensor into a conditioning embedding for the autoregressive model.
-        """
-        if latents:
-            autoregressive_cond_emb = latents.to(device)
-            # TODO: handle batch sizes
-        elif audio:
-            target_sampling_rate = self.autoregressive_conditioning_encoder.config.input_spectrogram_sampling_rate
-            audio = self.prepare_audio_waveforms(audio, target_sampling_rate, device=device)
-            audio = pad_or_truncate(audio, cond_length)
-            autoregressive_cond_emb = self.autoregressive_conditioning_encoder(audio).embedding
-        else:
-            # Neither raw audio or embeddings supplied, randomly generate a conditioning embedding.
-            # TODO: number of channels hardcoded for now, get correct expression based on configs
-            num_channels = 1024
-            autoregressive_cond_emb = self.prepare_spectrogram_latents(
-                batch_size,
-                num_channels,
-                self.autoregressive_conditioning_encoder.config.input_spectrogram_sampling_rate,
-                dtype,
-                device,
-                generator,
-                latent_conversion_type="autoregressive",
-            )
-        return autoregressive_cond_emb
-
-    def prepare_diffusion_audio_embedding(
-        self,
-        audio,
+        autoregressive_latents,
         dtype,
         device,
         generator,
         batch_size,
         latent_averaging_mode: int = 0,
-        chunk_size: int = 102400,  # DURS_CONST in original code
+        chunk_size: Optional[int] = None,  # DURS_CONST in original code
+        unconditional: bool = False,
+        target_size: Optional[int] = None,
         latents: Optional[torch.FloatTensor] = None,
     ):
         """
-        Transforms audio samples or a latent noise into an audio embedding for the diffusion model.
+        Prepare the diffusion conditioning embedding from the conditioning audio samples and autoregressive latents.
         """
-        if audio is not None:
-            target_sampling_rate = self.diffusion_conditioning_encoder.config.input_spectrogram_sampling_rate
-            audio = self.prepare_audio_waveforms(audio, target_sampling_rate, device=device)
-
-            if latent_averaging_mode == 0:
-                # Average across all samples (original behavior)
-                audio_conds = pad_or_truncate(audio, chunk_size)
-            elif latent_averaging_mode == 1:
-                # Average across all chunks of all samples
-                diffusion_conds = []
-                for sample in audio:
-                    for chunk in range(math.ceil(sample.shape[1] / chunk_size)):
-                        current_chunk = sample[:, chunk * chunk_size : (chunk + 1) * chunk_size]
-                        current_chunk = pad_or_truncate(current_chunk)
-                        # TODO: convert waveform to MEL and average in MEL space???
-                        diffusion_conds.append(current_chunk)
-                audio_conds = torch.stack(diffusion_conds, dim=1)
-            elif latent_averaging_mode == 2:
-                # Double average: average across all chunks for a sample, then average across all samples
-                diffusion_conds = []
-                for sample in audio:
-                    temp_diffusion_conds = []
-                    for chunk in range(math.ceil(sample.shape[1] / chunk_size)):
-                        current_chunk = sample[:, chunk * chunk_size : (chunk + 1) * chunk_size]
-                        current_chunk = pad_or_truncate(current_chunk)
-                        # TODO: convert waveform to MEL and average in MEL space???
-                        temp_diffusion_conds.append(current_chunk)
-                    sample_mean = torch.stack(temp_diffusion_conds, dim=1)
-                    diffusion_conds.append(sample_mean)
-                audio_conds = torch.stack(diffusion_conds, dim=1)
-            else:
-                raise ValueError(
-                    f"`latent_averaging_mode` is {latent_averaging_mode} but is expected to be an int in [0, 1, 2]."
+        diffusion_audio_emb = None
+        if not unconditional:
+            if audio is not None:
+                diffusion_audio_emb = self.diffusion_conditioning_encoder.diffusion_cond_audio_embedding(
+                    audio, latent_averaging_mode, chunk_size
                 )
-
-            diffusion_audio_emb = self.diffusion_conditioning_encoder(audio_conds).embedding
-        else:
-            # Neither raw audio or embeddings supplied, randomly generate a conditioning embedding.
-            shape = (batch_size, self.diffusion_input_dim * 2)
-
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
-
-            if latents is None:
-                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
             else:
-                latents = latents.to(device)
+                # Get conditional audio embedding from diffusion_random_latent_converter
+                shape = (batch_size, self.diffusion_input_dim * 2)
 
-            diffusion_audio_emb = self.diffusion_random_latent_converter(latents).latents
-        return diffusion_audio_emb
+                if isinstance(generator, list) and len(generator) != batch_size:
+                    raise ValueError(
+                        f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                        f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                    )
+
+                if latents is None:
+                    latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                else:
+                    latents = latents.to(device)
+
+                diffusion_audio_emb = self.diffusion_random_latent_converter(latents).latents
+
+        diffusion_cond_emb = self.diffusion_conditioning_encoder.diffusion_cond_embedding(
+            diffusion_audio_emb, autoregressive_latents, unconditional, batch_size, target_size
+        )
+
+        return diffusion_cond_emb
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -782,7 +723,19 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
+        has_negative_prompts = negative_prompt is not None or negative_prompt_embeds is not None
+
+        # 3. Prepare audio spectrogram features
+        audio_features = self.prepare_audio_spectrograms(
+            audio,
+            batch_size,
+            self.autoregressive_random_latent_converter.dtype,
+            device,
+            generator,
+            latents=audio_ar_latents,
+        )
+
+        # 4. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
@@ -795,18 +748,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
-        if do_classifier_free_guidance:
+        # NOTE: if no negative prompts it's not necessary to get negative speech candidates because we want to use
+        # unconditional_embedding in this case
+        if do_classifier_free_guidance and has_negative_prompts:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-
-        # 4. Prepare audio spectrogram features
-        audio_features = self.prepare_audio_spectrograms(
-            audio,
-            batch_size,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents=audio_ar_latents,
-        )
 
         # 5. Generate candidates and similarity scores using the autoregressive model + CLVP
         audio_candidates_and_scores = self.audio_candidate_model.generate(
@@ -819,9 +764,17 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         audio_candidates = audio_candidates_and_scores[0]  # speech_ids
         similarity_scores = audio_candidates_and_scores[2]  # logits_per_text
 
+        if do_classifier_free_guidance and has_negative_prompts:
+            neg_audio_candidates, audio_candidates = audio_candidates.chunk(2)
+            neg_similarity_scores, similarity_scores = similarity_scores.chunk(2)
+
         # 6. Get the top k speech candidates by text-speech similarity score
         top_k_audio_candidates = audio_candidates[torch.topk(similarity_scores, k=num_waveforms_per_prompt).indices]
         top_k_autoregressive_latents = None  # TODO: get these somehow
+
+        if do_classifier_free_guidance and has_negative_prompts:
+            top_neg_audio_candidate = neg_audio_candidates[torch.topk(neg_similarity_scores, k=1).indices]
+            top_neg_autoregressive_latents = None  # TODO: get these somehow
 
         # 7. Prepare timesteps for diffusion scheduler
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -851,15 +804,47 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         )
 
         # 10. Get conditioning embeddings for the diffusion model
-        diffusion_cond_audio_emb = self.prepare_diffusion_audio_embedding(
+        diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
             audio,
+            top_k_autoregressive_latents,
             prompt_embeds.dtype,
             device,
             generator,
             batch_size,
             latent_averaging_mode=latent_averaging_mode,
+            target_size=latents.shape[-1],
             latents=audio_diff_latents,
         )
+
+        if do_classifier_free_guidance:
+            if has_negative_prompts:
+                neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
+                    audio,
+                    top_neg_autoregressive_latents,
+                    prompt_embeds.dtype,
+                    device,
+                    generator,
+                    batch_size,
+                    latent_averaging_mode=latent_averaging_mode,
+                    target_size=latents.shape[-1],
+                    latents=audio_diff_latents,
+                )
+            else:
+                # Fall back to self.diffusion_conditioning_encoder.unconditional_embedding
+                # NOTE: this does not depend on either conditional audio nor autoregressive latents
+                neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
+                    None,
+                    None,
+                    prompt_embeds.dtype,
+                    device,
+                    generator,
+                    batch_size,
+                    latent_averaging_mode=latent_averaging_mode,
+                    unconditional=True,
+                    target_size=latents.shape[-1],
+                    latents=None,
+                )
+            diffusion_cond_emb = torch.cat([neg_diffusion_cond_emb, diffusion_cond_emb])
 
         # 11. Prepare extra step kwargs
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -878,8 +863,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 noise_pred = self.diffusion_denoising_model(
                     latent_model_input,
                     t,
-                    top_k_autoregressive_latents,
-                    diffusion_cond_audio_emb,
+                    diffusion_cond_emb,
                 ).sample
 
                 # perform guidance

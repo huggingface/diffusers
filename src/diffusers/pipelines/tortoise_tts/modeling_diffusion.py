@@ -189,12 +189,13 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         audio_embedding,
         autoregressive_latents,
         unconditional: bool = False,
+        batch_size: int = 1,
         target_size: Optional[int] = None,
     ):
         if unconditional:
             cond_embedding = self.unconditional_embedding
             if target_size is not None:
-                cond_embedding = cond_embedding.repeat(1, 1, target_size)
+                cond_embedding = cond_embedding.repeat(batch_size, 1, target_size)
         else:
             cond_scale, cond_shift = torch.chunk(audio_embedding, 2, dim=1)
             cond_embedding = self.latent_conditioner(autoregressive_latents)
@@ -210,12 +211,13 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         latent_averaging_mode: int = 0,
         chunk_size: Optional[int] = None,
         unconditional: bool = False,
+        batch_size: int = 1,
         target_size: Optional[int] = None,
         return_dict: bool = True,
     ):
         diffusion_audio_embedding = self.diffusion_cond_audio_embedding(audio, latent_averaging_mode, chunk_size)
         diffusion_embedding = self.diffusion_cond_embedding(
-            diffusion_audio_embedding, autoregressive_latents, unconditional, target_size
+            diffusion_audio_embedding, autoregressive_latents, unconditional, batch_size, target_size
         )
 
         if not return_dict:
@@ -471,10 +473,8 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 100,
         out_channels: int = 200,
-        in_latent_channels: int = 512,
-        hidden_channels: int = 512,
-        num_layers: int = 8,
-        num_latent_cond_layers: int = 4,
+        hidden_channels: int = 1024,
+        num_layers: int = 10,
         num_timestep_integrator_layers: int = 3,
         num_post_res_blocks: int = 3,
         flip_sin_to_cos: bool = True,
@@ -486,23 +486,8 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
 
         # TODO: make sure all the blocks are initialized the same way as original code
 
-        # 1. Define latent conditioner, which processes the latent conditioning information
-        # from the autoregressive model
-        self.latent_conditioner = nn.Sequential(
-            nn.Conv1d(in_latent_channels, hidden_channels, 3, padding=1),
-            TortoiseTTSAttention(query_dim=hidden_channels, n_heads=num_heads, dim_head=hidden_channels // num_heads),
-            TortoiseTTSAttention(query_dim=hidden_channels, n_heads=num_heads, dim_head=hidden_channels // num_heads),
-            TortoiseTTSAttention(query_dim=hidden_channels, n_heads=num_heads, dim_head=hidden_channels // num_heads),
-            TortoiseTTSAttention(query_dim=hidden_channels, n_heads=num_heads, dim_head=hidden_channels // num_heads),
-        )
-
-
-        # 2. Define unconditional diffusion embedding for Tortoise TTS classifier-free guidance
-        # NOTE: unconditional embedding is a learnable parameter of the model, rather than being fixed
-        self.unconditional_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
-
-        # 3. Define conditioning timestep integrator, which combines the conditioning embedding from the
-        # autoregressive model with the time embedding
+        # 1. Define conditioning timestep integrator, which combines the diffusion conditioning embedding from the
+        # audio samples and autoregressive model with the timestep embedding
         self.conditioning_timestep_integrator = UNetBlock1D(
             in_channels=hidden_channels,
             out_channels=hidden_channels,
@@ -514,24 +499,29 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
             resnet_act_fn="silu",
         )
 
-        # 4. Define the timestep embedding.
+        # 2. Define the timestep embedding.
         self.time_proj = Timesteps(hidden_channels, flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift)
         self.time_embedding = TimestepEmbedding(in_channels=hidden_channels, time_embed_dim=hidden_channels)
 
-        # 5. Define the inital Conv1d layers
+        # 3. Define the inital Conv1d layers
         self.conv_in = nn.Conv1d(in_channels, hidden_channels, 3, stride=1, padding=1)
         self.conv_add_cond_emb_to_hidden = nn.Conv1d(2 * hidden_channels, hidden_channels, 1)
 
-        # 6. Define the trunk of the denoising model
-        self.blocks = UNetBlock1D(
-            in_channels=hidden_channels,
-            out_channels=hidden_channels,
-            temb_channels=hidden_channels,
-            dropout=dropout,
-            num_layers=num_layers,
-            num_heads=num_heads,
-            resnet_time_scale_shift="scale_shift",
-            resnet_act_fn="silu",
+        # 4. Define the trunk of the denoising model
+        self.blocks = nn.ModuleList(
+            [
+                UNetBlock1D(
+                    in_channels=hidden_channels,
+                    out_channels=hidden_channels,
+                    temb_channels=hidden_channels,
+                    dropout=dropout,
+                    num_layers=num_layers,
+                    num_heads=num_heads,
+                    resnet_time_scale_shift="scale_shift",
+                    resnet_act_fn="silu",
+                )
+            ]
+            for _ in range(num_layers)
         )
         self.post_res_blocks = nn.ModuleList(
             [
@@ -550,40 +540,17 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         self.norm_out = nn.GroupNorm(compute_groupnorm_groups(hidden_channels), hidden_channels)
         self.conv_out = nn.Conv1d(hidden_channels, out_channels, 3, padding=1)
 
-        # 8. used for get_conditioning
-        self.contextual_embedder = nn.Sequential(
-            nn.Conv1d(in_channels, hidden_channels, 3, padding=1, stride=2),
-            nn.Conv1d(hidden_channels, hidden_channels * 2, 3, padding=1, stride=2),
-            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
-            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
-            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
-            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
-            TortoiseTTSAttention(query_dim=hidden_channels * 2, n_heads=num_heads, dim_head=(hidden_channels * 2) // num_heads),
-        )
-
     def forward(
         self,
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
-        autoregressive_latents: torch.FloatTensor,
-        conditioning_audio_latents: torch.FloatTensor,
-        unconditional: bool = False,
+        conditioning_embedding: torch.FloatTensor,
         return_dict: bool = True,
     ):
         """
         TODO
         """
-        # 1. Handle the conditioning embedding
-        if unconditional:
-            cond_embedding = self.unconditional_embedding.repeat(sample.shape[0], 1, sample.shape[-1])
-        else:
-            cond_scale, cond_shift = torch.chunk(conditioning_audio_latents, 2, dim=1)
-            cond_embedding = self.latent_conditioner(autoregressive_latents)
-            cond_embedding = cond_embedding * (1 + cond_scale.unsqueeze(-1)) + cond_shift.unsqueeze(-1)
-            # Interpolate conditional embeddings...?
-            cond_embedding = F.interpolate(cond_embedding, size=sample.shape[-1], mode="nearest")
-
-        # 2. Handle timestep embedding
+        # 1. Handle timestep embedding
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
@@ -601,25 +568,27 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         t_emb = t_emb.to(dtype=self.dtype)
         emb = self.time_embedding(t_emb)
 
-        # 3. Combine conditioning embedding with timestep embedding
-        cond_embedding = self.conditioning_timestep_integrator(cond_embedding, temb=emb)[0]
+        # 2. Combine conditioning embedding with timestep embedding
+        conditioning_embedding = self.conditioning_timestep_integrator(conditioning_embedding, temb=emb)[0]
 
-        # 4. Map inital sample to hidden states
-        sample = self.conv_in(sample)
+        # 3. Map inital sample to hidden states
+        hidden_states = self.conv_in(sample)
 
-        # 5. Concatenate initial hidden states with conditioning embedding and process
-        sample = torch.cat([sample, cond_embedding], dim=1)
-        sample = self.conv_add_cond_emb_to_hidden(sample)
+        # 4. Concatenate initial hidden states with conditioning embedding and process
+        hidden_states = torch.cat([hidden_states, conditioning_embedding], dim=1)
+        hidden_states = self.conv_add_cond_emb_to_hidden(hidden_states)
 
-        # 6. Run the hidden states through the trunk of the denoising model
-        sample = self.blocks(sample, temb=emb)[0]
-        sample = self.post_res_blocks(sample, emb)
+        # 5. Run the hidden states through the trunk of the denoising model
+        for unet_block in self.blocks:
+            hidden_states = unet_block(hidden_states, temb=emb)[0]
+        for post_res_block in self.post_res_blocks:
+            hidden_states = post_res_block(hidden_states, emb)
 
-        # 7. Map hidden states out to a denoised sample
-        sample = F.silu(self.norm_out(sample))
-        sample = self.conv_out(sample)
+        # 6. Map hidden states out to a denoised sample
+        hidden_states = F.silu(self.norm_out(hidden_states))
+        denoised_sample = self.conv_out(hidden_states)
 
         if not return_dict:
-            return (sample,)
+            return (denoised_sample,)
 
-        return TortoiseTTSDenoisingModelOutput(sample=sample)
+        return TortoiseTTSDenoisingModelOutput(sample=denoised_sample)
