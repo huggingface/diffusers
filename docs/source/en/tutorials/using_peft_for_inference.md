@@ -14,13 +14,7 @@ specific language governing permissions and limitations under the License.
 
 # Inference with PEFT
 
-From the 🤗 PEFT [documentation](https://huggingface.co/docs/peft/index):
-
-> 🤗 PEFT, or Parameter-Efficient Fine-Tuning (PEFT), is a library for efficiently adapting pre-trained language models (PLMs) to various downstream applications without fine-tuning all the model's parameters. PEFT methods only fine-tune a small number of (extra) model parameters, significantly decreasing computational and storage costs because fine-tuning large-scale PLMs is prohibitively costly. Recent state-of-the-art PEFT techniques achieve performance comparable to that of full fine-tuning.
-
-But guess what? PEFT is not limited to just language models. It is modality-agnostic. This means it can be applied to pure vision models, vision-language models, speech models, and so on.
-
-🤗 PEFT is natively integrated with 🤗 Diffusers, enabling efficient multi-adapter inference. In this guide, you'll learn how to use different adapters with [Stable Diffusion XL (SDXL)](./pipelines/stable_diffusion/stable_diffusion_xl) for inference.
+There are many adapters trained in different styles to achieve different effects. You can even combine multiple adapters to create new and unique images. With the 🤗 [PEFT](https://huggingface.co/docs/peft/index) integration in 🤗 Diffusers, it is really easy to load and manage adapters for inference. In this guide, you'll learn how to use different adapters with [Stable Diffusion XL (SDXL)](./pipelines/stable_diffusion/stable_diffusion_xl) for inference.
 
 Throughout this guide, you'll use LoRA as the main adapter technique, so we'll use the terms LoRA and adapter interchangeably. You should have some familiarity with LoRA, and if you don't, we welcome you to check out the [LoRA guide](https://huggingface.co/docs/peft/conceptual_guides/lora).
 
