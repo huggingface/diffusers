@@ -22,6 +22,7 @@ Let's first install all the required libraries.
 
 ```bash
 !pip install -q transformers accelerate
+# Will be updated once the stable releases are done.
 !pip install -q git+https://github.com/huggingface/peft.git
 !pip install -q git+https://github.com/huggingface/diffusers.git
 ```
