@@ -131,7 +131,7 @@ init_image = Image.open(BytesIO(response.content)).convert("RGB")
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
 # pass prompt and image to pipeline
-image = pipeline(prompt, image=init_image, strength=).images[0]
+image = pipeline(prompt, image=init_image, strength=0.5).images[0]
 image
 ```
 

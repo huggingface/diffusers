@@ -176,7 +176,7 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generat
 
 Image features - like quality and "creativity" - are dependent on pipeline parameters. Knowing what these parameters do is important for getting the results you want. Let's take a look at the most important parameters and see how changing them affects the output.
 
-## Strength
+### Strength
 
 `strength` is a measure of how much noise is added to the base image, which influences how similar the output is to the base image.
 
@@ -217,7 +217,7 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strengt
   </div>
 </div>
 
-## Guidance scale
+### Guidance scale
 
 `guidance_scale` affects how aligned the text prompt and generated image are.
 

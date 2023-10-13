@@ -293,6 +293,22 @@ class LoraLoaderMixinTests(unittest.TestCase):
         )
         self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
 
+    @unittest.skipIf(not torch.cuda.is_available() or not is_xformers_available(), reason="xformers requires cuda")
+    def test_stable_diffusion_xformers_attn_processors(self):
+        # disable_full_determinism()
+        device = "cuda"  # ensure determinism for the device-dependent torch.Generator
+        components, _ = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs()
+
+        # run xformers attention
+        sd_pipe.enable_xformers_memory_efficient_attention()
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
     @unittest.skipIf(not torch.cuda.is_available(), reason="xformers requires cuda")
     def test_stable_diffusion_attn_processors(self):
         # disable_full_determinism()
@@ -305,11 +321,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         _, _, inputs = self.get_dummy_inputs()
 
         # run normal sd pipe
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run xformers attention
-        sd_pipe.enable_xformers_memory_efficient_attention()
         image = sd_pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 

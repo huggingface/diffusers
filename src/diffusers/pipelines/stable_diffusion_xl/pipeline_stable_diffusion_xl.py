@@ -569,7 +569,7 @@ class StableDiffusionXLPipeline(
             self.vae.decoder.mid_block.to(dtype)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
-    def enable_freeu(self, s1=0.9, s2=0.2, b1=1.2, b2=1.4):
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
 
         The suffixes after the scaling factors represent the stages where they are being applied.
