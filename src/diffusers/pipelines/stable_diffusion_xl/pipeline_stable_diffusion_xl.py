@@ -263,16 +263,20 @@ class StableDiffusionXLPipeline(
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
-        if self.text_encoder is not None:
-            if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
-                self._lora_scale = lora_scale
+        if lora_scale is not None and isinstance(self, StableDiffusionXLLoraLoaderMixin):
+            self._lora_scale = lora_scale
 
-                # dynamically adjust the LoRA scale
+            # dynamically adjust the LoRA scale
+            if self.text_encoder is not None:
                 if not self.use_peft_backend:
                     adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-                    adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
                 else:
                     scale_lora_layers(self.text_encoder, lora_scale)
+
+            if self.text_encoder_2 is not None:
+                if not self.use_peft_backend:
+                    adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+                else:
                     scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
@@ -420,18 +424,13 @@ class StableDiffusionXLPipeline(
             )
 
         if self.text_encoder is not None:
-           if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
-                # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder)
-                
-       if self.text_encoder_2 is not None:
-           if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
-                # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder_2)
-            
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder)
+
+        if self.text_encoder_2 is not None:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
+                # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
@@ -549,7 +548,6 @@ class StableDiffusionXLPipeline(
         self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
-
 
         passed_add_embed_dim = (
             self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
