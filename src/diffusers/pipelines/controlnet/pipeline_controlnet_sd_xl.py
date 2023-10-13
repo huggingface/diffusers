@@ -139,9 +139,9 @@ class StableDiffusionXLControlNetPipeline(
             watermark output images. If not defined, it defaults to `True` if the package is installed; otherwise no
             watermarker is used.
     """
-    model_cpu_offload_seq = (
-        "text_encoder->text_encoder_2->unet->vae"  # leave controlnet out on purpose because it iterates with unet
-    )
+    # leave controlnet out on purpose because it iterates with unet
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
+    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
 
     def __init__(
         self,
