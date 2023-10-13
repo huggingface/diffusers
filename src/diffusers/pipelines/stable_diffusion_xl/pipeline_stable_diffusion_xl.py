@@ -870,6 +870,7 @@ class StableDiffusionXLPipeline(
             text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
         else:
             text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
+
         add_time_ids = self._get_add_time_ids(
             original_size,
             crops_coords_top_left,

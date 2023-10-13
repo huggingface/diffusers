@@ -854,6 +854,7 @@ class StableDiffusionXLInpaintPipeline(
         negative_crops_coords_top_left,
         negative_target_size,
         dtype,
+        text_encoder_projection_dim=None,
     ):
         if self.config.requires_aesthetics_score:
             add_time_ids = list(original_size + crops_coords_top_left + (aesthetic_score,))
@@ -865,7 +866,7 @@ class StableDiffusionXLInpaintPipeline(
             add_neg_time_ids = list(negative_original_size + crops_coords_top_left + negative_target_size)
 
         passed_add_embed_dim = (
-            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
@@ -1279,6 +1280,11 @@ class StableDiffusionXLInpaintPipeline(
             negative_target_size = target_size
 
         add_text_embeds = pooled_prompt_embeds
+        if self.text_encoder_2 is None:
+            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
+        else:
+            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
+
         add_time_ids, add_neg_time_ids = self._get_add_time_ids(
             original_size,
             crops_coords_top_left,
@@ -1289,6 +1295,7 @@ class StableDiffusionXLInpaintPipeline(
             negative_crops_coords_top_left,
             negative_target_size,
             dtype=prompt_embeds.dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
         )
         add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
 
