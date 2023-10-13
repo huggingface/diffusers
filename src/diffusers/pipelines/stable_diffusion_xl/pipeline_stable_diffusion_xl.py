@@ -34,6 +34,7 @@ from ...models.attention_processor import (
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    USE_PEFT_BACKEND,
     is_invisible_watermark_available,
     is_torch_xla_available,
     logging,
@@ -277,13 +278,13 @@ class StableDiffusionXLPipeline(
 
             # dynamically adjust the LoRA scale
             if self.text_encoder is not None:
-                if not self.use_peft_backend:
+                if not USE_PEFT_BACKEND:
                     adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
                 else:
                     scale_lora_layers(self.text_encoder, lora_scale)
 
             if self.text_encoder_2 is not None:
-                if not self.use_peft_backend:
+                if not USE_PEFT_BACKEND:
                     adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
                 else:
                     scale_lora_layers(self.text_encoder_2, lora_scale)
@@ -433,12 +434,12 @@ class StableDiffusionXLPipeline(
             )
 
         if self.text_encoder is not None:
-            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder)
 
         if self.text_encoder_2 is not None:
-            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2)
 
@@ -592,7 +593,7 @@ class StableDiffusionXLPipeline(
             self.vae.decoder.mid_block.to(dtype)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
-    def enable_freeu(self, s1=0.9, s2=0.2, b1=1.2, b2=1.4):
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
 
         The suffixes after the scaling factors represent the stages where they are being applied.
@@ -819,9 +820,8 @@ class StableDiffusionXLPipeline(
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
+        lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -839,7 +839,7 @@ class StableDiffusionXLPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
+            lora_scale=lora_scale,
             clip_skip=clip_skip,
         )
 
