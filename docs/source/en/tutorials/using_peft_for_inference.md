@@ -23,8 +23,7 @@ Let's first install all the required libraries.
 ```bash
 !pip install -q transformers accelerate
 !pip install -q git+https://github.com/huggingface/peft.git
-# To remove the branch once it's merged.
-!pip install -q git+https://github.com/younesbelkada/diffusers.git@peft-part-2
+!pip install -q git+https://github.com/huggingface/diffusers.git
 ```
 
 Now, let's load a pipeline with a SDXL checkpoint:
@@ -63,7 +62,7 @@ image
 
 With the `adapter_name` parameter, it is really easy to use another adapter for inference! Load the [nerijs/pixel-art-xl](https://huggingface.co/nerijs/pixel-art-xl) adapter that has been fine-tuned to generate pixel art images, and let's call it `"pixel"`.
 
-The pipeline automatically sets the first loaded adapter (`"toy"`) as the active adapter. But you can activate the `"pixel"` adapter with the `set_adapters()` method as shown below:
+The pipeline automatically sets the first loaded adapter (`"toy"`) as the active adapter. But you can activate the `"pixel"` adapter with the [`~diffusers.loaders.set_adapters`] method as shown below:
 
 ```python
 pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
@@ -86,10 +85,9 @@ image
 
 You can also perform multi-adapter inference where you combine different adapter checkpoints for inference.
 
-Once again, use the `set_adapters()` method to activate two LoRA checkpoints and specify the weight for how the checkpoints should be combined.
+Once again, use the [`~diffusers.loaders.set_adapters`] method to activate two LoRA checkpoints and specify the weight for how the checkpoints should be combined.
 
 ```python
-# Change the argument name to `adapter_weights`.
 pipe.set_adapters(["pixel", "toy"], adapter_weights=[0.5, 1.0])
 ```
 
@@ -117,7 +115,7 @@ image
     
 Impressive! As you can see, the model was able to generate an image that mixes the characteristics of both adapters.
 
-If you want to go back to using only one adapter, use the `set_adapters()` method to activate the `"toy"` adapter:
+If you want to go back to using only one adapter, use the [`~diffusers.loaders.set_adapters`] method to activate the `"toy"` adapter:
 
 ```python
 # First, set the adapter.
@@ -135,7 +133,7 @@ image
 ![toy-face-again](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_18_1.png)
 
 
-If you want to switch to only the base model, disable all LoRAs with the `disable_lora()` method.
+If you want to switch to only the base model, disable all LoRAs with the [`~diffusers.loaders.disable_lora`] method.
 
 
 ```python
@@ -151,14 +149,14 @@ image
 
 ## Monitoring active adapters
 
-You have attached multiple adapters in this tutorial, and if you're feeling a bit lost on what adapters have been attached to the pipeline's components, you can easily check the list of active adapters using the `get_active_adapters()` method:
+You have attached multiple adapters in this tutorial, and if you're feeling a bit lost on what adapters have been attached to the pipeline's components, you can easily check the list of active adapters using the [`~diffusers.loaders.get_active_adapters`] method:
 
 ```python
 active_adapters = pipe.get_active_adapters()
 >>> ["toy", "pixel"]
 ```
 
-You can also get the active adapters of each pipeline component with `get_list_adapters()`:
+You can also get the active adapters of each pipeline component with [`~diffusers.loaders.get_list_adapters`]:
 
 ```python
 list_adapters_component_wise = pipe.get_list_adapters()
