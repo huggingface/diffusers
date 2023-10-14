@@ -976,9 +976,11 @@ class PipelinePushToHubTester(unittest.TestCase):
 
 # For SDXL and its derivative pipelines (such as ControlNet), we have the text encoders
 # and the tokenizers as optional components. So, we need to override the `test_save_load_optional_components()`
-# test for all such pipelines. This requires us to use a custom `encode_prompt()` function. 
+# test for all such pipelines. This requires us to use a custom `encode_prompt()` function.
 class SDXLOptionalComponentsTesterMixin:
-    def encode_prompt(self, tokenizers, text_encoders, prompt: str, num_images_per_prompt: int = 1, negative_prompt: str = None):
+    def encode_prompt(
+        self, tokenizers, text_encoders, prompt: str, num_images_per_prompt: int = 1, negative_prompt: str = None
+    ):
         device = text_encoders[0].device
 
         if isinstance(prompt, str):
@@ -1075,9 +1077,12 @@ class SDXLOptionalComponentsTesterMixin:
 
         tokenizers = [tokenizer, tokenizer_2]
         text_encoders = [text_encoder, text_encoder_2]
-        (prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds) = self.encode_prompt(
-            tokenizers, text_encoders, prompt
-        )
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = self.encode_prompt(tokenizers, text_encoders, prompt)
         inputs["prompt_embeds"] = prompt_embeds
         inputs["negative_prompt_embeds"] = negative_prompt_embeds
         inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
@@ -1101,12 +1106,16 @@ class SDXLOptionalComponentsTesterMixin:
             )
 
         inputs = self.get_dummy_inputs(generator_device)
+        _ = inputs.pop("prompt")
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+        inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
+        inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
+
         output_loaded = pipe_loaded(**inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
-
-
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.
