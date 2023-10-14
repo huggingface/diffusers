@@ -42,6 +42,7 @@ from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
 )
 
 
@@ -49,7 +50,11 @@ enable_full_determinism()
 
 
 class StableDiffusionXLControlNetPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -178,6 +183,9 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+    def test_save_load_optional_components(self):
+        self._test_save_load_optional_components()
 
     @require_torch_gpu
     def test_stable_diffusion_xl_offloads(self):
