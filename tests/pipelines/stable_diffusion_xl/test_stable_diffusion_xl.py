@@ -320,7 +320,7 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
         inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
         inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
 
-        sd_pipe = StableDiffusionXLPipeline(
+        sd_pipe = self.pipeline_class(
             **components, text_encoder=None, text_encoder_2=None, tokenizer=None, tokenizer_2=None
         )
         output = sd_pipe(**inputs)
