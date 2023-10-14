@@ -10,96 +10,83 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Accelerated PyTorch 2.0 support in Diffusers
+# Torch 2.0
 
-Starting from version `0.13.0`, Diffusers supports the latest optimization from [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/). These include:
-1. Support for accelerated transformers implementation with memory-efficient attention – no extra dependencies (such as `xformers`) required.
-2. [torch.compile](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) support for extra performance boost when individual models are compiled.
+🤗 Diffusers supports the latest optimizations from [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/) which include:
 
+1. A memory-efficient attention implementation, scaled dot product attention, without requiring any extra dependencies such as xFormers.
+2. [`torch.compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html), a just-in-time (JIT) compiler to provide an extra performance boost when individual models are compiled.
 
-## Installation
-
-To benefit from the accelerated attention implementation and `torch.compile()`, you just need to install the latest versions of PyTorch 2.0 from pip, and make sure you are on diffusers 0.13.0 or later. As explained below, diffusers automatically uses the optimized attention processor ([`AttnProcessor2_0`](https://github.com/huggingface/diffusers/blob/1a5797c6d4491a879ea5285c4efc377664e0332d/src/diffusers/models/attention_processor.py#L798)) (but not `torch.compile()`)
-when PyTorch 2.0 is available.
+Both of these optimizations require PyTorch 2.0 or later and 🤗 Diffusers > 0.13.0.
 
 ```bash
 pip install --upgrade torch diffusers
 ```
 
-## Using accelerated transformers and `torch.compile`.
+## Scaled dot product attention
 
+[`torch.nn.functional.scaled_dot_product_attention`](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention) (SDPA) is an optimized and memory-efficient attention (similar to xFormers) that automatically enables several other optimizations depending on the model inputs and GPU type. SDPA is enabled by default if you're using PyTorch 2.0 and the latest version of 🤗 Diffusers, so you don't need to add anything to your code.
 
-1. **Accelerated Transformers implementation**
+However, if you want to explicitly enable it, you can set a [`DiffusionPipeline`] to use [`~models.attention_processor.AttnProcessor2_0`]:
 
-   PyTorch 2.0 includes an optimized and memory-efficient attention implementation through the [`torch.nn.functional.scaled_dot_product_attention`](https://pytorch.org/docs/master/generated/torch.nn.functional.scaled_dot_product_attention) function, which automatically enables several optimizations depending on the inputs and the GPU type. This is similar to the `memory_efficient_attention` from [xFormers](https://github.com/facebookresearch/xformers), but built natively into PyTorch. 
+```diff
+  import torch
+  from diffusers import DiffusionPipeline
++ from diffusers.models.attention_processor import AttnProcessor2_0
 
-   These optimizations will be enabled by default in Diffusers if PyTorch 2.0 is installed and if `torch.nn.functional.scaled_dot_product_attention` is available. To use it, just install `torch 2.0` as suggested above and simply use the pipeline. For example:
+  pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
++ pipe.unet.set_attn_processor(AttnProcessor2_0())
 
-    ```Python
-    import torch
-    from diffusers import DiffusionPipeline
+  prompt = "a photo of an astronaut riding a horse on mars"
+  image = pipe(prompt).images[0]
+```
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
-    pipe = pipe.to("cuda")
+SDPA should be as fast and memory efficient as `xFormers`; check the [benchmark](#benchmark) for more details.
 
-    prompt = "a photo of an astronaut riding a horse on mars"
-    image = pipe(prompt).images[0]
-    ```
+In some cases - such as making the pipeline more deterministic or converting it to other formats - it may be helpful to use the vanilla attention processor, [`~models.attention_processor.AttnProcessor`]. To revert to [`~models.attention_processor.AttnProcessor`], call the [`~UNet2DConditionModel.set_default_attn_processor`] function on the pipeline:
 
-    If you want to enable it explicitly (which is not required), you can do so as shown below.
+```diff
+  import torch
+  from diffusers import DiffusionPipeline
+  from diffusers.models.attention_processor import AttnProcessor
 
-    ```diff
-    import torch
-    from diffusers import DiffusionPipeline
-    + from diffusers.models.attention_processor import AttnProcessor2_0
+  pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
++ pipe.unet.set_default_attn_processor()
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-    + pipe.unet.set_attn_processor(AttnProcessor2_0())
+  prompt = "a photo of an astronaut riding a horse on mars"
+  image = pipe(prompt).images[0]
+```
 
-    prompt = "a photo of an astronaut riding a horse on mars"
-    image = pipe(prompt).images[0]
-    ```
+## torch.compile
 
-    This should be as fast and memory efficient as `xFormers`. More details [in our benchmark](#benchmark).
+The `torch.compile` function can often provide an additional speed-up to your PyTorch code. In 🤗 Diffusers, it is usually best to wrap the UNet with `torch.compile` because it does most of the heavy lifting in the pipeline.
 
-    It is possible to revert to the vanilla attention processor ([`AttnProcessor`](https://github.com/huggingface/diffusers/blob/1a5797c6d4491a879ea5285c4efc377664e0332d/src/diffusers/models/attention_processor.py#L402)), which can be helpful to make the pipeline more deterministic, or if you need to convert a fine-tuned model to other formats such as [Core ML](https://huggingface.co/docs/diffusers/v0.16.0/en/optimization/coreml#how-to-run-stable-diffusion-with-core-ml). To use the normal attention processor you can use the [`~diffusers.UNet2DConditionModel.set_default_attn_processor`] function:
+```python
+from diffusers import DiffusionPipeline
+import torch
 
-    ```Python
-    import torch
-    from diffusers import DiffusionPipeline
-    from diffusers.models.attention_processor import AttnProcessor
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images[0]
+```
 
-    pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-    pipe.unet.set_default_attn_processor()
+Depending on GPU type, `torch.compile` can provide an *addtional speed-up* of **5-300x** on top of SDPA! If you're using more recent GPU architectures such as Ampere (A100, 3090), Ada (4090), and Hopper (H100), `torch.compile` is able to squeeze even more performance out of these GPUs.
 
-    prompt = "a photo of an astronaut riding a horse on mars"
-    image = pipe(prompt).images[0]
-    ```
+Compilation requires some time to complete, so it is best suited for situations where you prepare your pipeline once and then perform the same type of inference operations multiple times. For example, calling the compiled pipeline on a different image size triggers compilation again which can be expensive.
 
-2. **torch.compile**
-
-    To get an additional speedup, we can use the new `torch.compile` feature. Since the UNet of the pipeline is usually the most computationally expensive, we wrap the `unet` with `torch.compile` leaving rest of the sub-models (text encoder and VAE) as is. For more information and different options, refer to the 
-    [torch compile docs](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html).
-
-    ```python
-    pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-    images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images
-    ```
-
-    Depending on the type of GPU, `compile()` can yield between **5% - 300%** of _additional speed-up_ over the accelerated transformer optimizations. Note, however, that compilation is able to squeeze more performance improvements in more recent GPU architectures such as Ampere (A100, 3090), Ada (4090) and Hopper (H100).
-    
-    Compilation takes some time to complete, so it is best suited for situations where you need to prepare your pipeline once and then perform the same type of inference operations multiple times. Calling the compiled pipeline on a different image size will re-trigger compilation which can be expensive.
-
+For more information and different options about `torch.compile`, refer to the [`torch_compile`](https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html) tutorial.
 
 ## Benchmark
 
-We conducted a comprehensive benchmark with PyTorch 2.0's efficient attention implementation and `torch.compile` across different GPUs and batch sizes for five of our most used pipelines. We used `diffusers 0.17.0.dev0`, which [makes sure `torch.compile()` is leveraged optimally](https://github.com/huggingface/diffusers/pull/3313).
+We conducted a comprehensive benchmark with PyTorch 2.0's efficient attention implementation and `torch.compile` across different GPUs and batch sizes for five of our most used pipelines. The code is benchmarked on 🤗 Diffusers v0.17.0.dev0 to optimize `torch.compile` usage (see [here](https://github.com/huggingface/diffusers/pull/3313) for more details).
 
-### Benchmarking code 
+Expand the dropdown below to find the code used to benchmark each pipeline:
 
-#### Stable Diffusion text-to-image 
+<details>
 
-```python 
+### Stable Diffusion text-to-image
+
+```python
 from diffusers import DiffusionPipeline
 import torch
 
@@ -121,7 +108,7 @@ for _ in range(3):
     images = pipe(prompt=prompt).images
 ```
 
-#### Stable Diffusion image-to-image 
+### Stable Diffusion image-to-image
 
 ```python 
 from diffusers import StableDiffusionImg2ImgPipeline
@@ -154,7 +141,7 @@ for _ in range(3):
     image = pipe(prompt=prompt, image=init_image).images[0]
 ```
 
-#### Stable Diffusion - inpainting
+### Stable Diffusion inpainting
 
 ```python 
 from diffusers import StableDiffusionInpaintPipeline
@@ -194,7 +181,7 @@ for _ in range(3):
     image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
-#### ControlNet 
+### ControlNet
 
 ```python 
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
@@ -232,7 +219,7 @@ for _ in range(3):
     image = pipe(prompt=prompt, image=init_image).images[0]
 ```
 
-#### IF text-to-image + upscaling
+### DeepFloyd IF text-to-image + upscaling
 
 ```python 
 from diffusers import DiffusionPipeline
@@ -267,24 +254,18 @@ for _ in range(3):
     image_2 = pipe_2(image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=neg_prompt_embeds, output_type="pt").images
     image_3 = pipe_3(prompt=prompt, image=image, noise_level=100).images
 ```
+</details>
 
-To give you a pictorial overview of the possible speed-ups that can be obtained with PyTorch 2.0 and `torch.compile()`,
-here is a plot that shows relative speed-ups for the [Stable Diffusion text-to-image pipeline](StableDiffusionPipeline) across five
-different GPU families (with a batch size of 4):
+The graph below highlights the relative speed-ups for the [`StableDiffusionPipeline`] across five GPU families with PyTorch 2.0 and `torch.compile` enabled. The benchmarks for the following graphs are measured in *number of iterations/second*.
 
 ![t2i_speedup](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/pt2_benchmarks/t2i_speedup.png)
 
-To give you an even better idea of how this speed-up holds for the other pipelines presented above, consider the following 
-plot that shows the benchmarking numbers from an A100 across three different batch sizes
-(with PyTorch 2.0 nightly and `torch.compile()`):
+To give you an even better idea of how this speed-up holds for the other pipelines, consider the following
+graph for an A100 with PyTorch 2.0 and `torch.compile`:
 
 ![a100_numbers](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/pt2_benchmarks/a100_numbers.png)
 
-_(Our benchmarking metric for the plots above is **number of iterations/second**)_
-
-But we reveal all the benchmarking numbers in the interest of transparency! 
-
-In the following tables, we report our findings in terms of the number of **_iterations processed per second_**. 
+In the following tables, we report our findings in terms of the *number of iterations/second*.
 
 ### A100 (batch size: 1)
 
@@ -295,6 +276,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 22.24 | 23.23 | 43.76 | 49.25 |
 | SD - controlnet | 15.02 | 15.82 | 32.13 | 36.08 |
 | IF | 20.21 / <br>13.84 / <br>24.00 | 20.12 / <br>13.70 / <br>24.03 | ❌ | 97.34 / <br>27.23 / <br>111.66 |
+| SDXL - txt2img | 8.64 | 9.9 | - | - |
 
 ### A100 (batch size: 4)
 
@@ -305,6 +287,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 11.67 | 13.31 | 14.88 | 17.48 |
 | SD - controlnet | 8.28 | 9.38 | 10.51 | 12.41 |
 | IF | 25.02 | 18.04 | ❌ | 48.47 |
+| SDXL - txt2img | 2.44 | 2.74 | - | - |
 
 ### A100 (batch size: 16)
 
@@ -315,6 +298,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 3.04 | 3.66 | 3.9 | 4.76 |
 | SD - controlnet | 2.15 | 2.58 | 2.74 | 3.35 |
 | IF | 8.78 | 9.82 | ❌ | 16.77 |
+| SDXL - txt2img | 0.64 | 0.72 | - | - |
 
 ### V100 (batch size: 1)
 
@@ -355,6 +339,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 6.91 | 6.7 | 7.01 | 7.37 |
 | SD - controlnet | 4.89 | 4.86 | 5.35 | 5.48 |
 | IF | 17.42 / <br>2.47 / <br>18.52 | 16.96 / <br>2.45 / <br>18.69 | ❌ | 24.63 / <br>2.47 / <br>23.39 |
+| SDXL - txt2img | 1.15 | 1.16 | - | - |
 
 ### T4 (batch size: 4)
 
@@ -365,6 +350,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 1.81 | 1.82 | 2.09 | 2.09 |
 | SD - controlnet | 1.34 | 1.27 | 1.47 | 1.46 |
 | IF | 5.79 |  5.61 | ❌ | 7.39 |
+| SDXL - txt2img | 0.288 | 0.289 | - | - |
 
 ### T4 (batch size: 16)
 
@@ -375,6 +361,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 2.30s | 2.26s | OOM after 2nd iteration | 1.95s |
 | SD - controlnet | OOM after 2nd iteration | OOM after 2nd iteration | OOM after warmup | OOM after warmup |
 | IF * | 1.44 | 1.44 | ❌ | 1.94 |
+| SDXL - txt2img | OOM | OOM | - | - |
 
 ### RTX 3090 (batch size: 1)
 
@@ -415,6 +402,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 40.51 | 41.88 | 44.58 | 49.72 |
 | SD - controlnet | 29.27 | 30.29 | 32.26 | 36.03 |
 | IF | 69.71 / <br>18.78 / <br>85.49 | 69.13 / <br>18.80 / <br>85.56 | ❌ | 124.60 / <br>26.37 / <br>138.79 |
+| SDXL - txt2img | 6.8 | 8.18 | - | - |
 
 ### RTX 4090 (batch size: 4)
 
@@ -425,6 +413,7 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 12.65 | 12.81 | 15.3 | 15.58 |
 | SD - controlnet | 9.1 | 9.25 | 11.03 | 11.22 |
 | IF | 31.88 | 31.14 | ❌ | 43.92 |
+| SDXL - txt2img | 2.19 | 2.35 | - | - |
 
 ### RTX 4090 (batch size: 16)
 
@@ -435,10 +424,11 @@ In the following tables, we report our findings in terms of the number of **_ite
 | SD - inpaint | 3.17 | 3.2 | 3.85 | 3.85 |
 | SD - controlnet | 2.23 | 2.3 | 2.7 | 2.75 |
 | IF | 9.26 | 9.2 | ❌ | 13.31 |
+| SDXL - txt2img | 0.52 | 0.53 | - | - |
 
 ## Notes 
 
-* Follow [this PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks. 
-* For the IF pipeline and batch sizes > 1, we only used a batch size of >1 in the first IF pipeline for text-to-image generation and NOT for upscaling. So, that means the two upscaling pipelines received a batch size of 1. 
+* Follow this [PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks. 
+* For the DeepFloyd IF pipeline where batch sizes > 1, we only used a batch size of > 1 in the first IF pipeline for text-to-image generation and NOT for upscaling. That means the two upscaling pipelines received a batch size of 1.
 
 *Thanks to [Horace He](https://github.com/Chillee) from the PyTorch team for their support in improving our support of `torch.compile()` in Diffusers.*

@@ -28,8 +28,7 @@ from diffusers import (
     StableDiffusionLDM3DPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import nightly, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 
@@ -204,7 +203,7 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
         assert np.abs(depth_slice.flatten() - expected_slice_depth).max() < 1e-2
 
 
-@slow
+@nightly
 @require_torch_gpu
 class StableDiffusionLDM3DPipelineSlowTests(unittest.TestCase):
     def tearDown(self):

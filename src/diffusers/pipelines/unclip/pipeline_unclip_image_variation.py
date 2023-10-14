@@ -15,7 +15,7 @@
 import inspect
 from typing import List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from torch.nn import functional as F
 from transformers import (
@@ -27,7 +27,8 @@ from transformers import (
 
 from ...models import UNet2DConditionModel, UNet2DModel
 from ...schedulers import UnCLIPScheduler
-from ...utils import logging, randn_tensor
+from ...utils import logging
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_proj import UnCLIPTextProjModel
 
@@ -76,6 +77,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
 
     decoder_scheduler: UnCLIPScheduler
     super_res_scheduler: UnCLIPScheduler
+    model_cpu_offload_seq = "text_encoder->image_encoder->text_proj->decoder->super_res_first->super_res_last"
 
     def __init__(
         self,

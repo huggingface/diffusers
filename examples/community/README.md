@@ -43,6 +43,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) | 
 FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) | 
 sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion Pipeline](#stable-diffusion-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) | 
+prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) | 
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -2060,3 +2061,89 @@ result:
 
 <img src=https://github.com/noskill/diffusers/assets/733626/23a0a71d-51db-471e-926a-107ac62512a8 width="25%" >
 
+
+### Prompt2Prompt Pipeline
+
+Prompt2Prompt allows the following edits:
+- ReplaceEdit (change words in prompt)
+- ReplaceEdit with local blend (change words in prompt, keep image part unrelated to changes constant)
+- RefineEdit (add words to prompt)
+- RefineEdit with local blend (add words to prompt, keep image part unrelated to changes constant)
+- ReweightEdit (modulate importance of words)
+
+Here's a full example for `ReplaceEdit``:
+
+```python
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+from diffusers.pipelines import Prompt2PromptPipeline
+
+pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
+
+prompts = ["A turtle playing with a ball",
+           "A monkey playing with a ball"]
+
+cross_attention_kwargs = {
+    "edit_type": "replace",
+    "cross_replace_steps": 0.4,
+    "self_replace_steps": 0.4
+}
+
+outputs = pipe(prompt=prompts, height=512, width=512, num_inference_steps=50, cross_attention_kwargs=cross_attention_kwargs)
+```
+
+And abbreviated examples for the other edits:
+
+`ReplaceEdit with local blend`
+```python
+prompts = ["A turtle playing with a ball",
+           "A monkey playing with a ball"]
+
+cross_attention_kwargs = {
+    "edit_type": "replace",
+    "cross_replace_steps": 0.4,
+    "self_replace_steps": 0.4,
+    "local_blend_words": ["turtle", "monkey"]
+}
+```
+
+`RefineEdit`
+```python
+prompts = ["A turtle",
+           "A turtle in a forest"]
+
+cross_attention_kwargs = {
+    "edit_type": "refine",
+    "cross_replace_steps": 0.4,
+    "self_replace_steps": 0.4,
+}
+```
+
+`RefineEdit with local blend`
+```python
+prompts = ["A turtle",
+           "A turtle in a forest"]
+
+cross_attention_kwargs = {
+    "edit_type": "refine",
+    "cross_replace_steps": 0.4,
+    "self_replace_steps": 0.4,
+    "local_blend_words": ["in", "a" , "forest"]
+}
+```
+
+`ReweightEdit`
+```python
+prompts = ["A smiling turtle"] * 2
+
+edit_kcross_attention_kwargswargs = {
+    "edit_type": "reweight",
+    "cross_replace_steps": 0.4,
+    "self_replace_steps": 0.4,
+    "equalizer_words": ["smiling"],
+    "equalizer_strengths": [5]
+}
+```
+
+Side note: See [this GitHub gist](https://gist.github.com/UmerHA/b65bb5fb9626c9c73f3ade2869e36164) if you want to visualize the attention maps.

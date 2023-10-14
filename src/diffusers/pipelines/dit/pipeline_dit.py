@@ -24,7 +24,7 @@ import torch
 
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -43,6 +43,7 @@ class DiTPipeline(DiffusionPipeline):
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
+    model_cpu_offload_seq = "transformer->vae"
 
     def __init__(
         self,

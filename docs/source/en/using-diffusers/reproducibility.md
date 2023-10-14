@@ -28,7 +28,7 @@ This is why it's important to understand how to control sources of randomness in
 
 ## Control randomness
 
-During inference, pipelines rely heavily on random sampling operations which include creating the 
+During inference, pipelines rely heavily on random sampling operations which include creating the
 Gaussian noise tensors to denoise and adding noise to the scheduling step.
 
 Take a look at the tensor values in the [`DDIMPipeline`] after two inference steps:
@@ -47,7 +47,7 @@ image = ddim(num_inference_steps=2, output_type="np").images
 print(np.abs(image).sum())
 ```
 
-Running the code above prints one value, but if you run it again you get a different value. What is going on here? 
+Running the code above prints one value, but if you run it again you get a different value. What is going on here?
 
 Every time the pipeline is run, [`torch.randn`](https://pytorch.org/docs/stable/generated/torch.randn.html) uses a different random seed to create Gaussian noise which is denoised stepwise. This leads to a different result each time it is run, which is great for diffusion pipelines since it generates a different random image each time.
 
@@ -81,16 +81,16 @@ If you run this code example on your specific hardware and PyTorch version, you 
 
 <Tip>
 
-💡 It might be a bit unintuitive at first to pass `Generator` objects to the pipeline instead of 
-just integer values representing the seed, but this is the recommended design when dealing with 
-probabilistic models in PyTorch as `Generator`'s are *random states* that can be 
+💡 It might be a bit unintuitive at first to pass `Generator` objects to the pipeline instead of
+just integer values representing the seed, but this is the recommended design when dealing with
+probabilistic models in PyTorch as `Generator`'s are *random states* that can be
 passed to multiple pipelines in a sequence.
 
 </Tip>
 
 ### GPU
 
-Writing a reproducible pipeline on a GPU is a bit trickier, and full reproducibility across different hardware is not guaranteed because matrix multiplication - which diffusion pipelines require a lot of - is less deterministic on a GPU than a CPU. For example, if you run the same code example above on a GPU: 
+Writing a reproducible pipeline on a GPU is a bit trickier, and full reproducibility across different hardware is not guaranteed because matrix multiplication - which diffusion pipelines require a lot of - is less deterministic on a GPU than a CPU. For example, if you run the same code example above on a GPU:
 
 ```python
 import torch
@@ -113,7 +113,7 @@ print(np.abs(image).sum())
 
 The result is not the same even though you're using an identical seed because the GPU uses a different random number generator than the CPU.
 
-To circumvent this problem, 🧨 Diffusers has a [`~diffusers.utils.randn_tensor`] function for creating random noise on the CPU, and then moving the tensor to a GPU if necessary. The `randn_tensor` function is used everywhere inside the pipeline, allowing the user to **always** pass a CPU `Generator` even if the pipeline is run on a GPU. 
+To circumvent this problem, 🧨 Diffusers has a [`~diffusers.utils.torch_utils.randn_tensor`] function for creating random noise on the CPU, and then moving the tensor to a GPU if necessary. The `randn_tensor` function is used everywhere inside the pipeline, allowing the user to **always** pass a CPU `Generator` even if the pipeline is run on a GPU.
 
 You'll see the results are much closer now!
 
@@ -139,14 +139,14 @@ print(np.abs(image).sum())
 <Tip>
 
 💡 If reproducibility is important, we recommend always passing a CPU generator.
-The performance loss is often neglectable, and you'll generate much more similar 
+The performance loss is often neglectable, and you'll generate much more similar
 values than if the pipeline had been run on a GPU.
 
 </Tip>
 
-Finally, for more complex pipelines such as [`UnCLIPPipeline`], these are often extremely 
-susceptible to precision error propagation. Don't expect similar results across 
-different GPU hardware or PyTorch versions. In this case, you'll need to run 
+Finally, for more complex pipelines such as [`UnCLIPPipeline`], these are often extremely
+susceptible to precision error propagation. Don't expect similar results across
+different GPU hardware or PyTorch versions. In this case, you'll need to run
 exactly the same hardware and PyTorch version for full reproducibility.
 
 ## Deterministic algorithms

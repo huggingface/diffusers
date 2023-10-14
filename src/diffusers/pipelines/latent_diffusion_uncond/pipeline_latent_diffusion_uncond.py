@@ -19,7 +19,7 @@ import torch
 
 from ...models import UNet2DModel, VQModel
 from ...schedulers import DDIMScheduler
-from ...utils import randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -114,6 +114,8 @@ class LDMPipeline(DiffusionPipeline):
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
 
+        # adjust latents with inverse of vae scale
+        latents = latents / self.vqvae.config.scaling_factor
         # decode the image latents with the VAE
         image = self.vqvae.decode(latents).sample
 

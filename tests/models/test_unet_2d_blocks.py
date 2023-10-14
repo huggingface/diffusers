@@ -15,7 +15,7 @@
 import unittest
 
 from diffusers.models.unet_2d_blocks import *  # noqa F403
-from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import torch_device
 
 from .test_unet_blocks_common import UNetBlockTesterMixin
 
