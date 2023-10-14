@@ -1088,7 +1088,7 @@ class SDXLOptionalComponentsTesterMixin:
         inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
         inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
 
-        output = pipe(**inputs)
+        output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
