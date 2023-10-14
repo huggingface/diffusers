@@ -15,8 +15,11 @@
 PEFT utilities: Utilities related to peft library
 """
 import collections
+import importlib
 
-from .import_utils import is_torch_available
+from packaging import version
+
+from .import_utils import is_peft_available, is_torch_available
 
 
 def recurse_remove_peft_layers(model):
@@ -53,7 +56,6 @@ def recurse_remove_peft_layers(model):
                 module.padding,
                 module.dilation,
                 module.groups,
-                module.bias,
             ).to(module.weight.device)
 
             new_module.weight = module.weight
@@ -106,10 +108,11 @@ def unscale_lora_layers(model):
             module.unscale_layer()
 
 
-def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
+def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True):
     rank_pattern = {}
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
+
     if len(set(rank_dict.values())) > 1:
         # get the rank occuring the most number of times
         r = collections.Counter(rank_dict.values()).most_common()[0][0]
@@ -118,13 +121,22 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict):
         rank_pattern = dict(filter(lambda x: x[1] != r, rank_dict.items()))
         rank_pattern = {k.split(".lora_B.")[0]: v for k, v in rank_pattern.items()}
 
-    if network_alpha_dict is not None and len(set(network_alpha_dict.values())) > 1:
-        # get the alpha occuring the most number of times
-        lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
+    if network_alpha_dict is not None:
+        if len(set(network_alpha_dict.values())) > 1:
+            # get the alpha occuring the most number of times
+            lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
 
-        # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
-        alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
-        alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
+            # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
+            alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
+            if is_unet:
+                alpha_pattern = {
+                    ".".join(k.split(".lora_A.")[0].split(".")).replace(".alpha", ""): v
+                    for k, v in alpha_pattern.items()
+                }
+            else:
+                alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
+        else:
+            lora_alpha = set(network_alpha_dict.values()).pop()
 
     # layer names without the Diffusers specific
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})
@@ -155,9 +167,9 @@ def set_adapter_layers(model, enabled=True):
         if isinstance(module, BaseTunerLayer):
             # The recent version of PEFT needs to call `enable_adapters` instead
             if hasattr(module, "enable_adapters"):
-                module.enable_adapters(enabled=False)
+                module.enable_adapters(enabled=enabled)
             else:
-                module.disable_adapters = True
+                module.disable_adapters = not enabled
 
 
 def set_weights_and_activate_adapters(model, adapter_names, weights):
@@ -182,3 +194,23 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
                 module.set_adapter(adapter_names)
             else:
                 module.active_adapter = adapter_names
+
+
+def check_peft_version(min_version: str) -> None:
+    r"""
+    Checks if the version of PEFT is compatible.
+
+    Args:
+        version (`str`):
+            The version of PEFT to check against.
+    """
+    if not is_peft_available():
+        raise ValueError("PEFT is not installed. Please install it with `pip install peft`")
+
+    is_peft_version_compatible = version.parse(importlib.metadata.version("peft")) > version.parse(min_version)
+
+    if not is_peft_version_compatible:
+        raise ValueError(
+            f"The version of PEFT you are using is not compatible, please use a version that is greater"
+            f" than {min_version}"
+        )
