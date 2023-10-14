@@ -1086,7 +1086,7 @@ class SDXLOptionalComponentsTesterMixin:
         output = pipe(**inputs)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pipe.save_pretrained(tmpdir, safe_serialization=False)
+            pipe.save_pretrained(tmpdir)
             pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
             for component in pipe_loaded.components.values():
                 if hasattr(component, "set_default_attn_processor"):
