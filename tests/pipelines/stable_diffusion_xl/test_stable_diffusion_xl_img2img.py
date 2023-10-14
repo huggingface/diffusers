@@ -600,3 +600,6 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_save_load_optional_components(self):
+        self._test_save_load_optional_components()
