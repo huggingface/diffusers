@@ -955,7 +955,7 @@ class ShapERenderer(ModelMixin, ConfigMixin):
         query_batch_size: int = 4096,
         texture_channels: Tuple = ("R", "G", "B"),
     ):
-        # 1. project the paramters from the generated latents
+        # 1. project the parameters from the generated latents
         projected_params = self.params_proj(latents)
 
         # 2. update the mlp layers of the renderer
