@@ -340,7 +340,6 @@ class AudioLDMPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents with width->self.vocoder.config.model_in_dim
     def prepare_latents(self, batch_size, num_channels_latents, height, dtype, device, generator, latents=None):
         shape = (
             batch_size,
