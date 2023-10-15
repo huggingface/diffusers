@@ -1078,6 +1078,7 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
             pipeline = pipeline.to(accelerator.device)
             pipeline.torch_dtype = weight_dtype
             pipeline.set_progress_bar_config(disable=True)
+            pipeline.scheduler = ReflowScheduler(pipeline.scheduler.config.num_train_timesteps, distill=distill)
 
             if args.enable_xformers_memory_efficient_attention:
                 pipeline.enable_xformers_memory_efficient_attention()
@@ -1089,7 +1090,7 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
 
             for i in range(len(args.validation_prompts)):
                 with torch.autocast("cuda"):
-                    image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+                    image = pipeline(args.validation_prompts[i], num_inference_steps=1, generator=generator).images[0]
                 images.append(image)
 
         if args.push_to_hub:
