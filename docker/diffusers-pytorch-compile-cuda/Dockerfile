@@ -41,8 +41,6 @@ RUN python3.9 -m pip install --no-cache-dir --upgrade pip && \
         scipy \
         tensorboard \
         transformers \
-        omegaconf \
-        pytorch-lightning \
-        xformers
+        omegaconf
 
 CMD ["/bin/bash"]
