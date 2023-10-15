@@ -269,11 +269,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             raise ValueError(
                 f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
             )
-
-        if isinstance(transformer_layers_per_block, Tuple[Tuple]) and reverse_transformer_layers_per_block is None:
-            raise ValueError(
-                "Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet."
-            )
+        try:
+            if isinstance(transformer_layers_per_block, Tuple[Tuple]) and reverse_transformer_layers_per_block is None:
+                raise ValueError(
+                    "Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet."
+                )
+        except:
+            print(type(tuple[tuple]))
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
