@@ -24,7 +24,7 @@ from .utils import PushToHubMixin
 WORKFLOW_NAME = "diffusion_workflow.json"
 
 
-def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: Dict, pipeline_components: Dict):
+def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: Dict, lora_info: Dict, pipeline_components: Dict):
     r"""Populates the pipeline components' configurations and the call arguments in a dictionary.
 
     Args:
@@ -41,9 +41,6 @@ def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: 
         for arg in argument_names
         if arg != "return_workflow" and not isinstance(call_arg_values[arg], torch.Tensor)
     }
-    # TODO: Handle the case for inputs that are of type torch tensors.
-    # TODO: Handle the case when `load_lora_weights()` was called on a pipeline.
-    # TODO: handle the case when `cross_attention_kwargs` was passed.
 
     workflow.update({"call": call_arguments})
 
@@ -53,6 +50,12 @@ def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: 
             workflow["call"].update({"seed": generator.initial_seed()})
         except Exception:
             workflow["call"].update({"seed": None})
+
+    # TODO: Handle the case for inputs that are of type torch tensors.
+
+    # Handle the case when `load_lora_weights()` was called on a pipeline.
+    if len(lora_info) > 0:
+        workflow["lora"].update(lora_info)
 
     # Populate component configs.
     workflow.update(

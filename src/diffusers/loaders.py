@@ -859,6 +859,8 @@ class LoraLoaderMixin:
     """
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
+    loras_loaded = 0
+    lora_info = {None}
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
@@ -889,6 +891,10 @@ class LoraLoaderMixin:
             text_encoder=self.text_encoder,
             lora_scale=self.lora_scale,
         )
+        self.load_lora_weights += 1
+        current_lora_info = {"pretrained_model_name_or_path_or_dict": pretrained_model_name_or_path_or_dict}
+        current_lora_info.update({key: value for key, value in kwargs.items()})
+        self.lora_info.update({f"lora_{self.load_lora_weights}": current_lora_info})
 
     @classmethod
     def lora_state_dict(
