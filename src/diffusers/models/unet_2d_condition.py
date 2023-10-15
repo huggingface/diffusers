@@ -275,7 +275,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     "Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet."
                 )
         except:
-            print(type(tuple[tuple]))
+            print(type(Tuple[Tuple]))
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
