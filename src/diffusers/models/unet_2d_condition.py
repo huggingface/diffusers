@@ -185,7 +185,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: Union[int, Tuple[int]] = 1280,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple[int]]] = 1,
+        reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]] = None,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
@@ -265,6 +266,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if not isinstance(layers_per_block, int) and len(layers_per_block) != len(down_block_types):
             raise ValueError(
                 f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
+            )
+
+        if isinstance(transformer_layers_per_block, Tuple[Tuple[int]]) and reverse_transformer_layers_per_block is None:
+            raise ValueError(
+                "Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet."
             )
 
         # input
@@ -419,6 +425,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         if isinstance(layers_per_block, int):
             layers_per_block = [layers_per_block] * len(down_block_types)
+
+
 
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
