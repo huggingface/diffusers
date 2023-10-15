@@ -646,7 +646,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         ]
         attentions = []
 
-        for _ in range(num_layers):
+        for i in range(num_layers):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
