@@ -991,7 +991,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         #       T2I-Adapter and ControlNet both use down_block_additional_residuals arg
         #       but can only use one or the other
         if not is_adapter and mid_block_additional_residual is None and down_block_additional_residuals is not None:
-            deprecate("T2I should not use down_block_additional_residuals", "1.3.0", "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated in will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ", standard_warn=False) <- let's deprecate using "down_block_additional_residuals" for T2I adapters
+            deprecate("T2I should not use down_block_additional_residuals", "1.3.0", "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated in will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ", standard_warn=False)
             down_intrablock_additional_residuals = down_block_additional_residuals
             is_adapter = True
 
