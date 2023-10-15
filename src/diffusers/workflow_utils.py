@@ -24,7 +24,9 @@ from .utils import PushToHubMixin
 WORKFLOW_NAME = "diffusion_workflow.json"
 
 
-def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: Dict, lora_info: Dict, pipeline_components: Dict):
+def populate_workflow_from_pipeline(
+    argument_names: List[str], call_arg_values: Dict, lora_info: Dict, pipeline_components: Dict
+):
     r"""Populates the pipeline components' configurations and the call arguments in a dictionary.
 
     Args:
