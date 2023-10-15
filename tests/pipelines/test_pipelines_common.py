@@ -1075,8 +1075,8 @@ class SDXLOptionalComponentsTesterMixin:
         text_encoder = components.pop("text_encoder")
         text_encoder_2 = components.pop("text_encoder_2")
 
-        tokenizers = [tokenizer, tokenizer_2]
-        text_encoders = [text_encoder, text_encoder_2]
+        tokenizers = [tokenizer, tokenizer_2] if tokenizer is not None else [tokenizer_2]
+        text_encoders = [text_encoder, text_encoder_2] if text_encoder is not None else [text_encoder_2]
         (
             prompt_embeds,
             negative_prompt_embeds,
