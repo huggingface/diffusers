@@ -30,7 +30,7 @@ from requests.exceptions import HTTPError
 from diffusers.models import UNet2DConditionModel
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.training_utils import EMAModel
-from diffusers.utils import logging
+from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     require_python39_or_higher,
@@ -269,6 +269,32 @@ class ModelTesterMixin:
 
         assert str(error.exception) == f"'{type(model).__name__}' object has no attribute 'does_not_exist'"
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_set_xformers_attn_processor_for_determinism(self):
+        torch.use_deterministic_algorithms(False)
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        if not hasattr(model, "set_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
+        model.set_default_attn_processor()
+        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            output = model(**inputs_dict)[0]
+
+        model.enable_xformers_memory_efficient_attention()
+        assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            output_2 = model(**inputs_dict)[0]
+
+        assert torch.allclose(output, output_2, atol=self.base_precision)
+
     @require_torch_gpu
     def test_set_attn_processor_for_determinism(self):
         torch.use_deterministic_algorithms(False)
@@ -292,7 +318,7 @@ class ModelTesterMixin:
         model.enable_xformers_memory_efficient_attention()
         assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
-            output_3 = model(**inputs_dict)[0]
+            model(**inputs_dict)[0]
 
         model.set_attn_processor(AttnProcessor2_0())
         assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
@@ -313,7 +339,6 @@ class ModelTesterMixin:
 
         # make sure that outputs match
         assert torch.allclose(output_2, output_1, atol=self.base_precision)
-        assert torch.allclose(output_2, output_3, atol=self.base_precision)
         assert torch.allclose(output_2, output_4, atol=self.base_precision)
         assert torch.allclose(output_2, output_5, atol=self.base_precision)
         assert torch.allclose(output_2, output_6, atol=self.base_precision)

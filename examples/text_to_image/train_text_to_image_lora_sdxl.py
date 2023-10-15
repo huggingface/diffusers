@@ -50,7 +50,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import LoraLoaderMixin, text_encoder_lora_state_dict
-from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
+from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
@@ -609,29 +609,42 @@ def main(args):
 
     # now we will add new LoRA weights to the attention layers
     # Set correct lora layers
-    unet_lora_attn_procs = {}
     unet_lora_parameters = []
-    for name, attn_processor in unet.attn_processors.items():
-        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
-        if name.startswith("mid_block"):
-            hidden_size = unet.config.block_out_channels[-1]
-        elif name.startswith("up_blocks"):
-            block_id = int(name[len("up_blocks.")])
-            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-        elif name.startswith("down_blocks"):
-            block_id = int(name[len("down_blocks.")])
-            hidden_size = unet.config.block_out_channels[block_id]
+    for attn_processor_name, attn_processor in unet.attn_processors.items():
+        # Parse the attention module.
+        attn_module = unet
+        for n in attn_processor_name.split(".")[:-1]:
+            attn_module = getattr(attn_module, n)
 
-        lora_attn_processor_class = (
-            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+        # Set the `lora_layer` attribute of the attention-related matrices.
+        attn_module.to_q.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_q.in_features, out_features=attn_module.to_q.out_features, rank=args.rank
+            )
         )
-        module = lora_attn_processor_class(
-            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, rank=args.rank
+        attn_module.to_k.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_k.in_features, out_features=attn_module.to_k.out_features, rank=args.rank
+            )
         )
-        unet_lora_attn_procs[name] = module
-        unet_lora_parameters.extend(module.parameters())
+        attn_module.to_v.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_v.in_features, out_features=attn_module.to_v.out_features, rank=args.rank
+            )
+        )
+        attn_module.to_out[0].set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_out[0].in_features,
+                out_features=attn_module.to_out[0].out_features,
+                rank=args.rank,
+            )
+        )
 
-    unet.set_attn_processor(unet_lora_attn_procs)
+        # Accumulate the LoRA params to optimize.
+        unet_lora_parameters.extend(attn_module.to_q.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_k.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
 
     # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
     # So, instead, we monkey-patch the forward calls of its attention-blocks.

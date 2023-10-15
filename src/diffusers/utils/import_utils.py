@@ -64,6 +64,14 @@ else:
     logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
 
+_torch_xla_available = importlib.util.find_spec("torch_xla") is not None
+if _torch_xla_available:
+    try:
+        _torch_xla_version = importlib_metadata.version("torch_xla")
+        logger.info(f"PyTorch XLA version {_torch_xla_version} available.")
+    except ImportError:
+        _torch_xla_available = False
+
 _jax_version = "N/A"
 _flax_version = "N/A"
 if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
@@ -279,6 +287,10 @@ except importlib_metadata.PackageNotFoundError:
 
 def is_torch_available():
     return _torch_available
+
+
+def is_torch_xla_available():
+    return _torch_xla_available
 
 
 def is_flax_available():
