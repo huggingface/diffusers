@@ -180,8 +180,10 @@ def is_copy_consistent(filename, overwrite=False):
         theoretical_indent = get_indent(theoretical_code)
 
         start_index = line_index + 1 if indent == theoretical_indent else line_index
-        indent = theoretical_indent
         line_index = start_index + 1
+
+        subcode = "\n".join(theoretical_code.split("\n")[1:])
+        indent = get_indent(subcode)
 
         # Loop to check the observed code, stop when indentation diminishes or if we see a End copy comment.
         should_continue = True
