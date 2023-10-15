@@ -860,7 +860,7 @@ class LoraLoaderMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
     loras_loaded = 0
-    lora_info = {None}
+    lora_info = {}
 
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         """
