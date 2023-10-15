@@ -249,6 +249,22 @@ class GaussianFourierProjection(nn.Module):
         return out
 
 
+class PositionalEmbedding(nn.Module):
+    def __init__(self, embed_dim, max_seq_length=24):
+        super().__init__()
+        position = torch.arange(max_seq_length).unsqueeze(1)
+
+        div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / embed_dim))
+        self.pos_embed = torch.zeros(1, max_seq_length, embed_dim)
+        self.pos_embed[0, :, 0::2] = torch.sin(position * div_term)
+        self.pos_embed[0, :, 1::2] = torch.cos(position * div_term)
+
+    def forward(self, x):
+        seq_len = x.shape[1]
+        x = x + self.pos_embed[:, :seq_len]
+        return x
+
+
 class ImagePositionalEmbeddings(nn.Module):
     """
     Converts latent image classes into vector embeddings. Sums the vector embeddings with positional embeddings for the
