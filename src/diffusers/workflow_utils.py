@@ -41,6 +41,9 @@ def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: 
         for arg in argument_names
         if arg != "return_workflow" and not isinstance(call_arg_values[arg], torch.Tensor)
     }
+    # TODO: Handle the case for inputs that are of type torch tensors.
+    # TODO: Handle the case when `load_lora_weights()` was called on a pipeline.
+    # TODO: handle the case when `cross_attention_kwargs` was passed.
 
     workflow.update({"call": call_arguments})
 
