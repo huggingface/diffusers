@@ -374,7 +374,6 @@ class MusicLDMPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, dtype, device, generator, latents=None):
         shape = (
             batch_size,
