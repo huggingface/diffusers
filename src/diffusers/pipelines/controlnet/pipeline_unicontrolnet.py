@@ -25,18 +25,19 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    USE_PEFT_BACKEND,
     deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
-    is_compiled_module,
     logging,
-    randn_tensor,
     replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
 )
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from ..stable_diffusion import StableDiffusionPipelineOutput
+from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .multicontrolnet import MultiControlNetModel
 
@@ -70,7 +71,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # load control net and stable diffusion v1-5
         >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        >>> pipe = StableDiffusionUniControlNetPipeline.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
         ... )
 
@@ -103,6 +104,10 @@ name_to_instruction = {"control_hed": "hed edge to image", "control_canny": "can
                        "control_grayscale": "gray image to color image", "control_blur": "deblur image to clean image",
                        "control_inpainting": "image inpainting"}
 
+tasks_to_id = {"control_hed":0, "control_canny":1, "control_seg":2, "control_depth":3, "control_normal":4,"control_openpose":5, "control_img":6, "control_hedsketch":7, "control_bbox":8, "control_outpainting":9,  "control_grayscale":10,  "control_blur":11, "control_inpainting":12}
+
+
+
 class StableDiffusionUniControlNetPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
@@ -127,8 +132,7 @@ class StableDiffusionUniControlNetPipeline(
         controlnet ([`ControlNetModel`] or `List[ControlNetModel]`):
             Provides additional conditioning to the `unet` during the denoising process. If you set multiple
             ControlNets as a list, the outputs from each ControlNet are added together to create one combined
-            additional conditioning. This ControlNet is a UniControlNet i.e it uses a task adapter to provide
-            different control conditioning.
+            additional conditioning.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -139,7 +143,9 @@ class StableDiffusionUniControlNetPipeline(
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
+    _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
         self,
@@ -224,34 +230,6 @@ class StableDiffusionUniControlNetPipeline(
         """
         self.vae.disable_tiling()
 
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            # the safety checker can offload the vae again
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # control net hook has be manually offloaded as it alternates with unet
-        cpu_offload_with_hook(self.controlnet, device)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
@@ -282,6 +260,24 @@ class StableDiffusionUniControlNetPipeline(
         prompt_embeds = torch.cat([prompt_embeds_tuple[1], prompt_embeds_tuple[0]])
 
         return prompt_embeds
+
+    def encode_task(self, task_text):
+        task_text_inputs = self.tokenizer(
+                        task_text,
+                        padding="max_length",
+                        max_length=self.tokenizer.model_max_length,
+                        truncation=True,
+                        return_tensors="pt",
+                    ).to(self._execution_device)
+        task_text_input_ids = task_text_inputs.input_ids
+        task_text_mask = task_text_inputs.attention_mask.bool()
+
+        task_text_embeds = self.text_encoder(
+                task_text_input_ids.to(self._execution_device),
+                attention_mask=task_text_mask,
+            )
+        task_text_embeds = task_text_embeds[0]
+        return task_text_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
@@ -325,6 +321,9 @@ class StableDiffusionUniControlNetPipeline(
         # function of text encoder can correctly access it
         if lora_scale is not None and isinstance(self, LoraLoaderMixin):
             self._lora_scale = lora_scale
+
+            # dynamically adjust the LoRA scale
+            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -439,14 +438,7 @@ class StableDiffusionUniControlNetPipeline(
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         return prompt_embeds, negative_prompt_embeds
-    
-    def encode_task():
-        r'''
-        Encode the task text using the text_encoder. The embeddings are used by layers in the controlnet to provide
-        task specific control conditioning
-        '''
-        return
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -494,7 +486,6 @@ class StableDiffusionUniControlNetPipeline(
 
     def check_inputs(
         self,
-        task,
         prompt,
         image,
         callback_steps,
@@ -524,13 +515,6 @@ class StableDiffusionUniControlNetPipeline(
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        
-        if task is None:
-            raise ValueError(f"`task` cannot be empty. Pass one of the tasks in {task_to_name.keys()}")
-        elif isinstance(task,str) and task not in task_to_name.keys():
-            raise ValueError(f"`task` has to be one of the tasks in {task_to_name.keys()} but got {task}")
-        elif isinstance(task,list) and any([indiv_task for indiv_task in task if indiv_task not in task_to_name.keys()]):
-            raise ValueError(f"`task` list has to be a list of tasks in {task_to_name.keys()} but got {task}")
 
         if negative_prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
@@ -730,7 +714,7 @@ class StableDiffusionUniControlNetPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        task: Union[str, List[str]] = None,
+        task = 'canny',
         image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -759,8 +743,6 @@ class StableDiffusionUniControlNetPipeline(
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            task (`str` or `List[str]`):
-                The task for which the control needs to be applied. Needs to be one of the tasks in task_to_name.keys()
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
                     `List[List[torch.FloatTensor]]`, `List[List[np.ndarray]]` or `List[List[PIL.Image.Image]]`):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If the type is
@@ -851,7 +833,6 @@ class StableDiffusionUniControlNetPipeline(
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            task,
             image,
             callback_steps,
             negative_prompt,
@@ -876,7 +857,7 @@ class StableDiffusionUniControlNetPipeline(
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
+        if isinstance(controlnet) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
 
         global_pool_conditions = (
@@ -900,6 +881,7 @@ class StableDiffusionUniControlNetPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
         )
+
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
@@ -920,26 +902,7 @@ class StableDiffusionUniControlNetPipeline(
                 guess_mode=guess_mode,
             )
             height, width = image.shape[-2:]
-        elif isinstance(controlnet, MultiControlNetModel):
-            images = []
 
-            for image_ in image:
-                image_ = self.prepare_image(
-                    image=image_,
-                    width=width,
-                    height=height,
-                    batch_size=batch_size * num_images_per_prompt,
-                    num_images_per_prompt=num_images_per_prompt,
-                    device=device,
-                    dtype=controlnet.dtype,
-                    do_classifier_free_guidance=do_classifier_free_guidance,
-                    guess_mode=guess_mode,
-                )
-
-                images.append(image_)
-
-            image = images
-            height, width = image[0].shape[-2:]
         else:
             assert False
 
@@ -998,11 +961,17 @@ class StableDiffusionUniControlNetPipeline(
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
+                task_text = name_to_instruction[task_to_name[task]]
+                task_id = tasks_to_id[task_to_name[task]]
+                task_text_embeds = self.encode_task(task_text)
+
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    control_model_input,
-                    t,
-                    encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=image,
+                    control_model_input, # x or sample
+                    t, # timesteps
+                    task_text_embeds=task_text_embeds,
+                    task_id=task_id,
+                    encoder_hidden_states=controlnet_prompt_embeds, #context
+                    controlnet_cond=image, #hint
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
@@ -1021,6 +990,7 @@ class StableDiffusionUniControlNetPipeline(
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    # UNCOMMENT TO ADD CONDITIONING
                     down_block_additional_residuals=down_block_res_samples,
                     mid_block_additional_residual=mid_block_res_sample,
                     return_dict=False,
@@ -1061,9 +1031,8 @@ class StableDiffusionUniControlNetPipeline(
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image, has_nsfw_concept)
