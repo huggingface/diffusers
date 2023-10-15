@@ -28,8 +28,7 @@ from diffusers import (
     StableDiffusionModelEditingPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, skip_mps, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
@@ -185,7 +184,7 @@ class StableDiffusionModelEditingPipelineFastTests(
         super().test_attention_slicing_forward_pass(expected_max_diff=5e-3)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class StableDiffusionModelEditingSlowTests(unittest.TestCase):
     def tearDown(self):

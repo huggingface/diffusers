@@ -10,6 +10,9 @@
     <a href="https://github.com/huggingface/diffusers/releases">
         <img alt="GitHub release" src="https://img.shields.io/github/release/huggingface/diffusers.svg">
     </a>
+    <a href="https://pepy.tech/project/diffusers">
+        <img alt="GitHub release" src="https://static.pepy.tech/badge/diffusers/month">
+    </a>
     <a href="CODE_OF_CONDUCT.md">
         <img alt="Contributor Covenant" src="https://img.shields.io/badge/Contributor%20Covenant-2.0-4baaaa.svg">
     </a>

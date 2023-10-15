@@ -29,8 +29,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_instruct_pix2pix import (
     StableDiffusionXLInstructPix2PixPipeline,
 )
-from diffusers.utils import floats_tensor, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -68,7 +67,7 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
             addition_embed_type="text_time",
             addition_time_embed_dim=8,
             transformer_layers_per_block=(1, 2),
-            projection_class_embeddings_input_dim=72,  # 5 * 8 + 32
+            projection_class_embeddings_input_dim=80,  # 5 * 8 + 32
             cross_attention_dim=64,
         )
 
@@ -118,12 +117,11 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            "requires_aesthetics_score": True,
         }
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
         image = image / 2 + 0.5
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -142,7 +140,6 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
 
     def test_components_function(self):
         init_components = self.get_dummy_components()
-        init_components.pop("requires_aesthetics_score")
         pipe = self.pipeline_class(**init_components)
 
         self.assertTrue(hasattr(pipe, "components"))

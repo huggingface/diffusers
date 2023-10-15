@@ -30,7 +30,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.21.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -309,14 +309,15 @@ def main(args):
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
-            if args.use_ema:
-                ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
+            if accelerator.is_main_process:
+                if args.use_ema:
+                    ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
-            for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "unet"))
+                for i, model in enumerate(models):
+                    model.save_pretrained(os.path.join(output_dir, "unet"))
 
-                # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                    # make sure to pop weight so that corresponding model is not saved again
+                    weights.pop()
 
         def load_model_hook(models, input_dir):
             if args.use_ema:
@@ -606,28 +607,28 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
-                    # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                    if args.checkpoints_total_limit is not None:
-                        checkpoints = os.listdir(args.output_dir)
-                        checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                        checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                        # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                        if len(checkpoints) >= args.checkpoints_total_limit:
-                            num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                            removing_checkpoints = checkpoints[0:num_to_remove]
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
 
-                            logger.info(
-                                f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                            )
-                            logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                            for removing_checkpoint in removing_checkpoints:
-                                removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                shutil.rmtree(removing_checkpoint)
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
 
-                    if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")

@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # GLIGEN (Grounded Language-to-Image Generation)
 
-The GLIGEN model was created by researchers and engineers from [University of Wisconsin-Madison, Columbia University, and Microsoft](https://github.com/gligen/GLIGEN). The [`StableDiffusionGLIGENPipeline`] can generate photorealistic images conditioned on grounding inputs. Along with text and bounding boxes, if input images are given, this pipeline can insert objects described by text at the region defined by bounding boxes. Otherwise, it'll generate an image described by the caption/prompt and insert objects described by text at the region defined by bounding boxes. It's trained on COCO2014D and COCO2014CD datasets, and the model uses a frozen CLIP ViT-L/14 text encoder to condition itself on grounding inputs.
+The GLIGEN model was created by researchers and engineers from [University of Wisconsin-Madison, Columbia University, and Microsoft](https://github.com/gligen/GLIGEN). The [`StableDiffusionGLIGENPipeline`] and [`StableDiffusionGLIGENTextImagePipeline`] can generate photorealistic images conditioned on grounding inputs. Along with text and bounding boxes with [`StableDiffusionGLIGENPipeline`], if input images are given, [`StableDiffusionGLIGENTextImagePipeline`] can insert objects described by text at the region defined by bounding boxes. Otherwise, it'll generate an image described by the caption/prompt and insert objects described by text at the region defined by bounding boxes. It's trained on COCO2014D and COCO2014CD datasets, and the model uses a frozen CLIP ViT-L/14 text encoder to condition itself on grounding inputs.
 
 The abstract from the [paper](https://huggingface.co/papers/2301.07093) is:
 
@@ -26,11 +26,24 @@ If you want to use one of the official checkpoints for a task, explore the [glig
 
 </Tip>
 
-This pipeline was contributed by [Nikhil Gajendrakumar](https://github.com/nikhil-masterful).
+[`StableDiffusionGLIGENPipeline`] was contributed by [Nikhil Gajendrakumar](https://github.com/nikhil-masterful) and [`StableDiffusionGLIGENTextImagePipeline`] was contributed by [Nguyễn Công Tú Anh](https://github.com/tuanh123789).
 
 ## StableDiffusionGLIGENPipeline
 
 [[autodoc]] StableDiffusionGLIGENPipeline
+	- all
+	- __call__
+	- enable_vae_slicing
+	- disable_vae_slicing
+	- enable_vae_tiling
+	- disable_vae_tiling
+	- enable_model_cpu_offload
+	- prepare_latents
+	- enable_fuser
+
+## StableDiffusionGLIGENTextImagePipeline
+
+[[autodoc]] StableDiffusionGLIGENTextImagePipeline
 	- all
 	- __call__
 	- enable_vae_slicing

@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Text-guided 이미지 인페인팅(inpainting)
 
-[[코랩에서 열기]]
+[[open-in-colab]]
 
 [`StableDiffusionInpaintPipeline`]은 마스크와 텍스트 프롬프트를 제공하여 이미지의 특정 부분을 편집할 수 있도록 합니다. 이 기능은 인페인팅 작업을 위해 특별히 훈련된 [`runwayml/stable-diffusion-inpainting`](https://huggingface.co/runwayml/stable-diffusion-inpainting)과 같은 Stable Diffusion 버전을 사용합니다.
 

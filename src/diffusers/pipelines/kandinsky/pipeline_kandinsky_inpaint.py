@@ -16,7 +16,7 @@ from copy import deepcopy
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 from packaging import version
@@ -29,12 +29,10 @@ from ... import __version__
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDIMScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .text_encoder import MultilingualCLIP
 
@@ -259,6 +257,8 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             MoVQ image encoder and decoder
     """
 
+    model_cpu_offload_seq = "text_encoder->unet->movq"
+
     def __init__(
         self,
         text_encoder: MultilingualCLIP,
@@ -393,31 +393,6 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.movq]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -504,7 +479,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
         if not self._warn_has_been_called and version.parse(version.parse(__version__).base_version) < version.parse(
-            "0.22.0.dev0"
+            "0.23.0.dev0"
         ):
             logger.warn(
                 "Please note that the expected format of `mask_image` has recently been changed. "
@@ -512,7 +487,7 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
                 "As of diffusers==0.19.0 this behavior has been inverted. Now white pixels are repainted and black pixels are preserved. "
                 "This way, Kandinsky's masking behavior is aligned with Stable Diffusion. "
                 "THIS means that you HAVE to invert the input mask to have the same behavior as before as explained in https://github.com/huggingface/diffusers/pull/4207. "
-                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.22.0"
+                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.23.0"
             )
             self._warn_has_been_called = True
 
@@ -635,7 +610,8 @@ class KandinskyInpaintPipeline(DiffusionPipeline):
             ).prev_sample
 
             if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                step_idx = i // getattr(self.scheduler, "order", 1)
+                callback(step_idx, t, latents)
 
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]

@@ -10,8 +10,14 @@ from diffusers import (
     ConsistencyModelPipeline,
     UNet2DModel,
 )
-from diffusers.utils import nightly, randn_tensor, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_2, require_torch_gpu
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    nightly,
+    require_torch_2,
+    require_torch_gpu,
+    torch_device,
+)
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import UNCONDITIONAL_IMAGE_GENERATION_BATCH_PARAMS, UNCONDITIONAL_IMAGE_GENERATION_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -187,7 +193,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def get_fixed_latents(self, seed=0, device="cpu", dtype=torch.float32, shape=(1, 3, 64, 64)):
-        if type(device) == str:
+        if isinstance(device, str):
             device = torch.device(device)
         generator = torch.Generator(device=device).manual_seed(seed)
         latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -210,9 +216,9 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.0888, 0.0881, 0.0666, 0.0479, 0.0292, 0.0195, 0.0201, 0.0163, 0.0254])
+        expected_slice = np.array([0.0146, 0.0158, 0.0092, 0.0086, 0.0000, 0.0000, 0.0000, 0.0000, 0.0058])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_consistency_model_cd_onestep(self):
         unet = UNet2DModel.from_pretrained("diffusers/consistency_models", subfolder="diffusers_cd_imagenet64_l2")
@@ -233,9 +239,9 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.0340, 0.0152, 0.0063, 0.0267, 0.0221, 0.0107, 0.0416, 0.0186, 0.0217])
+        expected_slice = np.array([0.0059, 0.0003, 0.0000, 0.0023, 0.0052, 0.0007, 0.0165, 0.0081, 0.0095])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @require_torch_2
     def test_consistency_model_cd_multistep_flash_attn(self):
@@ -257,7 +263,7 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.1875, 0.1428, 0.1289, 0.2151, 0.2092, 0.1477, 0.1877, 0.1641, 0.1353])
+        expected_slice = np.array([0.1845, 0.1371, 0.1211, 0.2035, 0.1954, 0.1323, 0.1773, 0.1593, 0.1314])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -283,6 +289,6 @@ class ConsistencyModelPipelineSlowTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.1663, 0.1948, 0.2275, 0.1680, 0.1204, 0.1245, 0.1858, 0.1338, 0.2095])
+        expected_slice = np.array([0.1623, 0.2009, 0.2387, 0.1731, 0.1168, 0.1202, 0.2031, 0.1327, 0.2447])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

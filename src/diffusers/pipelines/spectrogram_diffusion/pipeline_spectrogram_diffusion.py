@@ -21,7 +21,8 @@ import torch
 
 from ...models import T5FilmDecoder
 from ...schedulers import DDPMScheduler
-from ...utils import is_onnx_available, logging, randn_tensor
+from ...utils import is_onnx_available, logging
+from ...utils.torch_utils import randn_tensor
 
 
 if is_onnx_available():

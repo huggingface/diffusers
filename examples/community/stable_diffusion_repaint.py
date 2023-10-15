@@ -16,7 +16,7 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
@@ -33,8 +33,8 @@ from diffusers.utils import (
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    randn_tensor,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -932,7 +932,8 @@ class StableDiffusionRepaintPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 # call the callback, if provided
                 progress_bar.update()
                 if callback is not None and i % callback_steps == 0:
-                    callback(i, t, latents)
+                    step_idx = i // getattr(self.scheduler, "order", 1)
+                    callback(step_idx, t, latents)
 
                 t_last = t
 

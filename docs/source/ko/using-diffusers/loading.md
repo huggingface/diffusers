@@ -105,7 +105,7 @@ stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
 stable_diffusion.scheduler.compatibles
 ```
 
-이번에는 [`SchedulerMixin.from_pretrained`] 메서드를 사용해서, 기존 기본 스케줄러였던 [`PNDMScheduler`]를 보다 우수한 성능의 [`EulerDiscreteScheduler`]로 바꿔봅시다. 스케줄러를 로드할 때는 `subfolder` 인자를 통해, 해당 파이프라인의 레포지토리에서 [스케줄러에 관한 하위폴더](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler)를  명시해주어야 합니다. 
+이번에는 [`SchedulerMixin.from_pretrained`] 메서드를 사용해서, 기존 기본 스케줄러였던 [`PNDMScheduler`]를 보다 우수한 성능의 [`EulerDiscreteScheduler`]로 바꿔봅시다. 스케줄러를 로드할 때는 `subfolder` 인자를 통해, 해당 파이프라인의 리포지토리에서 [스케줄러에 관한 하위폴더](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler)를  명시해주어야 합니다. 
 
 그 다음 새롭게 생성한 [`EulerDiscreteScheduler`] 인스턴스를 [`DiffusionPipeline`]의 `scheduler` 인자에 전달합니다.
 
@@ -177,7 +177,7 @@ Variant란 일반적으로 다음과 같은 체크포인트들을 의미합니�
 
 <Tip>
 
-💡 모델 구조는 동일하지만 서로 다른 학습 환경에서 서로 다른 데이터셋으로 학습된 체크포인트들이 있을 경우, 해당 체크포인트들은 variant 단계가 아닌 레포지토리 단계에서 분리되어 관리되어야 합니다. (즉, 해당 체크포인트들은 서로 다른 레포지토리에서 따로 관리되어야 합니다. 예시: [`stable-diffusion-v1-4`], [`stable-diffusion-v1-5`]). 
+💡 모델 구조는 동일하지만 서로 다른 학습 환경에서 서로 다른 데이터셋으로 학습된 체크포인트들이 있을 경우, 해당 체크포인트들은 variant 단계가 아닌 리포지토리 단계에서 분리되어 관리되어야 합니다. (즉, 해당 체크포인트들은 서로 다른 리포지토리에서 따로 관리되어야 합니다. 예시: [`stable-diffusion-v1-4`], [`stable-diffusion-v1-5`]). 
 
 </Tip>
 
@@ -190,7 +190,7 @@ Variant란 일반적으로 다음과 같은 체크포인트들을 의미합니�
 variant를 로드할 때 2개의 중요한 argument가 있습니다.
 
 * `torch_dtype`은 불러올 체크포인트의 부동소수점을 정의합니다. 예를 들어 `torch_dtype=torch.float16`을 명시함으로써 가중치의 부동소수점 타입을 `fl16`으로 변환할 수 있습니다. (만약 따로 설정하지 않을 경우, 기본값으로 `fp32` 타입의 가중치가 로딩됩니다.) 또한 `variant` 인자를 명시하지 않은 채로 체크포인트를 불러온 다음, 해당 체크포인트를 `torch_dtype=torch.float16` 인자를 통해 `fp16` 타입으로 변환하는 것 역시 가능합니다. 이 경우 기본으로 설정된 `fp32` 가중치가 먼저 다운로드되고, 해당 가중치들을 불러온 다음 `fp16` 타입으로 변환하게 됩니다.
-* `variant` 인자는 레포지토리에서 어떤 variant를 불러올 것인가를 정의합니다. 가령  [`diffusers/stable-diffusion-variants`](https://huggingface.co/diffusers/stable-diffusion-variants/tree/main/unet) 레포지토리로부터 `non_ema` 체크포인트를 불러오고자 한다면, `variant="non_ema"` 인자를 전달해야 합니다.
+* `variant` 인자는 리포지토리에서 어떤 variant를 불러올 것인가를 정의합니다. 가령  [`diffusers/stable-diffusion-variants`](https://huggingface.co/diffusers/stable-diffusion-variants/tree/main/unet) 리포지토리로부터 `non_ema` 체크포인트를 불러오고자 한다면, `variant="non_ema"` 인자를 전달해야 합니다.
 
 ```python
 from diffusers import DiffusionPipeline
@@ -238,7 +238,7 @@ repo_id = "runwayml/stable-diffusion-v1-5"
 model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet")
 ```
 
-혹은 [해당 모델의 레포지토리](https://huggingface.co/google/ddpm-cifar10-32/tree/main)로부터 다이렉트로 가져오는 것 역시 가능합니다. 
+혹은 [해당 모델의 리포지토리](https://huggingface.co/google/ddpm-cifar10-32/tree/main)로부터 다이렉트로 가져오는 것 역시 가능합니다. 
 
 ```python
 from diffusers import UNet2DModel
@@ -295,7 +295,7 @@ pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
 - 첫째로, `from_pretrained` 메서드는 최신 버전의 파이프라인을 다운로드하고, 캐시에 저장합니다. 이미 로컬 캐시에 최신 버전의 파이프라인이 저장되어 있다면, [`DiffusionPipeline.from_pretrained`]은 해당 파일들을 다시 다운로드하지 않고, 로컬 캐시에 저장되어 있는 파이프라인을 불러옵니다.
 -  `model_index.json` 파일을 통해 체크포인트에 대응되는 적합한 파이프라인 클래스로 불러옵니다.
 
-파이프라인의 폴더 구조는 해당 파이프라인 클래스의 구조와 직접적으로 일치합니다. 예를 들어 [`StableDiffusionPipeline`] 클래스는 [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) 레포지토리와 대응되는 구조를 갖습니다.
+파이프라인의 폴더 구조는 해당 파이프라인 클래스의 구조와 직접적으로 일치합니다. 예를 들어 [`StableDiffusionPipeline`] 클래스는 [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) 리포지토리와 대응되는 구조를 갖습니다.
 
 ```python
 from diffusers import DiffusionPipeline
