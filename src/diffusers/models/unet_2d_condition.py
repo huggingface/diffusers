@@ -43,6 +43,7 @@ from .embeddings import (
 )
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
+    UNetMidBlock2D,
     UNetMidBlock2DCrossAttn,
     UNetMidBlock2DSimpleCrossAttn,
     get_down_block,
@@ -499,6 +500,20 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 skip_time_act=resnet_skip_time_act,
                 only_cross_attention=mid_block_only_cross_attention,
                 cross_attention_norm=cross_attention_norm,
+            )
+        elif mid_block_type == "UNetMidBlock2D":
+            self.mid_block = UNetMidBlock2D(
+                in_channels=block_out_channels[-1],
+                temb_channels=blocks_time_embed_dim,
+                dropout=dropout,
+                num_layers=0,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_groups=norm_num_groups,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                skip_time_act=resnet_skip_time_act,
+                add_attention=False     
             )
         elif mid_block_type is None:
             self.mid_block = None
