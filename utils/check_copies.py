@@ -61,7 +61,18 @@ def _should_continue(line, indent):
 
 
 def find_code_in_diffusers(object_name):
-    """Find and return the code source code of `object_name`."""
+    """
+    Find and return the source code of an object.
+
+    Args:
+        object_name (`str`):
+            The name of the object we want the source code of.
+        base_path (`str`, *optional*):
+            The path to the base folder where files are checked. If not set, it will be set to `DIFFUSERS_PATH`.
+
+    Returns:
+        `str`: The source code of the object.
+    """
     parts = object_name.split(".")
     i = 0
 
@@ -109,6 +120,15 @@ _re_fill_pattern = re.compile(r"<FILL\s+[^>]*>")
 
 
 def get_indent(code):
+    """
+    Find the indent in the first non empty line in a code sample.
+
+    Args:
+        code (`str`): The code to inspect.
+
+    Returns:
+        `str`: The indent looked at (as string).
+    """
     lines = code.split("\n")
     idx = 0
     while idx < len(lines) and len(lines[idx]) == 0:
@@ -120,12 +140,18 @@ def get_indent(code):
 
 def blackify(code):
     """
-    Applies the black part of our `make style` command to `code`.
+    Applies the black part of our `make style` command to some code.
+
+    Args:
+        code (`str`): The code to format.
+
+    Returns:
+        `str`: The formatted code.
     """
     has_indent = len(get_indent(code)) > 0
     if has_indent:
         code = f"class Bla:\n{code}"
-    mode = black.Mode(target_versions={black.TargetVersion.PY37}, line_length=119, preview=True)
+    mode = black.Mode(target_versions={black.TargetVersion.PY37}, line_length=119)
     result = black.format_str(code, mode=mode)
     result, _ = style_docstrings_in_code(result)
     return result[len("class Bla:\n") :] if has_indent else result
@@ -133,8 +159,15 @@ def blackify(code):
 
 def check_codes_match(observed_code, theoretical_code):
     """
-    Checks if the code in `observed_code` and `theoretical_code` match with the exception of the class/function name.
-    Returns the index of the first line where there is a difference (if any) and `None` if the codes match.
+    Checks if two version of a code match with the exception of the class/function name.
+
+    Args:
+        observed_code (`str`): The code found.
+        theoretical_code (`str`): The code to match.
+
+    Returns:
+        `Optional[int]`: The index of the first line where there is a difference (if any) and `None` if the codes
+        match.
     """
     observed_code_header = observed_code.split("\n")[0]
     theoretical_code_header = theoretical_code.split("\n")[0]
@@ -160,8 +193,17 @@ def check_codes_match(observed_code, theoretical_code):
 
 def is_copy_consistent(filename, overwrite=False):
     """
-    Check if the code commented as a copy in `filename` matches the original.
-    Return the differences or overwrites the content depending on `overwrite`.
+    Check if the code commented as a copy in a file matches the original.
+
+    Args:
+        filename (`str`):
+            The name of the file to check.
+        overwrite (`bool`, *optional*, defaults to `False`):
+            Whether or not to overwrite the copies when they don't match.
+
+    Returns:
+        `Optional[List[Tuple[str, int]]]`: If `overwrite=False`, returns the list of differences as tuples `(str, int)`
+        with the name of the object having a diff and the line number where theere is the first diff.
     """
     with open(filename, "r", encoding="utf-8", newline="\n") as f:
         lines = f.readlines()
@@ -235,8 +277,12 @@ def is_copy_consistent(filename, overwrite=False):
 
 def check_copies(overwrite: bool = False):
     """
-    Check every file is copy-consistent with the original and maybe `overwrite` content when it is not. Also check the
-    model list in the main README and other READMEs/index.md are consistent.
+    Check every file is copy-consistent with the original. Also check the model list in the main README and other
+    READMEs are consistent.
+
+    Args:
+        overwrite (`bool`, *optional*, defaults to `False`):
+            Whether or not to overwrite the copies when they don't match.
     """
     all_files = glob.glob(os.path.join(DIFFUSERS_PATH, "**/*.py"), recursive=True)
     diffs = []
