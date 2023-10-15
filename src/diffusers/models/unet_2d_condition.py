@@ -173,7 +173,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
-        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
+        mid_block_type: Optional[str] = ("UNetMidBlock2DCrossAttn", "UNetMidBlock2D"),
         up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
@@ -512,7 +512,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 output_scale_factor=mid_block_scale_factor,
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                skip_time_act=resnet_skip_time_act,
                 add_attention=False     
             )
         elif mid_block_type is None:
