@@ -28,6 +28,22 @@ class StateDictType(enum.Enum):
     DIFFUSERS = "diffusers"
 
 
+# We need to define a proper mapping for Unet since it uses different output keys than text encoder
+# e.g. to_q_lora -> q_proj / to_q
+UNET_TO_DIFFUSERS = {
+    ".to_out_lora.up": ".to_out.0.lora_B",
+    ".to_out_lora.down": ".to_out.0.lora_A",
+    ".to_q_lora.down": ".to_q.lora_A",
+    ".to_q_lora.up": ".to_q.lora_B",
+    ".to_k_lora.down": ".to_k.lora_A",
+    ".to_k_lora.up": ".to_k.lora_B",
+    ".to_v_lora.down": ".to_v.lora_A",
+    ".to_v_lora.up": ".to_v.lora_B",
+    ".lora.up": ".lora_B",
+    ".lora.down": ".lora_A",
+}
+
+
 DIFFUSERS_TO_PEFT = {
     ".q_proj.lora_linear_layer.up": ".q_proj.lora_B",
     ".q_proj.lora_linear_layer.down": ".q_proj.lora_A",
@@ -50,6 +66,8 @@ DIFFUSERS_OLD_TO_PEFT = {
     ".to_v_lora.down": ".v_proj.lora_A",
     ".to_out_lora.up": ".out_proj.lora_B",
     ".to_out_lora.down": ".out_proj.lora_A",
+    ".lora_linear_layer.up": ".lora_B",
+    ".lora_linear_layer.down": ".lora_A",
 }
 
 PEFT_TO_DIFFUSERS = {
@@ -84,6 +102,10 @@ DIFFUSERS_STATE_DICT_MAPPINGS = {
     StateDictType.PEFT: PEFT_TO_DIFFUSERS,
 }
 
+KEYS_TO_ALWAYS_REPLACE = {
+    ".processor.": ".",
+}
+
 
 def convert_state_dict(state_dict, mapping):
     r"""
@@ -103,6 +125,12 @@ def convert_state_dict(state_dict, mapping):
     """
     converted_state_dict = {}
     for k, v in state_dict.items():
+        # First, filter out the keys that we always want to replace
+        for pattern in KEYS_TO_ALWAYS_REPLACE.keys():
+            if pattern in k:
+                new_pattern = KEYS_TO_ALWAYS_REPLACE[pattern]
+                k = k.replace(pattern, new_pattern)
+
         for pattern in mapping.keys():
             if pattern in k:
                 new_pattern = mapping[pattern]
@@ -183,4 +211,12 @@ def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
         raise ValueError(f"Original type {original_type} is not supported")
 
     mapping = DIFFUSERS_STATE_DICT_MAPPINGS[original_type]
+    return convert_state_dict(state_dict, mapping)
+
+
+def convert_unet_state_dict_to_peft(state_dict):
+    r"""
+    Converts a state dict from UNet format to diffusers format - i.e. by removing some keys
+    """
+    mapping = UNET_TO_DIFFUSERS
     return convert_state_dict(state_dict, mapping)
