@@ -14,9 +14,9 @@
 """
 PEFT utilities: Utilities related to peft library
 """
-from typing import Optional
 import collections
 import importlib
+from typing import Optional
 
 from packaging import version
 
@@ -100,8 +100,8 @@ def unscale_lora_layers(model, scale: Optional[float] = None):
         model (`torch.nn.Module`):
             The model to scale.
         weight (`float`, *optional*):
-            The weight to be given to the LoRA layers. If no scale is passed
-            the scale of the lora layer will be re-initialized to the correct value
+            The weight to be given to the LoRA layers. If no scale is passed the scale of the lora layer will be
+            re-initialized to the correct value
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
