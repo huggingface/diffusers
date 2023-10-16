@@ -84,7 +84,7 @@ class LoRALinearLayer(nn.Module):
         nn.init.zeros_(self.up.weight)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        print(f"From {self.__class__.__name__}: hidden_states: {hidden_states.dtype}")
+        # print(f"From {self.__class__.__name__}: hidden_states: {hidden_states.dtype}")
         orig_dtype = hidden_states.dtype
         dtype = self.down.weight.dtype
 
@@ -95,7 +95,7 @@ class LoRALinearLayer(nn.Module):
             up_hidden_states *= self.network_alpha / self.rank
 
         out = up_hidden_states.to(orig_dtype)
-        print(f"From {self.__class__.__name__}: out: {out.dtype}")
+        # print(f"From {self.__class__.__name__}: out: {out.dtype}")
         return out
 
 

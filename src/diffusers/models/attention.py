@@ -207,10 +207,10 @@ class BasicTransformerBlock(nn.Module):
             )
         else:
             norm_hidden_states = self.norm1(hidden_states)
-        print("After first norm")
-        print(f"hidden_states: {hidden_states.dtype}")
-        print(f"norm_hidden_states: {norm_hidden_states.dtype}")
-        print(f"encoder_hidden_states: {norm_hidden_states.dtype}")
+        # print("After first norm")
+        # print(f"hidden_states: {hidden_states.dtype}")
+        # print(f"norm_hidden_states: {norm_hidden_states.dtype}")
+        # print(f"encoder_hidden_states: {norm_hidden_states.dtype}")
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
@@ -227,9 +227,9 @@ class BasicTransformerBlock(nn.Module):
         )
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
-        print(f"attn_output: {attn_output.dtype}")
+        # print(f"attn_output: {attn_output.dtype}")
         hidden_states = attn_output + hidden_states
-        print(f"attn_output: {attn_output.dtype}")
+        # print(f"attn_output: {attn_output.dtype}")
 
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
