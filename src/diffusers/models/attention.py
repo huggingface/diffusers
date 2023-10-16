@@ -229,6 +229,7 @@ class BasicTransformerBlock(nn.Module):
             attn_output = gate_msa.unsqueeze(1) * attn_output
         print(f"attn_output: {attn_output.dtype}")
         hidden_states = attn_output + hidden_states
+        print(f"attn_output: {attn_output.dtype}")
 
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
