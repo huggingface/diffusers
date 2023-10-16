@@ -413,6 +413,14 @@ def main(args):
             model_config=model.config,
         )
 
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+        args.mixed_precision = accelerator.mixed_precision
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+        args.mixed_precision = accelerator.mixed_precision
+
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
@@ -559,11 +567,9 @@ def main(args):
                     progress_bar.update(1)
                 continue
 
-            clean_images = batch["input"]
+            clean_images = batch["input"].to(weight_dtype)
             # Sample noise that we'll add to the images
-            noise = torch.randn(
-                clean_images.shape, dtype=(torch.float32 if args.mixed_precision == "no" else torch.float16)
-            ).to(clean_images.device)
+            noise = torch.randn(clean_images.shape, dtype=weight_dtype, device=clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(
