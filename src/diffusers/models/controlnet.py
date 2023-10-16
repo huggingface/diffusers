@@ -367,7 +367,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         controlnet_block = zero_module(controlnet_block)
         self.controlnet_down_blocks.append(controlnet_block)
 
-        if controlnet_conditioning_embedding == "UniControlNetTaskMOEEmbedding"
+        if controlnet_conditioning_embedding == "UniControlNetTaskMOEEmbedding":
             # Add layernet here, adds 1 layernet.
             self.task_id_layernet = nn.ModuleList([])
             self.task_id_layernet.append(nn.Linear(time_embed_dim, block_out_channels[0]))
