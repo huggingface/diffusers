@@ -1113,6 +1113,10 @@ def main(args):
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat, 1),
                     }
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    print(f"noisy_model_input: {noisy_model_input.dtype}")
+                    print(f"prompt_embeds_input: {prompt_embeds_input.dtype}")
+                    for k, v in unet_added_conditions.items():
+                        print(f"k: {v.dtype}")
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
