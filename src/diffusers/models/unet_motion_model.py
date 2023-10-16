@@ -311,17 +311,36 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         return model
 
     def load_motion_modules(self, motion_adapter: Optional[MotionAdapter]):
-        state_dict = motion_adapter.state_dict()
-        self.load_state_dict(state_dict)
+        motion_state_dict = motion_adapter.state_dict()
+        self.load_state_dict(motion_state_dict)
 
-    def save_motion_modules(self, output_path):
+    def save_motion_modules(
+        self,
+        save_directory: str,
+        is_main_process: bool = True,
+        safe_serialization: bool = True,
+        variant: Optional[str] = None,
+        push_to_hub: bool = False,
+        **kwargs,
+    ):
         state_dict = self.state_dict()
-        output = {}
+
+        # Extract all motion modules
+        motion_state_dict = {}
         for k, v in state_dict.items():
             if "motion_modules" in k:
-                output[k] = v
+                motion_state_dict[k] = v
 
-        torch.save(output, output_path)
+        adapter = MotionAdapter.from_config(self.config)
+        adapter.load_state_dict(motion_state_dict)
+        adapter.save_pretrained(
+            save_directory=save_directory,
+            is_main_process=is_main_process,
+            safe_serialization=safe_serialization,
+            variant=variant,
+            push_to_hub=push_to_hub,
+            **kwargs,
+        )
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors

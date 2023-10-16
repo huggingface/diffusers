@@ -235,14 +235,8 @@ class MotionAdapter(ModelMixin, ConfigMixin):
     def __init__(
         self,
         block_out_channels=(320, 640, 1280, 1280),
-        down_block_types=(
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        up_block_types=("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
         layers_per_block=2,
+        mid_block_num_layers=1,
         num_attention_heads=8,
         attenion_bias=False,
         cross_attention_dim=None,
@@ -269,7 +263,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         down_blocks = []
         up_blocks = []
 
-        for i, block_type in enumerate(down_block_types):
+        for i, channel in enumerate(block_out_channels):
             output_channel = block_out_channels[i]
             down_blocks.append(
                 MotionModules(
@@ -291,12 +285,12 @@ class MotionAdapter(ModelMixin, ConfigMixin):
             activation_fn=activation_fn,
             attention_bias=attenion_bias,
             num_attention_heads=num_attention_heads,
-            layers_per_block=1,
+            layers_per_block=mid_block_num_layers,
         )
 
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
-        for i, block_type in enumerate(up_block_types):
+        for i, channel in enumerate(reversed_block_out_channels):
             output_channel = reversed_block_out_channels[i]
             up_blocks.append(
                 MotionModules(
