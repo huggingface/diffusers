@@ -29,7 +29,7 @@ from .transformer_2d import Transformer2DModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
+# ToDo Umer: check if attention_bias should be passed to other block types
 def get_down_block(
     down_block_type,
     num_layers,
@@ -50,6 +50,7 @@ def get_down_block(
     upcast_attention=False,
     resnet_time_scale_shift="default",
     attention_type="default",
+    attention_bias=False,
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
@@ -136,6 +137,7 @@ def get_down_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             attention_type=attention_type,
+            attention_bias=attention_bias,
         )
     elif down_block_type == "SimpleCrossAttnDownBlock2D":
         if cross_attention_dim is None:
@@ -259,6 +261,7 @@ def get_up_block(
     upcast_attention=False,
     resnet_time_scale_shift="default",
     attention_type="default",
+    attention_bias=False,
     resnet_skip_time_act=False,
     resnet_out_scale_factor=1.0,
     cross_attention_norm=None,
@@ -305,6 +308,7 @@ def get_up_block(
             output_scale_factor=resnet_out_scale_factor,
         )
     elif up_block_type == "CrossAttnUpBlock2D":
+        # todo umer: check if attention_bias required for typey other than CrossAttnUpBlock2D
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlock2D")
         return CrossAttnUpBlock2D(
@@ -327,6 +331,7 @@ def get_up_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             attention_type=attention_type,
+            attention_bias=attention_bias,
         )
     elif up_block_type == "SimpleCrossAttnUpBlock2D":
         if cross_attention_dim is None:
@@ -585,6 +590,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         use_linear_projection=False,
         upcast_attention=False,
         attention_type="default",
+        attention_bias=False,
     ):
         super().__init__()
 
@@ -622,6 +628,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
+                        attention_bias=attention_bias,
                     )
                 )
             else:
@@ -972,6 +979,7 @@ class CrossAttnDownBlock2D(nn.Module):
         only_cross_attention=False,
         upcast_attention=False,
         attention_type="default",
+        attention_bias=False,
     ):
         super().__init__()
         resnets = []
@@ -1009,6 +1017,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
+                        attention_bias=attention_bias,
                     )
                 )
             else:
@@ -2116,6 +2125,7 @@ class CrossAttnUpBlock2D(nn.Module):
         only_cross_attention=False,
         upcast_attention=False,
         attention_type="default",
+        attention_bias=False,
     ):
         super().__init__()
         resnets = []
@@ -2155,6 +2165,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         only_cross_attention=only_cross_attention,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
+                        attention_bias=attention_bias,
                     )
                 )
             else:

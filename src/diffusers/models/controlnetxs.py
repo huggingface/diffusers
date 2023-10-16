@@ -12,27 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
-from itertools import chain, zip_longest
+from typing import Optional, Union, Tuple
+
+from itertools import zip_longest
 
 import torch
-import torch.nn as nn
-import torch.utils.checkpoint
-
+from torch import nn
+from torch.nn import functional as F
 from torch.nn.modules.normalization import GroupNorm
+import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
-
-from .embeddings import (
-    GaussianFourierProjection,
-    TimestepEmbedding,
-    Timesteps,
-    get_timestep_embedding
-)
-from .lora import LoRACompatibleConv
+from .embeddings import get_timestep_embedding
 from .modeling_utils import ModelMixin
+from .lora import LoRACompatibleConv
 from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
     DownBlock2D,
@@ -41,107 +36,91 @@ from .unet_2d_blocks import (
     ResnetBlock2D,
     Transformer2DModel,
     Downsample2D,
-    Upsample2D
+    Upsample2D,
 )
 from .unet_2d_condition import UNet2DConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+# todo Umer later: add attention_bias to relevant docs
 
 @dataclass
 class UNet2DConditionOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
-# Q: better name?
-class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+    """A ControlNet-XS model."""
 
+    # to delete later
+    @classmethod
+    def create_as_in_paper(cls):
+        # todo: load sdxl instead
+        base_model = UNet2DConditionModel(
+            block_out_channels=(320, 640, 1280),
+            down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D","UpBlock2D"),
+            transformer_layers_per_block=(0,2,10),
+            cross_attention_dim=2048,
+        )
+        return cls(
+            base_model,
+            model_channels=320,
+            out_channels=4,
+            hint_channels=3,
+            block_out_channels=(32,64,128),
+            transformer_layers_per_block=(0,2,10),
+            attention_bias=True,
+            cross_attention_dim=2048,
+        )
+    
     def __init__(
             self,
-            in_channels,
+            base_model: UNet2DConditionModel,
             model_channels,
             out_channels,
             hint_channels,
-            num_res_blocks,
-            attention_resolutions,
-            block_out_channels: Tuple[int] = (320, 640, 1280, 1280),#note umer: not used everywhere by me. fix later.
-            act_fn: str = "silu",
-            time_embedding_type: str = "positional",
-            time_embedding_dim: Optional[int] = None,
-            time_embedding_act_fn: Optional[str] = None,
-            timestep_post_act: Optional[str] = None,
-            time_cond_proj_dim: Optional[int] = None,
-            flip_sin_to_cos: bool = True,
-            freq_shift: int = 0, 
+            block_out_channels,
+            transformer_layers_per_block,
+            attention_bias=False,
             encoder_hid_dim: Optional[int] = 768, # Note Umer: should not be hard coded, but okay for minimal functional run - this comes from the text encoder output shape
-            cross_attention_dim: Union[int, Tuple[int]] = 1280, # Note Umer: should not be hard coded, but okay for minimal functional run - this from the unet shapes
+            cross_attention_dim: Union[int, Tuple[int]] = 1280,
         ):
         super().__init__()
 
+        self.base_model = base_model
+
         # 1 - Save parameters
         # TODO make variables
-        self.control_mode = "canny"
-        self.learn_embedding = False
-        self.infusion2control = "cat"
-        self.infusion2base = "add"
         self.in_ch_factor = 1 if "cat" == 'add' else 2
-        self.guiding = "encoder"
-        self.two_stream_mode = "cross"
         self.control_model_ratio = 1.0
         self.out_channels = out_channels
         self.dims = 2
         self.model_channels = model_channels
-        self.no_control = False
         self.control_scale = 1.0
-
         self.hint_model = None
-
-        self.flip_sin_to_cos = flip_sin_to_cos
-        self.freq_shift = freq_shift
         
-        # Time embedding
-        if time_embedding_type == "fourier":
-            time_embed_dim = time_embedding_dim or block_out_channels[0] * 2
-            if time_embed_dim % 2 != 0:
-                raise ValueError(f"`time_embed_dim` should be divisible by 2, but is {time_embed_dim}.")
-            self.time_proj = GaussianFourierProjection(
-                time_embed_dim // 2, set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
-            )
-            timestep_input_dim = time_embed_dim
-        elif time_embedding_type == "positional":
-            time_embed_dim = time_embedding_dim or block_out_channels[0] * 4
+        # 1 - Create controller
+        def class_names(modules):
+            return [m.__class__.__name__ for m in modules]
+        
+        def get_time_emd_dim(unet: UNet2DConditionModel):
+            return unet.time_embedding.linear_2.out_features
 
-            self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
-            timestep_input_dim = block_out_channels[0]
-        else:
-            raise ValueError(
-                f"{time_embedding_type} does not exist. Please make sure to use one of `fourier` or `positional`."
-            )
-
-        self.time_embedding = TimestepEmbedding(
-            timestep_input_dim,
-            time_embed_dim,
-            act_fn=act_fn,
-            post_act_fn=timestep_post_act,
-            cond_proj_dim=time_cond_proj_dim,
+        self.control_model = ctrl_model = UNet2DConditionModel(
+            block_out_channels=block_out_channels,
+            down_block_types=class_names(base_model.down_blocks),
+            up_block_types=class_names(base_model.up_blocks),
+            time_embedding_dim=get_time_emd_dim(base_model),
+            transformer_layers_per_block=transformer_layers_per_block,
+            attention_bias=attention_bias,
+            cross_attention_dim=cross_attention_dim,
         )
-        # Text embedding
-        self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
 
-        # 2 - Create base and control model
-        self.base_model = base_model = UNet2DConditionModel(#todo make variable
-            block_out_channels=(320, 640, 1280),
-            down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D","UpBlock2D"),
-        )
-        self.control_model = ctrl_model = UNet2DConditionModel(#todo make variable
-            block_out_channels=[32,64,128],
-            down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D","UpBlock2D"),
-            time_embedding_dim=1280
-        ) # todo: make variable
-        for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))): # todo: make variable (sth like zip(block_out_channels[:-1],block_out_channels[1:]))
+        # 2 - Adapt controller to allow for information infusion from base model
+        # todo: make variable (sth like zip(block_out_channels[:-1],block_out_channels[1:]))
+        for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))):
             e1,e2=extra_channels
             increase_block_input_in_encoder_resnet(self.control_model, block_no=i, resnet_idx=0, by=e1)
             increase_block_input_in_encoder_resnet(self.control_model, block_no=i, resnet_idx=1, by=e2)
@@ -215,7 +194,7 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
                 self.make_zero_conv(ch_inout_ctrl['enc'][-(i + 1)][1], ch_inout_base['dec'][i - 1][1])
             )
     
-        # 5 - Input hint block TODO: Understand
+        # 5 - Create conditioning hint embedding
         self.input_hint_block = nn.Sequential(
             nn.Conv2d(hint_channels, 16, 3, padding=1),
             nn.SiLU(),
@@ -234,9 +213,17 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             zero_module(nn.Conv2d(256, int(model_channels * self.control_model_ratio), 3, padding=1))
         )
     
+        # 6 - Create time embedding
+        pass
+        self.flip_sin_to_cos = True # default params
+        self.freq_shift = 0
+        # Todo: Only when `learn_embedding = False` can we just use the base model's time embedding, otherwise we need to create our own 
+        # Text embedding
+        # todo: I thinks we might not need this, because we can use the base model's encoder_hid_proj. todo: verify
+        self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
+
         scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
         self.register_buffer('scale_list', torch.tensor(scale_list))
-
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, encoder_hidden_states: torch.Tensor, c: dict, hint: torch.Tensor, no_control=False, **kwargs):
         """ Params from unet_2d_condition.UNet2DConditionModel.forward:
@@ -255,16 +242,13 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
         # return_dict: bool = True,
         """
 
-        # # < from forward
         x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
         if x.size(0) // 2 == hint.size(0): hint = torch.cat([hint, hint], dim=0) # for classifier free guidance
         
         timesteps=t
         context=c.get("crossattn", None)
         y=c.get("vector", None)
-        # # />
 
-        # # < from forward_
         if no_control: return self.base_model(x=x, timesteps=timesteps, context=context, y=y, **kwargs)
 
         # time embeddings
@@ -276,14 +260,9 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.freq_shift,
         )        
-        # self.learn_embedding == False
         temb = self.base_model.time_embedding(t_emb)
-
-        if y is not None: emb = emb + self.base_model.label_emb(y) # ?? - sth with class-conditioning
         # text embeddings
         cemb = self.encoder_hid_proj(encoder_hidden_states) # Q: use the base/ctrl models' encoder_hid_proj? Need to make sure dims fit
-
-        emb = temb + cemb
 
         guided_hint = self.input_hint_block(hint)
 
@@ -326,7 +305,6 @@ class ControlledUNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoa
             h_base = torch.cat([h_base, hs_base.pop()], dim=1) # concat info from base encoder+ctrl encoder
             h_base = m_base(h_base, temb, cemb, context)
         return self.base_model.conv_out(h_base)
-
 
     def make_zero_conv(self, in_channels, out_channels=None):
         # keep running track # todo: better comment
@@ -417,13 +395,6 @@ def increase_block_input_in_mid_resnet(unet, by):
         unet.mid_block.resnets[0].in_channels += by  # surgery done here
 
 
-def zero_module(module):
-    for p in module.parameters():
-        nn.init.zeros_(p)
-    return module
-
-
-from diffusers.models.unet_2d_blocks import ResnetBlock2D, Transformer2DModel, Downsample2D, Upsample2D
 class EmbedSequential(nn.ModuleList):
     """Sequential module passing embeddings (time and conditioning) to children if they support it."""
     def __init__(self,ms,*args,**kwargs):
@@ -468,3 +439,9 @@ def to_sub_blocks(blocks):
         if hasattr(b, 'downsamplers') and b.downsamplers is not None: current_subblocks.append(list(b.downsamplers))   
         sub_blocks += current_subblocks
     return list(map(EmbedSequential, sub_blocks))
+
+
+def zero_module(module):
+    for p in module.parameters():
+        nn.init.zeros_(p)
+    return module
