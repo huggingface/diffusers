@@ -137,11 +137,13 @@ class AdapterTests:
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0, num_images=1):
+    def get_dummy_inputs(self, device, seed=0, height=64, width=64, num_images=1):
         if num_images == 1:
-            image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+            image = floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(device)
         else:
-            image = [floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device) for _ in range(num_images)]
+            image = [
+                floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(device) for _ in range(num_images)
+            ]
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -215,8 +217,8 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
     def get_dummy_components(self):
         return super().get_dummy_components("multi_adapter")
 
-    def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed, num_images=2)
+    def get_dummy_inputs(self, device, height=64, width=64, seed=0):
+        inputs = super().get_dummy_inputs(device, seed, height=height, width=width, num_images=2)
         inputs["adapter_conditioning_scale"] = [0.5, 0.5]
         return inputs
 
