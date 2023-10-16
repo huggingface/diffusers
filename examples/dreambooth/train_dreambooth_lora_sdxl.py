@@ -1087,8 +1087,8 @@ def main(args):
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
                 model_input = model_input * vae.config.scaling_factor
-                # if args.pretrained_vae_model_name_or_path is None:
-                model_input = model_input.to(weight_dtype)
+                if args.pretrained_vae_model_name_or_path is None:
+                    model_input = model_input.to(weight_dtype)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
