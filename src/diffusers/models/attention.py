@@ -210,6 +210,7 @@ class BasicTransformerBlock(nn.Module):
         print("After first norm")
         print(f"hidden_states: {hidden_states.dtype}")
         print(f"norm_hidden_states: {norm_hidden_states.dtype}")
+        print(f"encoder_hidden_states: {norm_hidden_states.dtype}")
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
