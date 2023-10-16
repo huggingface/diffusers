@@ -254,14 +254,10 @@ class MotionAdapter(ModelMixin, ConfigMixin):
 
         Args:
             block_out_channels (tuple, optional): _description_. Defaults to (320, 640, 1280, 1280).
-            down_block_types (tuple, optional):
-                _description_. Defaults to ( "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D",
-                "DownBlock2D", ).
-            up_block_types (tuple, optional):
-                _description_. Defaults to ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D").
+            down_block_types (tuple, optional): _description_. Defaults to ( "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D", ).
+            up_block_types (tuple, optional): _description_. Defaults to ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D").
             layers_per_block (int, optional): _description_. Defaults to 2.
             num_attention_heads (int, optional): _description_. Defaults to 8.
-            attention_head_dim (int, optional): _description_. Defaults to 40.
             attenion_bias (bool, optional): _description_. Defaults to False.
             cross_attention_dim (_type_, optional): _description_. Defaults to None.
             activation_fn (str, optional): _description_. Defaults to "geglu".
@@ -284,6 +280,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     attention_bias=attenion_bias,
                     num_attention_heads=num_attention_heads,
                     max_seq_length=max_seq_length,
+                    layers_per_block=layers_per_block,
                 )
             )
 
@@ -346,7 +343,6 @@ class DownBlockMotion(nn.Module):
     ):
         super().__init__()
         resnets = []
-        motion_modules = []
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -364,20 +360,18 @@ class DownBlockMotion(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            motion_modules.append(
-                MotionBlock(
-                    in_channels=out_channels,
-                    norm_num_groups=motion_norm_num_groups,
-                    cross_attention_dim=motion_cross_attention_dim,
-                    activation_fn=motion_activation_fn,
-                    attention_bias=motion_attention_bias,
-                    num_attention_heads=motion_num_attention_heads,
-                    max_seq_length=motion_max_seq_length,
-                )
-            )
 
         self.resnets = nn.ModuleList(resnets)
-        self.motion_modules = nn.ModuleList(motion_modules)
+        self.motion_modules = MotionModules(
+            in_channels=out_channels,
+            norm_num_groups=motion_norm_num_groups,
+            cross_attention_dim=motion_cross_attention_dim,
+            activation_fn=motion_activation_fn,
+            attention_bias=motion_attention_bias,
+            num_attention_heads=motion_num_attention_heads,
+            max_seq_length=motion_max_seq_length,
+            layers_per_block=num_layers,
+        ).motion_modules
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
@@ -519,6 +513,7 @@ class CrossAttnDownBlockMotion(nn.Module):
             attention_bias=motion_attention_bias,
             num_attention_heads=motion_num_attention_heads,
             max_seq_length=motion_max_seq_length,
+            layers_per_block=num_layers,
         ).motion_modules
 
         if add_downsample:
@@ -639,7 +634,6 @@ class CrossAttnUpBlockMotion(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
-        motion_modules = []
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
@@ -660,18 +654,6 @@ class CrossAttnUpBlockMotion(nn.Module):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
-                )
-            )
-
-            motion_modules.append(
-                MotionBlock(
-                    in_channels=out_channels,
-                    norm_num_groups=motion_norm_num_groups,
-                    cross_attention_dim=motion_cross_attention_dim,
-                    activation_fn=motion_activation_fn,
-                    attention_bias=motion_attention_bias,
-                    num_attention_heads=motion_num_attention_heads,
-                    max_seq_length=motion_max_seq_length,
                 )
             )
 
@@ -711,6 +693,7 @@ class CrossAttnUpBlockMotion(nn.Module):
             attention_bias=motion_attention_bias,
             num_attention_heads=motion_num_attention_heads,
             max_seq_length=motion_max_seq_length,
+            layers_per_block=num_layers,
         ).motion_modules
 
         if add_upsample:
@@ -826,7 +809,6 @@ class UpBlockMotion(nn.Module):
         motion_norm_num_groups=32,
         motion_cross_attention_dim=None,
         motion_num_attention_heads=8,
-        motion_attention_head_dim=40,
         motion_attention_bias=False,
         motion_activation_fn="geglu",
         motion_max_seq_length=24,
@@ -862,6 +844,7 @@ class UpBlockMotion(nn.Module):
             attention_bias=motion_attention_bias,
             num_attention_heads=motion_num_attention_heads,
             max_seq_length=motion_max_seq_length,
+            layers_per_block=num_layers,
         ).motion_modules
 
         if add_upsample:

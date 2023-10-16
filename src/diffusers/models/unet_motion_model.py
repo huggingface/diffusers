@@ -27,16 +27,14 @@ from .attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .embeddings import (
-    TimestepEmbedding,
-    Timesteps,
-)
+from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_3d_condition import UNet3DConditionOutput
 from .unet_motion_blocks import (
     CrossAttnDownBlockMotion,
     CrossAttnUpBlockMotion,
     DownBlockMotion,
+    MotionAdapter,
     UNetMidBlockCrossAttnMotion,
     UpBlockMotion,
     get_down_block,
@@ -105,7 +103,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         motion_norm_num_groups=32,
         motion_cross_attention_dim=None,
         motion_num_attention_heads=8,
-        motion_attenion_bias=False,
+        motion_attention_bias=False,
         motion_activation_fn="geglu",
         motion_max_seq_length=24,
     ):
@@ -193,7 +191,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
                 motion_norm_num_groups=motion_norm_num_groups,
                 motion_cross_attention_dim=motion_cross_attention_dim,
                 motion_num_attention_heads=motion_num_attention_heads,
-                motion_attenion_bias=motion_attenion_bias,
+                motion_attention_bias=motion_attention_bias,
                 motion_activation_fn=motion_activation_fn,
                 motion_max_seq_length=motion_max_seq_length,
             )
@@ -213,7 +211,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
             motion_norm_num_groups=motion_norm_num_groups,
             motion_cross_attention_dim=motion_cross_attention_dim,
             motion_num_attention_heads=motion_num_attention_heads,
-            motion_attenion_bias=motion_attenion_bias,
+            motion_attention_bias=motion_attention_bias,
             motion_activation_fn=motion_activation_fn,
             motion_max_seq_length=motion_max_seq_length,
         )
@@ -259,7 +257,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
                 motion_norm_num_groups=motion_norm_num_groups,
                 motion_cross_attention_dim=motion_cross_attention_dim,
                 motion_num_attention_heads=motion_num_attention_heads,
-                motion_attenion_bias=motion_attenion_bias,
+                motion_attention_bias=motion_attention_bias,
                 motion_activation_fn=motion_activation_fn,
                 motion_max_seq_length=motion_max_seq_length,
             )
@@ -282,7 +280,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         )
 
     @classmethod
-    def from_unet2d(cls, unet, motion_adapter=None, **kwargs):
+    def from_unet2d(cls, unet, motion_adapter: Optional[MotionAdapter] = None, **kwargs):
         # based on https://github.com/guoyww/AnimateDiff/blob/895f3220c06318ea0760131ec70408b466c49333/animatediff/models/unet.py#L459
         config = unet.config
         config["_class_name"] = cls.__name__
@@ -312,15 +310,18 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
 
         return model
 
-    def load_motion_modules(self, motion_modules):
-        state_dict = self.state_dict()
-        motion_modules_state_dict = motion_modules.state_dict()
-        state_dict.update(motion_modules_state_dict)
-
+    def load_motion_modules(self, motion_adapter: Optional[MotionAdapter]):
+        state_dict = motion_adapter.state_dict()
         self.load_state_dict(state_dict)
 
-    def save_motion_modules(self):
-        raise NotImplementedError
+    def save_motion_modules(self, output_path):
+        state_dict = self.state_dict()
+        output = {}
+        for k, v in state_dict.items():
+            if "motion_modules" in k:
+                output[k] = v
+
+        torch.save(output, output_path)
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
