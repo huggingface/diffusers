@@ -106,12 +106,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        transformer_layers_per_block (`int`, `Tuple[int]`, or Tuple[Tuple[int]] , *optional*, defaults to 1):
+        transformer_layers_per_block (`int`, `Tuple[int]`, or Tuple[Tuple] , *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
             [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-        reverse_transformer_layers_per_block : TODO
-        
+        reverse_transformer_layers_per_block : (`Tuple[Tuple]`. *optional*, required if passing transformer_layers_per_block of type `Tuple[Tuple]):
+        Provides the same functionality as transformer_layer_per_block, but for the up_blocks in the U-Net. Only relevant for
+            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
+            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
         encoder_hid_dim (`int`, *optional*, defaults to None):
             If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
             dimension to `cross_attention_dim`.
@@ -269,10 +271,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             raise ValueError(
                 f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
             )
-        if isinstance(transformer_layers_per_block, list) and isinstance(transformer_layers_per_block[0], list) and reverse_transformer_layers_per_block is None:
-                raise ValueError(
+        if isinstance(transformer_layers_per_block, list) and reverse_transformer_layers_per_block is None:
+            for layer_number_per_block in transformer_layers_per_block:
+                if isinstance(layer_number_per_block, list):
+                    raise ValueError(
                     "Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet."
-                )
+                    )
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
