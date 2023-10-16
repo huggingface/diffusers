@@ -14,6 +14,7 @@
 """
 PEFT utilities: Utilities related to peft library
 """
+from typing import Optional
 import collections
 import importlib
 
@@ -91,15 +92,16 @@ def scale_lora_layers(model, weight):
             module.scale_layer(weight)
 
 
-def unscale_lora_layers(model):
+def unscale_lora_layers(model, scale: Optional[float] = None):
     """
     Removes the previously passed weight given to the LoRA layers of the model.
 
     Args:
         model (`torch.nn.Module`):
             The model to scale.
-        weight (`float`):
-            The weight to be given to the LoRA layers.
+        weight (`float`, *optional*):
+            The weight to be given to the LoRA layers. If no scale is passed
+            the scale of the lora layer will be re-initialized to the correct value
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
@@ -184,7 +186,7 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
                     module.set_adapter(adapter_name)
                 else:
                     module.active_adapter = adapter_name
-                module.scale_layer(weight)
+                module.set_scale(adapter_name, weight)
 
     # set multiple active adapters
     for module in model.modules():
