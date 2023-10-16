@@ -1059,7 +1059,7 @@ class SDXLOptionalComponentsTesterMixin:
         pipe = self.pipeline_class(**components)
         for optional_component in pipe._optional_components:
             setattr(pipe, optional_component, None)
-        
+
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
