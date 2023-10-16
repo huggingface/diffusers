@@ -592,7 +592,7 @@ def main(args):
                     )
                     snr_weights = alpha_t / (1 - alpha_t)
                     # use SNR weighting from distillation paper
-                    loss = snr_weights * F.mse_loss(model_output.float(), clean_images.float(), reduction="none")  
+                    loss = snr_weights * F.mse_loss(model_output.float(), clean_images.float(), reduction="none")
                     loss = loss.mean()
                 else:
                     raise ValueError(f"Unsupported prediction type: {args.prediction_type}")
