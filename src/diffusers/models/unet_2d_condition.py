@@ -20,7 +20,7 @@ import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
-from ..utils import USE_PEFT_BACKEND, BaseOutput, logging, deprecate, scale_lora_layers, unscale_lora_layers
+from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from .activations import get_activation
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -824,8 +824,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
                 are passed along to the UNet blocks.
             down_block_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
-                additional residuals to be added to UNet long skip connections from down blocks to up blocks
-                for example from ControlNet side model(s)
+                additional residuals to be added to UNet long skip connections from down blocks to up blocks for
+                example from ControlNet side model(s)
             mid_block_additional_residual (`torch.Tensor`, *optional*):
                 additional residual to be added to UNet mid block output, for example from ControlNet side model
             down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
@@ -1014,12 +1014,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         #       T2I-Adapter and ControlNet both use down_block_additional_residuals arg
         #       but can only use one or the other
         if not is_adapter and mid_block_additional_residual is None and down_block_additional_residuals is not None:
-            deprecate("T2I should not use down_block_additional_residuals",
-                      "1.3.0",
-                      "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated \
+            deprecate(
+                "T2I should not use down_block_additional_residuals",
+                "1.3.0",
+                "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated \
                        and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
                        for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
-                      standard_warn=False)
+                standard_warn=False,
+            )
             down_intrablock_additional_residuals = down_block_additional_residuals
             is_adapter = True
 
