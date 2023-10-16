@@ -720,7 +720,7 @@ def main(args):
 
     # The VAE is always in float32 to avoid NaN losses.
     vae.to(accelerator.device, dtype=torch.float32)
-    
+
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
@@ -755,20 +755,26 @@ def main(args):
         # Set the `lora_layer` attribute of the attention-related matrices.
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_q.in_features, out_features=attn_module.to_q.out_features, rank=args.rank, 
-                device=accelerator.device, dtype=weight_dtype
+                in_features=attn_module.to_q.in_features,
+                out_features=attn_module.to_q.out_features,
+                rank=args.rank,
+                dtype=torch.float32,
             )
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_k.in_features, out_features=attn_module.to_k.out_features, rank=args.rank, 
-                device=accelerator.device, dtype=weight_dtype
+                in_features=attn_module.to_k.in_features,
+                out_features=attn_module.to_k.out_features,
+                rank=args.rank,
+                dtype=torch.float32,
             )
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_v.in_features, out_features=attn_module.to_v.out_features, rank=args.rank, 
-                device=accelerator.device, dtype=weight_dtype
+                in_features=attn_module.to_v.in_features,
+                out_features=attn_module.to_v.out_features,
+                rank=args.rank,
+                dtype=torch.float32,
             )
         )
         attn_module.to_out[0].set_lora_layer(
@@ -776,7 +782,7 @@ def main(args):
                 in_features=attn_module.to_out[0].in_features,
                 out_features=attn_module.to_out[0].out_features,
                 rank=args.rank,
-                device=accelerator.device, dtype=weight_dtype
+                dtype=torch.float32,
             )
         )
 
