@@ -1116,7 +1116,7 @@ def main(args):
                     print(f"noisy_model_input: {noisy_model_input.dtype}")
                     print(f"prompt_embeds_input: {prompt_embeds_input.dtype}")
                     for k, v in unet_added_conditions.items():
-                        print(f"k: {v.dtype}")
+                        print(f"{k}: {v.dtype}")
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
