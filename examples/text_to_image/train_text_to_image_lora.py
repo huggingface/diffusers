@@ -856,8 +856,8 @@ def main():
         unet = unet.to(torch.float32)
 
         unet_lora_state_dict = get_peft_model_state_dict(unet)
-        DiffusionPipeline.save_pretrained(
-            args.output_dir,
+        StableDiffusionPipeline.save_lora_weights(
+            save_directory=args.output_dir,
             unet_lora_layers=unet_lora_state_dict,
             safe_serialization=True,
         )
