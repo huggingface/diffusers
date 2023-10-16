@@ -68,16 +68,16 @@ class UniControlNetTaskMOEEmbedding(nn.Module):
 
         #The second zero conv is redundant
         self.input_hint_block_zeroconv_0 = nn.ModuleList([
-            zero_module(nn.Conv2d(32, 32, 3, padding=1)),
-            zero_module(nn.Conv2d(32, 32, 3, padding=1))]
+            zero_module(nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[1], 3, padding=1)),
+            zero_module(nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[1], 3, padding=1))]
         )
 
         #The second zero conv is redundant
         self.input_hint_block_zeroconv_1 = nn.ModuleList([
-            zero_module(nn.Conv2d(256, model_channels, 3, padding=1)),
-            zero_module(nn.Conv2d(256, model_channels, 3, padding=1))]
+            zero_module(nn.Conv2d(conditioning_embedding_out_channels[3], model_channels, 3, padding=1)),
+            zero_module(nn.Conv2d(conditioning_embedding_out_channels[3], model_channels, 3, padding=1))]
         )
-        self.task_id_layernet_zeroconv_1 = nn.Linear(time_embed_dim, 256)
+        self.task_id_layernet_zeroconv_1 = nn.Linear(time_embed_dim, conditioning_embedding_out_channels[3])
 
     ##guided hint computation should finish here.
     def forward(self, x, hint, context, task_id_emb, task_id):
@@ -94,8 +94,6 @@ class UniControlNetTaskMOEEmbedding(nn.Module):
         # task_id_embed -> from task name embedding
 
         BS_Real = x.shape[0]
-        ## guided_hint = self.input_hint_block_list_moe[task_id](hint, emb, context)
-        # controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
 
         guided_hint = self.input_hint_block_list_moe[task_id](hint)
         
@@ -103,18 +101,17 @@ class UniControlNetTaskMOEEmbedding(nn.Module):
 
         guided_hint += self.input_hint_block_zeroconv_0[0].bias.unsqueeze(0).unsqueeze(2).unsqueeze(3)
 
-        # guided_hint = self.input_hint_block_share(guided_hint, emb, context)
+
         for layer in self.input_hint_block_share:
             act = nn.SiLU()
             guided_hint = act(layer(guided_hint))
-        # print('guided hint after block_list_share', guided_hint)
+        
 
         guided_hint = modulated_conv2d(guided_hint, self.input_hint_block_zeroconv_1[0].weight, self.task_id_layernet_zeroconv_1(task_id_emb).repeat(BS_Real, 1).detach(), padding=1)
-        # print('guided hint after second modconv', guided_hint)
+
 
         guided_hint += self.input_hint_block_zeroconv_1[0].bias.unsqueeze(0).unsqueeze(2).unsqueeze(3)
-        # print('guided hint after second bias add', guided_hint)
-        # End
+
         return guided_hint
 
 class UniControlNetTaskConditioningEmbedding(nn.Module):
@@ -122,7 +119,6 @@ class UniControlNetTaskConditioningEmbedding(nn.Module):
     def __init__(self, hint_channels, in_channels, out_channels):
         super().__init__()
         self.blocks = nn.ModuleList([
-            # Is 3 the kernel_size then we can change 16 -> in_channels. 32 -> out_channels
             nn.Conv2d(hint_channels, in_channels, kernel_size = 3, padding=1),
             nn.Conv2d(in_channels, in_channels, kernel_size = 3, padding=1),
             nn.Conv2d(in_channels, out_channels, kernel_size = 3, padding=1, stride=2),
