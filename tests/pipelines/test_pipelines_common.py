@@ -1055,14 +1055,14 @@ class SDXLOptionalComponentsTesterMixin:
 
     def _test_save_load_optional_components(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
-        
+
         tokenizer = components.pop("tokenizer")
         tokenizer_2 = components.pop("tokenizer_2")
         text_encoder = components.pop("text_encoder")
         text_encoder_2 = components.pop("text_encoder_2")
-        
-        components = {k: v if k not in pipe._optional_components else None for k, v in components.items()}
+
         pipe = self.pipeline_class(**components)
+        components = {k: v if k not in pipe._optional_components else None for k, v in components.items()}
         for component in pipe.components.values():
             if hasattr(component, "set_default_attn_processor"):
                 component.set_default_attn_processor()
@@ -1074,6 +1074,7 @@ class SDXLOptionalComponentsTesterMixin:
 
         tokenizers = [tokenizer, tokenizer_2] if tokenizer is not None else [tokenizer_2]
         text_encoders = [text_encoder, text_encoder_2] if text_encoder is not None else [text_encoder_2]
+        prompt = components.pop("prompt")
         (
             prompt_embeds,
             negative_prompt_embeds,
