@@ -35,8 +35,7 @@ def get_down_block(
     motion_norm_num_groups=32,
     motion_cross_attention_dim=None,
     motion_num_attention_heads=8,
-    motion_attention_head_dim=40,
-    motion_attenion_bias=False,
+    motion_attention_bias=False,
     motion_activation_fn="geglu",
     motion_max_seq_length=24,
 ):
@@ -55,8 +54,7 @@ def get_down_block(
             motion_norm_num_groups=motion_norm_num_groups,
             motion_cross_attention_dim=motion_cross_attention_dim,
             motion_num_attention_heads=motion_num_attention_heads,
-            motion_attention_head_dim=motion_attention_head_dim,
-            motion_attenion_bias=motion_attenion_bias,
+            motion_attention_bias=motion_attention_bias,
             motion_activation_fn=motion_activation_fn,
             motion_max_seq_length=motion_max_seq_length,
         )
@@ -83,8 +81,7 @@ def get_down_block(
             motion_norm_num_groups=motion_norm_num_groups,
             motion_cross_attention_dim=motion_cross_attention_dim,
             motion_num_attention_heads=motion_num_attention_heads,
-            motion_attention_head_dim=motion_attention_head_dim,
-            motion_attenion_bias=motion_attenion_bias,
+            motion_attention_bias=motion_attention_bias,
             motion_activation_fn=motion_activation_fn,
             motion_max_seq_length=motion_max_seq_length,
         )
@@ -113,8 +110,7 @@ def get_up_block(
     motion_norm_num_groups=32,
     motion_cross_attention_dim=None,
     motion_num_attention_heads=8,
-    motion_attention_head_dim=40,
-    motion_attenion_bias=False,
+    motion_attention_bias=False,
     motion_activation_fn="geglu",
     motion_max_seq_length=24,
 ):
@@ -134,8 +130,7 @@ def get_up_block(
             motion_norm_num_groups=motion_norm_num_groups,
             motion_cross_attention_dim=motion_cross_attention_dim,
             motion_num_attention_heads=motion_num_attention_heads,
-            motion_attention_head_dim=motion_attention_head_dim,
-            motion_attenion_bias=motion_attenion_bias,
+            motion_attention_bias=motion_attention_bias,
             motion_activation_fn=motion_activation_fn,
             motion_max_seq_length=motion_max_seq_length,
         )
@@ -163,8 +158,7 @@ def get_up_block(
             motion_norm_num_groups=motion_norm_num_groups,
             motion_cross_attention_dim=motion_cross_attention_dim,
             motion_num_attention_heads=motion_num_attention_heads,
-            motion_attention_head_dim=motion_attention_head_dim,
-            motion_attenion_bias=motion_attenion_bias,
+            motion_attention_bias=motion_attention_bias,
             motion_activation_fn=motion_activation_fn,
             motion_max_seq_length=motion_max_seq_length,
         )
@@ -195,16 +189,15 @@ class MotionBlock(nn.Module):
             num_attention_heads=num_attention_heads,
         )
 
-    def forward(self, x):
-        x = self.pos_embed(x)
-        x = self.temporal_transformer(x)
-        """
-        x = x.reshape([-1, self.max_seq_length, *x.shape[1:]])
-        x = x.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
+    def forward(self, x, num_frames=1):
+        batch_frames, channels, height, width = x.shape
 
-        x = x.movedim((0, 1, 2, 3, 4), (0, 2, 1, 3, 4))
-        x = x.flatten(0, 1)
-        """
+        x = x.permute(0, 2, 3, 1).reshape(batch_frames, height * width, channels)
+        x = self.pos_embed(x)
+        x = x.reshape(batch_frames, height, width, channels).permute(0, 3, 1, 2)
+
+        x = self.temporal_transformer(x, num_frames=num_frames)
+
         return x
 
 
@@ -261,8 +254,11 @@ class MotionAdapter(ModelMixin, ConfigMixin):
 
         Args:
             block_out_channels (tuple, optional): _description_. Defaults to (320, 640, 1280, 1280).
-            down_block_types (tuple, optional): _description_. Defaults to ( "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D", ).
-            up_block_types (tuple, optional): _description_. Defaults to ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D").
+            down_block_types (tuple, optional):
+                _description_. Defaults to ( "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D",
+                "DownBlock2D", ).
+            up_block_types (tuple, optional):
+                _description_. Defaults to ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D").
             layers_per_block (int, optional): _description_. Defaults to 2.
             num_attention_heads (int, optional): _description_. Defaults to 8.
             attention_head_dim (int, optional): _description_. Defaults to 40.
@@ -344,8 +340,7 @@ class DownBlockMotion(nn.Module):
         motion_norm_num_groups=32,
         motion_cross_attention_dim=None,
         motion_num_attention_heads=8,
-        motion_attention_head_dim=40,
-        motion_attenion_bias=False,
+        motion_attention_bias=False,
         motion_activation_fn="geglu",
         motion_max_seq_length=24,
     ):
@@ -375,7 +370,7 @@ class DownBlockMotion(nn.Module):
                     norm_num_groups=motion_norm_num_groups,
                     cross_attention_dim=motion_cross_attention_dim,
                     activation_fn=motion_activation_fn,
-                    attention_bias=motion_attenion_bias,
+                    attention_bias=motion_attention_bias,
                     num_attention_heads=motion_num_attention_heads,
                     max_seq_length=motion_max_seq_length,
                 )
@@ -397,10 +392,11 @@ class DownBlockMotion(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, hidden_states, temb=None, scale: float = 1.0):
+    def forward(self, hidden_states, temb=None, scale: float = 1.0, num_frames=1):
         output_states = ()
 
-        for resnet, motion_module in self.resnets, self.motion_modules:
+        blocks = zip(self.resnets, self.motion_modules)
+        for resnet, motion_module in blocks:
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module):
@@ -419,7 +415,7 @@ class DownBlockMotion(nn.Module):
                     )
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = motion_module(hidden_states)
+                hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
             output_states = output_states + (hidden_states,)
 
@@ -459,8 +455,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         motion_norm_num_groups=32,
         motion_cross_attention_dim=None,
         motion_num_attention_heads=8,
-        motion_attention_head_dim=40,
-        motion_attenion_bias=False,
+        motion_attention_bias=False,
         motion_activation_fn="geglu",
         motion_max_seq_length=24,
     ):
@@ -521,7 +516,7 @@ class CrossAttnDownBlockMotion(nn.Module):
             norm_num_groups=motion_norm_num_groups,
             cross_attention_dim=motion_cross_attention_dim,
             activation_fn=motion_activation_fn,
-            attention_bias=motion_attenion_bias,
+            attention_bias=motion_attention_bias,
             num_attention_heads=motion_num_attention_heads,
             max_seq_length=motion_max_seq_length,
         ).motion_modules
@@ -541,12 +536,13 @@ class CrossAttnDownBlockMotion(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        hidden_states,
+        temb=None,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        num_frames=1,
+        encoder_attention_mask=None,
+        cross_attention_kwargs=None,
         additional_residuals=None,
     ):
         output_states = ()
@@ -554,7 +550,6 @@ class CrossAttnDownBlockMotion(nn.Module):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         blocks = list(zip(self.resnets, self.attentions, self.motion_modules))
-
         for i, (resnet, attn, motion_module) in enumerate(blocks):
             if self.training and self.gradient_checkpointing:
 
@@ -592,7 +587,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(hidden_states)
+                hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -637,8 +632,7 @@ class CrossAttnUpBlockMotion(nn.Module):
         motion_norm_num_groups=32,
         motion_cross_attention_dim=None,
         motion_num_attention_heads=8,
-        motion_attention_head_dim=40,
-        motion_attenion_bias=False,
+        motion_attention_bias=False,
         motion_activation_fn="geglu",
         motion_max_seq_length=24,
     ):
@@ -675,7 +669,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                     norm_num_groups=motion_norm_num_groups,
                     cross_attention_dim=motion_cross_attention_dim,
                     activation_fn=motion_activation_fn,
-                    attention_bias=motion_attenion_bias,
+                    attention_bias=motion_attention_bias,
                     num_attention_heads=motion_num_attention_heads,
                     max_seq_length=motion_max_seq_length,
                 )
@@ -714,7 +708,7 @@ class CrossAttnUpBlockMotion(nn.Module):
             norm_num_groups=motion_norm_num_groups,
             cross_attention_dim=motion_cross_attention_dim,
             activation_fn=motion_activation_fn,
-            attention_bias=motion_attenion_bias,
+            attention_bias=motion_attention_bias,
             num_attention_heads=motion_num_attention_heads,
             max_seq_length=motion_max_seq_length,
         ).motion_modules
@@ -737,6 +731,7 @@ class CrossAttnUpBlockMotion(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        num_frames=1,
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         is_freeu_enabled = (
@@ -746,7 +741,8 @@ class CrossAttnUpBlockMotion(nn.Module):
             and getattr(self, "b2", None)
         )
 
-        for resnet, attn, motion_module in zip(self.resnets, self.attentions, self.motion_modules):
+        blocks = zip(self.resnets, self.attentions, self.motion_modules)
+        for resnet, attn, motion_module in blocks:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -801,7 +797,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(hidden_states)
+                hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -831,7 +827,7 @@ class UpBlockMotion(nn.Module):
         motion_cross_attention_dim=None,
         motion_num_attention_heads=8,
         motion_attention_head_dim=40,
-        motion_attenion_bias=False,
+        motion_attention_bias=False,
         motion_activation_fn="geglu",
         motion_max_seq_length=24,
     ):
@@ -863,7 +859,7 @@ class UpBlockMotion(nn.Module):
             norm_num_groups=motion_norm_num_groups,
             cross_attention_dim=motion_cross_attention_dim,
             activation_fn=motion_activation_fn,
-            attention_bias=motion_attenion_bias,
+            attention_bias=motion_attention_bias,
             num_attention_heads=motion_num_attention_heads,
             max_seq_length=motion_max_seq_length,
         ).motion_modules
@@ -876,7 +872,9 @@ class UpBlockMotion(nn.Module):
         self.gradient_checkpointing = False
         self.resolution_idx = resolution_idx
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
+    def forward(
+        self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0, num_frames=1
+    ):
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -884,7 +882,7 @@ class UpBlockMotion(nn.Module):
             and getattr(self, "b2", None)
         )
 
-        blocks = zip(self.resnets, self.motion_modules)
+        blocks = zip(self.resnets, self.motion_modules, self.motion_modules)
 
         for resnet, motion_module in blocks:
             # pop res hidden states
@@ -923,7 +921,7 @@ class UpBlockMotion(nn.Module):
                     )
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = motion_module(hidden_states)
+                hidden_states = motion_module(hidden_states, num_frames=num_frames)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -955,8 +953,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         motion_norm_num_groups=32,
         motion_cross_attention_dim=None,
         motion_num_attention_heads=8,
-        motion_attention_head_dim=40,
-        motion_attenion_bias=False,
+        motion_attention_bias=False,
         motion_activation_fn="geglu",
         motion_max_seq_length=24,
     ):
@@ -1031,7 +1028,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
             norm_num_groups=motion_norm_num_groups,
             cross_attention_dim=motion_cross_attention_dim,
             activation_fn=motion_activation_fn,
-            attention_bias=motion_attenion_bias,
+            attention_bias=motion_attention_bias,
             num_attention_heads=motion_num_attention_heads,
             max_seq_length=motion_max_seq_length,
             layers_per_block=num_layers,
@@ -1047,6 +1044,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        num_frames=1,
     ) -> torch.FloatTensor:
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
@@ -1086,7 +1084,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(hidden_states)
+                hidden_states = motion_module(hidden_states, num_frames=num_frames)
                 hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states

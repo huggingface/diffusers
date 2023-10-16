@@ -62,8 +62,8 @@ class UNet2DConditionOutput(BaseOutput):
 
 class UNetMotionModel(ModelMixin, ConfigMixin):
     r"""
-    A modified conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
-    shaped output.
+    A modified conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a
+    sample shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -282,7 +282,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         )
 
     @classmethod
-    def from_unet2d(cls, unet, motion_modules=None, **kwargs):
+    def from_unet2d(cls, unet, motion_adapter=None, **kwargs):
         # based on https://github.com/guoyww/AnimateDiff/blob/895f3220c06318ea0760131ec70408b466c49333/animatediff/models/unet.py#L459
         config = unet.config
         config["_class_name"] = cls.__name__
@@ -304,8 +304,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         config["up_block_types"] = up_blocks
 
         state_dict = unet.state_dict()
-        if motion_modules is not None:
-            state_dict.update(motion_modules.state_dict())
+        if motion_adapter is not None:
+            state_dict.update(motion_adapter.state_dict())
 
         model = cls.from_config(config)
         model.load_state_dict(state_dict, strict=False)
@@ -313,10 +313,14 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         return model
 
     def load_motion_modules(self, motion_modules):
-        self.state_dict().update(motion_modules.state_dict())
+        state_dict = self.state_dict()
+        motion_modules_state_dict = motion_modules.state_dict()
+        state_dict.update(motion_modules_state_dict)
+
+        self.load_state_dict(state_dict)
 
     def save_motion_modules(self):
-        return
+        raise NotImplementedError
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -540,6 +544,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
                 if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
                     setattr(upsample_block, k, None)
 
+    # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.forward
     def forward(
         self,
         sample: torch.FloatTensor,
