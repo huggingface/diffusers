@@ -647,7 +647,7 @@ class StableDiffusionControlNetPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class StableDiffusionUniControlNetPipeline(metaclass=DummyObject):
+class StableDiffusionUniControlPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):

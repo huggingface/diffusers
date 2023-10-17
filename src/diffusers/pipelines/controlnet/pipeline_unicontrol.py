@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionUniControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
+        >>> from diffusers import StableDiffusionUniControlPipeline, ControlNetModel, UniPCMultistepScheduler
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch
@@ -71,7 +71,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # load control net and stable diffusion v1-5
         >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionUniControlNetPipeline.from_pretrained(
+        >>> pipe = StableDiffusionUniControlPipeline.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
         ... )
 
@@ -108,7 +108,7 @@ tasks_to_id = {"control_hed":0, "control_canny":1, "control_seg":2, "control_dep
 
 
 
-class StableDiffusionUniControlNetPipeline(
+class StableDiffusionUniControlPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""

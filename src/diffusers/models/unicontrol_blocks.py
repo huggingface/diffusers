@@ -32,7 +32,7 @@ def modulated_conv2d(
     x = x.reshape(batch_size, -1, *x.shape[2:])
     return x
 
-class UniControlNetTaskMOEEmbedding(nn.Module):
+class UniControlTaskMOEEmbedding(nn.Module):
     def __init__(
         self,
         time_embed_dim,
@@ -48,7 +48,7 @@ class UniControlNetTaskMOEEmbedding(nn.Module):
         self.input_hint_block_list_moe = nn.ModuleList([])
         for _ in range(all_tasks_num):
             self.input_hint_block_list_moe.append(
-                UniControlNetTaskConditioningEmbedding(
+                UniControlTaskConditioningEmbedding(
                     hint_channels=hint_channels,
                     in_channels = conditioning_embedding_out_channels[0],
                     out_channels = conditioning_embedding_out_channels[1]
@@ -114,7 +114,7 @@ class UniControlNetTaskMOEEmbedding(nn.Module):
 
         return guided_hint
 
-class UniControlNetTaskConditioningEmbedding(nn.Module):
+class UniControlTaskConditioningEmbedding(nn.Module):
 
     def __init__(self, hint_channels, in_channels, out_channels):
         super().__init__()
@@ -131,7 +131,7 @@ class UniControlNetTaskConditioningEmbedding(nn.Module):
             embedding = F.silu(embedding)
         return embedding
 
-class UniControlNetTaskIDHypernet(nn.Module):
+class UniControlTaskIDHypernet(nn.Module):
 
     def __init__(
         self,

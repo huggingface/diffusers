@@ -22,7 +22,7 @@ from .controlnet import (
     StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionControlNetInpaintPipeline,
     StableDiffusionControlNetPipeline,
-    StableDiffusionUniControlNetPipeline,
+    StableDiffusionUniControlPipeline,
     StableDiffusionXLControlNetImg2ImgPipeline,
     StableDiffusionXLControlNetPipeline,
 )

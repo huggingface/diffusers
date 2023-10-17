@@ -37,7 +37,7 @@ from .unet_2d_blocks import (
     get_down_block,
 )
 from .unet_2d_condition import UNet2DConditionModel
-from .unicontrolnet_blocks import UniControlNetTaskConditioningEmbedding, UniControlNetTaskIDHypernet, UniControlNetTaskMOEEmbedding, modulated_conv2d
+from .unicontrol_blocks import UniControlTaskIDHypernet, UniControlTaskMOEEmbedding, modulated_conv2d
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -343,9 +343,9 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 block_out_channels=conditioning_embedding_out_channels,
                 conditioning_channels=conditioning_channels,
             )
-        elif controlnet_conditioning_embedding == "UniControlNetTaskMOEEmbedding":
-            self.control_net_moe = UniControlNetTaskMOEEmbedding(time_embed_dim=time_embed_dim, model_channels=block_out_channels[0])
-            self.task_id_hypernet = UniControlNetTaskIDHypernet(time_embed_dim=time_embed_dim)
+        elif controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
+            self.control_net_moe = UniControlTaskMOEEmbedding(time_embed_dim=time_embed_dim, model_channels=block_out_channels[0])
+            self.task_id_hypernet = UniControlTaskIDHypernet(time_embed_dim=time_embed_dim)
         else:
             raise ValueError(f"Unsupported value for controlnet_conditioning_embedding: {controlnet_conditioning_embedding}")
         self.down_blocks = nn.ModuleList([])
@@ -367,7 +367,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         controlnet_block = zero_module(controlnet_block)
         self.controlnet_down_blocks.append(controlnet_block)
 
-        if controlnet_conditioning_embedding == "UniControlNetTaskMOEEmbedding":
+        if controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
             # Add layernet here, adds 1 layernet.
             self.task_id_layernet = nn.ModuleList([])
             self.task_id_layernet.append(nn.Linear(time_embed_dim, block_out_channels[0]))
@@ -403,7 +403,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 controlnet_block = nn.Conv2d(output_channel, output_channel, kernel_size=1)
                 controlnet_block = zero_module(controlnet_block)
                 self.controlnet_down_blocks.append(controlnet_block)
-                if controlnet_conditioning_embedding == "UniControlNetTaskMOEEmbedding":
+                if controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
                     # Add layer net here ( accounts for 4 * 2 layernets)
                     self.task_id_layernet.append(nn.Linear(time_embed_dim, output_channel))
                     
@@ -412,7 +412,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 controlnet_block = nn.Conv2d(output_channel, output_channel, kernel_size=1)
                 controlnet_block = zero_module(controlnet_block)
                 self.controlnet_down_blocks.append(controlnet_block)
-                if controlnet_conditioning_embedding == "UniControlNetTaskMOEEmbedding":
+                if controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
                     # Add layer net here ( accounts for 3 layernets)
                     # Total layernets by this point = 12
                     self.task_id_layernet.append(nn.Linear(time_embed_dim, output_channel))
