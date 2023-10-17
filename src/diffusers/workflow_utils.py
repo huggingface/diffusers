@@ -59,19 +59,6 @@ def populate_workflow_from_pipeline(
     if len(lora_info) > 0:
         workflow["lora"].update(lora_info)
 
-    # Populate component configs.
-    workflow.update(
-        {
-            "components": {
-                component_name: component.config
-                if isinstance(component.config, FrozenDict)
-                else component.config.to_dict()
-                for component_name, component in pipeline_components.items()
-                if hasattr(component, "config")
-            }
-        }
-    )
-
     # Make it shareable.
     workflow = Workflow(workflow)
     return workflow
