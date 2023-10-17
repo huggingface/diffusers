@@ -88,7 +88,7 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
         return super().__setitem__(__key, __value)
 
     def update(self, __m, **kwargs):
-        self._internal_dict.update(**kwargs)
+        self._internal_dict.update(__m, **kwargs)
         super().update(__m, **kwargs)
 
     def save_workflow(self, **kwargs):
