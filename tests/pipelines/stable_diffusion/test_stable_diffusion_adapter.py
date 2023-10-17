@@ -18,6 +18,7 @@ import random
 import unittest
 
 import numpy as np
+from parameterized import parameterized
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -172,6 +173,36 @@ class AdapterTests:
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+
+    def test_image_dimensions(self):
+        """Test that the T2I-Adapter pipeline supports any input dimension that
+        is divisible by the adapter's `downscale_factor`. This test was added in
+        response to an issue where the T2I Adapter's downscaling padding
+        behavior did not match the UNet's behavior.
+        """
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionAdapterPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # Populate a list of test_dims to test odd dimensions at every T2I down
+        # block.
+        test_dims = []
+        base_dim = 4
+        factor = components["adapter"].downscale_factor
+        total_downscale_factor = components["adapter"].total_downscale_factor
+        while factor <= total_downscale_factor:
+            # Add a test dimension such that the internal T2I feature map will
+            # have an odd shape after downscaling by `factor`.
+            test_dims.append((base_dim * total_downscale_factor // factor + 1) * factor)
+            factor *= 2
+
+        for dim in test_dims:
+            inputs = self.get_dummy_inputs(torch_device, height=dim, width=dim)
+            image = sd_pipe(**inputs).images
+
+            assert image.shape == (1, dim, dim, 3)
 
 
 class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
