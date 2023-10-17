@@ -625,7 +625,6 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # support for variable transformer layers per block 
-
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block= [transformer_layers_per_block] * num_layers
 
