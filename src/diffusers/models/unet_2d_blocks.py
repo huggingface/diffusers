@@ -518,7 +518,7 @@ class UNetMidBlock2D(nn.Module):
         attn_groups (`Optional[int]`, *optional*, defaults to None): The number of groups for the attention blocks.
         resnet_pre_norm (`bool`, *optional*, defaults to `True`): Whether to use pre-normalization for the resnet blocks.
         add_attention (`bool`, *optional*, defaults to `True`): Whether to add attention blocks.
-        attention_head_dim (`int`, *optional*, defaults to 1): The number of attention heads.
+        attention_head_dim (`int`, *optional*, defaults to 1): Dimension of a single attention head. The number of attention heads is determined based on this value and the number of input channels.
         output_scale_factor (`float`, *optional*, defaults to 1.0): The output scale factor.
         
     Returns:
