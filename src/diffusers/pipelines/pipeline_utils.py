@@ -2045,6 +2045,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         def new_function(*args, **kwargs):
             bound_args = new_signature.bind(*args, **kwargs)
             bound_args.apply_defaults()
+            for a in bound_args.args:
+                print(a)
+            for a, b in bound_args.kwargs.items():
+                print(a, b)
             return self.__call__(*bound_args.args, **bound_args.kwargs)
 
         # Patch the default call.
