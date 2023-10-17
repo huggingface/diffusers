@@ -66,9 +66,7 @@ else:
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
         "AudioLDM2ProjectionModel",
-        "AudioLDM2TTSPipeline",
         "AudioLDM2UNet2DConditionModel",
-        "AudioLDMLearnablePositionalEmbedding",
     ]
     _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
     _import_structure["controlnet"].extend(
@@ -293,13 +291,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
         from .audioldm import AudioLDMPipeline
-        from .audioldm2 import (
-            AudioLDM2Pipeline,
-            AudioLDM2ProjectionModel,
-            AudioLDM2TTSPipeline,
-            AudioLDM2UNet2DConditionModel,
-            AudioLDMLearnablePositionalEmbedding,
-        )
+        from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
         from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import (
             BlipDiffusionControlNetPipeline,
