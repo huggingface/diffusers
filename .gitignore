@@ -174,3 +174,10 @@ tags
 .ruff_cache
 
 wandb
+
+# Debugging Notebooks
+notebooks/
+
+# azureml
+azureml/
+.amlignore
