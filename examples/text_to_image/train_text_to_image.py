@@ -41,7 +41,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
@@ -143,7 +143,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
     if vae is not None:
         pipeline_args["vae"] = vae
 
-    pipeline = StableDiffusionPipeline.from_pretrained(
+    pipeline = DiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=accelerator.unwrap_model(vae),
         text_encoder=accelerator.unwrap_model(text_encoder),
@@ -1042,13 +1042,16 @@ def main():
         unet = accelerator.unwrap_model(unet)
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
+        pipeline_args = {}
 
-        pipeline = StableDiffusionPipeline.from_pretrained(
+        if vae is not None:
+            pipeline_args["vae"] = vae
+        pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             text_encoder=text_encoder,
-            vae=vae,
             unet=unet,
             revision=args.revision,
+            **pipeline_args,
         )
         pipeline.save_pretrained(args.output_dir)
 
