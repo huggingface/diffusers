@@ -77,3 +77,6 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
 
     def save_workflow(self, **kwargs):
         self.save_config(**kwargs)
+
+    def save_pretrained(self, save_directory: str, push_to_hub: bool, **kwargs):
+        self.save_workflow(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
