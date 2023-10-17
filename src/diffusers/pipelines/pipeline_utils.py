@@ -22,7 +22,6 @@ import re
 import sys
 import warnings
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -2024,9 +2023,29 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Handle non-call arguments.
         # Note: Instead of popping the non-call arguments off, it's better to keep them in
         # the workflow object should it be reused.
-        {k: v for k, v in workflow.items() if k in NON_CALL_ARGUMENTS}
+        final_call_args = {k: v for k, v in workflow.items() if k in NON_CALL_ARGUMENTS}
 
-        # TODO: Handle the call here.
+        # Handle the call here.
 
-    def _update_call(self, **kwargs):
-        self.__call__ = partial(self.__call__, **kwargs)
+        # Get the original function's signature
+        original_signature = inspect.signature(self.__call__)
+
+        # Update the default values in the signature
+        new_params = []
+        for param_name, param in original_signature.parameters.items():
+            if param_name in final_call_args:
+                new_params.append(param.replace(default=final_call_args[param_name]))
+            else:
+                new_params.append(param)
+
+        # Create a new signature with modified default values
+        new_signature = original_signature.replace(parameters=new_params)
+
+        # Create a new function with the modified signature
+        def new_function(*args, **kwargs):
+            bound_args = new_signature.bind(*args, **kwargs)
+            bound_args.apply_defaults()
+            return self.__call__(*bound_args.args, **bound_args.kwargs)
+
+        # Patch the default call.
+        self.__call__ = new_function
