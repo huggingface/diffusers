@@ -28,14 +28,18 @@ def populate_workflow_from_pipeline(
     argument_names: List[str],
     call_arg_values: Dict,
     lora_info: Optional[Dict],
-):
-    r"""Populates the call arguments and LoRA information in a dictionary.
+) -> Dict:
+    r"""Populates the call arguments and (optional) LoRA information in a dictionary.
 
     Args:
         argument_names (`List[str]`): List of function arguments.
         call_arg_values (`Dict`):
             Dictionary containing the arguments and their values from the current execution frame.
         lora_info (`Dict`, *optional*): Details of the LoRA checkpoints loaded in the pipeline.
+
+    Returns:
+        `Dict`: A dictionary containing the details of the pipeline call arguments and (optionally) LoRA checkpoint
+        details.
     """
     workflow = {}
 
