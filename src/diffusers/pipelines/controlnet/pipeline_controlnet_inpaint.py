@@ -1138,6 +1138,7 @@ class StableDiffusionControlNetInpaintPipeline(
             else controlnet.nets[0].config.global_pool_conditions
         )
         guess_mode = guess_mode or global_pool_conditions
+        print(f" guess_mode: {guess_mode}")
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
@@ -1343,6 +1344,7 @@ class StableDiffusionControlNetInpaintPipeline(
                         )
 
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
+                    print(f" init_mask: {init_mask.shape}, {init_mask.abs().sum()}")
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
