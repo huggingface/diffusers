@@ -13,9 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Module for managing workflows."""
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import torch
+import os
 
 from .configuration_utils import ConfigMixin
 from .utils import PushToHubMixin, logging
@@ -78,5 +79,5 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
     def save_workflow(self, **kwargs):
         self.save_config(**kwargs)
 
-    def save_pretrained(self, save_directory: str, push_to_hub: bool, **kwargs):
+    def save_pretrained(self,save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         self.save_workflow(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
