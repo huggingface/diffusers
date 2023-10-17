@@ -2025,34 +2025,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Note: Instead of popping the non-call arguments off, it's better to keep them in
         # the workflow object should it be reused.
         final_call_args = {k: v for k, v in workflow.items() if k not in _NON_CALL_ARGUMENTS}
-        print(final_call_args)
 
         # Handle the call here.
-        self = partial(self, **final_call_args)
-
-        # # Get the original function's signature
-        # original_signature = inspect.signature(self.__call__)
-
-        # # Update the default values in the signature
-        # new_params = []
-        # for param_name, param in original_signature.parameters.items():
-        #     if param_name in final_call_args:
-        #         new_params.append(param.replace(default=final_call_args[param_name]))
-        #     else:
-        #         new_params.append(param)
-
-        # # Create a new signature with modified default values
-        # new_signature = original_signature.replace(parameters=new_params)
-
-        # # Create a new function with the modified signature
-        # def new_function(*args, **kwargs):
-        #     bound_args = new_signature.bind(*args, **kwargs)
-        #     bound_args.apply_defaults()
-        #     for a in bound_args.args:
-        #         print(a)
-        #     for a, b in bound_args.kwargs.items():
-        #         print(a, b)
-        #     return self.__call__(*bound_args.args, **bound_args.kwargs)
-
-        # # Patch the default call.
-        # new_function()
+        # self = partial(self, **final_call_args)
+        return final_call_args
