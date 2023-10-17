@@ -13,19 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Module for managing workflows."""
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 
 from .configuration_utils import ConfigMixin, FrozenDict
-from .utils import PushToHubMixin
+from .utils import PushToHubMixin, constants, logging
 
 
-WORKFLOW_NAME = "diffusion_workflow.json"
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def populate_workflow_from_pipeline(
-    argument_names: List[str], call_arg_values: Dict, lora_info: Dict, pipeline_components: Dict
+    argument_names: List[str],
+    call_arg_values: Dict,
+    lora_info: Optional[Dict],
 ):
     r"""Populates the pipeline components' configurations and the call arguments in a dictionary.
 
@@ -33,7 +35,7 @@ def populate_workflow_from_pipeline(
         argument_names (`List[str]`): List of function arguments.
         call_arg_values (`Dict`):
             Dictionary containing the arguments and their values from the current execution frame.
-        pipeline_components (`Dict`): Components of the underlying pipeline.
+        lora_info (`Dict`, *optional*): Details of the LoRA checkpoints loaded in the pipeline.
     """
     workflow = {}
 
@@ -53,7 +55,12 @@ def populate_workflow_from_pipeline(
         except Exception:
             workflow["call"].update({"seed": None})
 
-    # TODO: Handle the case for inputs that are of type torch tensors.
+    # Handle the case for inputs that are of type torch tensors.
+    is_torch_tensor_present = any(isinstance(call_arg_values[arg], torch.Tensor) for arg in argument_names)
+    if is_torch_tensor_present:
+        logger.warning(
+            "`torch.Tensor`s detected in the call argument values. They won't be made a part of the workflow."
+        )
 
     # Handle the case when `load_lora_weights()` was called on a pipeline.
     if len(lora_info) > 0:
@@ -69,7 +76,7 @@ class Workflow(ConfigMixin, PushToHubMixin):
 
     def __init__(self, workflow: Dict):
         self._internal_dict = FrozenDict(workflow)
-        self.config_name = WORKFLOW_NAME
+        self.config_name = constants.WORKFLOW_NAME
 
     def save_workflow(self, **kwargs):
         self.save_config(**kwargs)
