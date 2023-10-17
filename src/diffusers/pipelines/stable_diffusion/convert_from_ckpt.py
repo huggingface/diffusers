@@ -1262,7 +1262,7 @@ def download_from_original_stable_diffusion_ckpt(
 
     # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
     # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
-    while "state_dict" in checkpoint:
+    while "state_dict" in checkpoint and checkpoint["state_dict"]:
         checkpoint = checkpoint["state_dict"]
 
     if original_config_file is None:
