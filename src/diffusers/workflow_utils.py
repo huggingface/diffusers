@@ -60,17 +60,6 @@ def populate_workflow_from_pipeline(
         except Exception:
             workflow.update({"seed": None})
 
-    # Handle the case for inputs that are of type torch tensors.
-    for arg in argument_names:
-        if isinstance(call_arg_values[arg], torch.Tensor):
-            print(arg, call_arg_values[arg])
-    is_torch_tensor_present = any(isinstance(call_arg_values[arg], torch.Tensor) for arg in argument_names)
-    if is_torch_tensor_present:
-        logger.warning(
-            "`torch.Tensor`s detected in the call argument values. They won't be made a part of the workflow."
-        )
-        workflow["is_torch_tensor_present"] = is_torch_tensor_present
-
     # Handle the case when `load_lora_weights()` was called on a pipeline.
     if len(lora_info) > 0:
         workflow["lora"].update(lora_info)

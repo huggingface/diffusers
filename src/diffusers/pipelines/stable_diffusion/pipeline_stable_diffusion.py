@@ -788,10 +788,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             signature = inspect.signature(self.__call__)
             argument_names = [param.name for param in signature.parameters.values()]
             call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
-            for k in argument_names:
-                if isinstance(call_arg_values[k], torch.Tensor):
-                    print(f"torch.Tensor detected: {k}")
-
             workflow = populate_workflow_from_pipeline(
                 argument_names, call_arg_values, self.lora_info, self.config._name_or_path
             )
