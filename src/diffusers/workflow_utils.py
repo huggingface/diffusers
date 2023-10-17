@@ -18,10 +18,12 @@ from typing import Dict, List, Optional
 import torch
 
 from .configuration_utils import ConfigMixin, FrozenDict
-from .utils import PushToHubMixin, constants, logging
+from .utils import PushToHubMixin, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+NON_CALL_ARGUMENTS = ["lora", "is_torch_tensor_present", "_name_or_path"]
 
 
 def populate_workflow_from_pipeline(
@@ -43,7 +45,7 @@ def populate_workflow_from_pipeline(
         `Dict`: A dictionary containing the details of the pipeline call arguments and (optionally) LoRA checkpoint
         details.
     """
-    workflow = {}
+    workflow = Workflow()
 
     # Populate call arguments.
     call_arguments = {
@@ -52,14 +54,14 @@ def populate_workflow_from_pipeline(
         if arg != "return_workflow" and not isinstance(call_arg_values[arg], torch.Tensor)
     }
 
-    workflow.update({"call": call_arguments})
+    workflow.update(call_arguments)
 
-    generator = workflow["call"].pop("generator")
+    generator = workflow.pop("generator")
     if generator is not None:
         try:
-            workflow["call"].update({"seed": generator.initial_seed()})
+            workflow.update({"seed": generator.initial_seed()})
         except Exception:
-            workflow["call"].update({"seed": None})
+            workflow.update({"seed": None})
 
     # Handle the case for inputs that are of type torch tensors.
     is_torch_tensor_present = any(isinstance(call_arg_values[arg], torch.Tensor) for arg in argument_names)
@@ -67,6 +69,7 @@ def populate_workflow_from_pipeline(
         logger.warning(
             "`torch.Tensor`s detected in the call argument values. They won't be made a part of the workflow."
         )
+        workflow["is_torch_tensor_present"] = is_torch_tensor_present
 
     # Handle the case when `load_lora_weights()` was called on a pipeline.
     if len(lora_info) > 0:
@@ -74,17 +77,13 @@ def populate_workflow_from_pipeline(
 
     workflow["_name_or_path"] = pipeline_name_or_path
     
-    # Make it shareable.
-    workflow = Workflow(workflow)
     return workflow
 
 
-class Workflow(ConfigMixin, PushToHubMixin):
-    """Base class for managing workflows."""
-
-    def __init__(self, workflow: Dict):
-        self._internal_dict = FrozenDict(workflow)
-        self.config_name = constants.WORKFLOW_NAME
+class Workflow(dict, ConfigMixin, PushToHubMixin):
+    """Class sub-classing from native Python dict to have support for interacting with the Hub."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def save_workflow(self, **kwargs):
         self.save_config(**kwargs)

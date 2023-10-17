@@ -58,7 +58,8 @@ from ..utils import (
     numpy_to_pil,
 )
 from ..utils.torch_utils import is_compiled_module
-from ..workflow_utils import WORKFLOW_NAME
+from ..utils.constants import WORKFLOW_NAME
+from ..workflow_utils import NON_CALL_ARGUMENTS
 
 
 if is_transformers_available():
@@ -1983,6 +1984,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     def load_workflow(self, workflow_id_or_path, workflow_filename=None):
         workflow_filename = workflow_filename or WORKFLOW_NAME
 
+        # Load workflow.
         if os.path.isdir(workflow_id_or_path):
             workflow_filepath = os.path.join(workflow_id_or_path, workflow_filename)
         elif os.path.isfile(workflow_id_or_path):
@@ -1991,15 +1993,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             workflow_filepath = hf_hub_download(repo_id=workflow_id_or_path, filename=workflow_filename)
         workflow = self._dict_from_json_file(workflow_filepath)
 
-        pipeline_call_args = dict(workflow)["call"]
-        seed = pipeline_call_args.pop("seed")
+        # Handle generator.
+        seed = workflow.pop("seed")
         if seed is not None:
             generator = torch.manual_seed(seed)
         else:
             generator = None
+        workflow.update({"generator": generator})
 
-        pipeline_call_args.update({"generator": generator})
-        self._update_call(**pipeline_call_args)
+        # Handle non-call arguments.
+        # Note: Instead of popping the non-call arguments off, it's better to keep them in 
+        # the workflow object should it be reused.
+        final_call_args = {k: v for k, v in workflow.items() if k in NON_CALL_ARGUMENTS}
+
+        # TODO: Handle the call here.
+       
 
     def _update_call(self, **kwargs):
         self.__call__ = partial(self.__call__, **kwargs)
