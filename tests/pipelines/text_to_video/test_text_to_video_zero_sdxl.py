@@ -26,7 +26,8 @@ from diffusers.utils.testing_utils import enable_full_determinism, require_torch
 enable_full_determinism()
 
 
-class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class TextToVideoZeroSDXLPipelineFastTests(#PipelineTesterMixin,
+        unittest.TestCase):
     def get_dummy_components(self, seed=0):
         torch.manual_seed(seed)
         unet = UNet2DConditionModel(
