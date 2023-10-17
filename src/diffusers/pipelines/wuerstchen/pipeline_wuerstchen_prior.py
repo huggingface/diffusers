@@ -20,6 +20,7 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...loaders import LoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import (
     BaseOutput,
@@ -65,7 +66,7 @@ class WuerstchenPriorPipelineOutput(BaseOutput):
     image_embeddings: Union[torch.FloatTensor, np.ndarray]
 
 
-class WuerstchenPriorPipeline(DiffusionPipeline):
+class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     """
     Pipeline for generating image prior for Wuerstchen.
 
@@ -90,6 +91,8 @@ class WuerstchenPriorPipeline(DiffusionPipeline):
             Default resolution for multiple images generated.
     """
 
+    unet_name = "prior"
+    text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->prior"
 
     def __init__(

@@ -284,21 +284,10 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 
 ```py
 >>> from accelerate import Accelerator
->>> from huggingface_hub import HfFolder, Repository, whoami
+>>> from huggingface_hub import create_repo, upload_folder
 >>> from tqdm.auto import tqdm
 >>> from pathlib import Path
 >>> import os
-
-
->>> def get_full_repo_name(model_id: str, organization: str = None, token: str = None):
-...     if token is None:
-...         token = HfFolder.get_token()
-...     if organization is None:
-...         username = whoami(token)["name"]
-...         return f"{username}/{model_id}"
-...     else:
-...         return f"{organization}/{model_id}"
-
 
 >>> def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler):
 ...     # Initialize accelerator and tensorboard logging
@@ -309,11 +298,12 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 ...         project_dir=os.path.join(config.output_dir, "logs"),
 ...     )
 ...     if accelerator.is_main_process:
-...         if config.push_to_hub:
-...             repo_name = get_full_repo_name(Path(config.output_dir).name)
-...             repo = Repository(config.output_dir, clone_from=repo_name)
-...         elif config.output_dir is not None:
+...         if config.output_dir is not None:
 ...             os.makedirs(config.output_dir, exist_ok=True)
+...         if config.push_to_hub:
+...             repo_id = create_repo(
+...                 repo_id=config.hub_model_id or Path(config.output_dir).name, exist_ok=True
+...             )
 ...         accelerator.init_trackers("train_example")
 
 ...     # Prepare everything
@@ -371,7 +361,12 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 
 ...             if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
 ...                 if config.push_to_hub:
-...                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=True)
+...                     upload_folder(
+...                         repo_id=repo_id,
+...                         folder_path=config.output_dir,
+...                         commit_message=f"Epoch {epoch}",
+...                         ignore_patterns=["step_*", "epoch_*"],
+...                     )
 ...                 else:
 ...                     pipeline.save_pretrained(config.output_dir)
 ```
