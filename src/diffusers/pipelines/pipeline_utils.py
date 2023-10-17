@@ -1980,7 +1980,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             module.set_attention_slice(slice_size)
 
-    def load_workflow(self, workflow_id_or_path: Union[str, dict], workflow_filename: Optional[str] = None):
+    def load_workflow(self, workflow_id_or_path: Union[str, dict], filename: Optional[str] = None):
         r"""Loads a workflow from the Hub or from a local path. Also patches the pipeline call arguments with values from the
         workflow.
 
@@ -1994,20 +1994,20 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                       [`Workflow.save_workflow`] or [`Workflow.push_to_hub`].
                     - A Python dictionary.
 
-            workflow_filename (`str`, *optional*):
+            filename (`str`, *optional*):
                 Optional name of the workflow file to load. Especially useful when working with multiple workflow
                 files.
         """
-        workflow_filename = workflow_filename or WORKFLOW_NAME
+        filename = filename or WORKFLOW_NAME
 
         # Load workflow.
         if not isinstance(workflow_id_or_path, dict):
             if os.path.isdir(workflow_id_or_path):
-                workflow_filepath = os.path.join(workflow_id_or_path, workflow_filename)
+                workflow_filepath = os.path.join(workflow_id_or_path, filename)
             elif os.path.isfile(workflow_id_or_path):
                 workflow_filepath = workflow_id_or_path
             else:
-                workflow_filepath = hf_hub_download(repo_id=workflow_id_or_path, filename=workflow_filename)
+                workflow_filepath = hf_hub_download(repo_id=workflow_id_or_path, filename=filename)
             workflow = self._dict_from_json_file(workflow_filepath)
         else:
             workflow = workflow_id_or_path
@@ -2034,7 +2034,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         new_params = []
         for param_name, param in original_signature.parameters.items():
             if param_name in final_call_args:
-                print(f"{param_name}, New param value: {final_call_args[param_name]}")
                 new_params.append(param.replace(default=final_call_args[param_name]))
             else:
                 new_params.append(param)
