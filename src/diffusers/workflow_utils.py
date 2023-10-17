@@ -50,7 +50,6 @@ def populate_workflow_from_pipeline(
     workflow = Workflow()
 
     # Populate call arguments.
-    # The extra regex check there ensure we don't store image inputs as well (required for many pipelines).
     call_arguments = {
         arg: call_arg_values[arg]
         for arg in argument_names
