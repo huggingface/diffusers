@@ -34,8 +34,6 @@ from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 
 import diffusers
-import copy
-from functools import partial
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
@@ -2029,7 +2027,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         final_call_args = {k: v for k, v in workflow.items() if k not in _NON_CALL_ARGUMENTS}
 
         # Handle the call here.
-        self_copy = copy.deepcopy(self)
-        self = partial(self_copy, **final_call_args)
-        setattr(self, "__call__", partial(self.__call__, **final_call_args))
-        # return final_call_args
+        # self_copy = copy.deepcopy(self)
+        # self = partial(self_copy, **final_call_args)
+        # setattr(self, "__call__", partial(self.__call__, **final_call_args))
+        return final_call_args
