@@ -2031,4 +2031,5 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Handle the call here.
         self_copy = copy.deepcopy(self)
         self = partial(self_copy, **final_call_args)
+        setattr(self, "__call__", partial(self.__call__, **final_call_args))
         # return final_call_args
