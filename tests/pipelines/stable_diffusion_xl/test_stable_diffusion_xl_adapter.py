@@ -48,19 +48,20 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
     def get_dummy_components(self, adapter_type="full_adapter_xl"):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
+            block_out_channels=(32, 32, 64),
             layers_per_block=2,
             sample_size=32,
             in_channels=4,
             out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            # Test with all 3 down blocks to ensure that the T2I-Adapter downscaling gets fully exercised in the tests.
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "UpBlock2D"),
             # SD2-specific config below
-            attention_head_dim=(2, 4),
+            attention_head_dim=2,
             use_linear_projection=True,
             addition_embed_type="text_time",
             addition_time_embed_dim=8,
-            transformer_layers_per_block=(1, 2),
+            transformer_layers_per_block=1,
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
         )
@@ -73,11 +74,11 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[32, 32, 32, 64],
             in_channels=3,
             out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
             sample_size=128,
         )
@@ -104,9 +105,9 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
         if adapter_type == "full_adapter_xl":
             adapter = T2IAdapter(
                 in_channels=3,
-                channels=[32, 64],
+                channels=[32, 32, 64],
                 num_res_blocks=2,
-                downscale_factor=4,
+                downscale_factor=16,
                 adapter_type=adapter_type,
             )
         elif adapter_type == "multi_adapter":
@@ -114,16 +115,16 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
                 [
                     T2IAdapter(
                         in_channels=3,
-                        channels=[32, 64],
+                        channels=[32, 32, 64],
                         num_res_blocks=2,
-                        downscale_factor=4,
+                        downscale_factor=16,
                         adapter_type="full_adapter_xl",
                     ),
                     T2IAdapter(
                         in_channels=3,
-                        channels=[32, 64],
+                        channels=[32, 32, 64],
                         num_res_blocks=2,
-                        downscale_factor=4,
+                        downscale_factor=16,
                         adapter_type="full_adapter_xl",
                     ),
                 ]
@@ -182,7 +183,7 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array(
-            [0.5752919, 0.6022097, 0.4728038, 0.49861962, 0.57084894, 0.4644975, 0.5193715, 0.5133664, 0.4729858]
+            [0.54066867, 0.5574119, 0.47273698, 0.62617165, 0.576637, 0.50059223, 0.5860178, 0.5637511, 0.5143911]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
@@ -242,7 +243,7 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array(
-            [0.5813032, 0.60995954, 0.47563356, 0.5056669, 0.57199144, 0.4631841, 0.5176794, 0.51252556, 0.47183886]
+            [0.54532427, 0.5617021, 0.46638602, 0.6338569, 0.5826053, 0.5019801, 0.59624064, 0.5663944, 0.5151665]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 

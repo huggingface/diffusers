@@ -57,23 +57,24 @@ class AdapterTests:
     def get_dummy_components(self, adapter_type):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
+            block_out_channels=(32, 32, 32, 64),
             layers_per_block=2,
             sample_size=32,
             in_channels=4,
             out_channels=4,
-            down_block_types=("CrossAttnDownBlock2D", "DownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            # Test with all 4 down blocks to ensure that the T2I-Adapter downscaling gets fully exercised in the tests.
+            down_block_types=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
+            up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
             cross_attention_dim=32,
         )
         scheduler = PNDMScheduler(skip_prk_steps=True)
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[32, 32, 32, 64],
             in_channels=3,
             out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=4,
         )
         torch.manual_seed(0)
@@ -96,9 +97,9 @@ class AdapterTests:
         if adapter_type == "full_adapter" or adapter_type == "light_adapter":
             adapter = T2IAdapter(
                 in_channels=3,
-                channels=[32, 64],
+                channels=[32, 32, 32, 64],
                 num_res_blocks=2,
-                downscale_factor=2,
+                downscale_factor=8,
                 adapter_type=adapter_type,
             )
         elif adapter_type == "multi_adapter":
@@ -106,16 +107,16 @@ class AdapterTests:
                 [
                     T2IAdapter(
                         in_channels=3,
-                        channels=[32, 64],
+                        channels=[32, 32, 32, 64],
                         num_res_blocks=2,
-                        downscale_factor=2,
+                        downscale_factor=8,
                         adapter_type="full_adapter",
                     ),
                     T2IAdapter(
                         in_channels=3,
-                        channels=[32, 64],
+                        channels=[32, 32, 32, 64],
                         num_res_blocks=2,
-                        downscale_factor=2,
+                        downscale_factor=8,
                         adapter_type="full_adapter",
                     ),
                 ]
@@ -137,7 +138,7 @@ class AdapterTests:
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0, height=64, width=64, num_images=1):
+    def get_dummy_inputs(self, device, seed=0, height=128, width=128, num_images=1):
         if num_images == 1:
             image = floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(device)
         else:
@@ -188,8 +189,10 @@ class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMi
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4858, 0.5500, 0.4278, 0.4669, 0.6184, 0.4322, 0.5010, 0.5033, 0.4746])
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array(
+            [0.27978146, 0.36439905, 0.3206715, 0.29253614, 0.36390454, 0.3165658, 0.4384598, 0.43083128, 0.38120443]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
 
@@ -208,8 +211,10 @@ class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4965, 0.5548, 0.4330, 0.4771, 0.6226, 0.4382, 0.5037, 0.5071, 0.4782])
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array(
+            [0.27612323, 0.3632322, 0.31936637, 0.2896598, 0.3640582, 0.31550938, 0.438073, 0.43133593, 0.38108835]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
 
@@ -217,7 +222,7 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
     def get_dummy_components(self):
         return super().get_dummy_components("multi_adapter")
 
-    def get_dummy_inputs(self, device, height=64, width=64, seed=0):
+    def get_dummy_inputs(self, device, height=128, width=128, seed=0):
         inputs = super().get_dummy_inputs(device, seed, height=height, width=width, num_images=2)
         inputs["adapter_conditioning_scale"] = [0.5, 0.5]
         return inputs
@@ -233,8 +238,10 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4902, 0.5539, 0.4317, 0.4682, 0.6190, 0.4351, 0.5018, 0.5046, 0.4772])
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array(
+            [0.27745497, 0.36333847, 0.32152444, 0.29158655, 0.3639205, 0.31645983, 0.4382596, 0.43064785, 0.3810274]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
     def test_inference_batch_consistent(
