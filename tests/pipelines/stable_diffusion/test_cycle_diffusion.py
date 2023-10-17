@@ -27,9 +27,9 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    nightly,
     require_torch_gpu,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -194,7 +194,7 @@ class CycleDiffusionPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterM
         return super().test_attention_slicing_forward_pass()
 
 
-@slow
+@nightly
 @require_torch_gpu
 class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

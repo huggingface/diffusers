@@ -22,9 +22,9 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     load_numpy,
+    nightly,
     require_torch_gpu,
     skip_mps,
-    slow,
     torch_device,
 )
 
@@ -196,9 +196,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(
     # Overriding PipelineTesterMixin::test_inference_batch_single_identical
     # because undeterminism requires a looser check.
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device in ["cpu", "mps"]
-
-        self._test_inference_batch_single_identical(test_max_difference=test_max_difference)
+        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -208,7 +206,7 @@ class StableUnCLIPImg2ImgPipelineFastTests(
         self._test_xformers_attention_forwardGenerator_pass(test_max_difference=False)
 
 
-@slow
+@nightly
 @require_torch_gpu
 class StableUnCLIPImg2ImgPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import flax
 import flax.linen as nn
@@ -92,6 +92,9 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             Enable memory efficient attention as described [here](https://arxiv.org/abs/2112.05682).
+        split_head_dim (`bool`, *optional*, defaults to `False`):
+            Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
+            enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
     """
 
     sample_size: int = 32
@@ -116,8 +119,14 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
     use_memory_efficient_attention: bool = False
+    split_head_dim: bool = False
+    transformer_layers_per_block: Union[int, Tuple[int]] = 1
+    addition_embed_type: Optional[str] = None
+    addition_time_embed_dim: Optional[int] = None
+    addition_embed_type_num_heads: int = 64
+    projection_class_embeddings_input_dim: Optional[int] = None
 
-    def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
+    def init_weights(self, rng: jax.Array) -> FrozenDict:
         # init input tensors
         sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
@@ -127,7 +136,27 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         params_rng, dropout_rng = jax.random.split(rng)
         rngs = {"params": params_rng, "dropout": dropout_rng}
 
-        return self.init(rngs, sample, timesteps, encoder_hidden_states)["params"]
+        added_cond_kwargs = None
+        if self.addition_embed_type == "text_time":
+            # we retrieve the expected `text_embeds_dim` by first checking if the architecture is a refiner
+            # or non-refiner architecture and then by "reverse-computing" from `projection_class_embeddings_input_dim`
+            is_refiner = (
+                5 * self.config.addition_time_embed_dim + self.config.cross_attention_dim
+                == self.config.projection_class_embeddings_input_dim
+            )
+            num_micro_conditions = 5 if is_refiner else 6
+
+            text_embeds_dim = self.config.projection_class_embeddings_input_dim - (
+                num_micro_conditions * self.config.addition_time_embed_dim
+            )
+
+            time_ids_channels = self.projection_class_embeddings_input_dim - text_embeds_dim
+            time_ids_dims = time_ids_channels // self.addition_time_embed_dim
+            added_cond_kwargs = {
+                "text_embeds": jnp.zeros((1, text_embeds_dim), dtype=jnp.float32),
+                "time_ids": jnp.zeros((1, time_ids_dims), dtype=jnp.float32),
+            }
+        return self.init(rngs, sample, timesteps, encoder_hidden_states, added_cond_kwargs)["params"]
 
     def setup(self):
         block_out_channels = self.block_out_channels
@@ -168,6 +197,24 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(self.down_block_types)
 
+        # transformer layers per block
+        transformer_layers_per_block = self.transformer_layers_per_block
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(self.down_block_types)
+
+        # addition embed types
+        if self.addition_embed_type is None:
+            self.add_embedding = None
+        elif self.addition_embed_type == "text_time":
+            if self.addition_time_embed_dim is None:
+                raise ValueError(
+                    f"addition_embed_type {self.addition_embed_type} requires `addition_time_embed_dim` to not be None"
+                )
+            self.add_time_proj = FlaxTimesteps(self.addition_time_embed_dim, self.flip_sin_to_cos, self.freq_shift)
+            self.add_embedding = FlaxTimestepEmbedding(time_embed_dim, dtype=self.dtype)
+        else:
+            raise ValueError(f"addition_embed_type: {self.addition_embed_type} must be None or `text_time`.")
+
         # down
         down_blocks = []
         output_channel = block_out_channels[0]
@@ -182,11 +229,13 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     dropout=self.dropout,
                     num_layers=self.layers_per_block,
+                    transformer_layers_per_block=transformer_layers_per_block[i],
                     num_attention_heads=num_attention_heads[i],
                     add_downsample=not is_final_block,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
+                    split_head_dim=self.split_head_dim,
                     dtype=self.dtype,
                 )
             else:
@@ -207,8 +256,10 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             in_channels=block_out_channels[-1],
             dropout=self.dropout,
             num_attention_heads=num_attention_heads[-1],
+            transformer_layers_per_block=transformer_layers_per_block[-1],
             use_linear_projection=self.use_linear_projection,
             use_memory_efficient_attention=self.use_memory_efficient_attention,
+            split_head_dim=self.split_head_dim,
             dtype=self.dtype,
         )
 
@@ -218,6 +269,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         only_cross_attention = list(reversed(only_cross_attention))
         output_channel = reversed_block_out_channels[0]
+        reversed_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
         for i, up_block_type in enumerate(self.up_block_types):
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
@@ -231,12 +283,14 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     out_channels=output_channel,
                     prev_output_channel=prev_output_channel,
                     num_layers=self.layers_per_block + 1,
+                    transformer_layers_per_block=reversed_transformer_layers_per_block[i],
                     num_attention_heads=reversed_num_attention_heads[i],
                     add_upsample=not is_final_block,
                     dropout=self.dropout,
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
+                    split_head_dim=self.split_head_dim,
                     dtype=self.dtype,
                 )
             else:
@@ -269,6 +323,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample,
         timesteps,
         encoder_hidden_states,
+        added_cond_kwargs: Optional[Union[Dict, FrozenDict]] = None,
         down_block_additional_residuals=None,
         mid_block_additional_residual=None,
         return_dict: bool = True,
@@ -279,6 +334,13 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
             encoder_hidden_states (`jnp.ndarray`): (batch_size, sequence_length, hidden_size) encoder hidden states
+            added_cond_kwargs: (`dict`, *optional*):
+                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
+                are passed along to the UNet blocks.
+            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
+                A tuple of tensors that if specified are added to the residuals of down unet blocks.
+            mid_block_additional_residual: (`torch.Tensor`, *optional*):
+                A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
                 plain tuple.
@@ -299,6 +361,31 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         t_emb = self.time_proj(timesteps)
         t_emb = self.time_embedding(t_emb)
+
+        # additional embeddings
+        aug_emb = None
+        if self.addition_embed_type == "text_time":
+            if added_cond_kwargs is None:
+                raise ValueError(
+                    f"Need to provide argument `added_cond_kwargs` for {self.__class__} when using `addition_embed_type={self.addition_embed_type}`"
+                )
+            text_embeds = added_cond_kwargs.get("text_embeds")
+            if text_embeds is None:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                )
+            time_ids = added_cond_kwargs.get("time_ids")
+            if time_ids is None:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                )
+            # compute time embeds
+            time_embeds = self.add_time_proj(jnp.ravel(time_ids))  # (1, 6) => (6,) => (6, 256)
+            time_embeds = jnp.reshape(time_embeds, (text_embeds.shape[0], -1))
+            add_embeds = jnp.concatenate([text_embeds, time_embeds], axis=-1)
+            aug_emb = self.add_embedding(add_embeds)
+
+        t_emb = t_emb + aug_emb if aug_emb is not None else t_emb
 
         # 2. pre-process
         sample = jnp.transpose(sample, (0, 2, 3, 1))

@@ -3,6 +3,7 @@ __version__ = "0.22.0.dev0"
 from typing import TYPE_CHECKING
 
 from .utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     is_flax_available,
@@ -197,6 +198,8 @@ else:
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
             "AudioLDMPipeline",
+            "BlipDiffusionControlNetPipeline",
+            "BlipDiffusionPipeline",
             "CLIPImageProjection",
             "CycleDiffusionPipeline",
             "IFImg2ImgPipeline",
@@ -367,6 +370,7 @@ else:
             "FlaxDDIMScheduler",
             "FlaxDDPMScheduler",
             "FlaxDPMSolverMultistepScheduler",
+            "FlaxEulerDiscreteScheduler",
             "FlaxKarrasVeScheduler",
             "FlaxLMSDiscreteScheduler",
             "FlaxPNDMScheduler",
@@ -394,6 +398,7 @@ else:
             "FlaxStableDiffusionImg2ImgPipeline",
             "FlaxStableDiffusionInpaintPipeline",
             "FlaxStableDiffusionPipeline",
+            "FlaxStableDiffusionXLPipeline",
         ]
     )
 
@@ -411,7 +416,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipelines"].extend(["MidiProcessor"])
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .configuration_utils import ConfigMixin
 
     try:
@@ -459,6 +464,8 @@ if TYPE_CHECKING:
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
+            BlipDiffusionControlNetPipeline,
+            BlipDiffusionPipeline,
             CLIPImageProjection,
             ConsistencyModelPipeline,
             DanceDiffusionPipeline,
@@ -670,6 +677,7 @@ if TYPE_CHECKING:
             FlaxDDIMScheduler,
             FlaxDDPMScheduler,
             FlaxDPMSolverMultistepScheduler,
+            FlaxEulerDiscreteScheduler,
             FlaxKarrasVeScheduler,
             FlaxLMSDiscreteScheduler,
             FlaxPNDMScheduler,
@@ -688,6 +696,7 @@ if TYPE_CHECKING:
             FlaxStableDiffusionImg2ImgPipeline,
             FlaxStableDiffusionInpaintPipeline,
             FlaxStableDiffusionPipeline,
+            FlaxStableDiffusionXLPipeline,
         )
 
     try:

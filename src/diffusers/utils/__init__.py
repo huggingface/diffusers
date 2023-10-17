@@ -26,9 +26,11 @@ from .constants import (
     FLAX_WEIGHTS_NAME,
     HF_MODULES_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    MIN_PEFT_VERSION,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
+    USE_PEFT_BACKEND,
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
@@ -45,6 +47,7 @@ from .hub_utils import (
 )
 from .import_utils import (
     BACKENDS_MAPPING,
+    DIFFUSERS_SLOW_IMPORT,
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
     USE_JAX,
@@ -67,10 +70,12 @@ from .import_utils import (
     is_note_seq_available,
     is_omegaconf_available,
     is_onnx_available,
+    is_peft_available,
     is_scipy_available,
     is_tensorboard_available,
     is_torch_available,
     is_torch_version,
+    is_torch_xla_available,
     is_torchsde_available,
     is_transformers_available,
     is_transformers_version,
@@ -82,7 +87,22 @@ from .import_utils import (
 from .loading_utils import load_image
 from .logging import get_logger
 from .outputs import BaseOutput
+from .peft_utils import (
+    check_peft_version,
+    get_adapter_name,
+    get_peft_kwargs,
+    recurse_remove_peft_layers,
+    scale_lora_layers,
+    set_adapter_layers,
+    set_weights_and_activate_adapters,
+    unscale_lora_layers,
+)
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
+from .state_dict_utils import (
+    convert_state_dict_to_diffusers,
+    convert_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
+)
 
 
 logger = get_logger(__name__)

@@ -19,10 +19,11 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 
 from diffusers import (
     DDIMScheduler,
-    KandinskyV22ControlnetPipeline,
+    KandinskyV22Img2ImgPipeline,
     KandinskyV22PriorPipeline,
     UNet2DConditionModel,
     VQModel,
@@ -43,25 +44,7 @@ from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_diffe
 enable_full_determinism()
 
 
-class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyV22ControlnetPipeline
-    params = ["image_embeds", "negative_image_embeds", "hint"]
-    batch_params = ["image_embeds", "negative_image_embeds", "hint"]
-    required_optional_params = [
-        "generator",
-        "height",
-        "width",
-        "latents",
-        "guidance_scale",
-        "num_inference_steps",
-        "return_dict",
-        "guidance_scale",
-        "num_images_per_prompt",
-        "output_type",
-        "return_dict",
-    ]
-    test_xformers_attention = False
-
+class Dummies:
     @property
     def text_embedder_hidden_size(self):
         return 32
@@ -80,17 +63,17 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
 
     @property
     def cross_attention_dim(self):
-        return 100
+        return 32
 
     @property
     def dummy_unet(self):
         torch.manual_seed(0)
 
         model_kwargs = {
-            "in_channels": 8,
+            "in_channels": 4,
             # Out channels is double in channels because predicts mean and variance
             "out_channels": 8,
-            "addition_embed_type": "image_hint",
+            "addition_embed_type": "image",
             "down_block_types": ("ResnetDownsampleBlock2D", "SimpleCrossAttnDownBlock2D"),
             "up_block_types": ("SimpleCrossAttnUpBlock2D", "ResnetUpsampleBlock2D"),
             "mid_block_type": "UNetMidBlock2DSimpleCrossAttn",
@@ -110,13 +93,8 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
     @property
     def dummy_movq_kwargs(self):
         return {
-            "block_out_channels": [32, 32, 64, 64],
-            "down_block_types": [
-                "DownEncoderBlock2D",
-                "DownEncoderBlock2D",
-                "DownEncoderBlock2D",
-                "AttnDownEncoderBlock2D",
-            ],
+            "block_out_channels": [32, 64],
+            "down_block_types": ["DownEncoderBlock2D", "AttnDownEncoderBlock2D"],
             "in_channels": 3,
             "latent_channels": 4,
             "layers_per_block": 1,
@@ -124,7 +102,10 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
             "norm_type": "spatial",
             "num_vq_embeddings": 12,
             "out_channels": 3,
-            "up_block_types": ["AttnUpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            "up_block_types": [
+                "AttnUpDecoderBlock2D",
+                "UpDecoderBlock2D",
+            ],
             "vq_embed_dim": 4,
         }
 
@@ -138,23 +119,26 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
         unet = self.dummy_unet
         movq = self.dummy_movq
 
-        scheduler = DDIMScheduler(
-            num_train_timesteps=1000,
-            beta_schedule="linear",
-            beta_start=0.00085,
-            beta_end=0.012,
-            clip_sample=False,
-            set_alpha_to_one=False,
-            steps_offset=1,
-            prediction_type="epsilon",
-            thresholding=False,
-        )
+        ddim_config = {
+            "num_train_timesteps": 1000,
+            "beta_schedule": "linear",
+            "beta_start": 0.00085,
+            "beta_end": 0.012,
+            "clip_sample": False,
+            "set_alpha_to_one": False,
+            "steps_offset": 0,
+            "prediction_type": "epsilon",
+            "thresholding": False,
+        }
+
+        scheduler = DDIMScheduler(**ddim_config)
 
         components = {
             "unet": unet,
             "scheduler": scheduler,
             "movq": movq,
         }
+
         return components
 
     def get_dummy_inputs(self, device, seed=0):
@@ -162,28 +146,62 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
         negative_image_embeds = floats_tensor((1, self.text_embedder_hidden_size), rng=random.Random(seed + 1)).to(
             device
         )
-
-        # create hint
-        hint = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+        # create init_image
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((256, 256))
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
+            "image": init_image,
             "image_embeds": image_embeds,
             "negative_image_embeds": negative_image_embeds,
-            "hint": hint,
             "generator": generator,
             "height": 64,
             "width": 64,
-            "guidance_scale": 4.0,
-            "num_inference_steps": 2,
+            "num_inference_steps": 10,
+            "guidance_scale": 7.0,
+            "strength": 0.2,
             "output_type": "np",
         }
         return inputs
 
-    def test_kandinsky_controlnet(self):
+
+class KandinskyV22Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyV22Img2ImgPipeline
+    params = ["image_embeds", "negative_image_embeds", "image"]
+    batch_params = [
+        "image_embeds",
+        "negative_image_embeds",
+        "image",
+    ]
+    required_optional_params = [
+        "generator",
+        "height",
+        "width",
+        "strength",
+        "guidance_scale",
+        "num_inference_steps",
+        "return_dict",
+        "guidance_scale",
+        "num_images_per_prompt",
+        "output_type",
+        "return_dict",
+    ]
+    test_xformers_attention = False
+
+    def get_dummy_components(self):
+        dummies = Dummies()
+        return dummies.get_dummy_components()
+
+    def get_dummy_inputs(self, device, seed=0):
+        dummies = Dummies()
+        return dummies.get_dummy_inputs(device=device, seed=seed)
+
+    def test_kandinsky_img2img(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -206,55 +224,51 @@ class KandinskyV22ControlnetPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array(
-            [0.6959826, 0.868279, 0.7558092, 0.68769467, 0.85805804, 0.65977496, 0.44885302, 0.5959111, 0.4251595]
-        )
-
+        expected_slice = np.array([0.5712, 0.5443, 0.4725, 0.6195, 0.5184, 0.4651, 0.4473, 0.4590, 0.5016])
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
-
         assert (
             np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_from_tuple_slice.flatten()}"
 
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=2e-1)
+
 
 @slow
 @require_torch_gpu
-class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
+class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_kandinsky_controlnet(self):
+    def test_kandinsky_img2img(self):
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/kandinskyv22/kandinskyv22_controlnet_robotcat_fp16.npy"
+            "/kandinskyv22/kandinskyv22_img2img_frog.npy"
         )
 
-        hint = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/kandinskyv22/hint_image_cat.png"
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png"
         )
-        hint = torch.from_numpy(np.array(hint)).float() / 255.0
-        hint = hint.permute(2, 0, 1).unsqueeze(0)
+        prompt = "A red cartoon frog, 4k"
 
         pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
         )
         pipe_prior.to(torch_device)
 
-        pipeline = KandinskyV22ControlnetPipeline.from_pretrained(
-            "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
+        pipeline = KandinskyV22Img2ImgPipeline.from_pretrained(
+            "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
         )
         pipeline = pipeline.to(torch_device)
+
         pipeline.set_progress_bar_config(disable=None)
 
-        prompt = "A robot, 4k photo"
-
-        generator = torch.Generator(device="cuda").manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
         image_emb, zero_image_emb = pipe_prior(
             prompt,
             generator=generator,
@@ -262,18 +276,20 @@ class KandinskyV22ControlnetPipelineIntegrationTests(unittest.TestCase):
             negative_prompt="",
         ).to_tuple()
 
-        generator = torch.Generator(device="cuda").manual_seed(0)
         output = pipeline(
+            image=init_image,
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
-            hint=hint,
             generator=generator,
             num_inference_steps=100,
+            height=768,
+            width=768,
+            strength=0.2,
             output_type="np",
         )
 
         image = output.images[0]
 
-        assert image.shape == (512, 512, 3)
+        assert image.shape == (768, 768, 3)
 
         assert_mean_pixel_difference(image, expected_image)

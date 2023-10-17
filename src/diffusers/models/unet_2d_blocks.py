@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..utils import is_torch_version, logging
+from ..utils.torch_utils import apply_freeu
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
@@ -249,6 +250,7 @@ def get_up_block(
     add_upsample,
     resnet_eps,
     resnet_act_fn,
+    resolution_idx=None,
     transformer_layers_per_block=1,
     num_attention_heads=None,
     resnet_groups=None,
@@ -281,6 +283,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -295,6 +298,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -314,6 +318,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -337,6 +342,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -362,6 +368,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
@@ -377,6 +384,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -390,6 +398,7 @@ def get_up_block(
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -402,6 +411,7 @@ def get_up_block(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -415,6 +425,7 @@ def get_up_block(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -430,6 +441,7 @@ def get_up_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -441,6 +453,7 @@ def get_up_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
+            resolution_idx=resolution_idx,
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -453,6 +466,21 @@ def get_up_block(
 
 
 class AutoencoderTinyBlock(nn.Module):
+    """
+    Tiny Autoencoder block used in [`AutoencoderTiny`]. It is a mini residual module consisting of plain conv + ReLU
+    blocks.
+
+    Args:
+        in_channels (`int`): The number of input channels.
+        out_channels (`int`): The number of output channels.
+        act_fn (`str`):
+            ` The activation function to use. Supported values are `"swish"`, `"mish"`, `"gelu"`, and `"relu"`.
+
+    Returns:
+        `torch.FloatTensor`: A tensor with the same shape as the input tensor, but with the number of channels equal to
+        `out_channels`.
+    """
+
     def __init__(self, in_channels: int, out_channels: int, act_fn: str):
         super().__init__()
         act_fn = get_activation(act_fn)
@@ -1993,6 +2021,7 @@ class AttnUpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2075,6 +2104,8 @@ class AttnUpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -2103,6 +2134,7 @@ class CrossAttnUpBlock2D(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int = 1,
@@ -2181,6 +2213,7 @@ class CrossAttnUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
@@ -2194,11 +2227,30 @@ class CrossAttnUpBlock2D(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -2252,6 +2304,7 @@ class UpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2292,12 +2345,33 @@ class UpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
+
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -2331,6 +2405,7 @@ class UpDecoderBlock2D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2370,6 +2445,8 @@ class UpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, temb=None, scale: float = 1.0):
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)
@@ -2386,6 +2463,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2449,6 +2527,8 @@ class AttnUpDecoderBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, temb=None, scale: float = 1.0):
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)
@@ -2469,6 +2549,7 @@ class AttnSkipUpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2553,6 +2634,8 @@ class AttnSkipUpBlock2D(nn.Module):
             self.skip_norm = None
             self.act = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, skip_sample=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
@@ -2589,6 +2672,7 @@ class SkipUpBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2651,6 +2735,8 @@ class SkipUpBlock2D(nn.Module):
             self.skip_norm = None
             self.act = None
 
+        self.resolution_idx = resolution_idx
+
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, skip_sample=None, scale: float = 1.0):
         for resnet in self.resnets:
             # pop res hidden states
@@ -2684,6 +2770,7 @@ class ResnetUpsampleBlock2D(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2743,6 +2830,7 @@ class ResnetUpsampleBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         for resnet in self.resnets:
@@ -2784,6 +2872,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -2873,6 +2962,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
@@ -2947,6 +3037,7 @@ class KUpBlock2D(nn.Module):
         in_channels: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 5,
         resnet_eps: float = 1e-5,
@@ -2988,6 +3079,7 @@ class KUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
@@ -3027,6 +3119,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         in_channels: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int,
         dropout: float = 0.0,
         num_layers: int = 4,
         resnet_eps: float = 1e-5,
@@ -3104,6 +3197,7 @@ class KCrossAttnUpBlock2D(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,

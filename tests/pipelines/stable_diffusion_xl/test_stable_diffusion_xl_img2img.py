@@ -38,7 +38,7 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin
 
 
 enable_full_determinism()
@@ -341,7 +341,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
 
 class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionXLImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
@@ -559,8 +559,47 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
+    def test_stable_diffusion_xl_img2img_prompt_embeds_only(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # forward without prompt embeds
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["prompt"] = 3 * [inputs["prompt"]]
+
+        output = sd_pipe(**inputs)
+        image_slice_1 = output.images[0, -3:, -3:, -1]
+
+        # forward with prompt embeds
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        prompt = 3 * [inputs.pop("prompt")]
+
+        (
+            prompt_embeds,
+            _,
+            pooled_prompt_embeds,
+            _,
+        ) = sd_pipe.encode_prompt(prompt)
+
+        output = sd_pipe(
+            **inputs,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+        )
+        image_slice_2 = output.images[0, -3:, -3:, -1]
+
+        # make sure that it's equal
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_save_load_optional_components(self):
+        self._test_save_load_optional_components()

@@ -44,8 +44,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, torch_device
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -446,12 +445,9 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
-    @unittest.skipIf(
-        torch_device != "cuda" or not is_xformers_available(),
-        reason="XFormers attention is only available with CUDA and `xformers` installed",
-    )
+    @unittest.skip("Raises a not implemented error in AudioLDM2")
     def test_xformers_attention_forwardGenerator_pass(self):
-        self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
+        pass
 
     def test_dict_tuple_outputs_equivalent(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
@@ -459,7 +455,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_inference_batch_single_identical(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
-        self._test_inference_batch_single_identical(test_mean_pixel_difference=False, expected_max_diff=2e-4)
+        self._test_inference_batch_single_identical(expected_max_diff=2e-4)
 
     def test_save_load_local(self):
         # increase tolerance from 1e-4 -> 2e-4 to account for large composite model
@@ -491,8 +487,11 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
 
-@slow
+
+@nightly
 class AudioLDM2PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()

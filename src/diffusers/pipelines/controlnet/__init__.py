@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -23,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["pipeline_controlnet"] = ["StableDiffusionControlNetPipeline"]
+    _import_structure["pipeline_controlnet_blip_diffusion"] = ["BlipDiffusionControlNetPipeline"]
     _import_structure["pipeline_controlnet_img2img"] = ["StableDiffusionControlNetImg2ImgPipeline"]
     _import_structure["pipeline_controlnet_inpaint"] = ["StableDiffusionControlNetInpaintPipeline"]
     _import_structure["pipeline_controlnet_inpaint_sd_xl"] = ["StableDiffusionXLControlNetInpaintPipeline"]
@@ -39,7 +41,7 @@ else:
     _import_structure["pipeline_flax_controlnet"] = ["FlaxStableDiffusionControlNetPipeline"]
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
@@ -49,6 +51,7 @@ if TYPE_CHECKING:
     else:
         from .multicontrolnet import MultiControlNetModel
         from .pipeline_controlnet import StableDiffusionControlNetPipeline
+        from .pipeline_controlnet_blip_diffusion import BlipDiffusionControlNetPipeline
         from .pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
         from .pipeline_controlnet_inpaint import StableDiffusionControlNetInpaintPipeline
         from .pipeline_controlnet_inpaint_sd_xl import StableDiffusionXLControlNetInpaintPipeline
