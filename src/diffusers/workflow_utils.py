@@ -14,7 +14,7 @@
 # limitations under the License.
 """Module for managing workflows."""
 import os
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Callable
 
 import numpy as np
 import PIL
@@ -54,7 +54,7 @@ def populate_workflow_from_pipeline(
         arg: call_arg_values[arg]
         for arg in argument_names
         if arg != "return_workflow"
-        and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, PIL.Image.Image))
+        and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, PIL.Image.Image, Callable))
     }
 
     workflow.update(call_arguments)
