@@ -344,7 +344,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 conditioning_channels=conditioning_channels,
             )
         elif controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
-            self.control_net_moe = UniControlTaskMOEEmbedding(time_embed_dim=time_embed_dim, model_channels=block_out_channels[0])
+            self.controlnet_cond_embedding = UniControlTaskMOEEmbedding(time_embed_dim=time_embed_dim, model_channels=block_out_channels[0])
             self.task_id_hypernet = UniControlTaskIDHypernet(time_embed_dim=time_embed_dim)
         else:
             raise ValueError(f"Unsupported value for controlnet_conditioning_embedding: {controlnet_conditioning_embedding}")
@@ -795,13 +795,13 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
 
         # 2. pre-process
         sample = self.conv_in(sample)
-        if not isinstance(self.controlnet_cond_embedding,None):
+        if isinstance(self.controlnet_cond_embedding, ControlNetConditioningEmbedding):
             controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
-        elif not isinstance(self.control_net_moe, None):
+        elif isinstance(self.controlnet_cond_embedding, UniControlTaskMOEEmbedding):
             task_feature = task_text_embeds[:,:1,:]
             task_id_emb = self.task_id_hypernet(task_feature.squeeze(0))
 
-            controlnet_cond = self.control_net_moe(
+            controlnet_cond = self.controlnet_cond_embedding(
                 x = sample,
                 context = encoder_hidden_states,
                 hint = controlnet_cond,
@@ -841,11 +841,11 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         # 5. Control net blocks
 
         controlnet_down_block_res_samples = ()
-        if not isinstance(self.controlnet_cond_embedding,None):
+        if  isinstance(self.controlnet_cond_embedding, ControlNetConditioningEmbedding):
             for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
                 down_block_res_sample = controlnet_block(down_block_res_sample)
                 controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
-        elif not isinstance(self.control_net_moe,None):
+        elif  isinstance(self.controlnet_cond_embedding, UniControlTaskMOEEmbedding):
             for down_block_res_sample, controlnet_block, task_hyperlayer in zip(down_block_res_samples, self.controlnet_down_blocks, self.task_id_layernet):
                 down_block_res_sample = modulated_conv2d(
                     down_block_res_sample,
