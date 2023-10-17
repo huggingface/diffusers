@@ -2013,7 +2013,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             workflow = workflow_id_or_path
 
         # Handle generator.
-        seed = workflow.pop("seed")
+        seed = workflow.pop("seed", None)
         if seed is not None:
             generator = torch.manual_seed(seed)
         else:
