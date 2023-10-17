@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Module for managing workflows."""
+import os
 from typing import Dict, List, Optional, Union
 
 import torch
-import os
 
 from .configuration_utils import ConfigMixin
 from .utils import PushToHubMixin, logging
+from .utils.constants import WORKFLOW_NAME
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -75,9 +76,10 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.config_name = WORKFLOW_NAME
 
     def save_workflow(self, **kwargs):
         self.save_config(**kwargs)
 
-    def save_pretrained(self,save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         self.save_workflow(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
