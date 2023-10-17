@@ -2025,6 +2025,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Note: Instead of popping the non-call arguments off, it's better to keep them in
         # the workflow object should it be reused.
         final_call_args = {k: v for k, v in workflow.items() if k not in _NON_CALL_ARGUMENTS}
+        print(final_call_args)
 
         # Handle the call here.
         self.__call__ = partial(self.__call__, **final_call_args)
