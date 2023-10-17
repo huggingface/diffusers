@@ -34,8 +34,11 @@ def filter_pipelines(usage_dict, usage_cutoff=10000):
         if usage < usage_cutoff:
             continue
 
-        if "Pipeline" in diffusers_object:
-            output.append(diffusers_object)
+        is_diffusers_pipeline = hasattr(diffusers.pipelines, diffusers_object)
+        if not is_diffusers_pipeline:
+            continue
+
+        output.append(diffusers_object)
 
     return output
 
@@ -70,11 +73,7 @@ def fetch_pipeline_modules_to_test():
 
     test_modules = []
     for pipeline_name in pipeline_objects:
-        try:
-            module = getattr(diffusers, pipeline_name)
-        except Exception:
-            logger.warning(f"Unable to fetch {pipeline_name} from diffusers")
-            continue
+        module = getattr(diffusers, pipeline_name)
 
         test_module = module.__module__.split(".")[-2].strip()
         test_modules.append(test_module)
