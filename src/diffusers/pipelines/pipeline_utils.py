@@ -2023,7 +2023,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Handle non-call arguments.
         # Note: Instead of popping the non-call arguments off, it's better to keep them in
         # the workflow object should it be reused.
-        final_call_args = {k: v for k, v in workflow.items() if k in _NON_CALL_ARGUMENTS}
+        final_call_args = {k: v for k, v in workflow.items() if k not in _NON_CALL_ARGUMENTS}
 
         # Handle the call here.
 
@@ -2033,7 +2033,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Update the default values in the signature
         new_params = []
         for param_name, param in original_signature.parameters.items():
-            print(param_name, param)
+            print(param_name)
             if param_name in final_call_args:
                 print(f"New param value: {final_call_args[param_name]}")
                 new_params.append(param.replace(default=final_call_args[param_name]))
