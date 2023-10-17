@@ -91,6 +91,10 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
         self._internal_dict.update(__m, **kwargs)
         super().update(__m, **kwargs)
 
+    def pop(self, __key):
+        self._internal_dict.pop(__key)
+        super().pop(__key)
+
     def save_workflow(self, **kwargs):
         self.save_config(**kwargs)
 
