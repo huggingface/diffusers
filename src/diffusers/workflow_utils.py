@@ -16,16 +16,19 @@
 import os
 from typing import Dict, List, Optional, Union
 
+import numpy as np
+import PIL
 import torch
 
-from .configuration_utils import ConfigMixin
+from .configuration_utils import ConfigMixin, FrozenDict
 from .utils import PushToHubMixin, logging
 from .utils.constants import WORKFLOW_NAME
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-NON_CALL_ARGUMENTS = ["lora", "is_torch_tensor_present", "_name_or_path"]
+_NON_CALL_ARGUMENTS = ["lora", "is_torch_tensor_present", "_name_or_path", "_class_name", "_diffusers_version"]
+_ALLOWED_PATTERNS = r"^[\w\s.,!?@#$%^&*()_+-=<>[\]{}|\\;:'\"/]*$"
 
 
 def populate_workflow_from_pipeline(
@@ -47,10 +50,12 @@ def populate_workflow_from_pipeline(
     workflow = Workflow()
 
     # Populate call arguments.
+    # The extra regex check there ensure we don't store image inputs as well (required for many pipelines).
     call_arguments = {
         arg: call_arg_values[arg]
         for arg in argument_names
-        if arg != "return_workflow" and not isinstance(call_arg_values[arg], torch.Tensor)
+        if arg != "return_workflow"
+        and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, PIL.Image.Image))
     }
 
     workflow.update(call_arguments)
@@ -74,9 +79,10 @@ def populate_workflow_from_pipeline(
 class Workflow(dict, ConfigMixin, PushToHubMixin):
     """Class sub-classing from native Python dict to have support for interacting with the Hub."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.config_name = WORKFLOW_NAME
+        self._internal_dict = FrozenDict(dict(kwargs.items()))
 
     def save_workflow(self, **kwargs):
         self.save_config(**kwargs)
