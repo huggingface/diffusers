@@ -29,7 +29,7 @@ def populate_workflow_from_pipeline(
     call_arg_values: Dict,
     lora_info: Optional[Dict],
 ):
-    r"""Populates the pipeline components' configurations and the call arguments in a dictionary.
+    r"""Populates the call arguments and LoRA information in a dictionary.
 
     Args:
         argument_names (`List[str]`): List of function arguments.
