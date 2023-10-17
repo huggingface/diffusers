@@ -152,7 +152,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
         safety_checker=None,
         revision=args.revision,
         torch_dtype=weight_dtype,
-        **pipeline_args
+        **pipeline_args,
     )
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -489,6 +489,7 @@ def parse_args():
         args.non_ema_revision = args.revision
 
     return args
+
 
 def model_has_vae(args):
     config_file_name = os.path.join("vae", AutoencoderKL.config_name)

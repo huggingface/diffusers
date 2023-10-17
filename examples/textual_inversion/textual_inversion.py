@@ -572,6 +572,7 @@ class TextualInversionDataset(Dataset):
         example["pixel_values"] = torch.from_numpy(image).permute(2, 0, 1)
         return example
 
+
 def model_has_vae(args):
     config_file_name = os.path.join("vae", AutoencoderKL.config_name)
     if os.path.isdir(args.pretrained_model_name_or_path):
@@ -580,6 +581,7 @@ def model_has_vae(args):
     else:
         files_in_repo = model_info(args.pretrained_model_name_or_path, revision=args.revision).siblings
         return any(file.rfilename == config_file_name for file in files_in_repo)
+
 
 def main():
     args = parse_args()
