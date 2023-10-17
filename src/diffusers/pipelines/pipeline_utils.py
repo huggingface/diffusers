@@ -2039,6 +2039,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 new_params.append(param)
 
+        print(new_params)
+
         # Create a new signature with modified default values
         new_signature = original_signature.replace(parameters=new_params)
 
