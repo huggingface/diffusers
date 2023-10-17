@@ -57,8 +57,8 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
-from ..utils.torch_utils import is_compiled_module
 from ..utils.constants import WORKFLOW_NAME
+from ..utils.torch_utils import is_compiled_module
 from ..workflow_utils import NON_CALL_ARGUMENTS
 
 
@@ -1981,17 +1981,37 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             module.set_attention_slice(slice_size)
 
-    def load_workflow(self, workflow_id_or_path, workflow_filename=None):
+    def load_workflow(self, workflow_id_or_path: Union[str, dict], workflow_filename: Optional[str] = None):
+        r"""Loads a workflow from the Hub or from a local path. Also patches the pipeline call arguments with values from the
+        workflow.
+
+        Args:
+            workflow_id_or_path (`str` or `dict`):
+                Can be either:
+
+                    - A string, the workflow id (for example `sayakpaul/sdxl-workflow`) of a workflow hosted on the
+                      Hub.
+                    - A path to a directory (for example `./my_workflow_directory`) containing the workflow file with
+                      [`Workflow.save_workflow`] or [`Workflow.push_to_hub`].
+                    - A Python dictionary.
+
+            workflow_filename (`str`, *optional*):
+                Optional name of the workflow file to load. Especially useful when working with multiple workflow
+                files.
+        """
         workflow_filename = workflow_filename or WORKFLOW_NAME
 
         # Load workflow.
-        if os.path.isdir(workflow_id_or_path):
-            workflow_filepath = os.path.join(workflow_id_or_path, workflow_filename)
-        elif os.path.isfile(workflow_id_or_path):
-            workflow_filepath = workflow_id_or_path
+        if not isinstance(workflow_id_or_path, dict):
+            if os.path.isdir(workflow_id_or_path):
+                workflow_filepath = os.path.join(workflow_id_or_path, workflow_filename)
+            elif os.path.isfile(workflow_id_or_path):
+                workflow_filepath = workflow_id_or_path
+            else:
+                workflow_filepath = hf_hub_download(repo_id=workflow_id_or_path, filename=workflow_filename)
+            workflow = self._dict_from_json_file(workflow_filepath)
         else:
-            workflow_filepath = hf_hub_download(repo_id=workflow_id_or_path, filename=workflow_filename)
-        workflow = self._dict_from_json_file(workflow_filepath)
+            workflow = workflow_id_or_path
 
         # Handle generator.
         seed = workflow.pop("seed")
@@ -2002,12 +2022,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         workflow.update({"generator": generator})
 
         # Handle non-call arguments.
-        # Note: Instead of popping the non-call arguments off, it's better to keep them in 
+        # Note: Instead of popping the non-call arguments off, it's better to keep them in
         # the workflow object should it be reused.
-        final_call_args = {k: v for k, v in workflow.items() if k in NON_CALL_ARGUMENTS}
+        {k: v for k, v in workflow.items() if k in NON_CALL_ARGUMENTS}
 
         # TODO: Handle the call here.
-       
 
     def _update_call(self, **kwargs):
         self.__call__ = partial(self.__call__, **kwargs)

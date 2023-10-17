@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-from .configuration_utils import ConfigMixin, FrozenDict
+from .configuration_utils import ConfigMixin
 from .utils import PushToHubMixin, logging
 
 
@@ -27,10 +27,7 @@ NON_CALL_ARGUMENTS = ["lora", "is_torch_tensor_present", "_name_or_path"]
 
 
 def populate_workflow_from_pipeline(
-    argument_names: List[str],
-    call_arg_values: Dict,
-    lora_info: Optional[Dict],
-    pipeline_name_or_path: str
+    argument_names: List[str], call_arg_values: Dict, lora_info: Optional[Dict], pipeline_name_or_path: str
 ) -> Dict:
     r"""Populates the call arguments and (optional) LoRA information in a dictionary.
 
@@ -76,12 +73,13 @@ def populate_workflow_from_pipeline(
         workflow["lora"].update(lora_info)
 
     workflow["_name_or_path"] = pipeline_name_or_path
-    
+
     return workflow
 
 
 class Workflow(dict, ConfigMixin, PushToHubMixin):
     """Class sub-classing from native Python dict to have support for interacting with the Hub."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
