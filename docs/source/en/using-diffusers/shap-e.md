@@ -62,7 +62,7 @@ export_to_gif(images[1], "cake_3d.gif")
 
 ## Image-to-3D
 
-To generate a 3D object from another image, use the [`ShapEImg2ImgPipeline`]. You can use an existing image or generate an entirely new one. Let's use the the [Kandinsky 2.1](../api/pipelines/kandinsky) model to generate a new image.
+To generate a 3D object from another image, use the [`ShapEImg2ImgPipeline`]. You can use an existing image or generate an entirely new one. Let's use the [Kandinsky 2.1](../api/pipelines/kandinsky) model to generate a new image.
 
 ```py
 from diffusers import DiffusionPipeline

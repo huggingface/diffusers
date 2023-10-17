@@ -1208,7 +1208,7 @@ class LoraLoaderMixin:
         self.load_lora_into_unet(
             state_dict,
             network_alphas=network_alphas,
-            unet=self.unet,
+            unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             low_cpu_mem_usage=low_cpu_mem_usage,
             adapter_name=adapter_name,
             _pipeline=self,
@@ -1216,7 +1216,9 @@ class LoraLoaderMixin:
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
-            text_encoder=self.text_encoder,
+            text_encoder=getattr(self, self.text_encoder_name)
+            if not hasattr(self, "text_encoder")
+            else self.text_encoder,
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
             adapter_name=adapter_name,
@@ -1577,7 +1579,7 @@ class LoraLoaderMixin:
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
-        # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
+        # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
 
@@ -1961,7 +1963,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def save_lora_weights(
-        self,
+        cls,
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
@@ -2001,7 +2003,7 @@ class LoraLoaderMixin:
                 unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
             )
 
-            unet_lora_state_dict = {f"{self.unet_name}.{module_name}": param for module_name, param in weights.items()}
+            unet_lora_state_dict = {f"{cls.unet_name}.{module_name}": param for module_name, param in weights.items()}
             state_dict.update(unet_lora_state_dict)
 
         if text_encoder_lora_layers is not None:
@@ -2012,12 +2014,12 @@ class LoraLoaderMixin:
             )
 
             text_encoder_lora_state_dict = {
-                f"{self.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
+                f"{cls.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
             }
             state_dict.update(text_encoder_lora_state_dict)
 
         # Save the model
-        self.write_lora_layers(
+        cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
             is_main_process=is_main_process,
@@ -2026,6 +2028,7 @@ class LoraLoaderMixin:
             safe_serialization=safe_serialization,
         )
 
+    @staticmethod
     def write_lora_layers(
         state_dict: Dict[str, torch.Tensor],
         save_directory: str,
@@ -3248,7 +3251,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
 
     @classmethod
     def save_lora_weights(
-        self,
+        cls,
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
@@ -3299,7 +3302,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
             state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
-        self.write_lora_layers(
+        cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
             is_main_process=is_main_process,
