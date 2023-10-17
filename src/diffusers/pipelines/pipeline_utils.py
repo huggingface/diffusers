@@ -2035,11 +2035,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for param_name, param in original_signature.parameters.items():
             print(param_name, param)
             if param_name in final_call_args:
+                print(f"New param value: {final_call_args[param_name]}")
                 new_params.append(param.replace(default=final_call_args[param_name]))
             else:
                 new_params.append(param)
-
-        print(new_params)
 
         # Create a new signature with modified default values
         new_signature = original_signature.replace(parameters=new_params)
