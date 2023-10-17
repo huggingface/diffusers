@@ -20,7 +20,7 @@ import numpy as np
 import PIL
 import torch
 
-from .configuration_utils import ConfigMixin, FrozenDict
+from .configuration_utils import ConfigMixin
 from .utils import PushToHubMixin, logging
 from .utils.constants import WORKFLOW_NAME
 
@@ -81,7 +81,15 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config_name = WORKFLOW_NAME
-        self._internal_dict = FrozenDict(dict(kwargs.items()))
+        self._internal_dict = {}
+
+    def __setitem__(self, __key, __value):
+        self._internal_dict[__key] = __value
+        return super().__setitem__(__key, __value)
+
+    def update(self, **kwargs):
+        self._internal_dict.update(**kwargs)
+        super().update(**kwargs)
 
     def save_workflow(self, **kwargs):
         self.save_config(**kwargs)
