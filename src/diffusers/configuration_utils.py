@@ -559,7 +559,6 @@ class ConfigMixin:
                 String containing all the attributes that make up the configuration instance in JSON format.
         """
         config_dict = self._internal_dict if hasattr(self, "_internal_dict") else {}
-        print(f"Config dict: {config_dict}")
         config_dict["_class_name"] = self.__class__.__name__
         config_dict["_diffusers_version"] = __version__
 
