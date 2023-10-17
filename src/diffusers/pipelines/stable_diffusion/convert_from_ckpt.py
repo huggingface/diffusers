@@ -804,6 +804,9 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
     for key in keys:
         for prefix in remove_prefixes:
             if key.startswith(prefix):
+                fixed_key = key[len(prefix + ".") :]
+                if not fixed_key.startswith('text_model.'):
+                    fixed_key = "text_model." + fixed_key
                 text_model_dict[key[len(prefix + ".") :]] = checkpoint[key]
 
     if is_accelerate_available():
