@@ -28,6 +28,7 @@ def populate_workflow_from_pipeline(
     argument_names: List[str],
     call_arg_values: Dict,
     lora_info: Optional[Dict],
+    pipeline_name_or_path: str
 ) -> Dict:
     r"""Populates the call arguments and (optional) LoRA information in a dictionary.
 
@@ -36,6 +37,7 @@ def populate_workflow_from_pipeline(
         call_arg_values (`Dict`):
             Dictionary containing the arguments and their values from the current execution frame.
         lora_info (`Dict`, *optional*): Details of the LoRA checkpoints loaded in the pipeline.
+        pipeline_name_or_path (`str`): Name or the local path to the pipeline that was used to generate the workflow.
 
     Returns:
         `Dict`: A dictionary containing the details of the pipeline call arguments and (optionally) LoRA checkpoint
@@ -70,6 +72,8 @@ def populate_workflow_from_pipeline(
     if len(lora_info) > 0:
         workflow["lora"].update(lora_info)
 
+    workflow["_name_or_path"] = pipeline_name_or_path
+    
     # Make it shareable.
     workflow = Workflow(workflow)
     return workflow
