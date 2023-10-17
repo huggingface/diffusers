@@ -61,6 +61,9 @@ def populate_workflow_from_pipeline(
             workflow.update({"seed": None})
 
     # Handle the case for inputs that are of type torch tensors.
+    for arg in argument_names:
+        if isinstance(call_arg_values[arg], torch.Tensor):
+            print(arg, call_arg_values[arg])
     is_torch_tensor_present = any(isinstance(call_arg_values[arg], torch.Tensor) for arg in argument_names)
     if is_torch_tensor_present:
         logger.warning(
