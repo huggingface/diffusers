@@ -22,7 +22,7 @@ specific language governing permissions and limitations under the License.
 
 The library has three main components:
 
-- State-of-the-art [diffusion pipelines](api/pipelines/overview) for inference with just a few lines of code.
+- State-of-the-art diffusion pipelines for inference with just a few lines of code. There are many pipelines in 🤗 Diffusers, check out the table in the pipeline [overview](api/pipelines/overview) for a complete list of available pipelines and the task they solve.
 - Interchangeable [noise schedulers](api/schedulers/overview) for balancing trade-offs between generation speed and quality.
 - Pretrained [models](api/models) that can be used as building blocks, and combined with schedulers, for creating your own end-to-end diffusion systems.
 

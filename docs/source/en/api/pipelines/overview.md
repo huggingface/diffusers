@@ -60,8 +60,8 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Semantic Guidance](semantic_stable_diffusion) | text2image |
 | [Shap-E](shap_e) | text-to-3D, image-to-3D |
 | [Spectrogram Diffusion](spectrogram_diffusion) |  |
-| [StableDiffusion](stable_diffusion/overview) | text2image, image2image, depth2image, inpainting, image variation, latent upscaler, super-resolution |
-| [StableDiffusionModelEditing](model_editing) | model editing |
+| [Stable Diffusion](stable_diffusion/overview) | text2image, image2image, depth2image, inpainting, image variation, latent upscaler, super-resolution |
+| [Stable Diffusion Model Editing](model_editing) | model editing |
 | [Stable Diffusion XL](stable_diffusion_xl) | text2image, image2image, inpainting |
 | [Stable unCLIP](stable_unclip) | text2image, image variation |
 | [KarrasVe](karras_ve) | unconditional image generation |
