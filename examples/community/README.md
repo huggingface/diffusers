@@ -41,7 +41,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 |   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon) 
 |   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
 Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) | 
-FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) | 
+FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipeline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) | 
 sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion Pipeline](#stable-diffusion-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) | 
 prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) | 
 
@@ -765,7 +765,7 @@ pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom
 #There are multiple possible scenarios:
 #The pipeline with the merged checkpoints is returned in all the scenarios
 
-#Compatible checkpoints a.k.a matched model_index.json files. Ignores the meta attributes in model_index.json during comparision.( attrs with _ as prefix )
+#Compatible checkpoints a.k.a matched model_index.json files. Ignores the meta attributes in model_index.json during comparison.( attrs with _ as prefix )
 merged_pipe = pipe.merge(["CompVis/stable-diffusion-v1-4","CompVis/stable-diffusion-v1-2"], interp = "sigmoid", alpha = 0.4)
 
 #Incompatible checkpoints in model_index.json but merge might be possible. Use force = True to ignore model_index.json compatibility
@@ -1529,14 +1529,14 @@ print("Latency of StableDiffusionPipeline--fp32",latency)
 
 ![clip_guided_images_mixing_examples](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/main.png)
 
-CLIP guided stable diffusion images mixing pipline allows to combine two images using standard diffusion models.  
+CLIP guided stable diffusion images mixing pipeline allows to combine two images using standard diffusion models.  
 This approach is using (optional) CoCa model to avoid writing image description.  
 [More code examples](https://github.com/TheDenk/images_mixing)
 
 
 ### Stable Diffusion XL Long Weighted Prompt Pipeline
 
-This SDXL pipeline support unlimted length prompt and negative prompt, compatible with A1111 prompt weighted style. 
+This SDXL pipeline support unlimited length prompt and negative prompt, compatible with A1111 prompt weighted style. 
 
 You can provide both `prompt` and `prompt_2`. if only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
 
@@ -1605,7 +1605,7 @@ coca_transform = open_clip.image_transform(
 )
 coca_tokenizer = SimpleTokenizer()
 
-# Pipline creating
+# Pipeline creating
 mixing_pipeline = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     custom_pipeline="clip_guided_images_mixing_stable_diffusion",
@@ -1619,7 +1619,7 @@ mixing_pipeline = DiffusionPipeline.from_pretrained(
 mixing_pipeline.enable_attention_slicing()
 mixing_pipeline = mixing_pipeline.to("cuda")
 
-# Pipline running
+# Pipeline running
 generator = torch.Generator(device="cuda").manual_seed(17) 
 
 def download_image(url):
