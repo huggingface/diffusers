@@ -5,7 +5,7 @@ import os
 import random
 import shutil
 from pathlib import Path
-from .schedulers import ReflowScheduler
+from schedulers import ReflowScheduler
 
 import accelerate
 import datasets
