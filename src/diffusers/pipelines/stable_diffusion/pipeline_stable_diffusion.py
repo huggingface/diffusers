@@ -557,6 +557,9 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
+        callback_on_step_begin: Optional[Callable[[int, int, Dict], None]]= None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+
     ):
         r"""
         The call function to the pipeline for generation.
@@ -692,33 +695,47 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        
+        callback_kwargs = {}
+        callback_kwargs["guidance_scale"] = guidance_scale 
+        callback_kwargs["latents"] = latents 
+        callback_kwargs["prompt_embeds"] = prompt_embeds
+        callback_kwargs["cross_attention_kwargs"] = cross_attention_kwargs
+        callback_kwargs["guidance_rescale"] = guidance_rescale
+        callback_kwargs["do_classifier_free_guidance"] = do_classifier_free_guidance
+        
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if callback_on_step_begin is not None:
+                    callback_kwargs = callback_on_step_begin(i, t, callback_kwargs)
+
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([callback_kwargs["latents"]] * 2) if callback_kwargs["do_classifier_free_guidance"] else callback_kwargs["latents"]
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    encoder_hidden_states=callback_kwargs["prompt_embeds"],
+                    cross_attention_kwargs=callback_kwargs["cross_attention_kwargs"],
                     return_dict=False,
                 )[0]
 
                 # perform guidance
-                if do_classifier_free_guidance:
+                if callback_kwargs["do_classifier_free_guidance"]:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + callback_kwargs["guidance_scale"] * (noise_pred_text - noise_pred_uncond)
 
-                if do_classifier_free_guidance and guidance_rescale > 0.0:
+                if callback_kwargs["do_classifier_free_guidance"] and callback_kwargs["guidance_rescale"] > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=callback_kwargs["guidance_rescale"])
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-
+                latents = self.scheduler.step(noise_pred, t, callback_kwargs["latents"], **extra_step_kwargs, return_dict=False)[0]
+                callback_kwargs["latents"] = latents
+                if callback_on_step_end is not None:
+                    callback_kwargs = callback_on_step_end(i,t, callback_kwargs)
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
