@@ -609,8 +609,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     def test_asymmetrical_unet(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         # Add asymmetry to configs
-        init_dict["transformer_layers_per_block"] = [[3,2],1]
-        init_dict["reverse_transformer_layers_per_block"] = [[3,4],1]
+        init_dict["transformer_layers_per_block"] = [[3, 2], 1]
+        init_dict["reverse_transformer_layers_per_block"] = [[3, 4], 1]
 
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
@@ -620,7 +620,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         expected_shape = inputs_dict["sample"].shape
 
         # Check if input and output shapes are the same
-        self.assertEqual(output.shape, expected_shape , "Input and output shapes do not match")
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
 
 @slow

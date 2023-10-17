@@ -624,9 +624,9 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
-        # support for variable transformer layers per block 
+        # support for variable transformer layers per block
         if isinstance(transformer_layers_per_block, int):
-            transformer_layers_per_block= [transformer_layers_per_block] * num_layers
+            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
         # there is always at least one resnet
         resnets = [
@@ -1016,7 +1016,7 @@ class CrossAttnDownBlock2D(nn.Module):
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
         if isinstance(transformer_layers_per_block, int):
-            transformer_layers_per_block= [transformer_layers_per_block] * num_layers
+            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -2167,7 +2167,7 @@ class CrossAttnUpBlock2D(nn.Module):
         self.num_attention_heads = num_attention_heads
 
         if isinstance(transformer_layers_per_block, int):
-            transformer_layers_per_block= [transformer_layers_per_block] * num_layers
+            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels

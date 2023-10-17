@@ -110,8 +110,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
             [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-       reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None): 
-            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling blocks of the U-Net. 
+       reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None):
+            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling blocks of the U-Net.
             Only relevant  if  `transformer_layers_per_block` is of type `Tuple[Tuple]` and for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
             [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
@@ -275,9 +275,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(transformer_layers_per_block, list) and reverse_transformer_layers_per_block is None:
             for layer_number_per_block in transformer_layers_per_block:
                 if isinstance(layer_number_per_block, list):
-                    raise ValueError(
-                    "Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet."
-                    )
+                    raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
@@ -524,7 +522,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 output_scale_factor=mid_block_scale_factor,
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                add_attention=False     
+                add_attention=False,
             )
         elif mid_block_type is None:
             self.mid_block = None
@@ -539,7 +537,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         reversed_layers_per_block = list(reversed(layers_per_block))
         reversed_cross_attention_dim = list(reversed(cross_attention_dim))
-        reversed_transformer_layers_per_block = list(reversed(transformer_layers_per_block)) if reverse_transformer_layers_per_block is None else reverse_transformer_layers_per_block
+        reversed_transformer_layers_per_block = (
+            list(reversed(transformer_layers_per_block))
+            if reverse_transformer_layers_per_block is None
+            else reverse_transformer_layers_per_block
+        )
         only_cross_attention = list(reversed(only_cross_attention))
 
         output_channel = reversed_block_out_channels[0]
