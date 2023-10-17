@@ -2028,7 +2028,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         print(final_call_args)
 
         # Handle the call here.
-        self.__call__ = partial(self.__call__, **final_call_args)
+        self = partial(self, **final_call_args)
 
         # # Get the original function's signature
         # original_signature = inspect.signature(self.__call__)
