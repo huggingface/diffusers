@@ -975,9 +975,9 @@ class StableDiffusionXLAdapterPipeline(
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 if i < int(num_inference_steps * adapter_conditioning_factor):
-                    down_block_additional_residuals = [state.clone() for state in adapter_state]
+                    down_intrablock_additional_residuals = [state.clone() for state in adapter_state]
                 else:
-                    down_block_additional_residuals = None
+                    down_intrablock_additional_residuals = None
 
                 noise_pred = self.unet(
                     latent_model_input,
@@ -986,7 +986,7 @@ class StableDiffusionXLAdapterPipeline(
                     cross_attention_kwargs=cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
-                    down_block_additional_residuals=down_block_additional_residuals,
+                    down_intrablock_additional_residuals=down_intrablock_additional_residuals,
                 )[0]
 
                 # perform guidance
