@@ -22,9 +22,9 @@ import re
 import sys
 import warnings
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
-from functools import partial
 
 import numpy as np
 import PIL.Image
