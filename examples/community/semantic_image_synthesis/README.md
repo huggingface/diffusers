@@ -66,25 +66,17 @@ class DDPMTrainingScheduler(DDPMScheduler):
         ...
 ```
 More precisely **get_q_mean_variance** :<br>
-$
-q(x_{t-1}|x_t,x_0) \sim \mathcal{N}(x_{t−1}; \tilde{µ_t}(x_t, x_0), \tilde{β_t}.I)
-$
+$q(x_{t-1}|x_t,x_0) \sim \mathcal{N}(x_{t−1}; \tilde{µ_t}(x_t, x_0), \tilde{β_t}.I)$
 
 with :<br>
-$
-\tilde{µ_t}(x_t, x_0)=\frac{\sqrt{\bar{\alpha_{t-1}}}}{1-\bar{\alpha_{t}}}.x_0 + \frac{\sqrt{\alpha_{t}}.(1-\bar{\alpha_{t-1}})}{1-\bar{\alpha_{t}}}.x_t
-$
+$\tilde{µ_t}(x_t, x_0)=\frac{\sqrt{\bar{\alpha_{t-1}}}}{1-\bar{\alpha_{t}}}.x_0 + \frac{\sqrt{\alpha_{t}}.(1-\bar{\alpha_{t-1}})}{1-\bar{\alpha_{t}}}.x_t$
 
-$
-\tilde{β_t} = \frac{1-\bar{\alpha_{t-1}}}{1-\bar{\alpha_{t}}}.β_t
-$
+$\tilde{β_t} = \frac{1-\bar{\alpha_{t-1}}}{1-\bar{\alpha_{t}}}.β_t$
 
 source : https://arxiv.org/pdf/2006.11239.pdf - equation (6) and (7)
 
 More precisely **_get_p_mean_variance** :<br>
-$
-p_{\theta}(x_{t-1}|x_t) 
-$
+$p_{\theta}(x_{t-1}|x_t) $
 
 We have multiple cases :<br>
 #### Variance is Learned
