@@ -2796,14 +2796,12 @@ class FromSingleFileMixin:
         valid_url_prefixes = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
         for prefix in valid_url_prefixes:
             if pretrained_model_link_or_path.startswith(prefix):
-                print("Inside for prefix in valid_url_prefixes loop.")
                 pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
                 has_valid_url_prefix = True
 
         # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
         ckpt_path = Path(pretrained_model_link_or_path)
         if not ckpt_path.is_file():
-            print("not ckpt_path.is_file() is called.")
             if not has_valid_url_prefix:
                 raise ValueError(
                     f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(valid_url_prefixes)}"
@@ -2831,8 +2829,6 @@ class FromSingleFileMixin:
                 force_download=force_download,
             )
 
-        print(f"pretrained_model_link_or_path: {pretrained_model_link_or_path}")
-        print(f"local_files_only: {local_files_only}")
         pipe = download_from_original_stable_diffusion_ckpt(
             pretrained_model_link_or_path,
             pipeline_class=cls,
