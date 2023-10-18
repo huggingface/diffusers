@@ -30,7 +30,6 @@ from tqdm import tqdm
 assert version.parse(accelerate.__version__) >= version.parse("0.16.0"),"Accelerate version should be higher than 0.16.0"
 
 logger = get_logger(__name__)
-NMAX = 100
 
 
 parser = argparse.ArgumentParser()
@@ -47,7 +46,6 @@ parser.add_argument('--ddp_guidance_scale',type=float,default=1.5,
 parser.add_argument("--gradient_accumulation_steps",type=int,default=1,
                     help="Number of updates steps to accumulate before performing a backward/update pass.")
 parser.add_argument("--lambda_vlb", type=float,default=1e-3)
-
 parser.add_argument("--use_8bit_adam", action="store_true", 
                     help="Whether or not to use 8-bit Adam from bitsandbytes.")
 parser.add_argument("--optim_weight_decay",type=float,default=1e-5,
@@ -92,6 +90,7 @@ parser.add_argument("--resume_from_checkpoint",type=str,default="latest",
                     help="Indicate either the checkpoint directory or the latest")
 parser.add_argument('--seed',type=int,default=42)
 parser.add_argument('--use_ema',type=bool,default=True)
+parser.add_argument('--debug',action='store_true',default=False)
 
 def main(
         dataset_img_dir:str,
@@ -119,8 +118,14 @@ def main(
         checkpointing_total_limit:int,
         resume_from_checkpoint:str,
         seed:int,
-        use_ema:bool
+        use_ema:bool,
+        debug:bool=False
          ):
+    # For debugging, we remove some examples...
+    if debug:
+        NMAX=100
+    else:
+        NMAX=None
     # We create the logging directory...
     logdir_name =  f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-SISModel"
     logdir_path = os.path.join(output_dir,logdir_name)
