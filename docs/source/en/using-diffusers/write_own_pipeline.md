@@ -169,7 +169,7 @@ Feel free to choose any prompt you like if you want to generate something else!
 >>> width = 512  # default width of Stable Diffusion
 >>> num_inference_steps = 25  # Number of denoising steps
 >>> guidance_scale = 7.5  # Scale for classifier-free guidance
->>> generator = torch.manual_seed(0)  # Seed generator to create the inital latent noise
+>>> generator = torch.manual_seed(0)  # Seed generator to create the initial latent noise
 >>> batch_size = len(prompt)
 ```
 
