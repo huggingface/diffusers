@@ -40,7 +40,9 @@ You can use the model with the new `.safetensors` weights by specifying the refe
 ```py
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", revision="refs/pr/22")
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-1", revision="refs/pr/22", use_safetensors=True
+)
 ```
 
 ## Why use safetensors?
@@ -55,7 +57,7 @@ There are several reasons for using safetensors:
 	```py
  from diffusers import StableDiffusionPipeline
 
- pipeline = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+ pipeline = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1", use_safetensors=True)
  "Loaded in safetensors 0:00:02.033658"
  "Loaded in PyTorch 0:00:02.663379"
 	```

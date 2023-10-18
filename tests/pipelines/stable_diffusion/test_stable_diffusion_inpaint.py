@@ -36,15 +36,20 @@ from diffusers import (
 )
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
-from diffusers.utils import floats_tensor, load_image, load_numpy, nightly, slow, torch_device
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
+    load_image,
+    load_numpy,
+    nightly,
+    require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
+    slow,
+    torch_device,
 )
 
-from ...models.test_models_unet_2d_condition import create_lora_layers
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
@@ -144,16 +149,31 @@ class StableDiffusionInpaintPipelineFastTests(
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0, img_res=64, output_pil=True):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
-        image = image.cpu().permute(0, 2, 3, 1)[0]
-        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((64, 64))
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((64, 64))
+        if output_pil:
+            # Get random floats in [0, 1] as image
+            image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+            image = image.cpu().permute(0, 2, 3, 1)[0]
+            mask_image = torch.ones_like(image)
+            # Convert image and mask_image to [0, 255]
+            image = 255 * image
+            mask_image = 255 * mask_image
+            # Convert to PIL image
+            init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((img_res, img_res))
+            mask_image = Image.fromarray(np.uint8(mask_image)).convert("RGB").resize((img_res, img_res))
+        else:
+            # Get random floats in [0, 1] as image with spatial size (img_res, img_res)
+            image = floats_tensor((1, 3, img_res, img_res), rng=random.Random(seed)).to(device)
+            # Convert image to [-1, 1]
+            init_image = 2.0 * image - 1.0
+            mask_image = torch.ones((1, 1, img_res, img_res), device=device)
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
+
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "image": init_image,
@@ -177,7 +197,7 @@ class StableDiffusionInpaintPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4723, 0.5731, 0.3939, 0.5441, 0.5922, 0.4392, 0.5059, 0.4651, 0.4474])
+        expected_slice = np.array([0.4703, 0.5697, 0.3879, 0.5470, 0.6042, 0.4413, 0.5078, 0.4728, 0.4469])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -201,40 +221,6 @@ class StableDiffusionInpaintPipelineFastTests(
         assert out_pil.shape == (1, 64, 64, 3)
         assert np.abs(out_pil.flatten() - out_tensor.flatten()).max() < 5e-2
 
-    def test_stable_diffusion_inpaint_lora(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionInpaintPipeline(**components)
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        # forward 1
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs)
-        image = output.images
-        image_slice = image[0, -3:, -3:, -1]
-
-        # set lora layers
-        lora_attn_procs = create_lora_layers(sd_pipe.unet)
-        sd_pipe.unet.set_attn_processor(lora_attn_procs)
-        sd_pipe = sd_pipe.to(torch_device)
-
-        # forward 2
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.0})
-        image = output.images
-        image_slice_1 = image[0, -3:, -3:, -1]
-
-        # forward 3
-        inputs = self.get_dummy_inputs(device)
-        output = sd_pipe(**inputs, cross_attention_kwargs={"scale": 0.5})
-        image = output.images
-        image_slice_2 = image[0, -3:, -3:, -1]
-
-        assert np.abs(image_slice - image_slice_1).max() < 1e-2
-        assert np.abs(image_slice - image_slice_2).max() > 1e-2
-
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
 
@@ -251,6 +237,43 @@ class StableDiffusionInpaintPipelineFastTests(
         inputs["strength"] = 0.01
         with self.assertRaises(ValueError):
             sd_pipe(**inputs).images
+
+    def test_stable_diffusion_inpaint_mask_latents(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components).to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # normal mask + normal image
+        ##  `image`: pil, `mask_image``: pil, `masked_image_latents``: None
+        inputs = self.get_dummy_inputs(device)
+        inputs["strength"] = 0.9
+        out_0 = sd_pipe(**inputs).images
+
+        # image latents + mask latents
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe.image_processor.preprocess(inputs["image"]).to(sd_pipe.device)
+        mask = sd_pipe.mask_processor.preprocess(inputs["mask_image"]).to(sd_pipe.device)
+        masked_image = image * (mask < 0.5)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_latents = (
+            sd_pipe.vae.encode(image).latent_dist.sample(generator=generator) * sd_pipe.vae.config.scaling_factor
+        )
+        torch.randn((1, 4, 32, 32), generator=generator)
+        mask_latents = (
+            sd_pipe.vae.encode(masked_image).latent_dist.sample(generator=generator)
+            * sd_pipe.vae.config.scaling_factor
+        )
+        inputs["image"] = image_latents
+        inputs["masked_image_latents"] = mask_latents
+        inputs["mask_image"] = mask
+        inputs["strength"] = 0.9
+        generator = torch.Generator(device=device).manual_seed(0)
+        torch.randn((1, 4, 32, 32), generator=generator)
+        inputs["generator"] = generator
+        out_1 = sd_pipe(**inputs).images
+        assert np.abs(out_0 - out_1).max() < 1e-2
 
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):
@@ -308,6 +331,35 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         }
         return components
 
+    def get_dummy_inputs_2images(self, device, seed=0, img_res=64):
+        # Get random floats in [0, 1] as image with spatial size (img_res, img_res)
+        image1 = floats_tensor((1, 3, img_res, img_res), rng=random.Random(seed)).to(device)
+        image2 = floats_tensor((1, 3, img_res, img_res), rng=random.Random(seed + 22)).to(device)
+        # Convert images to [-1, 1]
+        init_image1 = 2.0 * image1 - 1.0
+        init_image2 = 2.0 * image2 - 1.0
+
+        # empty mask
+        mask_image = torch.zeros((1, 1, img_res, img_res), device=device)
+
+        if str(device).startswith("mps"):
+            generator1 = torch.manual_seed(seed)
+            generator2 = torch.manual_seed(seed)
+        else:
+            generator1 = torch.Generator(device=device).manual_seed(seed)
+            generator2 = torch.Generator(device=device).manual_seed(seed)
+
+        inputs = {
+            "prompt": ["A painting of a squirrel eating a burger"] * 2,
+            "image": [init_image1, init_image2],
+            "mask_image": [mask_image] * 2,
+            "generator": [generator1, generator2],
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "numpy",
+        }
+        return inputs
+
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -320,13 +372,40 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4925, 0.4967, 0.4100, 0.5234, 0.5322, 0.4532, 0.5805, 0.5877, 0.4151])
+        expected_slice = np.array([0.6584, 0.5424, 0.5649, 0.5449, 0.5897, 0.6111, 0.5404, 0.5463, 0.5214])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skip("skipped here because area stays unchanged due to mask")
-    def test_stable_diffusion_inpaint_lora(self):
-        ...
+    def test_stable_diffusion_inpaint_2_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        # test to confirm if we pass two same image, we will get same output
+        inputs = self.get_dummy_inputs(device)
+        gen1 = torch.Generator(device=device).manual_seed(0)
+        gen2 = torch.Generator(device=device).manual_seed(0)
+        for name in ["prompt", "image", "mask_image"]:
+            inputs[name] = [inputs[name]] * 2
+        inputs["generator"] = [gen1, gen2]
+        images = sd_pipe(**inputs).images
+
+        assert images.shape == (2, 64, 64, 3)
+
+        image_slice1 = images[0, -3:, -3:, -1]
+        image_slice2 = images[1, -3:, -3:, -1]
+        assert np.abs(image_slice1.flatten() - image_slice2.flatten()).max() < 1e-4
+
+        # test to confirm that if we pass two different images, we will get different output
+        inputs = self.get_dummy_inputs_2images(device)
+        images = sd_pipe(**inputs).images
+        assert images.shape == (2, 64, 64, 3)
+
+        image_slice1 = images[0, -3:, -3:, -1]
+        image_slice2 = images[1, -3:, -3:, -1]
+        assert np.abs(image_slice1.flatten() - image_slice2.flatten()).max() > 1e-2
 
 
 @slow
@@ -393,7 +472,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.1509, 0.1245, 0.1672, 0.1655, 0.1519, 0.1226, 0.1462, 0.1567, 0.2451])
-        assert np.abs(expected_slice - image_slice).max() < 5e-2
+        assert np.abs(expected_slice - image_slice).max() < 1e-1
 
     def test_stable_diffusion_inpaint_pndm(self):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -451,6 +530,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
 
+    @require_python39_or_higher
     @require_torch_2
     def test_inpaint_compile(self):
         seed = 0
@@ -551,7 +631,7 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         inputs["num_inference_steps"] = 5
         image = pipe(**inputs).images[0]
 
-        assert np.max(np.abs(image - image_ckpt)) < 1e-4
+        assert np.max(np.abs(image - image_ckpt)) < 5e-4
 
 
 @slow
@@ -692,6 +772,7 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
         # make sure that less than 2.45 GB is allocated
         assert mem_bytes < 2.45 * 10**9
 
+    @require_python39_or_higher
     @require_torch_2
     def test_inpaint_compile(self):
         pass

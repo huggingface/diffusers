@@ -26,7 +26,7 @@ Begin by loading the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/r
 from diffusers import DiffusionPipeline
 
 model_id = "runwayml/stable-diffusion-v1-5"
-pipeline = DiffusionPipeline.from_pretrained(model_id)
+pipeline = DiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 ```
 
 The example prompt you'll use is a portrait of an old warrior chief, but feel free to use your own prompt:
@@ -75,7 +75,7 @@ Let's start by loading the model in `float16` and generate an image:
 ```python
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, use_safetensors=True)
 pipeline = pipeline.to("cuda")
 generator = torch.Generator("cuda").manual_seed(0)
 image = pipeline(prompt, generator=generator).images[0]
@@ -152,26 +152,13 @@ def get_inputs(batch_size=1):
     return {"prompt": prompts, "generator": generator, "num_inference_steps": num_inference_steps}
 ```
 
-You'll also need a function that'll display each batch of images:
-
-```python
-from PIL import Image
-
-
-def image_grid(imgs, rows=2, cols=2):
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
-```
-
 Start with `batch_size=4` and see how much memory you've consumed:
 
 ```python
+from diffusers.utils import make_image_grid 
+
 images = pipeline(**get_inputs(batch_size=4)).images
-image_grid(images)
+make_image_grid(images, 2, 2)
 ```
 
 Unless you have a GPU with more RAM, the code above probably returned an `OOM` error! Most of the memory is taken up by the cross-attention layers. Instead of running this operation in a batch, you can run it sequentially to save a significant amount of memory. All you have to do is configure the pipeline to use the [`~DiffusionPipeline.enable_attention_slicing`] function:
@@ -184,7 +171,7 @@ Now try increasing the `batch_size` to 8!
 
 ```python
 images = pipeline(**get_inputs(batch_size=8)).images
-image_grid(images, rows=2, cols=4)
+make_image_grid(images, rows=2, cols=4)
 ```
 
 <div class="flex justify-center">
@@ -213,7 +200,7 @@ from diffusers import AutoencoderKL
 vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16).to("cuda")
 pipeline.vae = vae
 images = pipeline(**get_inputs(batch_size=8)).images
-image_grid(images, rows=2, cols=4)
+make_image_grid(images, rows=2, cols=4)
 ```
 
 <div class="flex justify-center">
@@ -238,7 +225,7 @@ Generate a batch of images with the new prompt:
 
 ```python
 images = pipeline(**get_inputs(batch_size=8)).images
-image_grid(images, rows=2, cols=4)
+make_image_grid(images, rows=2, cols=4)
 ```
 
 <div class="flex justify-center">
@@ -257,7 +244,7 @@ prompts = [
 
 generator = [torch.Generator("cuda").manual_seed(1) for _ in range(len(prompts))]
 images = pipeline(prompt=prompts, generator=generator, num_inference_steps=25).images
-image_grid(images)
+make_image_grid(images, 2, 2)
 ```
 
 <div class="flex justify-center">

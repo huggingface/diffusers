@@ -39,17 +39,18 @@ from diffusers import (
     StableDiffusionDepth2ImgPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import (
+from diffusers.utils import is_accelerate_available, is_accelerate_version
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
     floats_tensor,
-    is_accelerate_available,
-    is_accelerate_version,
     load_image,
     load_numpy,
     nightly,
+    require_torch_gpu,
+    skip_mps,
     slow,
     torch_device,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, skip_mps
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,

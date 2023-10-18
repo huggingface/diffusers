@@ -26,6 +26,7 @@ import warnings
 from pathlib import Path
 
 import numpy as np
+import safetensors
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -50,14 +51,18 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor
+from diffusers.models.attention_processor import (
+    CustomDiffusionAttnProcessor,
+    CustomDiffusionAttnProcessor2_0,
+    CustomDiffusionXFormersAttnProcessor,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.20.0.dev0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -202,7 +207,7 @@ class CustomDiffusionDataset(Dataset):
                     with open(concept["class_prompt"], "r") as f:
                         class_prompt = f.read().splitlines()
 
-                class_img_path = [(x, y) for (x, y) in zip(class_images_path, class_prompt)]
+                class_img_path = list(zip(class_images_path, class_prompt))
                 self.class_images_path.extend(class_img_path[:num_class_images])
 
         random.shuffle(self.instance_images_path)
@@ -296,14 +301,19 @@ class CustomDiffusionDataset(Dataset):
         return example
 
 
-def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_dir):
+def save_new_embed(text_encoder, modifier_token_id, accelerator, args, output_dir, safe_serialization=True):
     """Saves the new token embeddings from the text encoder."""
     logger.info("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight
     for x, y in zip(modifier_token_id, args.modifier_token):
         learned_embeds_dict = {}
         learned_embeds_dict[y] = learned_embeds[x]
-        torch.save(learned_embeds_dict, f"{output_dir}/{y}.bin")
+        filename = f"{output_dir}/{y}.bin"
+
+        if safe_serialization:
+            safetensors.torch.save_file(learned_embeds_dict, filename, metadata={"format": "pt"})
+        else:
+            torch.save(learned_embeds_dict, filename)
 
 
 def parse_args(input_args=None):
@@ -605,6 +615,11 @@ def parse_args(input_args=None):
         action="store_true",
         help="Dont apply augmentation during data augmentation when this flag is enabled.",
     )
+    parser.add_argument(
+        "--no_safe_serialization",
+        action="store_true",
+        help="If specified save the checkpoint not in `safetensors` format, but in original PyTorch format instead.",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -859,7 +874,9 @@ def main(args):
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
-    attention_class = CustomDiffusionAttnProcessor
+    attention_class = (
+        CustomDiffusionAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else CustomDiffusionAttnProcessor
+    )
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
@@ -1058,30 +1075,30 @@ def main(args):
                 f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
             )
             args.resume_from_checkpoint = None
+            initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
             accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
-            resume_global_step = global_step * args.gradient_accumulation_steps
+            initial_global_step = global_step
             first_epoch = global_step // num_update_steps_per_epoch
-            resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
+    else:
+        initial_global_step = 0
 
-    # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
-    progress_bar.set_description("Steps")
+    progress_bar = tqdm(
+        range(0, args.max_train_steps),
+        initial=initial_global_step,
+        desc="Steps",
+        # Only show the progress bar once on each machine.
+        disable=not accelerator.is_local_main_process,
+    )
 
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         if args.modifier_token is not None:
             text_encoder.train()
         for step, batch in enumerate(train_dataloader):
-            # Skip steps until we reach the resumed step
-            if args.resume_from_checkpoint and epoch == first_epoch and step < resume_step:
-                if step % args.gradient_accumulation_steps == 0:
-                    progress_bar.update(1)
-                continue
-
             with accelerator.accumulate(unet), accelerator.accumulate(text_encoder):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
@@ -1197,55 +1214,66 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-        if accelerator.is_main_process:
-            if args.validation_prompt is not None and global_step % args.validation_steps == 0:
-                logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
-                # create pipeline
-                pipeline = DiffusionPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    unet=accelerator.unwrap_model(unet),
-                    text_encoder=accelerator.unwrap_model(text_encoder),
-                    tokenizer=tokenizer,
-                    revision=args.revision,
-                    torch_dtype=weight_dtype,
-                )
-                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
-                pipeline = pipeline.to(accelerator.device)
-                pipeline.set_progress_bar_config(disable=True)
+            if accelerator.is_main_process:
+                images = []
 
-                # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-                images = [
-                    pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.0).images[0]
-                    for _ in range(args.num_validation_images)
-                ]
+                if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                    logger.info(
+                        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+                        f" {args.validation_prompt}."
+                    )
+                    # create pipeline
+                    pipeline = DiffusionPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        unet=accelerator.unwrap_model(unet),
+                        text_encoder=accelerator.unwrap_model(text_encoder),
+                        tokenizer=tokenizer,
+                        revision=args.revision,
+                        torch_dtype=weight_dtype,
+                    )
+                    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+                    pipeline = pipeline.to(accelerator.device)
+                    pipeline.set_progress_bar_config(disable=True)
 
-                for tracker in accelerator.trackers:
-                    if tracker.name == "tensorboard":
-                        np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                    if tracker.name == "wandb":
-                        tracker.log(
-                            {
-                                "validation": [
-                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                    for i, image in enumerate(images)
-                                ]
-                            }
-                        )
+                    # run inference
+                    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+                    images = [
+                        pipeline(args.validation_prompt, num_inference_steps=25, generator=generator, eta=1.0).images[
+                            0
+                        ]
+                        for _ in range(args.num_validation_images)
+                    ]
 
-                del pipeline
-                torch.cuda.empty_cache()
+                    for tracker in accelerator.trackers:
+                        if tracker.name == "tensorboard":
+                            np_images = np.stack([np.asarray(img) for img in images])
+                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                        if tracker.name == "wandb":
+                            tracker.log(
+                                {
+                                    "validation": [
+                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(images)
+                                    ]
+                                }
+                            )
+
+                    del pipeline
+                    torch.cuda.empty_cache()
 
     # Save the custom diffusion layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
-        unet.save_attn_procs(args.output_dir)
-        save_new_embed(text_encoder, modifier_token_id, accelerator, args, args.output_dir)
+        unet.save_attn_procs(args.output_dir, safe_serialization=not args.no_safe_serialization)
+        save_new_embed(
+            text_encoder,
+            modifier_token_id,
+            accelerator,
+            args,
+            args.output_dir,
+            safe_serialization=not args.no_safe_serialization,
+        )
 
         # Final inference
         # Load previous pipeline
@@ -1256,9 +1284,15 @@ def main(args):
         pipeline = pipeline.to(accelerator.device)
 
         # load attention processors
-        pipeline.unet.load_attn_procs(args.output_dir, weight_name="pytorch_custom_diffusion_weights.bin")
+        weight_name = (
+            "pytorch_custom_diffusion_weights.safetensors"
+            if not args.no_safe_serialization
+            else "pytorch_custom_diffusion_weights.bin"
+        )
+        pipeline.unet.load_attn_procs(args.output_dir, weight_name=weight_name)
         for token in args.modifier_token:
-            pipeline.load_textual_inversion(args.output_dir, weight_name=f"{token}.bin")
+            token_weight_name = f"{token}.safetensors" if not args.no_safe_serialization else f"{token}.bin"
+            pipeline.load_textual_inversion(args.output_dir, weight_name=token_weight_name)
 
         # run inference
         if args.validation_prompt and args.num_validation_images > 0:

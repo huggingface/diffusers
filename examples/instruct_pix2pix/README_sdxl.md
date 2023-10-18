@@ -33,7 +33,7 @@ export DATASET_ID="fusing/instructpix2pix-1000-samples"
 Now, we can launch training:
 
 ```bash
-python train_instruct_pix2pix_sdxl.py \
+accelerate launch train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
     --enable_xformers_memory_efficient_attention \
@@ -43,14 +43,15 @@ python train_instruct_pix2pix_sdxl.py \
     --checkpointing_steps=5000 --checkpoints_total_limit=1 \
     --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \
-    --seed=42 
+    --seed=42 \
+    --push_to_hub
 ```
 
 Additionally, we support performing validation inference to monitor training progress
 with Weights and Biases. You can enable this feature with `report_to="wandb"`:
 
 ```bash
-python train_instruct_pix2pix_sdxl.py \
+accelerate launch train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
@@ -64,7 +65,8 @@ python train_instruct_pix2pix_sdxl.py \
     --seed=42 \
     --val_image_url_or_path="https://datasets-server.huggingface.co/assets/fusing/instructpix2pix-1000-samples/--/fusing--instructpix2pix-1000-samples/train/23/input_image/image.jpg" \
     --validation_prompt="make it in japan" \
-    --report_to=wandb
+    --report_to=wandb \
+    --push_to_hub
  ```
 
  We recommend this type of validation as it can be useful for model debugging. Note that you need `wandb` installed to use this. You can install `wandb` by running `pip install wandb`. 
@@ -79,7 +81,7 @@ python train_instruct_pix2pix_sdxl.py \
 for running distributed training with `accelerate`. Here is an example command:
 
 ```bash 
-accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py \
+accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix_sdxl.py \
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --dataset_name=$DATASET_ID \
     --use_ema \
@@ -93,7 +95,8 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
     --seed=42 \
     --val_image_url_or_path="https://datasets-server.huggingface.co/assets/fusing/instructpix2pix-1000-samples/--/fusing--instructpix2pix-1000-samples/train/23/input_image/image.jpg" \
     --validation_prompt="make it in japan" \
-    --report_to=wandb
+    --report_to=wandb \
+    --push_to_hub
 ```
 
  ## Inference
@@ -155,7 +158,7 @@ We aim to understand the differences resulting from the use of SD-1.5 and SDXL-0
 export MODEL_NAME="runwayml/stable-diffusion-v1-5" or "stabilityai/stable-diffusion-xl-base-0.9"
 export DATASET_ID="fusing/instructpix2pix-1000-samples"
 
-CUDA_VISIBLE_DEVICES=1 python train_instruct_pix2pix.py \
+accelerate launch train_instruct_pix2pix.py \
     --pretrained_model_name_or_path=$MODEL_NAME \
     --dataset_name=$DATASET_ID \
     --use_ema \
@@ -169,7 +172,8 @@ CUDA_VISIBLE_DEVICES=1 python train_instruct_pix2pix.py \
     --seed=42 \
     --val_image_url="https://datasets-server.huggingface.co/assets/fusing/instructpix2pix-1000-samples/--/fusing--instructpix2pix-1000-samples/train/23/input_image/image.jpg" \
     --validation_prompt="make it in Japan" \
-    --report_to=wandb
+    --report_to=wandb \
+    --push_to_hub
 ```
 
 We discovered that compared to training with SD-1.5 as the pretrained model, SDXL-0.9 results in a lower training loss value (SD-1.5 yields 0.0599, SDXL scores 0.0254). Moreover, from a visual perspective, the results obtained using SDXL demonstrated fewer artifacts and a richer detail. Notably, SDXL starts to preserve the structure of the original image earlier on.

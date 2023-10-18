@@ -5,7 +5,7 @@ import urllib.parse as ul
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
@@ -17,15 +17,14 @@ from ...utils import (
     BACKENDS_MAPPING,
     PIL_INTERPOLATION,
     is_accelerate_available,
-    is_accelerate_version,
     is_bs4_available,
     is_ftfy_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import IFPipelineOutput
+from .pipeline_output import IFPipelineOutput
 from .safety_checker import IFSafetyChecker
 from .watermark import IFWatermarker
 
@@ -132,6 +131,7 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
         r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
     )  # noqa
 
+    model_cpu_offload_seq = "text_encoder->unet"
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
 
     def __init__(
@@ -180,48 +180,6 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.enable_model_cpu_offload
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-
-        if self.text_encoder is not None:
-            _, hook = cpu_offload_with_hook(self.text_encoder, device, prev_module_hook=hook)
-
-            # Accelerate will move the next model to the device _before_ calling the offload hook of the
-            # previous model. This will cause both models to be present on the device at the same time.
-            # IF uses T5 for its text encoder which is really large. We can manually call the offload
-            # hook for the text encoder to ensure it's moved to the cpu before the unet is moved to
-            # the GPU.
-            self.text_encoder_offload_hook = hook
-
-        _, hook = cpu_offload_with_hook(self.unet, device, prev_module_hook=hook)
-
-        # if the safety checker isn't called, `unet_offload_hook` will have to be called to manually offload the unet
-        self.unet_offload_hook = hook
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.remove_all_hooks
     def remove_all_hooks(self):

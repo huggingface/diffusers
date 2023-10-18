@@ -22,8 +22,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import Transformer2DModel, VQDiffusionPipeline, VQDiffusionScheduler, VQModel
 from diffusers.pipelines.vq_diffusion.pipeline_vq_diffusion import LearnedClassifierFreeSamplingEmbeddings
-from diffusers.utils import load_numpy, nightly, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import load_numpy, nightly, require_torch_gpu, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

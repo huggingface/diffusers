@@ -69,7 +69,7 @@ write_basic_config()
 
 Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and unzip it. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
-We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset as a regularization. This prevents overfitting to the the given target image. The following flags enable the regularization `with_prior_preservation`, `real_prior` with `prior_loss_weight=1.`. 
+We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset as a regularization. This prevents overfitting to the given target image. The following flags enable the regularization `with_prior_preservation`, `real_prior` with `prior_loss_weight=1.`. 
 The `class_prompt` should be the category name same as target image. The collected real images are with text captions similar to the `class_prompt`. The retrieved image are saved in `class_data_dir`. You can disable `real_prior` to use generated images as regularization. To collect the real images use this command first before training. 
 
 ```bash
@@ -106,7 +106,7 @@ accelerate launch train_custom_diffusion.py \
 
 **Use `--enable_xformers_memory_efficient_attention` for faster training with lower VRAM requirement (16GB per GPU). Follow [this guide](https://github.com/facebookresearch/xformers) for installation instructions.**
 
-To track your experiments using Weights and Biases (`wandb`) and to save intermediate results (whcih we HIGHLY recommend), follow these steps:
+To track your experiments using Weights and Biases (`wandb`) and to save intermediate results (which we HIGHLY recommend), follow these steps:
 
 * Install `wandb`: `pip install wandb`.
 * Authorize: `wandb login`. 
@@ -222,7 +222,9 @@ Once you have trained a model using the above command, you can run inference usi
 import torch
 from diffusers import DiffusionPipeline
 
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16, use_safetensors=True
+).to("cuda")
 pipe.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion("path-to-save-model", weight_name="<new1>.bin")
 
@@ -246,7 +248,7 @@ model_id = "sayakpaul/custom-diffusion-cat"
 card = RepoCard.load(model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
 
@@ -270,7 +272,7 @@ model_id = "sayakpaul/custom-diffusion-cat-wooden-pot"
 card = RepoCard.load(model_id)
 base_model_id = card.data.to_dict()["base_model"]
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
+pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 pipe.unet.load_attn_procs(model_id, weight_name="pytorch_custom_diffusion_weights.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new1>.bin")
 pipe.load_textual_inversion(model_id, weight_name="<new2>.bin")

@@ -185,3 +185,34 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
         ):
             scheduler.set_timesteps(timesteps=timesteps)
+
+    def test_full_loop_with_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_trained_timesteps = len(scheduler)
+        t_start = num_trained_timesteps - 2
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        generator = torch.manual_seed(0)
+
+        # add noise
+        noise = self.dummy_noise_deter
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
+        sample = scheduler.add_noise(sample, noise, timesteps[:1])
+
+        for t in timesteps:
+            # 1. predict noise residual
+            residual = model(sample, t)
+
+            # 2. predict previous mean of sample x_t-1
+            pred_prev_sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
+            sample = pred_prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 387.9466) < 1e-2, f" expected result sum 387.9466, but get {result_sum}"
+        assert abs(result_mean.item() - 0.5051) < 1e-3, f" expected result mean 0.5051, but get {result_mean}"

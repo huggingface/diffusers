@@ -20,6 +20,12 @@ The abstract from the [paper](https://arxiv.org/abs/2303.06555) is:
 
 You can find the original codebase at [thu-ml/unidiffuser](https://github.com/thu-ml/unidiffuser) and additional checkpoints at [thu-ml](https://huggingface.co/thu-ml).
 
+<Tip warning={true}>
+
+There is currently an issue on PyTorch 1.X where the output images are all black or the pixel values become `NaNs`. This issue can be mitigated by switching to PyTorch 2.X.
+
+</Tip>
+
 This pipeline was contributed by [dg845](https://github.com/dg845). ❤️
 
 ## Usage Examples

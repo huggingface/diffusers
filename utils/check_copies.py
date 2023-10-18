@@ -15,7 +15,6 @@
 
 import argparse
 import glob
-import importlib.util
 import os
 import re
 
@@ -27,15 +26,6 @@ from doc_builder.style_doc import style_docstrings_in_code
 # python utils/check_copies.py
 DIFFUSERS_PATH = "src/diffusers"
 REPO_PATH = "."
-
-
-# This is to make sure the diffusers module imported is the one in the repo.
-spec = importlib.util.spec_from_file_location(
-    "diffusers",
-    os.path.join(DIFFUSERS_PATH, "__init__.py"),
-    submodule_search_locations=[DIFFUSERS_PATH],
-)
-diffusers_module = spec.loader.load_module()
 
 
 def _should_continue(line, indent):

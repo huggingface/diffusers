@@ -32,7 +32,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
 pipe = DiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", custom_pipeline="filename_in_the_community_folder"
+    "CompVis/stable-diffusion-v1-4", custom_pipeline="filename_in_the_community_folder", use_safetensors=True
 )
 ```
 
@@ -61,6 +61,7 @@ guided_pipeline = DiffusionPipeline.from_pretrained(
     clip_model=clip_model,
     feature_extractor=feature_extractor,
     torch_dtype=torch.float16,
+    use_safetensors=True,
 )
 guided_pipeline.enable_attention_slicing()
 guided_pipeline = guided_pipeline.to("cuda")
@@ -117,6 +118,7 @@ pipe = DiffusionPipeline.from_pretrained(
     torch_dtype=torch.float16,
     safety_checker=None,  # Very important for videos...lots of false positives while interpolating
     custom_pipeline="interpolate_stable_diffusion",
+    use_safetensors=True,
 ).to("cuda")
 pipe.enable_attention_slicing()
 
@@ -159,6 +161,7 @@ pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     custom_pipeline="stable_diffusion_mega",
     torch_dtype=torch.float16,
+    use_safetensors=True,
 )
 pipe.to("cuda")
 pipe.enable_attention_slicing()
@@ -203,7 +206,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
-    "hakurei/waifu-diffusion", custom_pipeline="lpw_stable_diffusion", torch_dtype=torch.float16
+    "hakurei/waifu-diffusion", custom_pipeline="lpw_stable_diffusion", torch_dtype=torch.float16, use_safetensors=True
 )
 pipe = pipe.to("cuda")
 
@@ -224,6 +227,7 @@ pipe = DiffusionPipeline.from_pretrained(
     custom_pipeline="lpw_stable_diffusion_onnx",
     revision="onnx",
     provider="CUDAExecutionProvider",
+    use_safetensors=True,
 )
 
 prompt = "a photo of an astronaut riding a horse on mars, best quality"
@@ -267,8 +271,8 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
     custom_pipeline="speech_to_image_diffusion",
     speech_model=model,
     speech_processor=processor,
-    
     torch_dtype=torch.float16,
+    use_safetensors=True,
 )
 
 diffuser_pipeline.enable_attention_slicing()

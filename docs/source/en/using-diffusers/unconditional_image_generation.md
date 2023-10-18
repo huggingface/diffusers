@@ -32,7 +32,7 @@ In this guide, you'll use [`DiffusionPipeline`] for unconditional image generati
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128")
+>>> generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128", use_safetensors=True)
 ```
 
 The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 

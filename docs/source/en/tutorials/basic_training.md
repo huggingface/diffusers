@@ -252,16 +252,9 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 
 ```py
 >>> from diffusers import DDPMPipeline
+>>> from diffusers.utils import make_image_grid
 >>> import math
 >>> import os
-
-
->>> def make_grid(images, rows, cols):
-...     w, h = images[0].size
-...     grid = Image.new("RGB", size=(cols * w, rows * h))
-...     for i, image in enumerate(images):
-...         grid.paste(image, box=(i % cols * w, i // cols * h))
-...     return grid
 
 
 >>> def evaluate(config, epoch, pipeline):
@@ -273,7 +266,7 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 ...     ).images
 
 ...     # Make a grid out of the images
-...     image_grid = make_grid(images, rows=4, cols=4)
+...     image_grid = make_image_grid(images, rows=4, cols=4)
 
 ...     # Save the images
 ...     test_dir = os.path.join(config.output_dir, "samples")
@@ -291,21 +284,10 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 
 ```py
 >>> from accelerate import Accelerator
->>> from huggingface_hub import HfFolder, Repository, whoami
+>>> from huggingface_hub import create_repo, upload_folder
 >>> from tqdm.auto import tqdm
 >>> from pathlib import Path
 >>> import os
-
-
->>> def get_full_repo_name(model_id: str, organization: str = None, token: str = None):
-...     if token is None:
-...         token = HfFolder.get_token()
-...     if organization is None:
-...         username = whoami(token)["name"]
-...         return f"{username}/{model_id}"
-...     else:
-...         return f"{organization}/{model_id}"
-
 
 >>> def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler):
 ...     # Initialize accelerator and tensorboard logging
@@ -316,11 +298,12 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 ...         project_dir=os.path.join(config.output_dir, "logs"),
 ...     )
 ...     if accelerator.is_main_process:
-...         if config.push_to_hub:
-...             repo_name = get_full_repo_name(Path(config.output_dir).name)
-...             repo = Repository(config.output_dir, clone_from=repo_name)
-...         elif config.output_dir is not None:
+...         if config.output_dir is not None:
 ...             os.makedirs(config.output_dir, exist_ok=True)
+...         if config.push_to_hub:
+...             repo_id = create_repo(
+...                 repo_id=config.hub_model_id or Path(config.output_dir).name, exist_ok=True
+...             ).repo_id
 ...         accelerator.init_trackers("train_example")
 
 ...     # Prepare everything
@@ -378,7 +361,12 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 
 ...             if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
 ...                 if config.push_to_hub:
-...                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=True)
+...                     upload_folder(
+...                         repo_id=repo_id,
+...                         folder_path=config.output_dir,
+...                         commit_message=f"Epoch {epoch}",
+...                         ignore_patterns=["step_*", "epoch_*"],
+...                     )
 ...                 else:
 ...                     pipeline.save_pretrained(config.output_dir)
 ```

@@ -27,10 +27,11 @@ from diffusers import (
     StableDiffusionParadigmsPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    nightly,
     require_torch_gpu,
+    torch_device,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -187,7 +188,7 @@ class StableDiffusionParadigmsPipelineFastTests(PipelineLatentTesterMixin, Pipel
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
-@slow
+@nightly
 @require_torch_gpu
 class StableDiffusionParadigmsPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
