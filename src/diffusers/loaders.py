@@ -1226,10 +1226,11 @@ class LoraLoaderMixin:
             adapter_name=adapter_name,
             _pipeline=self,
         )
-        self.loras_loaded += 1
-        current_lora_info = {"pretrained_model_name_or_path_or_dict": pretrained_model_name_or_path_or_dict}
-        current_lora_info.update(dict(kwargs.items()))
-        self.lora_info.update({f"lora_{self.loras_loaded}": current_lora_info})
+        if not USE_PEFT_BACKEND:
+            self.loras_loaded += 1
+            current_lora_info = {"pretrained_model_name_or_path_or_dict": pretrained_model_name_or_path_or_dict}
+            current_lora_info.update(dict(kwargs.items()))
+            self.lora_info.update({f"lora_{self.loras_loaded}": current_lora_info})
 
     @classmethod
     def lora_state_dict(
@@ -2265,10 +2266,11 @@ class LoraLoaderMixin:
         # Housekeeping.
         # TODO: handle for PEFT backend because adapters can be combined, offloaded, etc.
         # TODO: handle `fuse_lora()` and `unfuse_lora()` cases.
-        self.loras_loaded -= 1
-        keys = list(self.lora_info.keys())
-        keys.sort()
-        self.lora_info.pop(keys[-1])
+        if not USE_PEFT_BACKEND:
+            self.loras_loaded -= 1
+            keys = list(self.lora_info.keys())
+            keys.sort()
+            self.lora_info.pop(keys[-1])
 
     def fuse_lora(
         self,
