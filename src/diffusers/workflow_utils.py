@@ -68,7 +68,9 @@ def populate_workflow_from_pipeline(
 
     # Handle the case when `load_lora_weights()` was called on a pipeline.
     if len(lora_info) > 0:
-        workflow.update({"lora".update(lora_info)})
+        if "lora" not in workflow:
+            workflow["lora"] = {}
+        workflow["lora"].update(lora_info)
 
     workflow["_name_or_path"] = pipeline_name_or_path
 
