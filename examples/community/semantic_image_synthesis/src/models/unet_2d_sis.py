@@ -15,19 +15,19 @@
 # https://github.com/WeilunWang/semantic-diffusion-model/blob/main/guided_diffusion/unet.py
 # https://arxiv.org/abs/2207.00050
 
-from .unet_2d import UNet2DOutput
 import torch.nn as nn
 import math
 import torch
 import torch.nn.functional as F
-from ..configuration_utils import ConfigMixin, register_to_config
-from .embeddings import (
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.models.unet_2d import UNet2DOutput
+from diffusers.models.embeddings import (
     Timesteps,
     TimestepEmbedding
 )
-from .attention_processor import Attention
-from .modeling_utils import ModelMixin
-from ..utils import logging
+from diffusers.models.attention_processor import Attention
+from diffusers.models.modeling_utils import ModelMixin
+from diffusers.utils import logging
 from .unet_2d_sis_blocks import get_up_block,get_down_block,SISHeadAttnBlock
 from typing import Tuple
 from typing import Optional,Union

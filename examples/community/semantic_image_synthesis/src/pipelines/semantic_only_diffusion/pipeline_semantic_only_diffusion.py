@@ -18,9 +18,9 @@ import torch
 import numpy as np
 
 from ...models.unet_2d_sis import UNet2DSISModel
-from ...schedulers import DDPMScheduler
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from diffusers.schedulers import DDPMScheduler
+from diffusers.utils.torch_utils import randn_tensor
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class SemanticOnlyDiffusionPipeline(DiffusionPipeline):

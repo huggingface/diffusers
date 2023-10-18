@@ -15,13 +15,14 @@
 # https://github.com/WeilunWang/semantic-diffusion-model/blob/main/guided_diffusion/unet.py
 # https://arxiv.org/abs/2207.00050
 
-from .unet_2d import UNet2DOutput
+from diffusers.models.unet_2d import UNet2DOutput
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from .attention_processor import Attention
-from ..utils import is_torch_version, logging
-from .activations import get_activation
+from diffusers.models.attention_processor import Attention
+from diffusers.models.activations import get_activation
+from diffusers.utils import is_torch_version, logging
+
 import shutil
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 

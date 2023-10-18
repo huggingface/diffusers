@@ -1,15 +1,14 @@
 # Documentation 
 # https://huggingface.co/docs/diffusers/using-diffusers/write_own_pipeline
 import argparse
-from ddpm_training import DDPMTrainingScheduler,DDPMScheduler
-from vlb_loss import VLBLoss
 from sis_dataset import SISDataset,CELEBAHQ_DICT
+from src.pipelines.semantic_only_diffusion import SemanticOnlyDiffusionPipeline
+from src.schedulers.ddpm_training import DDPMScheduler,DDPMTrainingScheduler
+from src.models import UNet2DOutput,UNet2DSISModel,get_config
+from src.losses.vlb_loss import VLBLoss
 
-from diffusers.training_utils import EMAModel
-from diffusers.models.unet_2d_sis import UNet2DSISModel,get_config
-from diffusers.pipelines.semantic_only_diffusion.pipeline_semantic_only_diffusion import SemanticOnlyDiffusionPipeline
 from diffusers.optimization import get_scheduler
-
+from diffusers.training_utils import EMAModel
 from diffusers.utils.import_utils import is_bitsandbytes_available
 from torch.utils.data import DataLoader,Subset
 from datetime import datetime
