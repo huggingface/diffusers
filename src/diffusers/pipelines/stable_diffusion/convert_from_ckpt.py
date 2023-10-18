@@ -1211,8 +1211,6 @@ def download_from_original_stable_diffusion_ckpt(
                 - `xl_refiner`: Config file for Stable Diffusion XL Refiner
         return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
-    print(f"Initial local_files_only: {local_files_only}")
-
     # import pipelines here to avoid circular import error when using from_single_file method
     from diffusers import (
         LDMTextToImagePipeline,
@@ -1638,12 +1636,10 @@ def download_from_original_stable_diffusion_ckpt(
             )
     elif model_type in ["SDXL", "SDXL-Refiner"]:
         if model_type == "SDXL":
-            print(f"local_files_only: {local_files_only}")
             tokenizer = CLIPTokenizer.from_pretrained(
                 "openai/clip-vit-large-patch14", local_files_only=local_files_only
             )
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
-            print(f"local_files_only: {local_files_only}")
             tokenizer_2 = CLIPTokenizer.from_pretrained(
                 "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
             )
