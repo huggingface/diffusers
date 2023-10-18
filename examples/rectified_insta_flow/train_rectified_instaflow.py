@@ -27,7 +27,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel, DPMSolverMultistepScheduler
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
@@ -40,7 +40,7 @@ def make_text_dataset(
         unet: UNet2DConditionModel,
         dataset: Dataset,
         pretrained_model_path: str,
-        text_column: str,
+        caption_column: str,
         output_dir: str,
         image_column: str,
         accelerator: Accelerator,
@@ -56,23 +56,25 @@ def make_text_dataset(
         return load_from_disk(dataset_output_path)
     pipeline = StableDiffusionPipeline.from_pretrained(
         pretrained_model_path,
-        unet=unet
+        unet=unet,
+        safety_checker=None,
     ).to(device=accelerator.device)
     if reflow:
         pipeline.scheduler = ReflowScheduler(pipeline.scheduler.config.num_train_timesteps)
-    output_dataset = {image_column: [], text_column: [], "seed": []}
+    output_dataset = {image_column: [], caption_column: [], "seed": []}
     generated_image_folder = os.path.join(output_dir, f"generated_images")
 
     os.makedirs(generated_image_folder, exist_ok=True)
     for i, example in tqdm(enumerate(dataset)):
-        text = str(example[text_column])
+        text = str(example[caption_column])
+        print(text)
         seed = random.randint(0, sys.maxsize)
         generator = torch.Generator(device=accelerator.device).manual_seed(seed)
         file_path = os.path.join(generated_image_folder, f"{i}.jpg")
-        image = pipeline(text, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator)
+        image = pipeline(text, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator).images[0]
         image.save(file_path)
         output_dataset[image_column].append(file_path)
-        output_dataset[text_column].append(text)
+        output_dataset[caption_column].append(text)
         output_dataset["seed"].append(seed)
     output_dataset = Dataset.from_dict(output_dataset)
     output_dataset = output_dataset.cast_column(image_column, Image())
@@ -225,6 +227,18 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=25,
+        help="Number of inference timesteps.",
+    )
+    parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=6.0,
+        help="Guidance scale for generating images.",
+    )
     parser.add_argument(
         "--num_reflow_steps",
         type=int,
@@ -531,6 +545,8 @@ def main():
         flow_output_dir = os.path.join(output_dir, str(i))
         args.output_dir = flow_output_dir
         unet = rectified_flow(args, unet=unet, reflow_step=i)
+    distill_output_dir = os.path.join(output_dir, 'distill')
+    args.output_dir = distill_output_dir
     unet = rectified_flow(args, unet=unet, reflow_step=i, distill=True)
 def rectified_flow(args, unet=None, reflow_step=0, distill=False):
     if args.non_ema_revision is not None:
@@ -624,12 +640,6 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
     # Freeze vae and text_encoder and set unet to trainable
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
-    guidance_scale = 7.5
-    num_inference_steps = 50
-    if reflow_step > 0:
-        guidance_scale = 1
-        num_inference_steps = 1
-    dataset['train'] = make_text_dataset(unet, dataset['train'], args.pretrained_model_name_or_path, args.text_column, args.output_dir, args.image_column, accelerator, guidance_scale=guidance_scale, num_inference_steps=num_inference_steps, reflow=reflow_step > 0)
     unet.train()
 
     # Create EMA for the unet.
@@ -745,7 +755,12 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
         )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
-
+    guidance_scale = args.guidance_scale
+    num_inference_steps = args.num_inference_steps
+    if reflow_step > 0:
+        guidance_scale = 1
+        num_inference_steps = 1
+    dataset['train'] = make_text_dataset(unet, dataset['train'], args.pretrained_model_name_or_path, args.caption_column, args.output_dir, args.image_column, accelerator, guidance_scale=guidance_scale, num_inference_steps=num_inference_steps, reflow=reflow_step > 0)
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
     column_names = dataset["train"].column_names
