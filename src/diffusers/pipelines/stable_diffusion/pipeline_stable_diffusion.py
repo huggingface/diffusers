@@ -31,7 +31,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, CALLBACK_ON_STEP_END_INPUTS
+from ..pipeline_utils import CALLBACK_ON_STEP_END_INPUTS, DiffusionPipeline
 from .pipeline_output import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -489,13 +489,15 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-        if callback_on_step_end_inputs is not None and not all(k in set(inspect.signature(self.__call__).parameters.keys()) for k in callback_on_step_end_inputs):
+        if callback_on_step_end_inputs is not None and not all(
+            k in set(inspect.signature(self.__call__).parameters.keys()) for k in callback_on_step_end_inputs
+        ):
+            raise ValueError("`callback_on_step_end_inputs` has to be input arguments to `__call__` method")
+        elif callback_on_step_end_inputs is not None and not all(
+            k in CALLBACK_ON_STEP_END_INPUTS for k in callback_on_step_end_inputs
+        ):
             raise ValueError(
-                f"`callback_on_step_end_inputs` has to be input arguments to `__call__` method"
-            )
-        elif callback_on_step_end_inputs is not None and not all(k in CALLBACK_ON_STEP_END_INPUTS for k in callback_on_step_end_inputs):
-            raise ValueError(
-                f"`callback_on_step_end_inputs` has to be in {CALLBACK_ON_STEP_END}, but found {[k for k in callback_on_step_end_inputs if k not in CALLBACK_ON_STEP_END_INPUTS]}"
+                f"`callback_on_step_end_inputs` has to be in {CALLBACK_ON_STEP_END_INPUTS}, but found {[k for k in callback_on_step_end_inputs if k not in CALLBACK_ON_STEP_END_INPUTS]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -562,7 +564,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]]= None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_inputs: List[str] = CALLBACK_ON_STEP_END_INPUTS,
         **kwargs,
     ):
@@ -642,13 +644,13 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             deprecate(
                 "callback",
                 "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`"
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
         if callback_steps is not None:
             deprecate(
                 "callback_steps",
                 "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`"
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
 
         # 0. Default height and width to unet
@@ -657,7 +659,14 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds, callback_on_step_end_inputs,
+            prompt,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+            callback_on_step_end_inputs,
         )
 
         # 2. Define call parameters
@@ -717,18 +726,18 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
                     for k in callback_on_step_end_inputs:
-                        callback_kwargs[k] = locals()[k] 
+                        callback_kwargs[k] = locals()[k]
                     callback_kwargs = callback_on_step_end(i, t, callback_kwargs)
 
-                    latents = callback_kwargs.pop("latents",latents)
+                    latents = callback_kwargs.pop("latents", latents)
                     guidance_scale = callback_kwargs.pop("guidance_scale", guidance_scale)
-                    prompt_embeds = callback_kwargs.pop("prompt_embeds", prompt_embeds) 
+                    prompt_embeds = callback_kwargs.pop("prompt_embeds", prompt_embeds)
                     cross_attention_kwargs = callback_kwargs.pop("cross_attention_kwargs", cross_attention_kwargs)
                     guidance_rescale = callback_kwargs.pop("guidance_rescale", guidance_rescale)
                     do_classifier_free_guidance = guidance_scale > 1.0
