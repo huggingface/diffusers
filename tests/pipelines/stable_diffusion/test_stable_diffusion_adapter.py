@@ -19,6 +19,7 @@ import unittest
 
 import numpy as np
 import torch
+from parameterized import parameterized
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
@@ -259,34 +260,36 @@ class AdapterTests:
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
-    def test_image_dimensions(self):
+    @parameterized.expand(
+        [
+            # (dim=264) The internal feature map will be 33x33 after initial pixel unshuffling (downscaled x8).
+            ((4 * 8 + 1) * 8),
+            # (dim=272) The internal feature map will be 17x17 after the first T2I down block (downscaled x16).
+            ((4 * 4 + 1) * 16),
+            # (dim=288) The internal feature map will be 9x9 after the second T2I down block (downscaled x32).
+            ((4 * 2 + 1) * 32),
+            # (dim=320) The internal feature map will be 5x5 after the third T2I down block (downscaled x64).
+            ((4 * 1 + 1) * 64),
+        ]
+    )
+    def test_multiple_image_dimensions(self, dim):
         """Test that the T2I-Adapter pipeline supports any input dimension that
         is divisible by the adapter's `downscale_factor`. This test was added in
         response to an issue where the T2I Adapter's downscaling padding
         behavior did not match the UNet's behavior.
+
+        Note that we have selected `dim` values to produce odd resolutions at
+        each downscaling level.
         """
         components = self.get_dummy_components_with_full_downscaling()
         sd_pipe = StableDiffusionAdapterPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        # Populate a list of test_dims to test odd dimensions at every T2I down
-        # block.
-        test_dims = []
-        base_dim = 4
-        factor = components["adapter"].downscale_factor
-        total_downscale_factor = components["adapter"].total_downscale_factor
-        while factor <= total_downscale_factor:
-            # Add a test dimension such that the internal T2I feature map will
-            # have an odd shape after downscaling by `factor`.
-            test_dims.append((base_dim * total_downscale_factor // factor + 1) * factor)
-            factor *= 2
+        inputs = self.get_dummy_inputs(torch_device, height=dim, width=dim)
+        image = sd_pipe(**inputs).images
 
-        for dim in test_dims:
-            inputs = self.get_dummy_inputs(torch_device, height=dim, width=dim)
-            image = sd_pipe(**inputs).images
-
-            assert image.shape == (1, dim, dim, 3)
+        assert image.shape == (1, dim, dim, 3)
 
 
 class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
