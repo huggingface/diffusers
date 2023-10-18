@@ -436,6 +436,7 @@ class StableDiffusionXLImg2ImgPipeline(
             negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
                 bs_embed * num_images_per_prompt, -1
             )
+
         if self.text_encoder is not None:
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
