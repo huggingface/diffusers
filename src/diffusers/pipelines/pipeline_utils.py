@@ -2029,4 +2029,4 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # Handle the call here.
         partial_call = partial(self.__call__, **final_call_args)
-        setattr(self, "__call__", partial_call)
+        setattr(self.__class__, "__call__", partial_call)
