@@ -2829,6 +2829,8 @@ class FromSingleFileMixin:
                 force_download=force_download,
             )
 
+        print(f"pretrained_model_link_or_path: {pretrained_model_link_or_path}")
+        print(f"local_files_only: {local_files_only}")
         pipe = download_from_original_stable_diffusion_ckpt(
             pretrained_model_link_or_path,
             pipeline_class=cls,
