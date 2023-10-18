@@ -20,20 +20,29 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, nightly, torch_device
+
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class TextToVideoZeroSDXLPipelineFastTests(#PipelineTesterMixin,
-        unittest.TestCase):
+class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = TextToVideoZeroSDXLPipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+
     def get_dummy_components(self, seed=0):
         torch.manual_seed(seed)
         unet = UNet2DConditionModel(
-            block_out_channels=(32, 64),
+            block_out_channels=(2, 4),
             layers_per_block=2,
-            sample_size=32,
+            sample_size=2,
+            norm_num_groups=2,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
@@ -114,8 +123,12 @@ class TextToVideoZeroSDXLPipelineFastTests(#PipelineTesterMixin,
         inputs = {
             "prompt": "A panda dancing in Antarctica",
             "generator": generator,
-            "num_inference_steps": 2,
-            "guidance_scale": 9.0,
+            "num_inference_steps": 5,
+            "t0": 1,
+            "t1": 3,
+            "height": 64,
+            "width": 64,
+            "video_length": 3,
             "output_type": "np",
         }
         return inputs
@@ -129,44 +142,81 @@ class TextToVideoZeroSDXLPipelineFastTests(#PipelineTesterMixin,
 
     def test_text_to_video_zero_sdxl(self):
         components = self.get_dummy_components()
-        pipe = TextToVideoZeroSDXLPipeline(**components)
+        pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
 
-        generator = self.get_generator(torch_device)
-
-        prompt = "A panda dancing in Antarctica"
-        result = pipe(
-            prompt=prompt,
-            generator=generator,
-            video_length=3,
-            num_inference_steps=5,
-            height=64,
-            width=64,
-            t0=1,
-            t1=3,
-            output_type="np",
-        ).images
+        inputs = self.get_dummy_inputs(torch_device)
+        result = pipe(**inputs).images
 
         first_frame_slice = result[0, -3:, -3:, -1]
         last_frame_slice = result[-1, -3:, -3:, 0]
 
         if torch_device == "cuda":
-            expected_slice1 = np.array([0.50, 0.39, 0.65, 0.42, 0.24, 0.46, 0.49, 0.50, 0.47])
-            expected_slice2 = np.array([0.38, 0.55, 0.69, 0.44, 0.40, 0.47, 0.57, 0.47, 0.48])
+            expected_slice1 = np.array([0.66, 0.77, 0.49, 0.63, 0.77, 0.60, 0.64, 0.46, 0.45])
+            expected_slice2 = np.array([0.50, 0.48, 0.53, 0.44, 0.38, 0.47, 0.46, 0.46, 0.48])
         else:
-            expected_slice1 = np.array([0.37, 0.42, 0.48, 0.39, 0.43, 0.43, 0.49, 0.51, 0.54])
-            expected_slice2 = np.array([0.39, 0.44, 0.48, 0.57, 0.35, 0.52, 0.68, 0.60, 0.53])
+            expected_slice1 = np.array([0.48, 0.58, 0.53, 0.59, 0.51, 0.43, 0.60, 0.65, 0.52])
+            expected_slice2 = np.array([0.66, 0.49, 0.40, 0.69, 0.47, 0.51, 0.73, 0.65, 0.52])
 
         assert np.abs(first_frame_slice.flatten() - expected_slice1).max() < 1e-2
         assert np.abs(last_frame_slice.flatten() - expected_slice2).max() < 1e-2
 
 
-@slow
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_attention_slicing_forward_pass(self):
+        pass
+
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_dict_tuple_outputs_equivalent(self):
+        pass
+
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_float16_inference(self):
+        pass
+
+    @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
+    def test_inference_batch_consistent(self):
+        pass
+
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_inference_batch_single_identical(self):
+        pass
+
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_model_cpu_offload_forward_pass(self):
+        pass
+
+    @unittest.skip(reason="`num_images_per_prompt` argument is not supported for this pipeline.")
+    def test_pipeline_call_signature(self):
+        pass
+
+    @unittest.skip(reason="`num_images_per_prompt` argument is not supported for this pipeline.")
+    def test_save_load_float16(self):
+        pass
+
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_save_load_local(self):
+        pass
+
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_save_load_optional_components(self):
+        pass
+
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_sequential_cpu_offload_forward_pass(self):
+        pass
+
+    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    def test_xformers_attention_forwardGenerator_pass(self):
+        pass
+
+
+@nightly
 @require_torch_gpu
 class TextToVideoZeroSDXLPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
         model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-        pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
+        pipe = self.pipeline_class.from_pretrained(
             model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
         ).to("cuda")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
