@@ -510,6 +510,7 @@ class StableDiffusionUniControlPipeline(
 
     def check_inputs(
         self,
+        task,
         prompt,
         image,
         callback_steps,
@@ -526,6 +527,11 @@ class StableDiffusionUniControlPipeline(
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+        
+        if task not in task_to_name:
+            raise ValueError(
+                f"`task` needs to be one of {list(task_to_name.keys())}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -737,8 +743,8 @@ class StableDiffusionUniControlPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
+        task: str,
         prompt: Union[str, List[str]] = None,
-        task = 'canny',
         image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -856,6 +862,7 @@ class StableDiffusionUniControlPipeline(
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
+            task,
             prompt,
             image,
             callback_steps,
