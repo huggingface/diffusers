@@ -67,7 +67,6 @@ def make_text_dataset(
     os.makedirs(generated_image_folder, exist_ok=True)
     for i, example in tqdm(enumerate(dataset)):
         text = str(example[caption_column])
-        print(text)
         seed = random.randint(0, sys.maxsize)
         generator = torch.Generator(device=accelerator.device).manual_seed(seed)
         file_path = os.path.join(generated_image_folder, f"{i}.jpg")
