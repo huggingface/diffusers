@@ -147,6 +147,112 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
         }
         return components
 
+    def get_dummy_components_with_full_downscaling(self, adapter_type="full_adapter_xl"):
+        """Get dummy components with x8 VAE downscaling and 3 UNet down blocks.
+        These dummy components are intended to fully-exercise the T2I-Adapter
+        downscaling behavior.
+        """
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "UpBlock2D"),
+            # SD2-specific config below
+            attention_head_dim=2,
+            use_linear_projection=True,
+            addition_embed_type="text_time",
+            addition_time_embed_dim=8,
+            transformer_layers_per_block=1,
+            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
+            cross_attention_dim=64,
+        )
+        scheduler = EulerDiscreteScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            steps_offset=1,
+            beta_schedule="scaled_linear",
+            timestep_spacing="leading",
+        )
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 32, 32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+            sample_size=128,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+            # SD2-specific config below
+            hidden_act="gelu",
+            projection_dim=32,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
+        tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        if adapter_type == "full_adapter_xl":
+            adapter = T2IAdapter(
+                in_channels=3,
+                channels=[32, 32, 64],
+                num_res_blocks=2,
+                downscale_factor=16,
+                adapter_type=adapter_type,
+            )
+        elif adapter_type == "multi_adapter":
+            adapter = MultiAdapter(
+                [
+                    T2IAdapter(
+                        in_channels=3,
+                        channels=[32, 32, 64],
+                        num_res_blocks=2,
+                        downscale_factor=16,
+                        adapter_type="full_adapter_xl",
+                    ),
+                    T2IAdapter(
+                        in_channels=3,
+                        channels=[32, 32, 64],
+                        num_res_blocks=2,
+                        downscale_factor=16,
+                        adapter_type="full_adapter_xl",
+                    ),
+                ]
+            )
+        else:
+            raise ValueError(
+                f"Unknown adapter type: {adapter_type}, must be one of 'full_adapter_xl', or 'multi_adapter''"
+            )
+
+        components = {
+            "adapter": adapter,
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "text_encoder_2": text_encoder_2,
+            "tokenizer_2": tokenizer_2,
+            # "safety_checker": None,
+            # "feature_extractor": None,
+        }
+        return components
+
     def get_dummy_inputs(self, device, seed=0, height=64, width=64, num_images=1):
         if num_images == 1:
             image = floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(device)
@@ -192,7 +298,7 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
         response to an issue where the T2I Adapter's downscaling padding
         behavior did not match the UNet's behavior.
         """
-        components = self.get_dummy_components()
+        components = self.get_dummy_components_with_full_downscaling()
         sd_pipe = StableDiffusionXLAdapterPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -252,6 +358,9 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
 ):
     def get_dummy_components(self):
         return super().get_dummy_components("multi_adapter")
+
+    def get_dummy_components_with_full_downscaling(self):
+        return super().get_dummy_components_with_full_downscaling("multi_adapter")
 
     def get_dummy_inputs(self, device, seed=0, height=64, width=64):
         inputs = super().get_dummy_inputs(device, seed, height, width, num_images=2)

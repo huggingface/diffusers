@@ -20,7 +20,6 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import logging
 from .modeling_utils import ModelMixin
-from .resnet import Downsample2D
 
 
 logger = logging.get_logger(__name__)
