@@ -75,7 +75,7 @@ $\tilde{β_t} = \frac{1-\bar{\alpha_{t-1}}}{1-\bar{\alpha_{t}}}.β_t$
 
 source : https://arxiv.org/pdf/2006.11239.pdf - equation (6) and (7)
 
-More precisely **_get_p_mean_variance** :<br>
+More precisely **get_p_mean_variance** :<br>
 $p_{\theta}(x_{t-1}|x_t) $
 
 We have multiple cases :<br>
@@ -92,3 +92,14 @@ In both cases :
 - If a guidance scale is given, we use it and chunk on the dimension 0
 
 source : https://arxiv.org/pdf/2207.00050.pdf - equation (11)
+
+### Training Pipeline
+We compute two losses : 
+$\mathcal{L} = \mathcal{L_{simple}} + \lambda.\mathcal{L_{vlb}}$
+
+with :<br>
+$\mathcal{L_{simple}} = ||\epsilon - M_{prediction}(\sqrt{\alpha_{t}}y + \sqrt{1-\alpha_{t}}\epsilon)||_2$<br>
+$\mathcal{L_{vlb}} = KL(p_{\theta}(y_{t-1}|y_{t},x)||q(y_{t-1}|y_{t},y_{0}))$ when $t>0$<br>
+
+Practically, we use **DDPMTrainingScheduler** to compute $p_{\theta}(y_{t-1}|y_{t},x)$ and $q(y_{t-1}|y_{t},y_{0})$.<br>
+In this implementation, we **do not** compute $\mathcal{L_{vlb}}$ when t=0
