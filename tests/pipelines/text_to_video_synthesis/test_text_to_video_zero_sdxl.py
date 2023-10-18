@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, nightly, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -161,16 +161,21 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         assert np.abs(first_frame_slice.flatten() - expected_slice1).max() < 1e-2
         assert np.abs(last_frame_slice.flatten() - expected_slice2).max() < 1e-2
 
-
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_attention_slicing_forward_pass(self):
         pass
 
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_dict_tuple_outputs_equivalent(self):
         pass
 
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_float16_inference(self):
         pass
 
@@ -178,11 +183,15 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_inference_batch_consistent(self):
         pass
 
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_model_cpu_offload_forward_pass(self):
         pass
 
@@ -194,19 +203,27 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_save_load_float16(self):
         pass
 
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_save_load_local(self):
         pass
 
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_save_load_optional_components(self):
         pass
 
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
-    @unittest.skip(reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor.")
+    @unittest.skip(
+        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    )
     def test_xformers_attention_forwardGenerator_pass(self):
         pass
 
