@@ -850,7 +850,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 down_block_res_sample = modulated_conv2d(
                     down_block_res_sample,
                     controlnet_block.weight,
-                    task_hyperlayer(task_id_emb).repeat(2, 1).detach())
+                    task_hyperlayer(task_id_emb).repeat(sample.shape[0], 1).detach()) #BS_Real = sample.shape[0] ?
 
                 down_block_res_sample += controlnet_block.bias.unsqueeze(0).unsqueeze(2).unsqueeze(3)
                 controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
