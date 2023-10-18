@@ -32,7 +32,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
-
+from diffusers.utils.torch_utils import randn_tensor
 import sys
 
 
@@ -830,7 +830,8 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example["input_ids"] for example in examples])
-        return {"pixel_values": pixel_values, "input_ids": input_ids, "seed": examples["seed"]}
+        seeds =  [example["seed"] for example in examples]
+        return {"pixel_values": pixel_values, "input_ids": input_ids, "seed": seeds}
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -949,8 +950,7 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
                 latents = latents * vae.config.scaling_factor
                 seeds = batch["seed"]
                 generators = [torch.Generator(device=accelerator.device).manual_seed(seed) for seed in seeds]
-                noise = torch.stack([torch.rand_like(latents, generator=generator) for generator in generators])
-
+                noise = randn_tensor(latents[0].shape, generator=generators, device=latents.device, dtype=latents.dtype)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 if not distill:
