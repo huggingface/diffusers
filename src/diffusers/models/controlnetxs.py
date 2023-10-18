@@ -71,8 +71,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             hint_channels=3,
             block_out_channels=(32,64,128),
             transformer_layers_per_block=(0,2,10),
-            attention_bias=True,
             cross_attention_dim=2048,
+            learn_embedding=True,
+            control_model_ratio=0.1,
         )
     
     def __init__(
@@ -83,9 +84,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             hint_channels,
             block_out_channels,
             transformer_layers_per_block,
-            attention_bias=False,
-            encoder_hid_dim: Optional[int] = 768, # Note Umer: should not be hard coded, but okay for minimal functional run - this comes from the text encoder output shape
             cross_attention_dim: Union[int, Tuple[int]] = 1280,
+            learn_embedding=False,
+            control_model_ratio=1.0,
         ):
         super().__init__()
 
@@ -94,13 +95,15 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # 1 - Save parameters
         # TODO make variables
         self.in_ch_factor = 1 if "cat" == 'add' else 2
-        self.control_model_ratio = 1.0
+        self.control_model_ratio = control_model_ratio
         self.out_channels = out_channels
         self.dims = 2
         self.model_channels = model_channels
         self.control_scale = 1.0
         self.hint_model = None
         
+        self.learn_embedding = learn_embedding
+
         # 1 - Create controller
         def class_names(modules):
             return [m.__class__.__name__ for m in modules]
@@ -114,11 +117,15 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             up_block_types=class_names(base_model.up_blocks),
             time_embedding_dim=get_time_emd_dim(base_model),
             transformer_layers_per_block=transformer_layers_per_block,
-            attention_bias=attention_bias,
             cross_attention_dim=cross_attention_dim,
         )
 
-        # 2 - Adapt controller to allow for information infusion from base model
+        # 2 - Do model surgery on control model
+        # 2.1 - Allow to use the same time information as the base model
+        def get_time_emd_input_dim(unet: UNet2DConditionModel):
+            return unet.time_embedding.linear_1.in_features
+        adjust_time_input_dim(self.control_model, get_time_emd_input_dim(base_model))
+        # 2.2 - Allow for information infusion from base model
         # todo: make variable (sth like zip(block_out_channels[:-1],block_out_channels[1:]))
         for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))):
             e1,e2=extra_channels
@@ -183,7 +190,11 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             self.enc_zero_convs_in.append(self.make_zero_conv(
                 in_channels=ch_io_base[1], out_channels=ch_io_base[1])
             )
-        
+        for i in range(len(ch_inout_ctrl['enc'])):
+            self.enc_zero_convs_out.append(
+                self.make_zero_conv(ch_inout_ctrl['enc'][i][1], ch_inout_base['enc'][i][1])
+            )       
+ 
         self.middle_block_out = self.make_zero_conv(ch_inout_ctrl['mid'][-1][1], ch_inout_base['mid'][-1][1])
         
         self.dec_zero_convs_out.append(
@@ -193,7 +204,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             self.dec_zero_convs_out.append(
                 self.make_zero_conv(ch_inout_ctrl['enc'][-(i + 1)][1], ch_inout_base['dec'][i - 1][1])
             )
-    
+
+
         # 5 - Create conditioning hint embedding
         self.input_hint_block = nn.Sequential(
             nn.Conv2d(hint_channels, 16, 3, padding=1),
@@ -218,9 +230,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.flip_sin_to_cos = True # default params
         self.freq_shift = 0
         # Todo: Only when `learn_embedding = False` can we just use the base model's time embedding, otherwise we need to create our own 
+        
         # Text embedding
-        # todo: I thinks we might not need this, because we can use the base model's encoder_hid_proj. todo: verify
-        self.encoder_hid_proj = nn.Linear(encoder_hid_dim, cross_attention_dim)
+        # info: I deleted the encoder_hid_proj as it's not given by the Heidelberg CVL weights
 
         scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
         self.register_buffer('scale_list', torch.tensor(scale_list))
@@ -259,10 +271,14 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             # # TODO: Undetrstand flip_sin_to_cos / (downscale_)freq_shift
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.freq_shift,
-        )        
-        temb = self.base_model.time_embedding(t_emb)
+        )
+        if self.learn_embedding:
+            temb = self.control_model.time_embedding(t_emb) * self.control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.control_scale ** 0.3)
+        else:
+            temb = self.base_model.time_embedding(t_emb)
+
         # text embeddings
-        cemb = self.encoder_hid_proj(encoder_hidden_states) # Q: use the base/ctrl models' encoder_hid_proj? Need to make sure dims fit
+        cemb = encoder_hidden_states
 
         guided_hint = self.input_hint_block(hint)
 
@@ -292,6 +308,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             h_ctrl = torch.cat([h_ctrl, inp_base2ctrl], dim=1)
             h_base = m_base(h_base, temb, cemb, context)
             h_ctrl = m_ctrl(h_ctrl, temb, cemb, context)
+            h_base = h_base + next(it_enc_convs_out)(h_ctrl, temb, cemb) * next(scales)
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
         # 2 - mid blocks (bottleneck)
@@ -313,86 +330,90 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
 
 
-def increase_block_input_in_encoder_resnet(unet, block_no, resnet_idx, by):
-        """Increase channels sizes to allow for additional concatted information from base model"""
-        r=unet.down_blocks[block_no].resnets[resnet_idx]
-        old_norm1, old_conv1, old_conv_shortcut = r.norm1,r.conv1,r.conv_shortcut
-        # norm
-        norm_args = 'num_groups num_channels eps affine'.split(' ')
-        for a in norm_args: assert hasattr(old_norm1, a)
-        norm_kwargs = { a: getattr(old_norm1, a) for a in norm_args }
-        norm_kwargs['num_channels'] += by  # surgery done here
-        # conv1
-        conv1_args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
-        for a in conv1_args: assert hasattr(old_conv1, a)
-        conv1_kwargs = { a: getattr(old_conv1, a) for a in conv1_args }
-        conv1_kwargs['bias'] = 'bias' in conv1_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
-        conv1_kwargs['in_channels'] += by  # surgery done here
-        # conv_shortcut
-        # as we changed the input size of the block, the input and output sizes are likely different,
-        # therefore we need a conv_shortcut (simply adding won't work) 
-        conv_shortcut_args_kwargs = { 
-            'in_channels': conv1_kwargs['in_channels'],
-            'out_channels': conv1_kwargs['out_channels'],
-            # default arguments from resnet.__init__
-            'kernel_size':1, 
-            'stride':1, 
-            'padding':0,
-            'bias':True
-        }
-        # swap old with new modules
-        unet.down_blocks[block_no].resnets[resnet_idx].norm1 = GroupNorm(**norm_kwargs)
-        unet.down_blocks[block_no].resnets[resnet_idx].conv1 = LoRACompatibleConv(**conv1_kwargs)
-        unet.down_blocks[block_no].resnets[resnet_idx].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
-        unet.down_blocks[block_no].resnets[resnet_idx].in_channels += by  # surgery done here
+def adjust_time_input_dim(unet: UNet2DConditionModel, dim: int):
+    time_emb = unet.time_embedding
+    time_emb.linear_1 = nn.Linear(dim, time_emb.linear_1.out_features)
+
+def increase_block_input_in_encoder_resnet(unet:UNet2DConditionModel, block_no, resnet_idx, by):
+    """Increase channels sizes to allow for additional concatted information from base model"""
+    r=unet.down_blocks[block_no].resnets[resnet_idx]
+    old_norm1, old_conv1, old_conv_shortcut = r.norm1,r.conv1,r.conv_shortcut
+    # norm
+    norm_args = 'num_groups num_channels eps affine'.split(' ')
+    for a in norm_args: assert hasattr(old_norm1, a)
+    norm_kwargs = { a: getattr(old_norm1, a) for a in norm_args }
+    norm_kwargs['num_channels'] += by  # surgery done here
+    # conv1
+    conv1_args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
+    for a in conv1_args: assert hasattr(old_conv1, a)
+    conv1_kwargs = { a: getattr(old_conv1, a) for a in conv1_args }
+    conv1_kwargs['bias'] = 'bias' in conv1_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
+    conv1_kwargs['in_channels'] += by  # surgery done here
+    # conv_shortcut
+    # as we changed the input size of the block, the input and output sizes are likely different,
+    # therefore we need a conv_shortcut (simply adding won't work) 
+    conv_shortcut_args_kwargs = { 
+        'in_channels': conv1_kwargs['in_channels'],
+        'out_channels': conv1_kwargs['out_channels'],
+        # default arguments from resnet.__init__
+        'kernel_size':1, 
+        'stride':1, 
+        'padding':0,
+        'bias':True
+    }
+    # swap old with new modules
+    unet.down_blocks[block_no].resnets[resnet_idx].norm1 = GroupNorm(**norm_kwargs)
+    unet.down_blocks[block_no].resnets[resnet_idx].conv1 = LoRACompatibleConv(**conv1_kwargs)
+    unet.down_blocks[block_no].resnets[resnet_idx].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
+    unet.down_blocks[block_no].resnets[resnet_idx].in_channels += by  # surgery done here
 
 
-def increase_block_input_in_encoder_downsampler(unet, block_no, by):
-        """Increase channels sizes to allow for additional concatted information from base model"""
-        old_down=unet.down_blocks[block_no].downsamplers[0].conv
-        # conv1
-        args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
-        for a in args: assert hasattr(old_down, a)
-        kwargs = { a: getattr(old_down, a) for a in args}
-        kwargs['bias'] = 'bias' in kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
-        kwargs['in_channels'] += by  # surgery done here
-        # swap old with new modules
-        unet.down_blocks[block_no].downsamplers[0].conv = LoRACompatibleConv(**kwargs)
-        unet.down_blocks[block_no].downsamplers[0].channels += by  # surgery done here
+def increase_block_input_in_encoder_downsampler(unet:UNet2DConditionModel, block_no, by):
+    """Increase channels sizes to allow for additional concatted information from base model"""
+    old_down=unet.down_blocks[block_no].downsamplers[0].conv
+    # conv1
+    args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
+    for a in args: assert hasattr(old_down, a)
+    kwargs = { a: getattr(old_down, a) for a in args}
+    kwargs['bias'] = 'bias' in kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
+    kwargs['in_channels'] += by  # surgery done here
+    # swap old with new modules
+    unet.down_blocks[block_no].downsamplers[0].conv = LoRACompatibleConv(**kwargs)
+    unet.down_blocks[block_no].downsamplers[0].channels += by  # surgery done here
 
 
-def increase_block_input_in_mid_resnet(unet, by):
-        """Increase channels sizes to allow for additional concatted information from base model"""
-        m=unet.mid_block.resnets[0]
-        old_norm1, old_conv1, old_conv_shortcut = m.norm1,m.conv1,m.conv_shortcut
-        # norm
-        norm_args = 'num_groups num_channels eps affine'.split(' ')
-        for a in norm_args: assert hasattr(old_norm1, a)
-        norm_kwargs = { a: getattr(old_norm1, a) for a in norm_args }
-        norm_kwargs['num_channels'] += by  # surgery done here
-        # conv1
-        conv1_args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
-        for a in conv1_args: assert hasattr(old_conv1, a)
-        conv1_kwargs = { a: getattr(old_conv1, a) for a in conv1_args }
-        conv1_kwargs['bias'] = 'bias' in conv1_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
-        conv1_kwargs['in_channels'] += by  # surgery done here
-        # conv_shortcut
-        # as we changed the input size of the block, the input and output sizes are likely different,
-        # therefore we need a conv_shortcut (simply adding won't work) 
-        conv_shortcut_args_kwargs = { 
-            'in_channels': conv1_kwargs['in_channels'],
-            'out_channels': conv1_kwargs['out_channels'],
-            # default arguments from resnet.__init__
-            'kernel_size':1, 
-            'stride':1, 
-            'padding':0,
-            'bias':True
-        }
-        # swap old with new modules
-        unet.mid_block.resnets[0].norm1 = GroupNorm(**norm_kwargs)
-        unet.mid_block.resnets[0].conv1 = LoRACompatibleConv(**conv1_kwargs)
-        unet.mid_block.resnets[0].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
-        unet.mid_block.resnets[0].in_channels += by  # surgery done here
+def increase_block_input_in_mid_resnet(unet:UNet2DConditionModel, by):
+    """Increase channels sizes to allow for additional concatted information from base model"""
+    m=unet.mid_block.resnets[0]
+    old_norm1, old_conv1, old_conv_shortcut = m.norm1,m.conv1,m.conv_shortcut
+    # norm
+    norm_args = 'num_groups num_channels eps affine'.split(' ')
+    for a in norm_args: assert hasattr(old_norm1, a)
+    norm_kwargs = { a: getattr(old_norm1, a) for a in norm_args }
+    norm_kwargs['num_channels'] += by  # surgery done here
+    # conv1
+    conv1_args = 'in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer'.split(' ')
+    for a in conv1_args: assert hasattr(old_conv1, a)
+    conv1_kwargs = { a: getattr(old_conv1, a) for a in conv1_args }
+    conv1_kwargs['bias'] = 'bias' in conv1_kwargs  # as param, bias is a boolean, but as attr, it's a tensor.
+    conv1_kwargs['in_channels'] += by  # surgery done here
+    # conv_shortcut
+    # as we changed the input size of the block, the input and output sizes are likely different,
+    # therefore we need a conv_shortcut (simply adding won't work) 
+    conv_shortcut_args_kwargs = { 
+        'in_channels': conv1_kwargs['in_channels'],
+        'out_channels': conv1_kwargs['out_channels'],
+        # default arguments from resnet.__init__
+        'kernel_size':1, 
+        'stride':1, 
+        'padding':0,
+        'bias':True
+    }
+    # swap old with new modules
+    unet.mid_block.resnets[0].norm1 = GroupNorm(**norm_kwargs)
+    unet.mid_block.resnets[0].conv1 = LoRACompatibleConv(**conv1_kwargs)
+    unet.mid_block.resnets[0].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
+    unet.mid_block.resnets[0].in_channels += by  # surgery done here
 
 
 class EmbedSequential(nn.ModuleList):
