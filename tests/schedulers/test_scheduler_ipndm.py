@@ -104,6 +104,8 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
             residual = model(sample, t)
             sample = scheduler.step(residual, t, sample).prev_sample
 
+        scheduler._step_index = None
+
         for i, t in enumerate(scheduler.timesteps):
             residual = model(sample, t)
             sample = scheduler.step(residual, t, sample).prev_sample

@@ -11,15 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from typing import List, Optional
+import os
+from typing import Callable, List, Optional, Union
 
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import logging
 from .modeling_utils import ModelMixin
 from .resnet import Downsample2D
+
+
+logger = logging.get_logger(__name__)
 
 
 class MultiAdapter(ModelMixin):
@@ -41,6 +45,31 @@ class MultiAdapter(ModelMixin):
         self.num_adapter = len(adapters)
         self.adapters = nn.ModuleList(adapters)
 
+        if len(adapters) == 0:
+            raise ValueError("Expecting at least one adapter")
+
+        if len(adapters) == 1:
+            raise ValueError("For a single adapter, please use the `T2IAdapter` class instead of `MultiAdapter`")
+
+        # The outputs from each adapter are added together with a weight
+        # This means that the change in dimenstions from downsampling must
+        # be the same for all adapters. Inductively, it also means the total
+        # downscale factor must also be the same for all adapters.
+
+        first_adapter_total_downscale_factor = adapters[0].total_downscale_factor
+
+        for idx in range(1, len(adapters)):
+            adapter_idx_total_downscale_factor = adapters[idx].total_downscale_factor
+
+            if adapter_idx_total_downscale_factor != first_adapter_total_downscale_factor:
+                raise ValueError(
+                    f"Expecting all adapters to have the same total_downscale_factor, "
+                    f"but got adapters[0].total_downscale_factor={first_adapter_total_downscale_factor} and "
+                    f"adapter[`{idx}`]={adapter_idx_total_downscale_factor}"
+                )
+
+        self.total_downscale_factor = adapters[0].total_downscale_factor
+
     def forward(self, xs: torch.Tensor, adapter_weights: Optional[List[float]] = None) -> List[torch.Tensor]:
         r"""
         Args:
@@ -56,21 +85,130 @@ class MultiAdapter(ModelMixin):
         else:
             adapter_weights = torch.tensor(adapter_weights)
 
-        if xs.shape[1] % self.num_adapter != 0:
-            raise ValueError(
-                f"Expecting multi-adapter's input have number of channel that cab be evenly divisible "
-                f"by num_adapter: {xs.shape[1]} % {self.num_adapter} != 0"
-            )
-        x_list = torch.chunk(xs, self.num_adapter, dim=1)
         accume_state = None
-        for x, w, adapter in zip(x_list, adapter_weights, self.adapters):
+        for x, w, adapter in zip(xs, adapter_weights, self.adapters):
             features = adapter(x)
             if accume_state is None:
                 accume_state = features
+                for i in range(len(accume_state)):
+                    accume_state[i] = w * accume_state[i]
             else:
                 for i in range(len(features)):
                     accume_state[i] += w * features[i]
         return accume_state
+
+    def save_pretrained(
+        self,
+        save_directory: Union[str, os.PathLike],
+        is_main_process: bool = True,
+        save_function: Callable = None,
+        safe_serialization: bool = True,
+        variant: Optional[str] = None,
+    ):
+        """
+        Save a model and its configuration file to a directory, so that it can be re-loaded using the
+        `[`~models.adapter.MultiAdapter.from_pretrained`]` class method.
+
+        Arguments:
+            save_directory (`str` or `os.PathLike`):
+                Directory to which to save. Will be created if it doesn't exist.
+            is_main_process (`bool`, *optional*, defaults to `True`):
+                Whether the process calling this is the main process or not. Useful when in distributed training like
+                TPUs and need to call this function on all processes. In this case, set `is_main_process=True` only on
+                the main process to avoid race conditions.
+            save_function (`Callable`):
+                The function to use to save the state dictionary. Useful on distributed training like TPUs when one
+                need to replace `torch.save` by another method. Can be configured with the environment variable
+                `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
+            variant (`str`, *optional*):
+                If specified, weights are saved in the format pytorch_model.<variant>.bin.
+        """
+        idx = 0
+        model_path_to_save = save_directory
+        for adapter in self.adapters:
+            adapter.save_pretrained(
+                model_path_to_save,
+                is_main_process=is_main_process,
+                save_function=save_function,
+                safe_serialization=safe_serialization,
+                variant=variant,
+            )
+
+            idx += 1
+            model_path_to_save = model_path_to_save + f"_{idx}"
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_path: Optional[Union[str, os.PathLike]], **kwargs):
+        r"""
+        Instantiate a pretrained MultiAdapter model from multiple pre-trained adapter models.
+
+        The model is set in evaluation mode by default using `model.eval()` (Dropout modules are deactivated). To train
+        the model, you should first set it back in training mode with `model.train()`.
+
+        The warning *Weights from XXX not initialized from pretrained model* means that the weights of XXX do not come
+        pretrained with the rest of the model. It is up to you to train those weights with a downstream fine-tuning
+        task.
+
+        The warning *Weights from XXX not used in YYY* means that the layer XXX is not used by YYY, therefore those
+        weights are discarded.
+
+        Parameters:
+            pretrained_model_path (`os.PathLike`):
+                A path to a *directory* containing model weights saved using
+                [`~diffusers.models.adapter.MultiAdapter.save_pretrained`], e.g., `./my_model_directory/adapter`.
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
+                will be automatically derived from the model's weights.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be refined to each
+                parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
+                same device.
+
+                To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            max_memory (`Dict`, *optional*):
+                A dictionary device identifier to maximum memory. Will default to the maximum memory available for each
+                GPU and the available CPU RAM if unset.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
+                also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
+                model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
+                setting this argument to `True` will raise an error.
+            variant (`str`, *optional*):
+                If specified load weights from `variant` filename, *e.g.* pytorch_model.<variant>.bin. `variant` is
+                ignored when using `from_flax`.
+            use_safetensors (`bool`, *optional*, defaults to `None`):
+                If set to `None`, the `safetensors` weights will be downloaded if they're available **and** if the
+                `safetensors` library is installed. If set to `True`, the model will be forcibly loaded from
+                `safetensors` weights. If set to `False`, loading will *not* use `safetensors`.
+        """
+        idx = 0
+        adapters = []
+
+        # load adapter and append to list until no adapter directory exists anymore
+        # first adapter has to be saved under `./mydirectory/adapter` to be compliant with `DiffusionPipeline.from_pretrained`
+        # second, third, ... adapters have to be saved under `./mydirectory/adapter_1`, `./mydirectory/adapter_2`, ...
+        model_path_to_load = pretrained_model_path
+        while os.path.isdir(model_path_to_load):
+            adapter = T2IAdapter.from_pretrained(model_path_to_load, **kwargs)
+            adapters.append(adapter)
+
+            idx += 1
+            model_path_to_load = pretrained_model_path + f"_{idx}"
+
+        logger.info(f"{len(adapters)} adapters loaded from {pretrained_model_path}.")
+
+        if len(adapters) == 0:
+            raise ValueError(
+                f"No T2IAdapters found under {os.path.dirname(pretrained_model_path)}. Expected at least {pretrained_model_path + '_0'}."
+            )
+
+        return cls(adapters)
 
 
 class T2IAdapter(ModelMixin, ConfigMixin):
@@ -93,7 +231,11 @@ class T2IAdapter(ModelMixin, ConfigMixin):
             The number of channel of each downsample block's output hidden state. The `len(block_out_channels)` will
             also determine the number of downsample blocks in the Adapter.
         num_res_blocks (`int`, *optional*, defaults to 2):
-            Number of ResNet blocks in each downsample block
+            Number of ResNet blocks in each downsample block.
+        downscale_factor (`int`, *optional*, defaults to 8):
+            A factor that determines the total downscale factor of the Adapter.
+        adapter_type (`str`, *optional*, defaults to `full_adapter`):
+            The type of Adapter to use. Choose either `full_adapter` or `full_adapter_xl` or `light_adapter`.
     """
 
     @register_to_config
@@ -109,12 +251,23 @@ class T2IAdapter(ModelMixin, ConfigMixin):
 
         if adapter_type == "full_adapter":
             self.adapter = FullAdapter(in_channels, channels, num_res_blocks, downscale_factor)
+        elif adapter_type == "full_adapter_xl":
+            self.adapter = FullAdapterXL(in_channels, channels, num_res_blocks, downscale_factor)
         elif adapter_type == "light_adapter":
             self.adapter = LightAdapter(in_channels, channels, num_res_blocks, downscale_factor)
         else:
-            raise ValueError(f"unknown adapter_type: {type}. Choose either 'full_adapter' or 'simple_adapter'")
+            raise ValueError(
+                f"Unsupported adapter_type: '{adapter_type}'. Choose either 'full_adapter' or "
+                "'full_adapter_xl' or 'light_adapter'."
+            )
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        r"""
+        This function processes the input tensor `x` through the adapter model and returns a list of feature tensors,
+        each representing information extracted at a different scale from the input. The length of the list is
+        determined by the number of downsample blocks in the Adapter, as specified by the `channels` and
+        `num_res_blocks` parameters during initialization.
+        """
         return self.adapter(x)
 
     @property
@@ -126,6 +279,10 @@ class T2IAdapter(ModelMixin, ConfigMixin):
 
 
 class FullAdapter(nn.Module):
+    r"""
+    See [`T2IAdapter`] for more information.
+    """
+
     def __init__(
         self,
         in_channels: int = 3,
@@ -153,6 +310,62 @@ class FullAdapter(nn.Module):
         self.total_downscale_factor = downscale_factor * 2 ** (len(channels) - 1)
 
     def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        r"""
+        This method processes the input tensor `x` through the FullAdapter model and performs operations including
+        pixel unshuffling, convolution, and a stack of AdapterBlocks. It returns a list of feature tensors, each
+        capturing information at a different stage of processing within the FullAdapter model. The number of feature
+        tensors in the list is determined by the number of downsample blocks specified during initialization.
+        """
+        x = self.unshuffle(x)
+        x = self.conv_in(x)
+
+        features = []
+
+        for block in self.body:
+            x = block(x)
+            features.append(x)
+
+        return features
+
+
+class FullAdapterXL(nn.Module):
+    r"""
+    See [`T2IAdapter`] for more information.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 3,
+        channels: List[int] = [320, 640, 1280, 1280],
+        num_res_blocks: int = 2,
+        downscale_factor: int = 16,
+    ):
+        super().__init__()
+
+        in_channels = in_channels * downscale_factor**2
+
+        self.unshuffle = nn.PixelUnshuffle(downscale_factor)
+        self.conv_in = nn.Conv2d(in_channels, channels[0], kernel_size=3, padding=1)
+
+        self.body = []
+        # blocks to extract XL features with dimensions of [320, 64, 64], [640, 64, 64], [1280, 32, 32], [1280, 32, 32]
+        for i in range(len(channels)):
+            if i == 1:
+                self.body.append(AdapterBlock(channels[i - 1], channels[i], num_res_blocks))
+            elif i == 2:
+                self.body.append(AdapterBlock(channels[i - 1], channels[i], num_res_blocks, down=True))
+            else:
+                self.body.append(AdapterBlock(channels[i], channels[i], num_res_blocks))
+
+        self.body = nn.ModuleList(self.body)
+        # XL has only one downsampling AdapterBlock.
+        self.total_downscale_factor = downscale_factor * 2
+
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        r"""
+        This method takes the tensor x as input and processes it through FullAdapterXL model. It consists of operations
+        including unshuffling pixels, applying convolution layer and appending each block into list of feature tensors.
+        """
         x = self.unshuffle(x)
         x = self.conv_in(x)
 
@@ -166,7 +379,22 @@ class FullAdapter(nn.Module):
 
 
 class AdapterBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, num_res_blocks, down=False):
+    r"""
+    An AdapterBlock is a helper model that contains multiple ResNet-like blocks. It is used in the `FullAdapter` and
+    `FullAdapterXL` models.
+
+    Parameters:
+        in_channels (`int`):
+            Number of channels of AdapterBlock's input.
+        out_channels (`int`):
+            Number of channels of AdapterBlock's output.
+        num_res_blocks (`int`):
+            Number of ResNet blocks in the AdapterBlock.
+        down (`bool`, *optional*, defaults to `False`):
+            Whether to perform downsampling on AdapterBlock's input.
+    """
+
+    def __init__(self, in_channels: int, out_channels: int, num_res_blocks: int, down: bool = False):
         super().__init__()
 
         self.downsample = None
@@ -181,7 +409,12 @@ class AdapterBlock(nn.Module):
             *[AdapterResnetBlock(out_channels) for _ in range(num_res_blocks)],
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""
+        This method takes tensor x as input and performs operations downsampling and convolutional layers if the
+        self.downsample and self.in_conv properties of AdapterBlock model are specified. Then it applies a series of
+        residual blocks to the input tensor.
+        """
         if self.downsample is not None:
             x = self.downsample(x)
 
@@ -194,13 +427,25 @@ class AdapterBlock(nn.Module):
 
 
 class AdapterResnetBlock(nn.Module):
-    def __init__(self, channels):
+    r"""
+    An `AdapterResnetBlock` is a helper model that implements a ResNet-like block.
+
+    Parameters:
+        channels (`int`):
+            Number of channels of AdapterResnetBlock's input and output.
+    """
+
+    def __init__(self, channels: int):
         super().__init__()
         self.block1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
         self.act = nn.ReLU()
         self.block2 = nn.Conv2d(channels, channels, kernel_size=1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""
+        This method takes input tensor x and applies a convolutional layer, ReLU activation, and another convolutional
+        layer on the input tensor. It returns addition with the input tensor.
+        """
         h = x
         h = self.block1(h)
         h = self.act(h)
@@ -213,6 +458,10 @@ class AdapterResnetBlock(nn.Module):
 
 
 class LightAdapter(nn.Module):
+    r"""
+    See [`T2IAdapter`] for more information.
+    """
+
     def __init__(
         self,
         in_channels: int = 3,
@@ -239,7 +488,11 @@ class LightAdapter(nn.Module):
 
         self.total_downscale_factor = downscale_factor * (2 ** len(channels))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        r"""
+        This method takes the input tensor x and performs downscaling and appends it in list of feature tensors. Each
+        feature tensor corresponds to a different level of processing within the LightAdapter.
+        """
         x = self.unshuffle(x)
 
         features = []
@@ -252,7 +505,22 @@ class LightAdapter(nn.Module):
 
 
 class LightAdapterBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, num_res_blocks, down=False):
+    r"""
+    A `LightAdapterBlock` is a helper model that contains multiple `LightAdapterResnetBlocks`. It is used in the
+    `LightAdapter` model.
+
+    Parameters:
+        in_channels (`int`):
+            Number of channels of LightAdapterBlock's input.
+        out_channels (`int`):
+            Number of channels of LightAdapterBlock's output.
+        num_res_blocks (`int`):
+            Number of LightAdapterResnetBlocks in the LightAdapterBlock.
+        down (`bool`, *optional*, defaults to `False`):
+            Whether to perform downsampling on LightAdapterBlock's input.
+    """
+
+    def __init__(self, in_channels: int, out_channels: int, num_res_blocks: int, down: bool = False):
         super().__init__()
         mid_channels = out_channels // 4
 
@@ -264,7 +532,11 @@ class LightAdapterBlock(nn.Module):
         self.resnets = nn.Sequential(*[LightAdapterResnetBlock(mid_channels) for _ in range(num_res_blocks)])
         self.out_conv = nn.Conv2d(mid_channels, out_channels, kernel_size=1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""
+        This method takes tensor x as input and performs downsampling if required. Then it applies in convolution
+        layer, a sequence of residual blocks, and out convolutional layer.
+        """
         if self.downsample is not None:
             x = self.downsample(x)
 
@@ -276,13 +548,26 @@ class LightAdapterBlock(nn.Module):
 
 
 class LightAdapterResnetBlock(nn.Module):
-    def __init__(self, channels):
+    """
+    A `LightAdapterResnetBlock` is a helper model that implements a ResNet-like block with a slightly different
+    architecture than `AdapterResnetBlock`.
+
+    Parameters:
+        channels (`int`):
+            Number of channels of LightAdapterResnetBlock's input and output.
+    """
+
+    def __init__(self, channels: int):
         super().__init__()
         self.block1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
         self.act = nn.ReLU()
         self.block2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        r"""
+        This function takes input tensor x and processes it through one convolutional layer, ReLU activation, and
+        another convolutional layer and adds it to input tensor.
+        """
         h = x
         h = self.block1(h)
         h = self.act(h)

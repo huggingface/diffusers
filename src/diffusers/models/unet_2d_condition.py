@@ -20,14 +20,21 @@ import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
-from ..utils import BaseOutput, logging
+from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from .activations import get_activation
-from .attention_processor import AttentionProcessor, AttnProcessor
+from .attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnProcessor,
+)
 from .embeddings import (
     GaussianFourierProjection,
     ImageHintTimeEmbedding,
     ImageProjection,
     ImageTimeEmbedding,
+    PositionNet,
     TextImageProjection,
     TextImageTimeEmbedding,
     TextTimeEmbedding,
@@ -91,6 +98,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
         downsample_padding (`int`, *optional*, defaults to 1): The padding to use for the downsampling convolution.
         mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
@@ -171,6 +179,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         layers_per_block: Union[int, Tuple[int]] = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
+        dropout: float = 0.0,
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
@@ -198,6 +207,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
+        attention_type: str = "default",
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
@@ -446,10 +456,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                attention_type=attention_type,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                dropout=dropout,
             )
             self.down_blocks.append(down_block)
 
@@ -459,6 +471,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 transformer_layers_per_block=transformer_layers_per_block[-1],
                 in_channels=block_out_channels[-1],
                 temb_channels=blocks_time_embed_dim,
+                dropout=dropout,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
@@ -469,11 +482,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
+                attention_type=attention_type,
             )
         elif mid_block_type == "UNetMidBlock2DSimpleCrossAttn":
             self.mid_block = UNetMidBlock2DSimpleCrossAttn(
                 in_channels=block_out_channels[-1],
                 temb_channels=blocks_time_embed_dim,
+                dropout=dropout,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
@@ -527,6 +542,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 add_upsample=add_upsample,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resolution_idx=i,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
@@ -535,10 +551,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                attention_type=attention_type,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
                 attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                dropout=dropout,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -560,6 +578,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
         )
 
+        if attention_type in ["gated", "gated-text-image"]:
+            positive_len = 768
+            if isinstance(cross_attention_dim, int):
+                positive_len = cross_attention_dim
+            elif isinstance(cross_attention_dim, tuple) or isinstance(cross_attention_dim, list):
+                positive_len = cross_attention_dim[0]
+
+            feature_type = "text-only" if attention_type == "gated" else "text-image"
+            self.position_net = PositionNet(
+                positive_len=positive_len, out_dim=cross_attention_dim, feature_type=feature_type
+            )
+
     @property
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
@@ -571,8 +601,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         processors = {}
 
         def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "set_processor"):
-                processors[f"{name}.processor"] = module.processor
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -584,7 +614,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         return processors
 
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(
+        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
+    ):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -608,9 +640,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor)
+                    module.set_processor(processor, _remove_lora=_remove_lora)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"))
+                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -622,7 +654,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        self.set_attn_processor(AttnProcessor())
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnAddedKVProcessor()
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnProcessor()
+        else:
+            raise ValueError(
+                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
+            )
+
+        self.set_attn_processor(processor, _remove_lora=True)
 
     def set_attention_slice(self, slice_size):
         r"""
@@ -693,6 +734,38 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    def enable_freeu(self, s1, s2, b1, b2):
+        r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
+
+        The suffixes after the scaling factors represent the stage blocks where they are being applied.
+
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of values that
+        are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+
+        Args:
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate the "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate the "oversmoothing effect" in the enhanced denoising process.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
+        """
+        for i, upsample_block in enumerate(self.up_blocks):
+            setattr(upsample_block, "s1", s1)
+            setattr(upsample_block, "s2", s2)
+            setattr(upsample_block, "b1", b1)
+            setattr(upsample_block, "b2", b2)
+
+    def disable_freeu(self):
+        """Disables the FreeU mechanism."""
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for i, upsample_block in enumerate(self.up_blocks):
+            for k in freeu_keys:
+                if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
+                    setattr(upsample_block, k, None)
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -705,6 +778,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
+        down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
@@ -717,6 +791,26 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
+            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
+                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
+            timestep_cond: (`torch.Tensor`, *optional*, defaults to `None`):
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
+                through the `self.time_embedding` layer to obtain the timestep embeddings.
+            attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
+                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
+                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
+                negative values to the attention scores corresponding to "discard" tokens.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            added_cond_kwargs: (`dict`, *optional*):
+                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
+                are passed along to the UNet blocks.
+            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
+                A tuple of tensors that if specified are added to the residuals of down unet blocks.
+            mid_block_additional_residual: (`torch.Tensor`, *optional*):
+                A tensor that if specified is added to the residual of the middle unet block.
             encoder_attention_mask (`torch.Tensor`):
                 A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
                 `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
@@ -729,6 +823,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             added_cond_kwargs: (`dict`, *optional*):
                 A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
                 are passed along to the UNet blocks.
+            down_block_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
+                additional residuals to be added to UNet long skip connections from down blocks to up blocks for
+                example from ControlNet side model(s)
+            mid_block_additional_residual (`torch.Tensor`, *optional*):
+                additional residual to be added to UNet mid block output, for example from ControlNet side model
+            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
+                additional residuals to be added within UNet down blocks, for example from T2I-Adapter side model(s)
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
@@ -746,7 +847,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         upsample_size = None
 
         if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
-            logger.info("Forward upsample size to force interpolation output size.")
+            # Forward upsample size to force interpolation output size.
             forward_upsample_size = True
 
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension
@@ -845,7 +946,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             time_ids = added_cond_kwargs.get("time_ids")
             time_embeds = self.add_time_proj(time_ids.flatten())
             time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
-
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
             add_embeds = add_embeds.to(emb.dtype)
             aug_emb = self.add_embedding(add_embeds)
@@ -895,18 +995,43 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # 2. pre-process
         sample = self.conv_in(sample)
 
+        # 2.5 GLIGEN position net
+        if cross_attention_kwargs is not None and cross_attention_kwargs.get("gligen", None) is not None:
+            cross_attention_kwargs = cross_attention_kwargs.copy()
+            gligen_args = cross_attention_kwargs.pop("gligen")
+            cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
+
         # 3. down
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
-        is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
+        # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
+        is_adapter = down_intrablock_additional_residuals is not None
+        # maintain backward compatibility for legacy usage, where
+        #       T2I-Adapter and ControlNet both use down_block_additional_residuals arg
+        #       but can only use one or the other
+        if not is_adapter and mid_block_additional_residual is None and down_block_additional_residuals is not None:
+            deprecate(
+                "T2I should not use down_block_additional_residuals",
+                "1.3.0",
+                "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated \
+                       and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
+                       for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
+                standard_warn=False,
+            )
+            down_intrablock_additional_residuals = down_block_additional_residuals
+            is_adapter = True
 
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # For t2i-adapter CrossAttnDownBlock2D
                 additional_residuals = {}
-                if is_adapter and len(down_block_additional_residuals) > 0:
-                    additional_residuals["additional_residuals"] = down_block_additional_residuals.pop(0)
+                if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
 
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
@@ -918,10 +1043,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     **additional_residuals,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
-
-                if is_adapter and len(down_block_additional_residuals) > 0:
-                    sample += down_block_additional_residuals.pop(0)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
+                if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    sample += down_intrablock_additional_residuals.pop(0)
 
             down_block_res_samples += res_samples
 
@@ -946,6 +1070,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 cross_attention_kwargs=cross_attention_kwargs,
                 encoder_attention_mask=encoder_attention_mask,
             )
+            # To support T2I-Adapter-XL
+            if (
+                is_adapter
+                and len(down_intrablock_additional_residuals) > 0
+                and sample.shape == down_intrablock_additional_residuals[0].shape
+            ):
+                sample += down_intrablock_additional_residuals.pop(0)
 
         if is_controlnet:
             sample = sample + mid_block_additional_residual
@@ -975,7 +1106,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 )
             else:
                 sample = upsample_block(
-                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    upsample_size=upsample_size,
+                    scale=lora_scale,
                 )
 
         # 6. post-process
@@ -983,6 +1118,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self)
 
         if not return_dict:
             return (sample,)

@@ -70,9 +70,14 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             The downsample type for downsampling layers. Choose between "conv" and "resnet"
         upsample_type (`str`, *optional*, defaults to `conv`):
             The upsample type for upsampling layers. Choose between "conv" and "resnet"
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
         norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for normalization.
+        attn_norm_num_groups (`int`, *optional*, defaults to `None`):
+            If set to an integer, a group norm layer will be created in the mid block's [`Attention`] layer with the
+            given number of groups. If left as `None`, the group norm layer will only be created if
+            `resnet_time_scale_shift` is set to `default`, and if created will have `norm_num_groups` groups.
         norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for normalization.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
@@ -102,9 +107,11 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         downsample_padding: int = 1,
         downsample_type: str = "conv",
         upsample_type: str = "conv",
+        dropout: float = 0.0,
         act_fn: str = "silu",
         attention_head_dim: Optional[int] = 8,
         norm_num_groups: int = 32,
+        attn_norm_num_groups: Optional[int] = None,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
         add_attention: bool = True,
@@ -175,6 +182,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 downsample_padding=downsample_padding,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 downsample_type=downsample_type,
+                dropout=dropout,
             )
             self.down_blocks.append(down_block)
 
@@ -182,12 +190,14 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self.mid_block = UNetMidBlock2D(
             in_channels=block_out_channels[-1],
             temb_channels=time_embed_dim,
+            dropout=dropout,
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift=resnet_time_scale_shift,
             attention_head_dim=attention_head_dim if attention_head_dim is not None else block_out_channels[-1],
             resnet_groups=norm_num_groups,
+            attn_groups=attn_norm_num_groups,
             add_attention=add_attention,
         )
 
@@ -215,6 +225,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 attention_head_dim=attention_head_dim if attention_head_dim is not None else output_channel,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 upsample_type=upsample_type,
+                dropout=dropout,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel

@@ -41,6 +41,7 @@ Unless otherwise mentioned, these are techniques that work with existing models 
 13. [Model Editing](#model-editing)
 14. [DiffEdit](#diffedit)
 15. [T2I-Adapter](#t2i-adapter)
+16. [FABRIC](#fabric)
 
 For convenience, we provide a table to denote which methods are inference-only and which require fine-tuning/training.
 
@@ -61,21 +62,21 @@ For convenience, we provide a table to denote which methods are inference-only a
 |           [Model Editing](#model-editing)           |         ✅         |                   ❌                    |                                                                                                 |
 |                [DiffEdit](#diffedit)                |         ✅         |                   ❌                    |                                                                                                 |
 |             [T2I-Adapter](#t2i-adapter)             |         ✅         |                   ❌                    |                                                                                                 |
-
+|                [Fabric](#fabric)                    |         ✅         |                   ❌                    |                                                                                                 |
 ## Instruct Pix2Pix
 
 [Paper](https://arxiv.org/abs/2211.09800)
 
-[Instruct Pix2Pix](../api/pipelines/stable_diffusion/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image.
+[Instruct Pix2Pix](../api/pipelines/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image.
 Instruct Pix2Pix has been explicitly trained to work well with [InstructGPT](https://openai.com/blog/instruction-following/)-like prompts.
 
-See [here](../api/pipelines/stable_diffusion/pix2pix) for more information on how to use it.
+See [here](../api/pipelines/pix2pix) for more information on how to use it.
 
 ## Pix2Pix Zero
 
 [Paper](https://arxiv.org/abs/2302.03027)
 
-[Pix2Pix Zero](../api/pipelines/stable_diffusion/pix2pix_zero) allows modifying an image so that one concept or subject is translated to another one while preserving general image semantics.
+[Pix2Pix Zero](../api/pipelines/pix2pix_zero) allows modifying an image so that one concept or subject is translated to another one while preserving general image semantics.
 
 The denoising process is guided from one conceptual embedding towards another conceptual embedding. The intermediate latents are optimized during the denoising process to push the attention maps towards reference attention maps. The reference attention maps are from the denoising process of the input image and are used to encourage semantic preservation.
 
@@ -88,26 +89,26 @@ Pix2Pix Zero can be used both to edit synthetic images as well as real images.
 <Tip>
 
 Pix2Pix Zero is the first model that allows "zero-shot" image editing. This means that the model
-can edit an image in less than a minute on a consumer GPU as shown [here](../api/pipelines/stable_diffusion/pix2pix_zero#usage-example).
+can edit an image in less than a minute on a consumer GPU as shown [here](../api/pipelines/pix2pix_zero#usage-example).
 
 </Tip>
 
 As mentioned above, Pix2Pix Zero includes optimizing the latents (and not any of the UNet, VAE, or the text encoder) to steer the generation toward a specific concept. This means that the overall
 pipeline might require more memory than a standard [StableDiffusionPipeline](../api/pipelines/stable_diffusion/text2img).
 
-See [here](../api/pipelines/stable_diffusion/pix2pix_zero) for more information on how to use it.
+See [here](../api/pipelines/pix2pix_zero) for more information on how to use it.
 
 ## Attend and Excite
 
 [Paper](https://arxiv.org/abs/2301.13826)
 
-[Attend and Excite](../api/pipelines/stable_diffusion/attend_and_excite) allows subjects in the prompt to be faithfully represented in the final image.
+[Attend and Excite](../api/pipelines/attend_and_excite) allows subjects in the prompt to be faithfully represented in the final image.
 
 A set of token indices are given as input, corresponding to the subjects in the prompt that need to be present in the image. During denoising, each token index is guaranteed to have a minimum attention threshold for at least one patch of the image. The intermediate latents are iteratively optimized during the denoising process to strengthen the attention of the most neglected subject token until the attention threshold is passed for all subject tokens.
 
-Like Pix2Pix Zero, Attend and Excite also involves a mini optimization loop (leaving the pre-trained weights untouched) in its pipeline and can require more memory than the usual `StableDiffusionPipeline`.
+Like Pix2Pix Zero, Attend and Excite also involves a mini optimization loop (leaving the pre-trained weights untouched) in its pipeline and can require more memory than the usual [StableDiffusionPipeline](../api/pipelines/stable_diffusion/text2img).
 
-See [here](../api/pipelines/stable_diffusion/attend_and_excite) for more information on how to use it.
+See [here](../api/pipelines/attend_and_excite) for more information on how to use it.
 
 ## Semantic Guidance (SEGA)
 
@@ -125,11 +126,11 @@ See [here](../api/pipelines/semantic_stable_diffusion) for more information on h
 
 [Paper](https://arxiv.org/abs/2210.00939)
 
-[Self-attention Guidance](../api/pipelines/stable_diffusion/self_attention_guidance) improves the general quality of images.
+[Self-attention Guidance](../api/pipelines/self_attention_guidance) improves the general quality of images.
 
 SAG provides guidance from predictions not conditioned on high-frequency details to fully conditioned images. The high frequency details are extracted out of the UNet self-attention maps.
 
-See [here](../api/pipelines/stable_diffusion/self_attention_guidance) for more information on how to use it.
+See [here](../api/pipelines/self_attention_guidance) for more information on how to use it.
 
 ## Depth2Image
 
@@ -154,9 +155,9 @@ apply Pix2Pix Zero to any of the available Stable Diffusion models.
 [Paper](https://arxiv.org/abs/2302.08113)
 
 MultiDiffusion defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
-[MultiDiffusion Panorama](../api/pipelines/stable_diffusion/panorama) allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
+[MultiDiffusion Panorama](../api/pipelines/panorama) allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
 
-See [here](../api/pipelines/stable_diffusion/panorama) for more information on how to use it to generate panoramic images.
+See [here](../api/pipelines/panorama) for more information on how to use it to generate panoramic images.
 
 ## Fine-tuning your own models
 
@@ -206,20 +207,20 @@ For more details, check out our [official doc](../training/custom_diffusion).
 
 [Paper](https://arxiv.org/abs/2303.08084)
 
-The [text-to-image model editing pipeline](../api/pipelines/stable_diffusion/model_editing) helps you mitigate some of the incorrect implicit assumptions a pre-trained text-to-image
+The [text-to-image model editing pipeline](../api/pipelines/model_editing) helps you mitigate some of the incorrect implicit assumptions a pre-trained text-to-image
 diffusion model might make about the subjects present in the input prompt. For example, if you prompt Stable Diffusion to generate images for "A pack of roses", the roses in the generated images
 are more likely to be red. This pipeline helps you change that assumption.
 
-To know more details, check out the [official doc](../api/pipelines/stable_diffusion/model_editing).
+To know more details, check out the [official doc](../api/pipelines/model_editing).
 
 ## DiffEdit
 
 [Paper](https://arxiv.org/abs/2210.11427)
 
-[DiffEdit](../api/pipelines/stable_diffusion/diffedit) allows for semantic editing of input images along with
+[DiffEdit](../api/pipelines/diffedit) allows for semantic editing of input images along with
 input prompts while preserving the original input images as much as possible.
 
-To know more details, check out the [official doc](../api/pipelines/stable_diffusion/model_editing).
+To know more details, check out the [official doc](../api/pipelines/diffedit).
 
 ## T2I-Adapter
 
@@ -230,3 +231,14 @@ There are 8 canonical pre-trained adapters trained on different conditionings su
 depth maps, and semantic segmentations.
 
 See [here](../api/pipelines/stable_diffusion/adapter) for more information on how to use it.
+
+## Fabric
+
+[Paper](https://arxiv.org/abs/2307.10159)
+
+[Fabric](../api/pipelines/fabric) is a training-free
+approach applicable to a wide range of popular diffusion models, which exploits
+the self-attention layer present in the most widely used architectures to condition
+the diffusion process on a set of feedback images.
+
+To know more details, check out the [official doc](../api/pipelines/fabric).

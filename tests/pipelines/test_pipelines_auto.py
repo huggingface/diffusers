@@ -14,8 +14,11 @@
 # limitations under the License.
 
 import gc
+import os
+import shutil
 import unittest
 from collections import OrderedDict
+from pathlib import Path
 
 import torch
 
@@ -24,13 +27,14 @@ from diffusers import (
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
     ControlNetModel,
+    DiffusionPipeline,
 )
 from diffusers.pipelines.auto_pipeline import (
     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
     AUTO_INPAINT_PIPELINES_MAPPING,
     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
 )
-from diffusers.utils import slow
+from diffusers.utils.testing_utils import slow
 
 
 PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
@@ -80,6 +84,77 @@ class AutoPipelineFastTest(unittest.TestCase):
         pipe = AutoPipelineForImage2Image.from_pipe(pipe)
 
         assert dict(pipe.config) == original_config
+
+    def test_kwargs_local_files_only(self):
+        repo = "hf-internal-testing/tiny-stable-diffusion-torch"
+        tmpdirname = DiffusionPipeline.download(repo)
+        tmpdirname = Path(tmpdirname)
+
+        # edit commit_id to so that it's not the latest commit
+        commit_id = tmpdirname.name
+        new_commit_id = commit_id + "hug"
+
+        ref_dir = tmpdirname.parent.parent / "refs/main"
+        with open(ref_dir, "w") as f:
+            f.write(new_commit_id)
+
+        new_tmpdirname = tmpdirname.parent / new_commit_id
+        os.rename(tmpdirname, new_tmpdirname)
+
+        try:
+            AutoPipelineForText2Image.from_pretrained(repo, local_files_only=True)
+        except OSError:
+            assert False, "not able to load local files"
+
+        shutil.rmtree(tmpdirname.parent.parent)
+
+    def test_from_pipe_controlnet_text2img(self):
+        pipe = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=controlnet)
+        assert pipe.__class__.__name__ == "StableDiffusionControlNetPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=None)
+        assert pipe.__class__.__name__ == "StableDiffusionPipeline"
+        assert "controlnet" not in pipe.components
+
+    def test_from_pipe_controlnet_img2img(self):
+        pipe = AutoPipelineForImage2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe, controlnet=controlnet)
+        assert pipe.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe, controlnet=None)
+        assert pipe.__class__.__name__ == "StableDiffusionImg2ImgPipeline"
+        assert "controlnet" not in pipe.components
+
+    def test_from_pipe_controlnet_inpaint(self):
+        pipe = AutoPipelineForInpainting.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=controlnet)
+        assert pipe.__class__.__name__ == "StableDiffusionControlNetInpaintPipeline"
+        assert "controlnet" in pipe.components
+
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=None)
+        assert pipe.__class__.__name__ == "StableDiffusionInpaintPipeline"
+        assert "controlnet" not in pipe.components
+
+    def test_from_pipe_controlnet_new_task(self):
+        pipe_text2img = AutoPipelineForText2Image.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        controlnet = ControlNetModel.from_pretrained("hf-internal-testing/tiny-controlnet")
+
+        pipe_control_img2img = AutoPipelineForImage2Image.from_pipe(pipe_text2img, controlnet=controlnet)
+        assert pipe_control_img2img.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
+        assert "controlnet" in pipe_control_img2img.components
+
+        pipe_inpaint = AutoPipelineForInpainting.from_pipe(pipe_control_img2img, controlnet=None)
+        assert pipe_inpaint.__class__.__name__ == "StableDiffusionInpaintPipeline"
+        assert "controlnet" not in pipe_inpaint.components
 
 
 @slow

@@ -29,8 +29,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
 )
-from diffusers.utils import nightly, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 
 enable_full_determinism()
@@ -96,7 +95,7 @@ class PipelineFastTests(unittest.TestCase):
         )
         return vqvae, unet
 
-    @slow
+    @nightly
     def test_audio_diffusion(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         mel = Mel(

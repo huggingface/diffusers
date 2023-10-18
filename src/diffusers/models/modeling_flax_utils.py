@@ -23,7 +23,7 @@ import msgpack.exceptions
 from flax.core.frozen_dict import FrozenDict, unfreeze
 from flax.serialization import from_bytes, to_bytes
 from flax.traverse_util import flatten_dict, unflatten_dict
-from huggingface_hub import hf_hub_download
+from huggingface_hub import create_repo, hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
@@ -34,6 +34,7 @@ from ..utils import (
     FLAX_WEIGHTS_NAME,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     WEIGHTS_NAME,
+    PushToHubMixin,
     logging,
 )
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
@@ -42,7 +43,7 @@ from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
 logger = logging.get_logger(__name__)
 
 
-class FlaxModelMixin:
+class FlaxModelMixin(PushToHubMixin):
     r"""
     Base class for all Flax models.
 
@@ -191,7 +192,7 @@ class FlaxModelMixin:
         ```"""
         return self._cast_floating_to(params, jnp.float16, mask)
 
-    def init_weights(self, rng: jax.random.KeyArray) -> Dict:
+    def init_weights(self, rng: jax.Array) -> Dict:
         raise NotImplementedError(f"init_weights method has to be implemented for {self}")
 
     @classmethod
@@ -302,23 +303,23 @@ class FlaxModelMixin:
             "framework": "flax",
         }
 
-        # Load config if we don't provide a configuration
-        config_path = config if config is not None else pretrained_model_name_or_path
-        model, model_kwargs = cls.from_config(
-            config_path,
-            cache_dir=cache_dir,
-            return_unused_kwargs=True,
-            force_download=force_download,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
-            revision=revision,
-            subfolder=subfolder,
-            # model args
-            dtype=dtype,
-            **kwargs,
-        )
+        # Load config if we don't provide one
+        if config is None:
+            config, unused_kwargs = cls.load_config(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                return_unused_kwargs=True,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                **kwargs,
+            )
+
+        model, model_kwargs = cls.from_config(config, dtype=dtype, return_unused_kwargs=True, **unused_kwargs)
 
         # Load model
         pretrained_path_with_subfolder = (
@@ -497,6 +498,8 @@ class FlaxModelMixin:
         save_directory: Union[str, os.PathLike],
         params: Union[Dict, FrozenDict],
         is_main_process: bool = True,
+        push_to_hub: bool = False,
+        **kwargs,
     ):
         """
         Save a model and its configuration file to a directory so that it can be reloaded using the
@@ -511,12 +514,26 @@ class FlaxModelMixin:
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
                 process to avoid race conditions.
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face model hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional key word arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
 
         os.makedirs(save_directory, exist_ok=True)
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", False)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
 
         model_to_save = self
 
@@ -532,3 +549,12 @@ class FlaxModelMixin:
             f.write(model_bytes)
 
         logger.info(f"Model weights saved in {output_model_file}")
+
+        if push_to_hub:
+            self._upload_folder(
+                save_directory,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
+            )

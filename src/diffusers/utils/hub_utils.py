@@ -17,13 +17,22 @@
 import os
 import re
 import sys
+import tempfile
 import traceback
 import warnings
 from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
 
-from huggingface_hub import HfFolder, ModelCard, ModelCardData, hf_hub_download, whoami
+from huggingface_hub import (
+    HfFolder,
+    ModelCard,
+    ModelCardData,
+    create_repo,
+    hf_hub_download,
+    upload_folder,
+    whoami,
+)
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
@@ -358,4 +367,98 @@ def _get_model_file(
                 "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
                 f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
                 f"containing a file named {weights_name}"
+            )
+
+
+class PushToHubMixin:
+    """
+    A Mixin to push a model, scheduler, or pipeline to the Hugging Face Hub.
+    """
+
+    def _upload_folder(
+        self,
+        working_dir: Union[str, os.PathLike],
+        repo_id: str,
+        token: Optional[str] = None,
+        commit_message: Optional[str] = None,
+        create_pr: bool = False,
+    ):
+        """
+        Uploads all files in `working_dir` to `repo_id`.
+        """
+        if commit_message is None:
+            if "Model" in self.__class__.__name__:
+                commit_message = "Upload model"
+            elif "Scheduler" in self.__class__.__name__:
+                commit_message = "Upload scheduler"
+            else:
+                commit_message = f"Upload {self.__class__.__name__}"
+
+        logger.info(f"Uploading the files of {working_dir} to {repo_id}.")
+        return upload_folder(
+            repo_id=repo_id, folder_path=working_dir, token=token, commit_message=commit_message, create_pr=create_pr
+        )
+
+    def push_to_hub(
+        self,
+        repo_id: str,
+        commit_message: Optional[str] = None,
+        private: Optional[bool] = None,
+        token: Optional[str] = None,
+        create_pr: bool = False,
+        safe_serialization: bool = True,
+        variant: Optional[str] = None,
+    ) -> str:
+        """
+        Upload model, scheduler, or pipeline files to the 🤗 Hugging Face Hub.
+
+        Parameters:
+            repo_id (`str`):
+                The name of the repository you want to push your model, scheduler, or pipeline files to. It should
+                contain your organization name when pushing to an organization. `repo_id` can also be a path to a local
+                directory.
+            commit_message (`str`, *optional*):
+                Message to commit while pushing. Default to `"Upload {object}"`.
+            private (`bool`, *optional*):
+                Whether or not the repository created should be private.
+            token (`str`, *optional*):
+                The token to use as HTTP bearer authorization for remote files. The token generated when running
+                `huggingface-cli login` (stored in `~/.huggingface`).
+            create_pr (`bool`, *optional*, defaults to `False`):
+                Whether or not to create a PR with the uploaded files or directly commit.
+            safe_serialization (`bool`, *optional*, defaults to `True`):
+                Whether or not to convert the model weights to the `safetensors` format.
+            variant (`str`, *optional*):
+                If specified, weights are saved in the format `pytorch_model.<variant>.bin`.
+
+        Examples:
+
+        ```python
+        from diffusers import UNet2DConditionModel
+
+        unet = UNet2DConditionModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="unet")
+
+        # Push the `unet` to your namespace with the name "my-finetuned-unet".
+        unet.push_to_hub("my-finetuned-unet")
+
+        # Push the `unet` to an organization with the name "my-finetuned-unet".
+        unet.push_to_hub("your-org/my-finetuned-unet")
+        ```
+        """
+        repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
+
+        # Save all files.
+        save_kwargs = {"safe_serialization": safe_serialization}
+        if "Scheduler" not in self.__class__.__name__:
+            save_kwargs.update({"variant": variant})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self.save_pretrained(tmpdir, **save_kwargs)
+
+            return self._upload_folder(
+                tmpdir,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
             )

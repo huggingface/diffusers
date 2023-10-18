@@ -1,7 +1,7 @@
 import inspect
 from typing import List, Optional, Union
 
-import PIL
+import PIL.Image
 import torch
 from torch.nn import functional as F
 from transformers import (
@@ -19,7 +19,8 @@ from diffusers import (
     UNet2DModel,
 )
 from diffusers.pipelines.unclip import UnCLIPTextProjModel
-from diffusers.utils import is_accelerate_available, logging, randn_tensor
+from diffusers.utils import is_accelerate_available, logging
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
