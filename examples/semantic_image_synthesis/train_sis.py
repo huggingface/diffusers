@@ -39,11 +39,15 @@ parser.add_argument('--dataset_ann_dir',type=str,default='/mnt/c/BUSDATA/Dataset
 parser.add_argument('--dataset_img_size',type=int,default=128)
 parser.add_argument('--output_dir',type=str,default='/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/')
 parser.add_argument('--train_batch_size',type=int,default=2)
-parser.add_argument('--max_train_steps',type=int,default=100)
+parser.add_argument('--max_train_steps',type=int,default=5)
 parser.add_argument('--ddp_variance_type',type=str,default='learned_range',
                     choices=['fixed_small','fixed_log','fixed_large','fixed_large_log','learned','learned_range'],)
+parser.add_argument('--ddp_guidance_scale',type=float,default=1.5,
+                    help='Unconditionnal guidance.')
 parser.add_argument("--gradient_accumulation_steps",type=int,default=1,
                     help="Number of updates steps to accumulate before performing a backward/update pass.")
+parser.add_argument("--lambda_vlb", type=float,default=1e-3)
+
 parser.add_argument("--use_8bit_adam", action="store_true", 
                     help="Whether or not to use 8-bit Adam from bitsandbytes.")
 parser.add_argument("--optim_weight_decay",type=float,default=1e-5,
@@ -97,6 +101,8 @@ def main(
         train_batch_size:int,
         max_train_steps:int,
         ddp_variance_type:str,
+        ddp_guidance_scale:float,
+        lambda_vlb:float,
         gradient_accumulation_steps:int,
         use_8bit_adam:bool,
         optim_weight_decay:float,
@@ -292,13 +298,13 @@ def main(
                     model_output = unet.forward(x_t,timesteps,y).sample
                     # Here need to :
                     # Get predicted variance with DDPM Scheduler
-                    model_pred,_,logvar_pred = noise_scheduler._get_p_mean_variance(model_output,timesteps,scale=1.0)
+                    model_pred,_,logvar_pred = noise_scheduler._get_p_mean_variance(model_output,timesteps)
                     # Get q variance with DDPM Scheduler
                     q_mean,_,q_logvar = noise_scheduler._get_q_mean_variance(timesteps,x,x_t)
                     kl_div = VLBLoss().forward(model_pred,logvar_pred,q_mean,q_logvar)
                     kl_div_mean = kl_div.reshape(x.shape[0],-1).mean(dim=1)
                     # We compute the VLB Loss
-                    vlb_loss_batch = torch.where((timesteps>0),kl_div_mean,0.0).mean()
+                    vlb_loss_batch = lambda_vlb*torch.where((timesteps>0),kl_div_mean,0.0).mean()
                     loss_total_batch+=vlb_loss_batch
                     vlb_loss += accelerator.gather(vlb_loss_batch.repeat(train_batch_size)).mean() / gradient_accumulation_steps
 
@@ -322,6 +328,8 @@ def main(
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 logs = {"loss_simple": simple_loss.detach().item(),"loss_total": total_loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                if learned_variance:
+                    logs['loss_vlb']=vlb_loss.detach().item()
                 global_step += 1
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
@@ -364,7 +372,7 @@ def main(
                 logger.info(
                     f"Running validation... \n Generating {val_num_samples} images"
                 )
-                val_scheduler = DDPMScheduler()
+                val_scheduler = DDPMScheduler().from_config(noise_scheduler.config)
                 # create pipeline
                 pipeline = SemanticOnlyDiffusionPipeline(
                     unet=accelerator.unwrap_model(unet),
@@ -380,7 +388,7 @@ def main(
                     y=y.unsqueeze(0)
 
                     generator = torch.Generator(device=accelerator.device).manual_seed(seed)
-                    images.append(pipeline(segmap=y, num_inference_steps=50, generator=generator, eta=1.0).images[0])
+                    images.append(pipeline(segmap=y, num_inference_steps=50, guidance_scale=ddp_guidance_scale,generator=generator, eta=1.0).images[0])
                     image_ids.append(id)
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
@@ -403,6 +411,7 @@ def main(
         unet = unet.to(torch.float32)
         unet:UNet2DSISModel
         unet.save_pretrained(output_dir)
+        noise_scheduler.save_pretrained(output_dir)
 
 if __name__ == '__main__':
     # Force main to have the rights arguments.
