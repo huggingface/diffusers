@@ -195,8 +195,7 @@ class MotionBlock(nn.Module):
         x = x.permute(0, 2, 3, 1).reshape(batch_frames, height * width, channels)
         x = self.pos_embed(x)
         x = x.reshape(batch_frames, height, width, channels).permute(0, 3, 1, 2)
-
-        x = self.temporal_transformer(x, num_frames=num_frames)
+        x = self.temporal_transformer(x, num_frames=num_frames).sample
 
         return x
 
@@ -238,7 +237,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         layers_per_block=2,
         mid_block_num_layers=1,
         num_attention_heads=8,
-        attenion_bias=False,
+        attention_bias=False,
         cross_attention_dim=None,
         activation_fn="geglu",
         norm_num_groups=32,
@@ -247,12 +246,12 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         """Container to store Motion Modules
 
         Args:
-            block_out_channels (tuple, optional): _description_. Defaults to (320, 640, 1280, 1280).
-            down_block_types (tuple, optional): _description_. Defaults to ( "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D", ).
-            up_block_types (tuple, optional): _description_. Defaults to ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D").
-            layers_per_block (int, optional): _description_. Defaults to 2.
-            num_attention_heads (int, optional): _description_. Defaults to 8.
-            attenion_bias (bool, optional): _description_. Defaults to False.
+            block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+            The tuple of output channels for each block.
+            layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
+            num_attention_heads (`int`, *optional*):
+            The number of attention heads. If not defined, defaults to `attention_head_dim`
+            attention_bias (bool, optional, defaults to False): Whether to include bias in attention layers.
             cross_attention_dim (_type_, optional): _description_. Defaults to None.
             activation_fn (str, optional): _description_. Defaults to "geglu".
             norm_num_groups (int, optional): _description_. Defaults to 32.
@@ -271,7 +270,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     norm_num_groups=norm_num_groups,
                     cross_attention_dim=cross_attention_dim,
                     activation_fn=activation_fn,
-                    attention_bias=attenion_bias,
+                    attention_bias=attention_bias,
                     num_attention_heads=num_attention_heads,
                     max_seq_length=max_seq_length,
                     layers_per_block=layers_per_block,
@@ -283,7 +282,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
             norm_num_groups=norm_num_groups,
             cross_attention_dim=cross_attention_dim,
             activation_fn=activation_fn,
-            attention_bias=attenion_bias,
+            attention_bias=attention_bias,
             num_attention_heads=num_attention_heads,
             layers_per_block=mid_block_num_layers,
         )
@@ -298,7 +297,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     norm_num_groups=norm_num_groups,
                     cross_attention_dim=cross_attention_dim,
                     activation_fn=activation_fn,
-                    attention_bias=attenion_bias,
+                    attention_bias=attention_bias,
                     num_attention_heads=num_attention_heads,
                     max_seq_length=max_seq_length,
                     layers_per_block=layers_per_block + 1,
@@ -399,8 +398,12 @@ class DownBlockMotion(nn.Module):
                     )
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb
+                        create_custom_forward(resnet), hidden_states, temb, scale
                     )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(motion_module), hidden_states.requires_grad_(), temb, num_frames
+                )
+
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
                 hidden_states = motion_module(hidden_states, num_frames=num_frames)
@@ -859,7 +862,7 @@ class UpBlockMotion(nn.Module):
             and getattr(self, "b2", None)
         )
 
-        blocks = zip(self.resnets, self.motion_modules, self.motion_modules)
+        blocks = zip(self.resnets, self.motion_modules)
 
         for resnet, motion_module in blocks:
             # pop res hidden states
@@ -1025,7 +1028,9 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
     ) -> torch.FloatTensor:
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
-        for attn, resnet, motion_module in zip(self.attentions, self.resnets[1:], self.motion_modules):
+
+        blocks = zip(self.attentions, self.resnets[1:], self.motion_modules)
+        for attn, resnet, motion_module in blocks:
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):

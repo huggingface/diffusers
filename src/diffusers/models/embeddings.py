@@ -255,13 +255,15 @@ class PositionalEmbedding(nn.Module):
         position = torch.arange(max_seq_length).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / embed_dim))
 
-        self.pe = torch.zeros(max_seq_length, 1, embed_dim)
-        self.pe[:, 0, 0::2] = torch.sin(position * div_term)
-        self.pe[:, 0, 1::2] = torch.cos(position * div_term)
+        pe = torch.zeros(max_seq_length, 1, embed_dim)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+
+        self.register_buffer("pe", pe)
 
     def forward(self, x):
         seq_length = x.shape[0]
-        x = x + self.pe[:seq_length].to(x.device)
+        x = x + self.pe[:seq_length]
         return x
 
 
