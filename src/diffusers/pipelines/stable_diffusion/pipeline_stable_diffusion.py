@@ -31,7 +31,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, CALLBACK_ON_STEP_END_INPUTS
 from .pipeline_output import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -479,16 +479,23 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        callback_on_step_end_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+        if callback_on_step_end_inputs is not None and not all(k in set(inspect.signature(self.__call__).parameters.keys()) for k in callback_on_step_end_inputs):
+            raise ValueError(
+                f"`callback_on_step_end_inputs` has to be input arguments to `__call__` method"
+            )
+        elif callback_on_step_end_inputs is not None and not all(k in CALLBACK_ON_STEP_END_INPUTS for k in callback_on_step_end_inputs):
+            raise ValueError(
+                f"`callback_on_step_end_inputs` has to be in {CALLBACK_ON_STEP_END}, but found {[k for k in callback_on_step_end_inputs if k not in CALLBACK_ON_STEP_END_INPUTS]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -552,14 +559,12 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
-        callback_on_step_begin: Optional[Callable[[int, int, Dict], None]]= None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]]= None,
+        callback_on_step_end_inputs: List[str] = CALLBACK_ON_STEP_END_INPUTS,
+        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -629,13 +634,30 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
+
+        callback = kwargs.pop("callback", None)
+        callback_steps = kwargs.pop("callback_steps", None)
+
+        if callback is not None:
+            deprecate(
+                "callback",
+                "1.0.0",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`"
+            )
+        if callback_steps is not None:
+            deprecate(
+                "callback_steps",
+                "1.0.0",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`"
+            )
+
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds, callback_on_step_end_inputs,
         )
 
         # 2. Define call parameters
@@ -696,46 +718,46 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         
-        callback_kwargs = {}
-        callback_kwargs["guidance_scale"] = guidance_scale 
-        callback_kwargs["latents"] = latents 
-        callback_kwargs["prompt_embeds"] = prompt_embeds
-        callback_kwargs["cross_attention_kwargs"] = cross_attention_kwargs
-        callback_kwargs["guidance_rescale"] = guidance_rescale
-        callback_kwargs["do_classifier_free_guidance"] = do_classifier_free_guidance
-        
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                if callback_on_step_begin is not None:
-                    callback_kwargs = callback_on_step_begin(i, t, callback_kwargs)
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_inputs:
+                        callback_kwargs[k] = locals()[k] 
+                    callback_kwargs = callback_on_step_end(i, t, callback_kwargs)
+
+                    latents = callback_kwargs.pop("latents",latents)
+                    guidance_scale = callback_kwargs.pop("guidance_scale", guidance_scale)
+                    prompt_embeds = callback_kwargs.pop("prompt_embeds", prompt_embeds) 
+                    cross_attention_kwargs = callback_kwargs.pop("cross_attention_kwargs", cross_attention_kwargs)
+                    guidance_rescale = callback_kwargs.pop("guidance_rescale", guidance_rescale)
+                    do_classifier_free_guidance = guidance_scale > 1.0
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([callback_kwargs["latents"]] * 2) if callback_kwargs["do_classifier_free_guidance"] else callback_kwargs["latents"]
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
-                    encoder_hidden_states=callback_kwargs["prompt_embeds"],
-                    cross_attention_kwargs=callback_kwargs["cross_attention_kwargs"],
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
                     return_dict=False,
                 )[0]
 
                 # perform guidance
-                if callback_kwargs["do_classifier_free_guidance"]:
+                if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + callback_kwargs["guidance_scale"] * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                if callback_kwargs["do_classifier_free_guidance"] and callback_kwargs["guidance_rescale"] > 0.0:
+                if do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=callback_kwargs["guidance_rescale"])
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, callback_kwargs["latents"], **extra_step_kwargs, return_dict=False)[0]
-                callback_kwargs["latents"] = latents
-                if callback_on_step_end is not None:
-                    callback_kwargs = callback_on_step_end(i,t, callback_kwargs)
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
