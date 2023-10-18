@@ -2151,7 +2151,7 @@ Side note: See [this GitHub gist](https://gist.github.com/UmerHA/b65bb5fb9626c9c
 
 ### Latent Consistency Pipeline
 
-Latent Consistency Models were proposed by in [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378) by *Simian Luo, Yiqin Tan, Longbo Huang, Jian Li, Hang Zhao* from Tsinghua University.
+Latent Consistency Models was proposed in [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378) by *Simian Luo, Yiqin Tan, Longbo Huang, Jian Li, Hang Zhao* from Tsinghua University.
 
 The abstract of the paper reads as follows:
 
