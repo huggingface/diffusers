@@ -98,7 +98,7 @@ We compute two losses :
 $\mathcal{L} = \mathcal{L_{simple}} + \lambda.\mathcal{L_{vlb}}$
 
 with :<br>
-$\mathcal{L_{simple}} = ||\epsilon - M_{prediction}(\sqrt{\alpha_{t}}y + \sqrt{1-\alpha_{t}}\epsilon)||_2$<br>
+$\mathcal{L_{simple}} = ||\epsilon - M_{prediction}(\sqrt{\alpha_{t}}y + \sqrt{1-\alpha_{t}}\epsilon)||²$<br>
 $\mathcal{L_{vlb}} = KL(p_{\theta}(y_{t-1}|y_{t},x)||q(y_{t-1}|y_{t},y_{0}))$ when $t>0$<br>
 
 Practically, we use **DDPMTrainingScheduler** to compute $p_{\theta}(y_{t-1}|y_{t},x)$ and $q(y_{t-1}|y_{t},y_{0})$.<br>
