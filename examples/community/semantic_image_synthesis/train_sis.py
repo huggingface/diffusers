@@ -47,8 +47,8 @@ parser.add_argument("--gradient_accumulation_steps",type=int,default=1,
 parser.add_argument("--lambda_vlb", type=float,default=1e-3)
 parser.add_argument("--use_8bit_adam", action="store_true", 
                     help="Whether or not to use 8-bit Adam from bitsandbytes.")
-parser.add_argument("--optim_weight_decay",type=float,default=1e-5,
-    help='optimizer weight decay'
+parser.add_argument("--optim_weight_decay",type=float,default=1e-2,
+    help='optimizer weight decay like in paper'
 )
 parser.add_argument("--optim_max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
 parser.add_argument("--learning_rate",type=float,default=1e-5,
@@ -307,8 +307,9 @@ def main(
                     q_mean,_,q_logvar = noise_scheduler._get_q_mean_variance(timesteps,x,x_t)
                     kl_div = VLBLoss().forward(model_pred,logvar_pred,q_mean,q_logvar)
                     kl_div_mean = kl_div.reshape(x.shape[0],-1).mean(dim=1)
-                    # We compute the VLB Loss
-                    vlb_loss_batch = lambda_vlb*torch.where((timesteps>0),kl_div_mean,0.0).mean()
+                    # We compute the VLB Loss, for t>1 
+                    # if t = 1 we just want model_pred to be x_0, already handled by L_simple
+                    vlb_loss_batch = lambda_vlb*torch.where((timesteps>1),kl_div_mean,0.0).mean()
                     loss_total_batch+=vlb_loss_batch
                     vlb_loss += accelerator.gather(vlb_loss_batch.repeat(train_batch_size)).mean() / gradient_accumulation_steps
 
