@@ -24,6 +24,7 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
+from functools import partial
 
 import numpy as np
 import PIL.Image
@@ -2027,11 +2028,5 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         final_call_args = {k: v for k, v in workflow.items() if k not in _NON_CALL_ARGUMENTS}
 
         # Handle the call here.
-        import copy 
-        from functools import partial 
-
-        self_copy = copy.deepcopy(self)
-        self_copy_partial = partial(self_copy, **final_call_args)
-        self = self_copy_partial
-        # setattr(self, "__call__", partial(self.__call__, **final_call_args))
-        # return final_call_args
+        partial_call = partial(self.__call__, **final_call_args)
+        setattr(self, "__call__", partial_call)
