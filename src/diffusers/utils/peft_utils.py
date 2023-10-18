@@ -101,13 +101,19 @@ def unscale_lora_layers(model, weight: Optional[float] = None):
             The model to scale.
         weight (`float`, *optional*):
             The weight to be given to the LoRA layers. If no scale is passed the scale of the lora layer will be
-            re-initialized to the correct value
+            re-initialized to the correct value. If 0.0 is passed, we will re-initialize the scale with 
+            the correct value.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            module.unscale_layer(weight)
+            if weight is not None and weight != 0:
+                module.unscale_layer(weight)
+            elif weight is not None and weight == 0:
+                for adapter_name in module.active_adapters:
+                    # if weight == 0 unscale should re-set the scale to the original value.
+                    module.set_scale(adapter_name, 1.0)
 
 
 def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True):
