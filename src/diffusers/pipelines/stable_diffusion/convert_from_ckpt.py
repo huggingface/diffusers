@@ -787,7 +787,12 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
 def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder=None):
     if text_encoder is None:
         config_name = "openai/clip-vit-large-patch14"
-        config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
+        try:
+            config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
+        except Exception:
+            raise ValueError(
+                    f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: 'openai/clip-vit-large-patch14'."
+                )
 
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():
