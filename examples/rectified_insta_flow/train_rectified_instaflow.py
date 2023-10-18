@@ -51,7 +51,8 @@ def make_text_dataset(
     """
     Construct dataset from a given text, seed, and the output image and save/push to hub
     """
-    dataset_output_path = os.path.join(output_dir, f"generated_images_dataset")
+    pretrained_model_name = pretrained_model_path.split("/")[-1]
+    dataset_output_path = os.path.join(output_dir, f"{pretrained_model_name}_generated_images_dataset")
     if os.path.exists(dataset_output_path):
         return load_from_disk(dataset_output_path)
     pipeline = StableDiffusionPipeline.from_pretrained(
@@ -62,7 +63,7 @@ def make_text_dataset(
     if reflow:
         pipeline.scheduler = ReflowScheduler(pipeline.scheduler.config.num_train_timesteps)
     output_dataset = {image_column: [], caption_column: [], "seed": []}
-    generated_image_folder = os.path.join(output_dir, f"generated_images")
+    generated_image_folder = os.path.join(output_dir, f"{pretrained_model_name}_generated_images")
 
     os.makedirs(generated_image_folder, exist_ok=True)
     for i, example in tqdm(enumerate(dataset)):
