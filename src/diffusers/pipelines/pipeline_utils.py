@@ -2027,7 +2027,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         final_call_args = {k: v for k, v in workflow.items() if k not in _NON_CALL_ARGUMENTS}
 
         # Handle the call here.
-        # self_copy = copy.deepcopy(self)
-        # self = partial(self_copy, **final_call_args)
+        import copy 
+        from functools import partial 
+
+        self_copy = copy.deepcopy(self)
+        self_copy_partial = partial(self_copy, **final_call_args)
+        self = self_copy_partial
         # setattr(self, "__call__", partial(self.__call__, **final_call_args))
-        return final_call_args
+        # return final_call_args
