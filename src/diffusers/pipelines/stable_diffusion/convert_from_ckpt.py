@@ -787,7 +787,12 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
 def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder=None):
     if text_encoder is None:
         config_name = "openai/clip-vit-large-patch14"
-        config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
+        try:
+            config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: 'openai/clip-vit-large-patch14'."
+            )
 
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():
@@ -922,7 +927,12 @@ def convert_open_clip_checkpoint(
     # text_model = CLIPTextModelWithProjection.from_pretrained(
     #    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
     # )
-    config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs, local_files_only=local_files_only)
+    try:
+        config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs, local_files_only=local_files_only)
+    except Exception:
+        raise ValueError(
+            f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: '{config_name}'."
+        )
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
@@ -1464,10 +1474,18 @@ def download_from_original_stable_diffusion_ckpt(
         config_name = "stabilityai/stable-diffusion-2"
         config_kwargs = {"subfolder": "text_encoder"}
 
-        text_model = convert_open_clip_checkpoint(checkpoint, config_name, **config_kwargs)
-        tokenizer = CLIPTokenizer.from_pretrained(
-            "stabilityai/stable-diffusion-2", subfolder="tokenizer", local_files_only=local_files_only
+        text_model = convert_open_clip_checkpoint(
+            checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
         )
+
+        try:
+            tokenizer = CLIPTokenizer.from_pretrained(
+                "stabilityai/stable-diffusion-2", subfolder="tokenizer", local_files_only=local_files_only
+            )
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'stabilityai/stable-diffusion-2'."
+            )
 
         if stable_unclip is None:
             if controlnet:
@@ -1546,9 +1564,14 @@ def download_from_original_stable_diffusion_ckpt(
                         karlo_model, subfolder="prior", local_files_only=local_files_only
                     )
 
-                    prior_tokenizer = CLIPTokenizer.from_pretrained(
-                        "openai/clip-vit-large-patch14", local_files_only=local_files_only
-                    )
+                    try:
+                        prior_tokenizer = CLIPTokenizer.from_pretrained(
+                            "openai/clip-vit-large-patch14", local_files_only=local_files_only
+                        )
+                    except Exception:
+                        raise ValueError(
+                            f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+                        )
                     prior_text_model = CLIPTextModelWithProjection.from_pretrained(
                         "openai/clip-vit-large-patch14", local_files_only=local_files_only
                     )
@@ -1581,10 +1604,22 @@ def download_from_original_stable_diffusion_ckpt(
                 raise NotImplementedError(f"unknown `stable_unclip` type: {stable_unclip}")
     elif model_type == "PaintByExample":
         vision_model = convert_paint_by_example_checkpoint(checkpoint)
-        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
-        feature_extractor = AutoFeatureExtractor.from_pretrained(
-            "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
-        )
+        try:
+            tokenizer = CLIPTokenizer.from_pretrained(
+                "openai/clip-vit-large-patch14", local_files_only=local_files_only
+            )
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+            )
+        try:
+            feature_extractor = AutoFeatureExtractor.from_pretrained(
+                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
+            )
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the feature_extractor in the following path: 'CompVis/stable-diffusion-safety-checker'."
+            )
         pipe = PaintByExamplePipeline(
             vae=vae,
             image_encoder=vision_model,
@@ -1597,11 +1632,16 @@ def download_from_original_stable_diffusion_ckpt(
         text_model = convert_ldm_clip_checkpoint(
             checkpoint, local_files_only=local_files_only, text_encoder=text_encoder
         )
-        tokenizer = (
-            CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
-            if tokenizer is None
-            else tokenizer
-        )
+        try:
+            tokenizer = (
+                CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
+                if tokenizer is None
+                else tokenizer
+            )
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+            )
 
         if load_safety_checker:
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
@@ -1637,18 +1677,33 @@ def download_from_original_stable_diffusion_ckpt(
             )
     elif model_type in ["SDXL", "SDXL-Refiner"]:
         if model_type == "SDXL":
-            tokenizer = CLIPTokenizer.from_pretrained(
-                "openai/clip-vit-large-patch14", local_files_only=local_files_only
-            )
+            try:
+                tokenizer = CLIPTokenizer.from_pretrained(
+                    "openai/clip-vit-large-patch14", local_files_only=local_files_only
+                )
+            except Exception:
+                raise ValueError(
+                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+                )
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
-            tokenizer_2 = CLIPTokenizer.from_pretrained(
-                "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
-            )
+            try:
+                tokenizer_2 = CLIPTokenizer.from_pretrained(
+                    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
+                )
+            except Exception:
+                raise ValueError(
+                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k' with `pad_token` set to '!'."
+                )
 
             config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
             config_kwargs = {"projection_dim": 1280}
             text_encoder_2 = convert_open_clip_checkpoint(
-                checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
+                checkpoint,
+                config_name,
+                prefix="conditioner.embedders.1.model.",
+                has_projection=True,
+                local_files_only=local_files_only,
+                **config_kwargs,
             )
 
             if is_accelerate_available():  # SBM Now move model to cpu.
@@ -1682,14 +1737,23 @@ def download_from_original_stable_diffusion_ckpt(
         else:
             tokenizer = None
             text_encoder = None
-            tokenizer_2 = CLIPTokenizer.from_pretrained(
-                "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
-            )
-
+            try:
+                tokenizer_2 = CLIPTokenizer.from_pretrained(
+                    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
+                )
+            except Exception:
+                raise ValueError(
+                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k' with `pad_token` set to '!'."
+                )
             config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
             config_kwargs = {"projection_dim": 1280}
             text_encoder_2 = convert_open_clip_checkpoint(
-                checkpoint, config_name, prefix="conditioner.embedders.0.model.", has_projection=True, **config_kwargs
+                checkpoint,
+                config_name,
+                prefix="conditioner.embedders.0.model.",
+                has_projection=True,
+                local_files_only=local_files_only,
+                **config_kwargs,
             )
 
             if is_accelerate_available():  # SBM Now move model to cpu.
