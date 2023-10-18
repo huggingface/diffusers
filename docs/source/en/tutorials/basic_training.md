@@ -303,7 +303,7 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 ...         if config.push_to_hub:
 ...             repo_id = create_repo(
 ...                 repo_id=config.hub_model_id or Path(config.output_dir).name, exist_ok=True
-...             )
+...             ).repo_id
 ...         accelerator.init_trackers("train_example")
 
 ...     # Prepare everything
