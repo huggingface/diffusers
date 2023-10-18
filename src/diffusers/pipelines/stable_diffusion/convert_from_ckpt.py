@@ -1211,6 +1211,7 @@ def download_from_original_stable_diffusion_ckpt(
                 - `xl_refiner`: Config file for Stable Diffusion XL Refiner
         return: A StableDiffusionPipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
+    print(f"Initial local_files_only: {local_files_only}")
 
     # import pipelines here to avoid circular import error when using from_single_file method
     from diffusers import (
