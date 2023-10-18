@@ -2848,7 +2848,7 @@ class FromSingleFileMixin:
             tokenizer=tokenizer,
             original_config_file=original_config_file,
             config_files=config_files,
-            local_files_only=local_files_only
+            local_files_only=local_files_only,
         )
 
         if torch_dtype is not None:
