@@ -2163,6 +2163,7 @@ The model can be used with `diffusers` as follows:
 
 ```py
 from diffusers import DiffusionPipeline
+import torch
 
 pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_txt2img")
 pipe.to(torch_device="cuda", torch_dtype=torch.float16)
