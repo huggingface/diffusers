@@ -1637,10 +1637,12 @@ def download_from_original_stable_diffusion_ckpt(
             )
     elif model_type in ["SDXL", "SDXL-Refiner"]:
         if model_type == "SDXL":
+            print(f"local_files_only: {local_files_only}")
             tokenizer = CLIPTokenizer.from_pretrained(
                 "openai/clip-vit-large-patch14", local_files_only=local_files_only
             )
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
+            print(f"local_files_only: {local_files_only}")
             tokenizer_2 = CLIPTokenizer.from_pretrained(
                 "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
             )
