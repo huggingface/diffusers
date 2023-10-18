@@ -520,12 +520,12 @@ class UNetMidBlock2D(nn.Module):
         add_attention (`bool`, *optional*, defaults to `True`): Whether to add attention blocks.
         attention_head_dim (`int`, *optional*, defaults to 1): Dimension of a single attention head. The number of attention heads is determined based on this value and the number of input channels.
         output_scale_factor (`float`, *optional*, defaults to 1.0): The output scale factor.
-        
+
     Returns:
         `torch.FloatTensor`: The output of the last residual block, which is a tensor of shape `(batch_size, in_channels, height, width)`.
 
     """
-    
+
     def __init__(
         self,
         in_channels: int,
