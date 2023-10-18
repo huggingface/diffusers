@@ -55,21 +55,23 @@ class MultiAdapter(ModelMixin):
         # be the same for all adapters. Inductively, it also means the
         # downscale_factor and total_downscale_factor must be the same for all
         # adapters.
+        first_adapter_total_downscale_factor = adapters[0].total_downscale_factor
+        first_adapter_downscale_factor = adapters[0].downscale_factor
         for idx in range(1, len(adapters)):
             if (
-                adapters[idx].total_downscale_factor != adapters[0].total_downscale_factor
-                or adapters[idx].downscale_factor != adapters[0].downscale_factor
+                adapters[idx].total_downscale_factor != first_adapter_total_downscale_factor
+                or adapters[idx].downscale_factor != first_adapter_downscale_factor
             ):
                 raise ValueError(
                     f"Expecting all adapters to have the same downscaling behavior, but got:\n"
-                    f"adapters[0].total_downscale_factor={adapters[0].total_downscale_factor}\n"
-                    f"adapters[0].downscale_factor={adapters[0].downscale_factor}\n"
+                    f"adapters[0].total_downscale_factor={first_adapter_total_downscale_factor}\n"
+                    f"adapters[0].downscale_factor={first_adapter_downscale_factor}\n"
                     f"adapter[`{idx}`].total_downscale_factor={adapters[idx].total_downscale_factor}\n"
                     f"adapter[`{idx}`].downscale_factor={adapters[idx].downscale_factor}"
                 )
 
-        self.total_downscale_factor = adapters[0].total_downscale_factor
-        self.downscale_factor = adapters[0].downscale_factor
+        self.total_downscale_factor = first_adapter_total_downscale_factor
+        self.downscale_factor = first_adapter_downscale_factor
 
     def forward(self, xs: torch.Tensor, adapter_weights: Optional[List[float]] = None) -> List[torch.Tensor]:
         r"""
