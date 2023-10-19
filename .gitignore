@@ -174,3 +174,4 @@ tags
 .ruff_cache
 
 wandb
+.cursorignore

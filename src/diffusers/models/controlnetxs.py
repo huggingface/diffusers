@@ -18,11 +18,10 @@ from itertools import zip_longest
 
 import torch
 from torch import nn
-from torch.nn import functional as F
 from torch.nn.modules.normalization import GroupNorm
 import torch.utils.checkpoint
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
 from .embeddings import get_timestep_embedding
@@ -55,42 +54,97 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     # to delete later
     @classmethod
-    def create_as_in_paper(cls):
-        # todo: load sdxl instead
-        base_model = UNet2DConditionModel(
-            block_out_channels=(320, 640, 1280),
-            down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D","UpBlock2D"),
-            transformer_layers_per_block=(0,2,10),
-            cross_attention_dim=2048,
-        )
-        return cls(
-            base_model,
+    def create_as_in_paper(cls, base_model=None):
+        if base_model is None:
+            # todo: load sdxl instead
+            base_model = UNet2DConditionModel(
+                block_out_channels=(320, 640, 1280),
+                down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+                up_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+                transformer_layers_per_block=(0,2,10),
+                cross_attention_dim=2048,
+            )
+
+        def class_names(modules): return [m.__class__.__name__ for m in modules]
+        def get_time_emb_dim(unet: UNet2DConditionModel): return unet.time_embedding.linear_2.out_features
+        def get_time_emb_input_dim(unet: UNet2DConditionModel):return unet.time_embedding.linear_1.in_features
+
+        base_model_channel_sizes = ControlNetXSModel.gather_base_model_sizes(base_model, base_or_control='base')
+
+        cnxs_model = cls(
             model_channels=320,
             out_channels=4,
             hint_channels=3,
             block_out_channels=(32,64,128),
+            down_block_types=class_names(base_model.down_blocks),
+            up_block_types=class_names(base_model.up_blocks),
+            time_embedding_dim=get_time_emb_dim(base_model),
+            time_embedding_input_dim=get_time_emb_input_dim(base_model),
             transformer_layers_per_block=(0,2,10),
             cross_attention_dim=2048,
             learn_embedding=True,
             control_model_ratio=0.1,
+            base_model_channel_sizes=base_model_channel_sizes,
         )
-    
+        cnxs_model.base_model = base_model
+        return cnxs_model
+
+    @classmethod
+    def gather_base_model_sizes(cls, unet: UNet2DConditionModel, base_or_control):
+        if base_or_control not in ['base', 'control']:
+            raise ValueError(f"`base_or_control` needs to be either `base` or `control`")
+
+        channel_sizes = {'enc': [], 'mid': [], 'dec': []}
+
+        # input convolution
+        channel_sizes['enc'].append((unet.conv_in.in_channels, unet.conv_in.out_channels))
+
+        # encoder blocks
+        for module in unet.down_blocks:
+            if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
+                for r in module.resnets:
+                    channel_sizes['enc'].append((r.in_channels, r.out_channels))
+                if module.downsamplers:
+                    channel_sizes['enc'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
+            else:
+                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
+
+        # middle block
+        channel_sizes['mid'].append((unet.mid_block.resnets[0].in_channels, unet.mid_block.resnets[0].out_channels))
+
+        # decoder blocks
+        if base_or_control == 'base':
+            for module in unet.up_blocks:
+                if isinstance(module, (CrossAttnUpBlock2D, UpBlock2D)):
+                    for r in module.resnets:
+                        channel_sizes['dec'].append((r.in_channels, r.out_channels))
+                else:
+                   raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
+
+        return channel_sizes
+
+    @register_to_config
     def __init__(
             self,
-            base_model: UNet2DConditionModel,
-            model_channels,
-            out_channels,
-            hint_channels,
-            block_out_channels,
-            transformer_layers_per_block,
-            cross_attention_dim: Union[int, Tuple[int]] = 1280,
+            model_channels=320,
+            out_channels=4,
+            hint_channels=3,
+            block_out_channels=(32,64,128),
+            down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+            up_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+            time_embedding_dim=1280,
+            time_embedding_input_dim=320,
+            transformer_layers_per_block=(0,2,10),
+            cross_attention_dim: Union[int, Tuple[int]] = 2048,#1280,
             learn_embedding=False,
             control_model_ratio=1.0,
+            base_model_channel_sizes={
+                'enc': [(4, 320), (320, 320), (320, 320), (320, 320), (320, 640), (640, 640), (640, 640), (640, 1280), (1280, 1280)],
+                'mid': [(1280, 1280)],
+                'dec': [(2560, 1280), (2560, 1280), (1920, 1280), (1920, 640), (1280, 640), (960, 640), (960, 320), (640, 320), (640, 320)]
+            },
         ):
         super().__init__()
-
-        self.base_model = base_model
 
         # 1 - Save parameters
         # TODO make variables
@@ -105,26 +159,18 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.learn_embedding = learn_embedding
 
         # 1 - Create controller
-        def class_names(modules):
-            return [m.__class__.__name__ for m in modules]
-        
-        def get_time_emd_dim(unet: UNet2DConditionModel):
-            return unet.time_embedding.linear_2.out_features
-
         self.control_model = ctrl_model = UNet2DConditionModel(
             block_out_channels=block_out_channels,
-            down_block_types=class_names(base_model.down_blocks),
-            up_block_types=class_names(base_model.up_blocks),
-            time_embedding_dim=get_time_emd_dim(base_model),
+            down_block_types=down_block_types,
+            up_block_types=up_block_types,
+            time_embedding_dim=time_embedding_dim,
             transformer_layers_per_block=transformer_layers_per_block,
             cross_attention_dim=cross_attention_dim,
         )
 
         # 2 - Do model surgery on control model
         # 2.1 - Allow to use the same time information as the base model
-        def get_time_emd_input_dim(unet: UNet2DConditionModel):
-            return unet.time_embedding.linear_1.in_features
-        adjust_time_input_dim(self.control_model, get_time_emd_input_dim(base_model))
+        adjust_time_input_dim(self.control_model, time_embedding_input_dim)
         # 2.2 - Allow for information infusion from base model
         # todo: make variable (sth like zip(block_out_channels[:-1],block_out_channels[1:]))
         for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))):
@@ -135,46 +181,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         increase_block_input_in_mid_resnet(self.control_model, by=1280) # todo: make var
 
         # 3 - Gather Channel Sizes
-        ch_inout_ctrl = {'enc': [], 'mid': [], 'dec': []}
-        ch_inout_base = {'enc': [], 'mid': [], 'dec': []}
-
-        # 3.1 - input convolution
-        ch_inout_ctrl['enc'].append((ctrl_model.conv_in.in_channels, ctrl_model.conv_in.out_channels))
-        ch_inout_base['enc'].append((base_model.conv_in.in_channels, base_model.conv_in.out_channels))
-
-        # 3.2 - encoder blocks
-        for module in ctrl_model.down_blocks:
-            if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-                for r in module.resnets:
-                    ch_inout_ctrl['enc'].append((r.in_channels, r.out_channels))
-                if module.downsamplers:
-                    ch_inout_ctrl['enc'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
-            else:
-                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
-    
-        for module in base_model.down_blocks:
-            if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-                for r in module.resnets:
-                    ch_inout_base['enc'].append((r.in_channels, r.out_channels))
-                if module.downsamplers:
-                    ch_inout_base['enc'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
-            else:
-                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
-
-        # 3.3 - middle block
-        ch_inout_ctrl['mid'].append((ctrl_model.mid_block.resnets[0].in_channels, ctrl_model.mid_block.resnets[0].out_channels))
-        ch_inout_base['mid'].append((base_model.mid_block.resnets[0].in_channels, base_model.mid_block.resnets[0].out_channels))
-    
-        # 3.4 - decoder blocks
-        for module in base_model.up_blocks:
-            if isinstance(module, (CrossAttnUpBlock2D, UpBlock2D)):
-                for r in module.resnets:
-                    ch_inout_base['dec'].append((r.in_channels, r.out_channels))
-            else:
-                raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
-            
-        self.ch_inout_ctrl = ch_inout_ctrl
-        self.ch_inout_base = ch_inout_base
+        self.ch_inout_ctrl = ControlNetXSModel.gather_base_model_sizes(self.control_model, base_or_control='control')
+        self.ch_inout_base = base_model_channel_sizes
 
         # 4 - Build connections between base and control model
         self.enc_zero_convs_out = nn.ModuleList([])
@@ -186,25 +194,24 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.dec_zero_convs_out = nn.ModuleList([])
         self.dec_zero_convs_in = nn.ModuleList([])
 
-        for ch_io_base in ch_inout_base['enc']:
+        for ch_io_base in self.ch_inout_base['enc']:
             self.enc_zero_convs_in.append(self.make_zero_conv(
                 in_channels=ch_io_base[1], out_channels=ch_io_base[1])
             )
-        for i in range(len(ch_inout_ctrl['enc'])):
+        for i in range(len(self.ch_inout_ctrl['enc'])):
             self.enc_zero_convs_out.append(
-                self.make_zero_conv(ch_inout_ctrl['enc'][i][1], ch_inout_base['enc'][i][1])
+                self.make_zero_conv(self.ch_inout_ctrl['enc'][i][1], self.ch_inout_base['enc'][i][1])
             )       
  
-        self.middle_block_out = self.make_zero_conv(ch_inout_ctrl['mid'][-1][1], ch_inout_base['mid'][-1][1])
+        self.middle_block_out = self.make_zero_conv(self.ch_inout_ctrl['mid'][-1][1], self.ch_inout_base['mid'][-1][1])
         
         self.dec_zero_convs_out.append(
-            self.make_zero_conv(ch_inout_ctrl['enc'][-1][1], ch_inout_base['mid'][-1][1])
+            self.make_zero_conv(self.ch_inout_ctrl['enc'][-1][1], self.ch_inout_base['mid'][-1][1])
         )
-        for i in range(1, len(ch_inout_ctrl['enc'])):
+        for i in range(1, len(self.ch_inout_ctrl['enc'])):
             self.dec_zero_convs_out.append(
-                self.make_zero_conv(ch_inout_ctrl['enc'][-(i + 1)][1], ch_inout_base['dec'][i - 1][1])
+                self.make_zero_conv(self.ch_inout_ctrl['enc'][-(i + 1)][1], self.ch_inout_base['dec'][i - 1][1])
             )
-
 
         # 5 - Create conditioning hint embedding
         self.input_hint_block = nn.Sequential(
@@ -237,7 +244,16 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
         self.register_buffer('scale_list', torch.tensor(scale_list))
 
+        # in the mininal implementation setting, we only need the control model up to the mid block
+        # note: these can only be deleted after  has to be `gather_base_model_sizes(self.control_mode, 'control')` has been called
+        del self.control_model.up_blocks
+        del self.control_model.conv_norm_out
+        del self.control_model.conv_out
+
     def forward(self, x: torch.Tensor, t: torch.Tensor, encoder_hidden_states: torch.Tensor, c: dict, hint: torch.Tensor, no_control=False, **kwargs):
+        if self.base_model is None:
+            raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel by `cnxs_model.base_model = the_base_model`")
+
         """ Params from unet_2d_condition.UNet2DConditionModel.forward:
         # self,
         # sample: torch.FloatTensor,
@@ -308,7 +324,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             h_ctrl = torch.cat([h_ctrl, inp_base2ctrl], dim=1)
             h_base = m_base(h_base, temb, cemb, context)
             h_ctrl = m_ctrl(h_ctrl, temb, cemb, context)
-            h_base = h_base + next(it_enc_convs_out)(h_ctrl, temb, cemb) * next(scales)
+            h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
         # 2 - mid blocks (bottleneck)
