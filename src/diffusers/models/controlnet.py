@@ -815,8 +815,8 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         mid_block_res_sample = self.controlnet_mid_block(sample)
 
         # 6. scaling
-        down_block_res_samples = []
         if guess_mode and not self.config.global_pool_conditions:
+            down_block_res_samples = []
             scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1, device=sample.device)  # 0.1 to 1.0
             scales = scales * conditioning_scale
             # down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
@@ -825,6 +825,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             mid_block_res_sample = mid_block_res_sample * scales[-1]  # last one
         else:
             # down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
+            down_block_res_samples = []
             for sample in down_block_res_samples:
                 down_block_res_samples.append(sample * conditioning_scale)
             mid_block_res_sample = mid_block_res_sample * conditioning_scale
@@ -833,6 +834,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             # down_block_res_samples = [
             #     torch.mean(sample, dim=(2, 3), keepdim=True) for sample in down_block_res_samples
             # ]
+            down_block_res_samples = []
             for sample in down_block_res_samples:
                 down_block_res_samples.append(torch.mean(sample, dim=(2, 3), keepdim=True))
             mid_block_res_sample = torch.mean(mid_block_res_sample, dim=(2, 3), keepdim=True)
