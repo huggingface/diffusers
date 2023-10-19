@@ -10,6 +10,7 @@ def get_activation(act_fn: str) -> nn.Module:
     Returns:
         nn.Module: Activation function.
     """
+    act_fn = act_fn.lower()
     if act_fn in ["swish", "silu"]:
         return nn.SiLU()
     elif act_fn == "mish":
