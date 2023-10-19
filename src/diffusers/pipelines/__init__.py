@@ -110,7 +110,7 @@ else:
         "KandinskyV22PriorPipeline",
     ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
-    _import_structure["latent_consistency_models"].extend(["LatentConsistencyModelPipeline"])
+    _import_structure["latent_consistency_models"] = ["LatentConsistencyModelPipeline"]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
