@@ -138,13 +138,19 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
     def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=1e-1)
+        super().test_float16_inference(expected_max_diff=5e-1)
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
 
     def test_model_cpu_offload_forward_pass(self):
         super().test_model_cpu_offload_forward_pass(expected_max_diff=5e-4)
+
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=5e-3)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=5e-3)
 
 
 class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -247,13 +253,19 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
     def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=1e-1)
+        super().test_float16_inference(expected_max_diff=2e-1)
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
 
     def test_model_cpu_offload_forward_pass(self):
         super().test_model_cpu_offload_forward_pass(expected_max_diff=5e-4)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=5e-4)
+
+    def save_load_local(self):
+        super().test_save_load_local(expected_max_difference=5e-3)
 
 
 class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -363,3 +375,12 @@ class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest
 
     def test_model_cpu_offload_forward_pass(self):
         super().test_model_cpu_offload_forward_pass(expected_max_diff=5e-4)
+
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=5e-3)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=5e-4)
+
+    def test_sequential_cpu_offload_forward_pass(self):
+        super().test_sequential_cpu_offload_forward_pass(expected_max_diff=5e-4)

@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 사용하시는 라이브러리에 맞는 🤗 Diffusers를 설치하세요.
 
-🤗 Diffusers는 Python 3.7+, PyTorch 1.7.0+ 및 flax에서 테스트되었습니다. 사용중인 딥러닝 라이브러리에 대한 아래의 설치 안내를 따르세요.
+🤗 Diffusers는 Python 3.8+, PyTorch 1.7.0+ 및 flax에서 테스트되었습니다. 사용중인 딥러닝 라이브러리에 대한 아래의 설치 안내를 따르세요.
 
 - [PyTorch 설치 안내](https://pytorch.org/get-started/locally/)
 - [Flax 설치 안내](https://flax.readthedocs.io/en/latest/)
@@ -105,7 +105,7 @@ pip install -e ".[flax]"
 
 이러한 명령어들은 저장소를 복제한 폴더와 Python 라이브러리 경로를 연결합니다.
 Python은 이제 일반 라이브러리 경로에 더하여 복제한 폴더 내부를 살펴봅니다.
-예를들어 Python 패키지가 `~/anaconda3/envs/main/lib/python3.7/site-packages/`에 설치되어 있는 경우 Python은 복제한 폴더인 `~/diffusers/`도 검색합니다.
+예를들어 Python 패키지가 `~/anaconda3/envs/main/lib/python3.8/site-packages/`에 설치되어 있는 경우 Python은 복제한 폴더인 `~/diffusers/`도 검색합니다.
 
 <Tip warning={true}>
 

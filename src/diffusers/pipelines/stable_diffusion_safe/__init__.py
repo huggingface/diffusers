@@ -7,6 +7,7 @@ import PIL
 from PIL import Image
 
 from ...utils import (
+    DIFFUSERS_SLOW_IMPORT,
     BaseOutput,
     OptionalDependencyNotAvailable,
     _LazyModule,
@@ -71,7 +72,7 @@ else:
     )
 
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not (is_transformers_available() and is_torch_available()):
             raise OptionalDependencyNotAvailable()
