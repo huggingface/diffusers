@@ -313,18 +313,28 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
         h_ctrl = self.control_model.conv_in(h_ctrl)
+        if guided_hint is not None:
+            h_ctrl += guided_hint
+        h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
         # 1 - input blocks (encoder)
-        for m_base, m_ctrl  in zip(base_down_subblocks, ctrl_down_subblocks):
-            inp_base2ctrl = next(it_enc_convs_in)(h_base) # get info from base encoder 
-            if guided_hint is not None: # in first, add hint info if it exists 
-                inp_base2ctrl += guided_hint
-                guided_hint = None
-            h_ctrl = torch.cat([h_ctrl, inp_base2ctrl], dim=1)
+        for i, (m_base, m_ctrl)  in enumerate(zip(base_down_subblocks, ctrl_down_subblocks)):
+            self.debug_print(f'>>> >>> Start {i+1}')
+            self.debug_print(f'{i+1}] h_base.shape: {list(h_base.shape)}')
+            self.debug_print(f'{i+1}] h_ctrl.shape: {list(h_ctrl.shape)}')
+            h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
+            self.debug_print('>>> After base->ctrl concat')
+            self.debug_print(f'{i+1}] h_ctrl.shape: {list(h_ctrl.shape)}')
             h_base = m_base(h_base, temb, cemb, context)
             h_ctrl = m_ctrl(h_ctrl, temb, cemb, context)
+            self.debug_print('>>> After block application')
+            self.debug_print(f'{i+1}] h_base.shape: {list(h_base.shape)}')
+            self.debug_print(f'{i+1}] h_ctrl.shape: {list(h_ctrl.shape)}')
             h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)
+            self.debug_print('>>> After ctrl->base add')
+            self.debug_print(f'{i+1}] h_base.shape: {list(h_base.shape)}')
+            self.debug_print(' - - - - - - - - - - - - - ')
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
         # 2 - mid blocks (bottleneck)
@@ -344,6 +354,10 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.in_channels = in_channels
         self.out_channels = out_channels or in_channels
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
+
+    def debug_print(self, s):
+        if hasattr(self, 'debug') and self.debug:
+            print(s)
 
 
 def adjust_time_input_dim(unet: UNet2DConditionModel, dim: int):
