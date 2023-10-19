@@ -13,5 +13,3 @@ jobs:
     with:
       commit_sha: ${{ github.sha }}
       package: diffusers
-    secrets:
-      token: ${{ secrets.HUGGINGFACE_PUSH }}
