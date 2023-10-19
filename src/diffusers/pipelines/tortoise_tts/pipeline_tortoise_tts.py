@@ -307,31 +307,17 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     def prepare_audio_spectrograms(
         self,
         audio,
-        batch_size,
-        dtype,
         device,
-        generator,
-        latents=None,
+        max_length,
     ):
-        if audio is not None:
-            audio_features = self.audio_processor(raw_speech=audio, sampling_rate=self.sampling_rate, return_tensors="pt")
-        else:
-            shape = (batch_size, self.autoregressive_hidden_dim)
+        audio_features = self.audio_processor(raw_speech=audio,
+                                              sampling_rate=self.sampling_rate,
+                                              max_length=max_length,
+                                              return_tensors="pt",
+                                              )
+        audio_features = audio_features.to(device)
 
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
-
-            if latents is None:
-                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            else:
-                latents = latents.to(device)
-
-            audio_features = self.autoregressive_random_latent_converter(latents).latents
-
-        return audio_features
+        return audio_features["input_features"]
 
     # Based on diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
     # Modified to accept a noise argument in case the vocoder uses input noise (like UnivNet does).
@@ -694,11 +680,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # 3. Prepare audio spectrogram features
         audio_features = self.prepare_audio_spectrograms(
             audio,
-            batch_size,
-            self.autoregressive_random_latent_converter.dtype,
             device,
-            generator,
-            latents=audio_ar_latents,
+            output_seq_length,
         )
 
         # 4. Encode input prompt
