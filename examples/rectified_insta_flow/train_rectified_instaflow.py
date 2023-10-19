@@ -228,6 +228,12 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
+        "--generated_dataset",
+        type=str,
+        default=None,
+        help="Generated dataset from pretrained dataset.",
+    )
+    parser.add_argument(
         "--num_inference_steps",
         type=int,
         default=25,
@@ -730,37 +736,44 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-
-    # Get the datasets: you can either provide your own training and evaluation files (see below)
-    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
-
-    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
-    # download the dataset.
-    if args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
+    if reflow_step == 0 and args.generated_dataset is not None:
         dataset = load_dataset(
-            args.dataset_name,
+            args.generated_dataset,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             data_dir=args.train_data_dir,
         )
     else:
-        data_files = {}
-        if args.train_data_dir is not None:
-            data_files["train"] = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-            cache_dir=args.cache_dir,
-        )
-        # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
-    guidance_scale = args.guidance_scale
-    num_inference_steps = args.num_inference_steps
-    if reflow_step > 0:
-        guidance_scale = 1
-        num_inference_steps = 1
-    dataset['train'] = make_text_dataset(unet, dataset['train'], args.pretrained_model_name_or_path, args.caption_column, args.output_dir, args.image_column, accelerator, guidance_scale=guidance_scale, num_inference_steps=num_inference_steps, reflow=reflow_step > 0)
+        # Get the datasets: you can either provide your own training and evaluation files (see below)
+        # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
+
+        # In distributed training, the load_dataset function guarantees that only one local process can concurrently
+        # download the dataset.
+        if args.dataset_name is not None:
+            # Downloading and loading a dataset from the hub.
+            dataset = load_dataset(
+                args.dataset_name,
+                args.dataset_config_name,
+                cache_dir=args.cache_dir,
+                data_dir=args.train_data_dir,
+            )
+        else:
+            data_files = {}
+            if args.train_data_dir is not None:
+                data_files["train"] = os.path.join(args.train_data_dir, "**")
+            dataset = load_dataset(
+                "imagefolder",
+                data_files=data_files,
+                cache_dir=args.cache_dir,
+            )
+            # See more about loading custom images at
+            # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
+        guidance_scale = args.guidance_scale
+        num_inference_steps = args.num_inference_steps
+        if reflow_step > 0:
+            guidance_scale = 1
+            num_inference_steps = 1
+        dataset['train'] = make_text_dataset(unet, dataset['train'], args.pretrained_model_name_or_path, args.caption_column, args.output_dir, args.image_column, accelerator, guidance_scale=guidance_scale, num_inference_steps=num_inference_steps, reflow=reflow_step > 0)
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
     column_names = dataset["train"].column_names
