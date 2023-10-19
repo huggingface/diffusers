@@ -1,5 +1,5 @@
-from torch import nn
 
+import torch.nn as nn
 
 def get_activation(act_fn: str) -> nn.Module:
     """Helper function to get activation function from string.
@@ -10,14 +10,17 @@ def get_activation(act_fn: str) -> nn.Module:
     Returns:
         nn.Module: Activation function.
     """
+
+    activation_functions = {
+        "swish": nn.SiLU(),
+        "silu": nn.SiLU(),
+        "mish": nn.Mish(),
+        "gelu": nn.GELU(),
+        "relu": nn.ReLU()
+    }
+
     act_fn = act_fn.lower()
-    if act_fn in ["swish", "silu"]:
-        return nn.SiLU()
-    elif act_fn == "mish":
-        return nn.Mish()
-    elif act_fn == "gelu":
-        return nn.GELU()
-    elif act_fn == "relu":
-        return nn.ReLU()
+    if act_fn in activation_functions:
+        return activation_functions[act_fn]
     else:
         raise ValueError(f"Unsupported activation function: {act_fn}")
