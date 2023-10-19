@@ -74,6 +74,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         unet: TortoiseTTSDenoisingModel,
         scheduler: KarrasDiffusionSchedulers,
         vocoder: UnivNetModel,
+        output_sampling_rate: int = 24000,
     ):
         super().__init__()
 
@@ -92,7 +93,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # Autoregressive model
         self.text_encoder = audio_candidate_model.speech_decoder_model
 
-        self.sampling_rate = audio_processor.sampling_rate
         self.autoregressive_hidden_dim = audio_candidate_model.config.decoder_config.n_embd
         self.diffusion_input_dim = unet.config.in_latent_channels
 
@@ -109,6 +109,18 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 f" {self.diffusion_input_dim} * 2 = {self.diffusion_input_dim * 2} !="
                 f" {diffusion_random_latent_converter.config.channels}"
             )
+
+        if unet.config.in_channels != vocoder.config.num_mel_bins:
+            raise ValueError(
+                f"The diffusion denoising model has {self.unet.config.in_channels} input channels and the vocoder"
+                f" takes in spectrograms with {self.vocoder.config.num_mel_bins} MEL bins, but these are expected to"
+                f" be equal."
+            )
+
+        self.num_mel_bins = self.unet.config.in_channels
+        self.input_sampling_rate = audio_processor.sampling_rate
+        self.output_sampling_rate = output_sampling_rate
+        self.calm_token_id = audio_candidate_model.speech_decoder_model.config.decoder_fixing_codes[0]
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -406,7 +418,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         """
         Prepares latents for the diffusion model.
         """
-        shape = (batch_size, self.denoising_model.config.in_channels, seq_length)
+        shape = (batch_size, self.num_mel_bins, seq_length)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -500,6 +512,21 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         )
 
         return diffusion_cond_emb
+
+    def trim_autoregressive_latents(self, audio_candidates, autoregressive_latents):
+        """
+        Removes the token embeddings from autoregressive_latents which corresponding to excess trailing calm tokens in
+        audio_candidates.
+        """
+        pass
+
+    def diffusion_output_sequence_length(self, autoregressive_latents):
+        """
+        Calculates the initial latent sequence length (and thus the output spectrogram sequence length) for
+        spectrogram diffusion based on the autoregressive latents sequence length.
+        """
+        # Convert from self.input_sampling_rate spectrogram codes to self.output_sampling_rate spectrogram signals
+        return autoregressive_latents.shape[1] * 4 * self.output_sampling_rate // self.input_sampling_rate
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -761,30 +788,46 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             generation_config=autoregressive_generation_config,
             **autoregressive_generation_kwargs,
         )
-        audio_candidates = audio_candidates_and_scores[0]  # speech_ids
-        similarity_scores = audio_candidates_and_scores[2]  # logits_per_text
+        audio_candidates = audio_candidates_and_scores.speech_ids
+        similarity_scores = audio_candidates_and_scores.logits_per_text
+        autoregressive_hidden_states = audio_candidates_and_scores.decoder_hidden_states
+        # Get last hidden states of the full generated sequences
+        autoregressive_latents = autoregressive_hidden_states[-1][-1]
 
         if do_classifier_free_guidance and has_negative_prompts:
             neg_audio_candidates, audio_candidates = audio_candidates.chunk(2)
             neg_similarity_scores, similarity_scores = similarity_scores.chunk(2)
+            neg_autoregressive_latents, autoregressive_latents = autoregressive_latents.chunk(2)
 
         # 6. Get the top k speech candidates by text-speech similarity score
-        top_k_audio_candidates = audio_candidates[torch.topk(similarity_scores, k=num_waveforms_per_prompt).indices]
-        top_k_autoregressive_latents = None  # TODO: get these somehow
+        top_k_indices = torch.topk(similarity_scores, k=num_waveforms_per_prompt).indices
+        top_k_audio_candidates = audio_candidates[top_k_indices]
+        top_k_autoregressive_latents = autoregressive_latents[top_k_indices]
 
         if do_classifier_free_guidance and has_negative_prompts:
-            top_neg_audio_candidate = neg_audio_candidates[torch.topk(neg_similarity_scores, k=1).indices]
-            top_neg_autoregressive_latents = None  # TODO: get these somehow
+            neg_top_k_indices = torch.topk(neg_similarity_scores, k=1).indices
+            neg_top_k_audio_candidates = neg_audio_candidates[neg_top_k_indices]
+            neg_top_k_autoregressive_latents = neg_autoregressive_latents[neg_top_k_indices]
 
-        # 7. Prepare timesteps for diffusion scheduler
+        # 7. Trim audio candidates
+        top_k_autoregressive_latents = self.trim_autoregressive_latents(
+            top_k_audio_candidates, top_k_autoregressive_latents
+        )
+
+        if do_classifier_free_guidance and has_negative_prompts:
+            neg_top_k_autoregressive_latents = self.trim_autoregressive_latents(
+                neg_top_k_audio_candidates, neg_top_k_autoregressive_latents
+            )
+
+        # 8. Prepare timesteps for diffusion scheduler
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 8. Prepare noisy latent variables for diffusion denoising loop
-        # TODO: get correct seq length
+        # 9. Prepare noisy latent variables for diffusion denoising loop
+        diffusion_seq_len = self.diffusion_output_sequence_length(top_k_autoregressive_latents)
         latents = self.prepare_latents(
             batch_size * num_waveforms_per_prompt,
-            output_seq_length,
+            diffusion_seq_len,
             diffusion_temperature,
             prompt_embeds.dtype,
             device,
@@ -792,18 +835,17 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             latents=latents,
         )
 
-        # 9. Prepare noisy latent variables for vocoder sampling
-        # TODO: need to get the correct value for noise_length here
+        # 10. Prepare noisy latent variables for vocoder sampling
         vocoder_latents = self.prepare_vocoder_latents(
             batch_size * num_waveforms_per_prompt,
-            noise_length=output_seq_length,
+            noise_length=diffusion_seq_len,
             dtype=prompt_embeds.dtype,
             device=device,
             generator=generator,
             latents=vocoder_latents,
         )
 
-        # 10. Get conditioning embeddings for the diffusion model
+        # 11. Get conditioning embeddings for the diffusion model
         diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
             audio,
             top_k_autoregressive_latents,
@@ -820,7 +862,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             if has_negative_prompts:
                 neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
                     audio,
-                    top_neg_autoregressive_latents,
+                    neg_top_k_autoregressive_latents,
                     prompt_embeds.dtype,
                     device,
                     generator,
@@ -846,10 +888,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 )
             diffusion_cond_emb = torch.cat([neg_diffusion_cond_emb, diffusion_cond_emb])
 
-        # 11. Prepare extra step kwargs
+        # 12. Prepare extra step kwargs
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 12. Diffusion denoising loop
+        # 13. Diffusion denoising loop on spectrograms
         # Note: unlike original implementation, try to batch denoise all of the samples
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -880,7 +922,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # 13. Post-processing
+        # 14. Post-processing
         # TODO: support vocoders which don't use a input noise?
         audio = self.mel_spectrogram_to_waveform(latents, vocoder_latents)
 
