@@ -32,7 +32,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->DDIM
 class LCMSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's `step` function output.
@@ -90,12 +89,16 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
+# Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
 def rescale_zero_terminal_snr(betas):
     """
     Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+
+
     Args:
         betas (`torch.FloatTensor`):
             the betas that the scheduler is being initialized with.
+
     Returns:
         `torch.FloatTensor`: rescaled betas with zero terminal SNR
     """
@@ -250,6 +253,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
+    # Copied from diffusers.schedulers.scheduling_ddim.DDIMScheduler._get_variance
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
@@ -333,7 +337,6 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         timeindex: int,
         timestep: int,
         sample: torch.FloatTensor,
-        eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
         variance_noise: Optional[torch.FloatTensor] = None,
@@ -349,8 +352,6 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
-            eta (`float`):
-                The weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`, defaults to `False`):
                 If `True`, computes "corrected" `model_output` from the clipped predicted original sample. Necessary
                 because predicted original sample is clipped to [-1, 1] when `self.config.clip_sample` is `True`. If no
@@ -391,24 +392,25 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         c_skip, c_out = self.get_scalings_for_boundary_condition_discrete(timestep)
 
         # 4. Different Parameterization:
-        parameterization = self.config.prediction_type
-
-        if parameterization == "epsilon":  # noise-prediction
-            pred_x0 = (sample - beta_prod_t.sqrt() * model_output) / alpha_prod_t.sqrt()
-
-        elif parameterization == "sample":  # x-prediction
-            pred_x0 = model_output
-
-        elif parameterization == "v_prediction":  # v-prediction
-            pred_x0 = alpha_prod_t.sqrt() * sample - beta_prod_t.sqrt() * model_output
+        if self.config.prediction_type == "epsilon":  # noise-prediction
+            predicted_original_sample = (sample - beta_prod_t.sqrt() * model_output) / alpha_prod_t.sqrt()
+        elif self.config.prediction_type == "sample":  # x-prediction
+            predicted_original_sample = model_output
+        elif self.config.prediction_type == "v_prediction":  # v-prediction
+            predicted_original_sample = alpha_prod_t.sqrt() * sample - beta_prod_t.sqrt() * model_output
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` or"
+                " `v_prediction` for `LCMScheduler`."
+            )
 
         # 4. Denoise model output using boundary conditions
-        denoised = c_out * pred_x0 + c_skip * sample
+        denoised = c_out * predicted_original_sample + c_skip * sample
 
         # 5. Sample z ~ N(0, I), For MultiStep Inference
         # Noise is not used for one-step sampling.
         if len(self.timesteps) > 1:
-            noise = torch.randn(model_output.shape).to(model_output.device)
+            noise = randn_tensor(model_output.shape, generator=generator, device=model_output.device)
             prev_sample = alpha_prod_t_prev.sqrt() * denoised + beta_prod_t_prev.sqrt() * noise
         else:
             prev_sample = denoised
