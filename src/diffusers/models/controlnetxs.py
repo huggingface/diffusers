@@ -143,6 +143,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 'mid': [(1280, 1280)],
                 'dec': [(2560, 1280), (2560, 1280), (1920, 1280), (1920, 640), (1280, 640), (960, 640), (960, 320), (640, 320), (640, 320)]
             },
+            global_pool_conditions: bool = False, # Todo Umer: Needed by SDXL pipeline, but what is this?
         ):
         super().__init__()
 
@@ -155,7 +156,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.model_channels = model_channels
         self.control_scale = 1.0
         self.hint_model = None
-        
+        self.no_control = False
         self.learn_embedding = learn_embedding
 
         # 1 - Create controller
@@ -277,7 +278,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context=c.get("crossattn", None)
         y=c.get("vector", None)
 
-        if no_control: return self.base_model(x=x, timesteps=timesteps, context=context, y=y, **kwargs)
+        if no_control or self.no_control:
+            return self.base_model(x, timesteps, encoder_hidden_states, added_cond_kwargs={}, **kwargs)
 
         # time embeddings
         timesteps = timesteps[None]

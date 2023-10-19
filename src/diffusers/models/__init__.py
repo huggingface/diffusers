@@ -25,6 +25,7 @@ if is_torch_available():
     _import_structure["autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["controlnet"] = ["ControlNetModel"]
+    _import_structure["controlnetxs"] = ["ControlNetXSModel"]
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
     _import_structure["prior_transformer"] = ["PriorTransformer"]
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
         from .autoencoder_kl import AutoencoderKL
         from .autoencoder_tiny import AutoencoderTiny
         from .controlnet import ControlNetModel
+        from .controlnetxs import ControlNetXSModel
         from .dual_transformer_2d import DualTransformer2DModel
         from .modeling_utils import ModelMixin
         from .prior_transformer import PriorTransformer
