@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from diffusers.utils import deprecate
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.activations import get_activation
@@ -31,7 +33,8 @@ from ...models.embeddings import (
 )
 from ...models.transformer_2d import Transformer2DModel
 from ...models.unet_2d_condition import UNet2DConditionOutput
-from ...utils import is_torch_version, logging
+from ...utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import apply_freeu
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -749,6 +752,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 add_upsample=add_upsample,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resolution_idx=i,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
@@ -941,6 +945,38 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    def enable_freeu(self, s1, s2, b1, b2):
+        r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
+
+        The suffixes after the scaling factors represent the stage blocks where they are being applied.
+
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of values that
+        are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+
+        Args:
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate the "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate the "oversmoothing effect" in the enhanced denoising process.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
+        """
+        for i, upsample_block in enumerate(self.up_blocks):
+            setattr(upsample_block, "s1", s1)
+            setattr(upsample_block, "s2", s2)
+            setattr(upsample_block, "b1", b1)
+            setattr(upsample_block, "b2", b2)
+
+    def disable_freeu(self):
+        """Disables the FreeU mechanism."""
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for i, upsample_block in enumerate(self.up_blocks):
+            for k in freeu_keys:
+                if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
+                    setattr(upsample_block, k, None)
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -953,6 +989,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
+        down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
@@ -965,6 +1002,26 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
+            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
+                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
+            timestep_cond: (`torch.Tensor`, *optional*, defaults to `None`):
+                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
+                through the `self.time_embedding` layer to obtain the timestep embeddings.
+            attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
+                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
+                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
+                negative values to the attention scores corresponding to "discard" tokens.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            added_cond_kwargs: (`dict`, *optional*):
+                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
+                are passed along to the UNet blocks.
+            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
+                A tuple of tensors that if specified are added to the residuals of down unet blocks.
+            mid_block_additional_residual: (`torch.Tensor`, *optional*):
+                A tensor that if specified is added to the residual of the middle unet block.
             encoder_attention_mask (`torch.Tensor`):
                 A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
                 `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
@@ -977,6 +1034,13 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             added_cond_kwargs: (`dict`, *optional*):
                 A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
                 are passed along to the UNet blocks.
+            down_block_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
+                additional residuals to be added to UNet long skip connections from down blocks to up blocks for
+                example from ControlNet side model(s)
+            mid_block_additional_residual (`torch.Tensor`, *optional*):
+                additional residual to be added to UNet mid block output, for example from ControlNet side model
+            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
+                additional residuals to be added within UNet down blocks, for example from T2I-Adapter side model(s)
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
@@ -1157,17 +1221,36 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         # 3. down
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        if USE_PEFT_BACKEND:
+            # weight the lora layers by setting `lora_scale` for each PEFT layer
+            scale_lora_layers(self, lora_scale)
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
-        is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
+        # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
+        is_adapter = down_intrablock_additional_residuals is not None
+        # maintain backward compatibility for legacy usage, where
+        #       T2I-Adapter and ControlNet both use down_block_additional_residuals arg
+        #       but can only use one or the other
+        if not is_adapter and mid_block_additional_residual is None and down_block_additional_residuals is not None:
+            deprecate(
+                "T2I should not use down_block_additional_residuals",
+                "1.3.0",
+                "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated         "
+                "               and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only"
+                " be used                        for ControlNet. Please make sure use"
+                " `down_intrablock_additional_residuals` instead. ",
+                standard_warn=False,
+            )
+            down_intrablock_additional_residuals = down_block_additional_residuals
+            is_adapter = True
 
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # For t2i-adapter CrossAttnDownBlockFlat
                 additional_residuals = {}
-                if is_adapter and len(down_block_additional_residuals) > 0:
-                    additional_residuals["additional_residuals"] = down_block_additional_residuals.pop(0)
+                if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
 
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
@@ -1180,9 +1263,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
-
-                if is_adapter and len(down_block_additional_residuals) > 0:
-                    sample += down_block_additional_residuals.pop(0)
+                if is_adapter and len(down_intrablock_additional_residuals) > 0:
+                    sample += down_intrablock_additional_residuals.pop(0)
 
             down_block_res_samples += res_samples
 
@@ -1210,10 +1292,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # To support T2I-Adapter-XL
             if (
                 is_adapter
-                and len(down_block_additional_residuals) > 0
-                and sample.shape == down_block_additional_residuals[0].shape
+                and len(down_intrablock_additional_residuals) > 0
+                and sample.shape == down_intrablock_additional_residuals[0].shape
             ):
-                sample += down_block_additional_residuals.pop(0)
+                sample += down_intrablock_additional_residuals.pop(0)
 
         if is_controlnet:
             sample = sample + mid_block_additional_residual
@@ -1255,6 +1337,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
+
+        if USE_PEFT_BACKEND:
+            # remove `lora_scale` from each PEFT layer
+            unscale_lora_layers(self)
 
         if not return_dict:
             return (sample,)
@@ -1630,6 +1716,7 @@ class UpBlockFlat(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -1670,12 +1757,33 @@ class UpBlockFlat(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
+
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -1712,6 +1820,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: int = 1,
@@ -1790,6 +1899,7 @@ class CrossAttnUpBlockFlat(nn.Module):
             self.upsamplers = None
 
         self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
 
     def forward(
         self,
@@ -1803,11 +1913,30 @@ class CrossAttnUpBlockFlat(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
 
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             if self.training and self.gradient_checkpointing:

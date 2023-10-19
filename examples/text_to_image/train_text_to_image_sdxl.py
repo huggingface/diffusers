@@ -825,7 +825,7 @@ def main(args):
         all_images = []
         crop_top_lefts = []
         for image in images:
-            original_sizes.append((image.height, image.width))
+            original_sizes.append((image.width, image.height))
             image = train_resize(image)
             if args.center_crop:
                 y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
@@ -1038,7 +1038,6 @@ def main(args):
                 prompt_embeds = batch["prompt_embeds"].to(accelerator.device)
                 pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(accelerator.device)
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
-                prompt_embeds = prompt_embeds
                 model_pred = unet(
                     noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
                 ).sample
@@ -1067,25 +1066,13 @@ def main(args):
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)
-                    base_weight = (
+                    if noise_scheduler.config.prediction_type == "v_prediction":
+                        # Velocity objective requires that we add one to SNR values before we divide by them.
+                        snr = snr + 1
+                    mse_loss_weights = (
                         torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
 
-                    if noise_scheduler.config.prediction_type == "v_prediction":
-                        # Velocity objective needs to be floored to an SNR weight of one.
-                        mse_loss_weights = base_weight + 1
-                    else:
-                        # Epsilon and sample both use the same loss weights.
-                        mse_loss_weights = base_weight
-
-                    # For zero-terminal SNR, we have to handle the case where a sigma of Zero results in a Inf value.
-                    # When we run this, the MSE loss weights for this timestep is set unconditionally to 1.
-                    # If we do not run this, the loss value will go to NaN almost immediately, usually within one step.
-                    mse_loss_weights[snr == 0] = 1.0
-
-                    # We first calculate the original loss. Then we mean over the non-batch dimensions and
-                    # rebalance the sample-wise losses with their respective loss weights.
-                    # Finally, we take the mean of the rebalanced loss.
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()

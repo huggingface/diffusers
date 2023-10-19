@@ -6,7 +6,6 @@ import os
 import shutil
 from datetime import timedelta
 from pathlib import Path
-from typing import Optional
 
 import accelerate
 import datasets
@@ -16,7 +15,7 @@ from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
-from huggingface_hub import HfFolder, Repository, create_repo, whoami
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -273,16 +272,6 @@ def parse_args():
     return args
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -356,21 +345,13 @@ def main(args):
 
     # Handle the repository creation
     if accelerator.is_main_process:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            create_repo(repo_name, exist_ok=True, token=args.hub_token)
-            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
+        if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Initialize the model
     if args.model_config_name_or_path is None:
@@ -412,6 +393,14 @@ def main(args):
             model_cls=UNet2DModel,
             model_config=model.config,
         )
+
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+        args.mixed_precision = accelerator.mixed_precision
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+        args.mixed_precision = accelerator.mixed_precision
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -559,11 +548,9 @@ def main(args):
                     progress_bar.update(1)
                 continue
 
-            clean_images = batch["input"]
+            clean_images = batch["input"].to(weight_dtype)
             # Sample noise that we'll add to the images
-            noise = torch.randn(
-                clean_images.shape, dtype=(torch.float32 if args.mixed_precision == "no" else torch.float16)
-            ).to(clean_images.device)
+            noise = torch.randn(clean_images.shape, dtype=weight_dtype, device=clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(
@@ -579,15 +566,14 @@ def main(args):
                 model_output = model(noisy_images, timesteps).sample
 
                 if args.prediction_type == "epsilon":
-                    loss = F.mse_loss(model_output, noise)  # this could have different weights!
+                    loss = F.mse_loss(model_output.float(), noise.float())  # this could have different weights!
                 elif args.prediction_type == "sample":
                     alpha_t = _extract_into_tensor(
                         noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
                     )
                     snr_weights = alpha_t / (1 - alpha_t)
-                    loss = snr_weights * F.mse_loss(
-                        model_output, clean_images, reduction="none"
-                    )  # use SNR weighting from distillation paper
+                    # use SNR weighting from distillation paper
+                    loss = snr_weights * F.mse_loss(model_output.float(), clean_images.float(), reduction="none")
                     loss = loss.mean()
                 else:
                     raise ValueError(f"Unsupported prediction type: {args.prediction_type}")
@@ -607,28 +593,28 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-                if global_step % args.checkpointing_steps == 0:
-                    # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                    if args.checkpoints_total_limit is not None:
-                        checkpoints = os.listdir(args.output_dir)
-                        checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                        checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                        # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                        if len(checkpoints) >= args.checkpoints_total_limit:
-                            num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                            removing_checkpoints = checkpoints[0:num_to_remove]
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
 
-                            logger.info(
-                                f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                            )
-                            logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
+                                )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                            for removing_checkpoint in removing_checkpoints:
-                                removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                shutil.rmtree(removing_checkpoint)
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
 
-                    if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
@@ -703,7 +689,12 @@ def main(args):
                     ema_model.restore(unet.parameters())
 
                 if args.push_to_hub:
-                    repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
+                    upload_folder(
+                        repo_id=repo_id,
+                        folder_path=args.output_dir,
+                        commit_message=f"Epoch {epoch}",
+                        ignore_patterns=["step_*", "epoch_*"],
+                    )
 
     accelerator.end_training()
 

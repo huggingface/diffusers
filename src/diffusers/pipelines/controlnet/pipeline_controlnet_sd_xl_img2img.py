@@ -36,6 +36,7 @@ from ...models.attention_processor import (
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
+    USE_PEFT_BACKEND,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -182,7 +183,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             watermarker will be used.
     """
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
-    _optional_components = ["tokenizer", "text_encoder"]
+    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
 
     def __init__(
         self,
@@ -328,12 +329,17 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            if not self.use_peft_backend:
-                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
-            else:
-                scale_lora_layers(self.text_encoder, lora_scale)
-                scale_lora_layers(self.text_encoder_2, lora_scale)
+            if self.text_encoder is not None:
+                if not USE_PEFT_BACKEND:
+                    adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+                else:
+                    scale_lora_layers(self.text_encoder, lora_scale)
+
+            if self.text_encoder_2 is not None:
+                if not USE_PEFT_BACKEND:
+                    adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+                else:
+                    scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -449,7 +455,11 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+        if self.text_encoder_2 is not None:
+            prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+        else:
+            prompt_embeds = prompt_embeds.to(dtype=self.unet.dtype, device=device)
+
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -458,7 +468,12 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+
+            if self.text_encoder_2 is not None:
+                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+            else:
+                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.unet.dtype, device=device)
+
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
@@ -470,10 +485,15 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 bs_embed * num_images_per_prompt, -1
             )
 
-        if isinstance(self, StableDiffusionXLLoraLoaderMixin) and self.use_peft_backend:
-            # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder)
-            unscale_lora_layers(self.text_encoder_2)
+        if self.text_encoder is not None:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder)
+
+        if self.text_encoder_2 is not None:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder_2)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
@@ -831,6 +851,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         negative_crops_coords_top_left,
         negative_target_size,
         dtype,
+        text_encoder_projection_dim=None,
     ):
         if self.config.requires_aesthetics_score:
             add_time_ids = list(original_size + crops_coords_top_left + (aesthetic_score,))
@@ -842,7 +863,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             add_neg_time_ids = list(negative_original_size + crops_coords_top_left + negative_target_size)
 
         passed_add_embed_dim = (
-            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
@@ -889,6 +910,34 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             self.vae.post_quant_conv.to(dtype)
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
+        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+
+        The suffixes after the scaling factors represent the stages where they are being applied.
+
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
+        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+
+        Args:
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
+        """
+        if not hasattr(self, "unet"):
+            raise ValueError("The pipeline must have `unet` for using FreeU.")
+        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_freeu
+    def disable_freeu(self):
+        """Disables the FreeU mechanism if enabled."""
+        self.unet.disable_freeu()
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -1246,6 +1295,12 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         if negative_target_size is None:
             negative_target_size = target_size
         add_text_embeds = pooled_prompt_embeds
+
+        if self.text_encoder_2 is None:
+            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
+        else:
+            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
+
         add_time_ids, add_neg_time_ids = self._get_add_time_ids(
             original_size,
             crops_coords_top_left,
@@ -1256,6 +1311,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             negative_crops_coords_top_left,
             negative_target_size,
             dtype=prompt_embeds.dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
         )
         add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
 
