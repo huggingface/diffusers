@@ -825,7 +825,7 @@ def main(args):
         all_images = []
         crop_top_lefts = []
         for image in images:
-            original_sizes.append((image.height, image.width))
+            original_sizes.append((image.width, image.height))
             image = train_resize(image)
             if args.center_crop:
                 y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
@@ -1038,7 +1038,6 @@ def main(args):
                 prompt_embeds = batch["prompt_embeds"].to(accelerator.device)
                 pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(accelerator.device)
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
-                prompt_embeds = prompt_embeds
                 model_pred = unet(
                     noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
                 ).sample
