@@ -160,6 +160,7 @@ class StableDiffusionXLAdapterPipeline(
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
+    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
 
     def __init__(
         self,
@@ -290,12 +291,17 @@ class StableDiffusionXLAdapterPipeline(
             self._lora_scale = lora_scale
 
             # dynamically adjust the LoRA scale
-            if not USE_PEFT_BACKEND:
-                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-                adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
-            else:
-                scale_lora_layers(self.text_encoder, lora_scale)
-                scale_lora_layers(self.text_encoder_2, lora_scale)
+            if self.text_encoder is not None:
+                if not USE_PEFT_BACKEND:
+                    adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
+                else:
+                    scale_lora_layers(self.text_encoder, lora_scale)
+
+            if self.text_encoder_2 is not None:
+                if not USE_PEFT_BACKEND:
+                    adjust_lora_scale_text_encoder(self.text_encoder_2, lora_scale)
+                else:
+                    scale_lora_layers(self.text_encoder_2, lora_scale)
 
         prompt = [prompt] if isinstance(prompt, str) else prompt
 
@@ -411,7 +417,11 @@ class StableDiffusionXLAdapterPipeline(
 
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
-        prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+        if self.text_encoder_2 is not None:
+            prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+        else:
+            prompt_embeds = prompt_embeds.to(dtype=self.unet.dtype, device=device)
+
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
@@ -420,7 +430,12 @@ class StableDiffusionXLAdapterPipeline(
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+
+            if self.text_encoder_2 is not None:
+                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
+            else:
+                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.unet.dtype, device=device)
+
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
@@ -432,10 +447,15 @@ class StableDiffusionXLAdapterPipeline(
                 bs_embed * num_images_per_prompt, -1
             )
 
-        if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
-            # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder)
-            unscale_lora_layers(self.text_encoder_2)
+        if self.text_encoder is not None:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder)
+
+        if self.text_encoder_2 is not None:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder_2)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
@@ -550,11 +570,13 @@ class StableDiffusionXLAdapterPipeline(
         return latents
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
-    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, dtype):
+    def _get_add_time_ids(
+        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+    ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = (
-            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
 
@@ -928,8 +950,17 @@ class StableDiffusionXLAdapterPipeline(
                 adapter_state[k] = torch.cat([v] * 2, dim=0)
 
         add_text_embeds = pooled_prompt_embeds
+        if self.text_encoder_2 is None:
+            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
+        else:
+            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
+
         add_time_ids = self._get_add_time_ids(
-            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+            original_size,
+            crops_coords_top_left,
+            target_size,
+            dtype=prompt_embeds.dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
         )
         if negative_original_size is not None and negative_target_size is not None:
             negative_add_time_ids = self._get_add_time_ids(
@@ -937,6 +968,7 @@ class StableDiffusionXLAdapterPipeline(
                 negative_crops_coords_top_left,
                 negative_target_size,
                 dtype=prompt_embeds.dtype,
+                text_encoder_projection_dim=text_encoder_projection_dim,
             )
         else:
             negative_add_time_ids = add_time_ids

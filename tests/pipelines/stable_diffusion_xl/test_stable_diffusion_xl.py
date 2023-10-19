@@ -35,13 +35,15 @@ from diffusers import (
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionXLPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -114,8 +116,6 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
-            # "safety_checker": None,
-            # "feature_extractor": None,
         }
         return components
 
@@ -232,6 +232,9 @@ class StableDiffusionXLPipelineFastTests(PipelineLatentTesterMixin, PipelineTest
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=3e-3)
+
+    def test_save_load_optional_components(self):
+        self._test_save_load_optional_components()
 
     @require_torch_gpu
     def test_stable_diffusion_xl_offloads(self):

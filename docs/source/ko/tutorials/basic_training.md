@@ -303,7 +303,7 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 ...         if config.push_to_hub:
 ...             repo_id = create_repo(
 ...                 repo_id=config.hub_model_id or Path(config.output_dir).name, exist_ok=True
-...             )
+...             ).repo_id
 ...         accelerator.init_trackers("train_example")
 
 ...     # 모든 것이 준비되었습니다.

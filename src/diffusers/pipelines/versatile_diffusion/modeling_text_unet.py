@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from diffusers.utils import deprecate
+
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.activations import get_activation
