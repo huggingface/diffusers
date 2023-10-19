@@ -850,7 +850,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             if dim % default_overall_up_factor != 0:
                 # Forward upsample size to force interpolation output size.
                 forward_upsample_size = True
-                break  
+                break
 
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension
         # expects mask of shape:

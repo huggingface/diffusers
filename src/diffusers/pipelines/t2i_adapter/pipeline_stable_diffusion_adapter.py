@@ -814,7 +814,7 @@ class StableDiffusionAdapterPipeline(DiffusionPipeline):
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
                     down_intrablock_additional_residuals=[state.clone() for state in adapter_state],
-                    return_dict=False
+                    return_dict=False,
                 )[0]
 
                 # perform guidance
