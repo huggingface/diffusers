@@ -192,7 +192,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-        clip_sample: bool = True,
+        clip_sample: bool = False,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
@@ -419,7 +419,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # 3. Get scalings for boundary conditions
         c_skip, c_out = self.get_scalings_for_boundary_condition_discrete(timestep)
 
-        # 4. Different Parameterization:
+        # 4. Compute the predicted original sample x_0 based on the model parameterization
         if self.config.prediction_type == "epsilon":  # noise-prediction
             predicted_original_sample = (sample - beta_prod_t.sqrt() * model_output) / alpha_prod_t.sqrt()
         elif self.config.prediction_type == "sample":  # x-prediction
@@ -432,10 +432,18 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 " `v_prediction` for `LCMScheduler`."
             )
 
-        # 4. Denoise model output using boundary conditions
+        # 5. Clip or threshold "predicted x_0"
+        if self.config.thresholding:
+            pred_original_sample = self._threshold_sample(pred_original_sample)
+        elif self.config.clip_sample:
+            pred_original_sample = pred_original_sample.clamp(
+                -self.config.clip_sample_range, self.config.clip_sample_range
+            )
+
+        # 6. Denoise model output using boundary conditions
         denoised = c_out * predicted_original_sample + c_skip * sample
 
-        # 5. Sample z ~ N(0, I), For MultiStep Inference
+        # 7. Sample and inject noise z ~ N(0, I) for MultiStep Inference
         # Noise is not used for one-step sampling.
         if len(self.timesteps) > 1:
             noise = randn_tensor(model_output.shape, generator=generator, device=model_output.device)
