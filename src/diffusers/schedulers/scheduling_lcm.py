@@ -238,6 +238,30 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
 
+        self._step_index = None
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+
+        index_candidates = (self.timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        if len(index_candidates) > 1:
+            step_index = index_candidates[1]
+        else:
+            step_index = index_candidates[0]
+
+        self._step_index = step_index.item()
+
+    @property
+    def step_index(self):
+        return self._step_index
+
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -323,6 +347,8 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps.copy()).to(device)
 
+        self._step_index = None
+
     def get_scalings_for_boundary_condition_discrete(self, t):
         self.sigma_data = 0.5  # Default: 0.5
 
@@ -334,7 +360,6 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timeindex: int,
         timestep: int,
         sample: torch.FloatTensor,
         use_clipped_model_output: bool = False,
@@ -374,10 +399,13 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
+        if self.step_index is None:
+            self._init_step_index(timestep)
+
         # 1. get previous step value
-        prev_timeindex = timeindex + 1
-        if prev_timeindex < len(self.timesteps):
-            prev_timestep = self.timesteps[prev_timeindex]
+        prev_step_index = self.step_index + 1
+        if prev_step_index < len(self.timesteps):
+            prev_timestep = self.timesteps[prev_step_index]
         else:
             prev_timestep = timestep
 
@@ -414,6 +442,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             prev_sample = alpha_prod_t_prev.sqrt() * denoised + beta_prod_t_prev.sqrt() * noise
         else:
             prev_sample = denoised
+
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample, denoised)

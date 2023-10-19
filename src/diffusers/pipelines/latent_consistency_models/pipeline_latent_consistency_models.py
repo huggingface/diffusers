@@ -650,7 +650,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents, denoised = self.scheduler.step(
-                    model_pred, i, t, latents, **extra_step_kwargs, return_dict=False
+                    model_pred, t, latents, **extra_step_kwargs, return_dict=False
                 )
 
                 # call the callback, if provided
