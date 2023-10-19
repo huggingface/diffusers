@@ -91,7 +91,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         )
 
         # Autoregressive model
-        self.text_encoder = audio_candidate_model.speech_decoder_model
+        self.text_encoder = audio_candidate_model.conditioning_encoder.text_token_embedding
 
         self.autoregressive_hidden_dim = audio_candidate_model.config.decoder_config.n_embd
         self.diffusion_input_dim = unet.config.in_latent_channels
@@ -174,8 +174,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         return prompt_embeds
 
-    # TODO: may need to edit this to work with CLVP??
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt->num_waveforms_per_prompt
     def encode_prompt(
         self,
         prompt,
@@ -197,7 +195,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             device: (`torch.device`):
                 torch device
             num_waveforms_per_prompt (`int`):
-                number of images that should be generated per prompt
+                number of spectrogframs that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -233,122 +231,63 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
-
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
                 max_length=self.tokenizer.model_max_length,
                 truncation=True,
                 return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            untruncated_ids = self.tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
+            ).to(self.text_encoder.device)
 
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = self.tokenizer.batch_decode(
-                    untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
-                )
-                logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-                )
+            text_input_ids = text_inputs.input_ids
+            prompt_embeds = self.text_encoder(text_input_ids)
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask.to(device)
+                attention_mask = text_inputs.attention_mask
             else:
                 attention_mask = None
-
-            if clip_skip is None:
-                prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
-                prompt_embeds = prompt_embeds[0]
-            else:
-                prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
-                )
-                # Access the `hidden_states` first, that contains a tuple of
-                # all the hidden states from the encoder layers. Then index into
-                # the tuple to access the hidden states from the desired layer.
-                prompt_embeds = prompt_embeds[-1][-(clip_skip + 1)]
-                # We also need to apply the final LayerNorm here to not mess with the
-                # representations. The `last_hidden_states` that we typically use for
-                # obtaining the final prompt representations passes through the LayerNorm
-                # layer.
-                prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
-
-        if self.text_encoder is not None:
-            prompt_embeds_dtype = self.text_encoder.dtype
-        elif self.unet is not None:
-            prompt_embeds_dtype = self.unet.dtype
-        else:
-            prompt_embeds_dtype = prompt_embeds.dtype
-
-        prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_waveforms_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens: List[str]
-            if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
-            elif prompt is not None and type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
-            elif batch_size != len(negative_prompt):
-                raise ValueError(
-                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                    " the batch size of `prompt`."
-                )
-            else:
-                uncond_tokens = negative_prompt
+        if do_classifier_free_guidance:
+            if negative_prompt is None and negative_prompt_embeds is None:
+                raise ValueError(f"You are trying to do classifier free guidance but you havent provided either `negative_prompt`"
+                                 f"or `negative_prompt_embeds`. Please provide one of them.")
+            elif negative_prompt is not None and negative_prompt_embeds is not None:
+                raise ValueError(f"Found both `negative_prompt` and `negative_prompt_embeds`. Please provide one of them.")
+            elif negative_prompt is not None:
+                negative_text_inputs = self.tokenizer(
+                    negative_prompt,
+                    padding="max_length",
+                    max_length=self.tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                ).to(self.text_encoder.device)
 
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
-
-            max_length = prompt_embeds.shape[1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
+                negative_text_input_ids = negative_text_inputs.input_ids
+                negative_prompt_embeds = self.text_encoder(negative_text_input_ids)
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
+                negative_attention_mask = negative_text_inputs.attention_mask
             else:
-                attention_mask = None
+                negative_attention_mask = None
 
-            negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
-            )
-            negative_prompt_embeds = negative_prompt_embeds[0]
+            # check shapes of prompt and negative prompt embeds
+            # if length of prompt embeds is 1 and negative_prompt_embeds is N or vice versa then we repeat
+            # otherwise if length of prompt embeds is N and negative_prompt_embeds is M or vice versa then we return error.
+            if prompt_embeds.shape[0]==1 and negative_prompt_embeds.shape[0]!=1:
+                prompt_embeds = prompt_embeds.repeat(negative_prompt_embeds.shape[0], 1, 1)
+            elif prompt_embeds.shape[0]!=1 and negative_prompt_embeds.shape[0]==1:
+                negative_prompt_embeds = negative_prompt_embeds.repeat(prompt_embeds.shape[0], 1, 1)
+            elif prompt_embeds.shape[0]!=1 and negative_prompt_embeds.shape[0]!=1:
+                raise ValueError(f"Found {prompt_embeds.shape[0]} number of prompts and {negative_prompt_embeds.shape[0]} "
+                                 f"number of negative prompts. There must be same number of prompts and negative prompts,"
+                                 f"otherwise length of one of them must be 1.")
 
-        if do_classifier_free_guidance:
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = negative_prompt_embeds.shape[1]
+            return prompt_embeds, negative_prompt_embeds
 
-            negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_waveforms_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_waveforms_per_prompt, seq_len, -1)
-
-        return prompt_embeds, negative_prompt_embeds
+        return prompt_embeds, None
 
     def prepare_audio_waveforms(
         self,
