@@ -14,7 +14,7 @@
 # limitations under the License.
 """Module for managing workflows."""
 import os
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Union
 
 import numpy as np
 import PIL
@@ -32,7 +32,7 @@ _ALLOWED_PATTERNS = r"^[\w\s.,!?@#$%^&*()_+-=<>[\]{}|\\;:'\"/]*$"
 
 
 def populate_workflow_from_pipeline(
-    argument_names: List[str], call_arg_values: Dict, lora_info: Optional[Dict], pipeline_name_or_path: str
+    argument_names: List[str], call_arg_values: Dict, pipeline_name_or_path: str
 ) -> Dict:
     r"""Populates the call arguments and (optional) LoRA information in a dictionary.
 
@@ -40,7 +40,6 @@ def populate_workflow_from_pipeline(
         argument_names (`List[str]`): List of function arguments.
         call_arg_values (`Dict`):
             Dictionary containing the arguments and their values from the current execution frame.
-        lora_info (`Dict`, *optional*): Details of the LoRA checkpoints loaded in the pipeline.
         pipeline_name_or_path (`str`): Name or the local path to the pipeline that was used to generate the workflow.
 
     Returns:
@@ -65,12 +64,6 @@ def populate_workflow_from_pipeline(
             workflow.update({"seed": generator.initial_seed()})
         except Exception:
             workflow.update({"seed": None})
-
-    # Handle the case when `load_lora_weights()` was called on a pipeline.
-    if len(lora_info) > 0:
-        if "lora" not in workflow:
-            workflow["lora"] = {}
-        workflow["lora"].update(lora_info)
 
     workflow["_name_or_path"] = pipeline_name_or_path
 

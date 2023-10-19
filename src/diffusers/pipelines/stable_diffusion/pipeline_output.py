@@ -25,7 +25,7 @@ class StableDiffusionPipelineOutput(BaseOutput):
 
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
-    workflow: dict
+    workflow: Optional[dict]
 
 
 if is_flax_available():

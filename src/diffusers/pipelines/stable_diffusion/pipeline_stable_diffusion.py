@@ -788,9 +788,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             signature = inspect.signature(self.__call__)
             argument_names = [param.name for param in signature.parameters.values()]
             call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
-            workflow = populate_workflow_from_pipeline(
-                argument_names, call_arg_values, self.lora_info, self.config._name_or_path
-            )
+            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self.config._name_or_path)
 
         if not return_dict:
             outputs = (image, has_nsfw_concept)
