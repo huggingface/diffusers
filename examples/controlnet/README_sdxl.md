@@ -89,24 +89,25 @@ To better track our training experiments, we're using the following flags in the
 
 Our experiments were conducted on a single 40GB A100 GPU.
 
-To train this model in a 24GB memory space we will need to lower the resolution to 512 and raise the gradient_accumulation_steps to 8
-
+To train this model in a 24GB memory space we will need to lower the resolution to 512 and use `gradient_checkpointing`
 ```
-accelerate launch train_controlnet_sdxl.py\
- --pretrained_model_name_or_path=$MODEL_DIR\
- --dataset_name=fusing/fill50k\
- --mixed_precision="fp16"\
- --resolution=512\
- --learning_rate=1e-5\
- --max_train_steps=15000\
- --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png"\
- --validation_prompt "red circle with blue background" "cyan circle with brown floral background"\
- --validation_steps=100\
- --train_batch_size=1\
- --gradient_accumulation_steps=4\
- --report_to="wandb"\
- --seed=1337\
- --push_to_hub
+accelerate launch train_controlnet_sdxl.py \
+ --pretrained_model_name_or_path=$MODEL_DIR \
+ --output_dir=$OUTPUT_DIR \
+ --dataset_name=fusing/fill50k \
+ --mixed_precision="fp16" \
+ --resolution=512 \
+ --learning_rate=1e-5 \
+ --max_train_steps=15000 \
+ --validation_image "./conditioning_image_1.png" "./conditioning_image_2.png" \
+ --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
+ --validation_steps=100 \
+ --train_batch_size=1 \
+ --gradient_accumulation_steps=1 \
+ --report_to="wandb" \
+ --seed=1337 \
+ --push_to_hub \
+ --gradient_checkpointing
 ```
 
 ### Inference
