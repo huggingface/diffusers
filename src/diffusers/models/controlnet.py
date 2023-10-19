@@ -818,15 +818,15 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         if guess_mode and not self.config.global_pool_conditions:
             scales = torch.logspace(-1, 0, len(down_block_res_samples) + 1, device=sample.device)  # 0.1 to 1.0
             scales = scales * conditioning_scale
-            down_block_res_samples = [(sample * scale) + 0 for sample, scale in zip(down_block_res_samples, scales)]
+            down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
             mid_block_res_sample = mid_block_res_sample * scales[-1]  # last one
         else:
-            down_block_res_samples = [(sample * conditioning_scale) + 0 for sample in down_block_res_samples]
+            down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
             mid_block_res_sample = mid_block_res_sample * conditioning_scale
 
         if self.config.global_pool_conditions:
             down_block_res_samples = [
-                (torch.mean(sample, dim=(2, 3), keepdim=True)) + 0 for sample in down_block_res_samples
+                torch.mean(sample, dim=(2, 3), keepdim=True) for sample in down_block_res_samples
             ]
             mid_block_res_sample = torch.mean(mid_block_res_sample, dim=(2, 3), keepdim=True)
 
