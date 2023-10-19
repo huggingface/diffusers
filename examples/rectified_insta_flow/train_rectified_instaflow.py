@@ -228,7 +228,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
-        "--generated_dataset",
+        "--generated_dataset_name",
         type=str,
         default=None,
         help="Generated dataset from pretrained dataset.",
@@ -736,9 +736,9 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-    if reflow_step == 0 and args.generated_dataset is not None:
+    if reflow_step == 0 and args.generated_dataset_name is not None:
         dataset = load_dataset(
-            args.generated_dataset,
+            args.generated_dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             data_dir=args.train_data_dir,
