@@ -468,8 +468,8 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
     def check_inputs(
         self,
         prompt: Union[str, List[str]],
-        height: Optional[int],
-        width: Optional[int],
+        height: int,
+        width: int,
         callback_steps: int,
         prompt_embeds: Optional[torch.FloatTensor] = None,
     ):
