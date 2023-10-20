@@ -500,8 +500,8 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        height: Optional[int] = 768,
-        width: Optional[int] = 768,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 4,
         guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
@@ -635,7 +635,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         # CFG formulation, so we need to subtract 1 from the input guidance_scale.
         # LCM CFG formulation:  cfg_noise = noise_cond + cfg_scale * (noise_cond - noise_uncond), (cfg_scale > 0.0 using CFG)
         w = torch.tensor(guidance_scale - 1).repeat(bs)
-        w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=256).to(device=device, dtype=latents.dtype)
+        w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=self.unet.config.time_cond_proj_dim).to(device=device, dtype=latents.dtype)
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, None)
