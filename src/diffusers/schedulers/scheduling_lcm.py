@@ -149,6 +149,8 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
+        origin_steps (`int`, *optional*, defaults to 50):
+            TODO
         clip_sample (`bool`, defaults to `True`):
             Clip the predicted sample for numerical stability.
         clip_sample_range (`float`, defaults to 1.0):
@@ -192,13 +194,14 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        origin_steps: int = 50,
         clip_sample: bool = False,
+        clip_sample_range: float = 1.0,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
-        clip_sample_range: float = 1.0,
         sample_max_value: float = 1.0,
         timestep_spacing: str = "leading",
         rescale_betas_zero_snr: bool = False,
@@ -311,7 +314,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, lcm_origin_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
         Args:
@@ -329,8 +332,8 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
 
         # LCM Timesteps Setting:  # Linear Spacing
-        c = self.config.num_train_timesteps // lcm_origin_steps
-        lcm_origin_timesteps = np.asarray(list(range(1, lcm_origin_steps + 1))) * c - 1  # LCM Training  Steps Schedule
+        c = self.config.num_train_timesteps // self.config.origin_steps
+        lcm_origin_timesteps = np.asarray(list(range(1, self.config.origin_steps + 1))) * c - 1  # LCM Training  Steps Schedule
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]  # LCM Inference Steps Schedule
 

@@ -508,7 +508,6 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
-        lcm_origin_steps: int = 50,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -614,7 +613,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         )
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, lcm_origin_steps)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variable
