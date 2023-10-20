@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -634,7 +634,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: int = 1,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -654,6 +654,10 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
+        # support for variable transformer layers per block
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
+
         # there is always at least one resnet
         resnets = [
             ResnetBlock2D(
@@ -671,14 +675,14 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         ]
         attentions = []
 
-        for _ in range(num_layers):
+        for i in range(num_layers):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
                         in_channels // num_attention_heads,
                         in_channels=in_channels,
-                        num_layers=transformer_layers_per_block,
+                        num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -1018,7 +1022,7 @@ class CrossAttnDownBlock2D(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: int = 1,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -1041,6 +1045,8 @@ class CrossAttnDownBlock2D(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1064,7 +1070,7 @@ class CrossAttnDownBlock2D(nn.Module):
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
-                        num_layers=transformer_layers_per_block,
+                        num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -2167,7 +2173,7 @@ class CrossAttnUpBlock2D(nn.Module):
         resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: int = 1,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -2189,6 +2195,9 @@ class CrossAttnUpBlock2D(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
+
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -2214,7 +2223,7 @@ class CrossAttnUpBlock2D(nn.Module):
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
-                        num_layers=transformer_layers_per_block,
+                        num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
