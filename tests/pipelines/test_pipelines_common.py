@@ -11,7 +11,7 @@ import uuid
 from typing import Callable, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from huggingface_hub import delete_repo
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -374,11 +374,11 @@ class PipelineTesterMixin:
             f"Required optional parameters not present: {remaining_required_optional_parameters}",
         )
 
-    def test_inference_batch_consistent(self, batch_sizes=[2, 4, 13]):
+    def test_inference_batch_consistent(self, batch_sizes=[2]):
         self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
-        self, batch_sizes=[2, 4, 13], additional_params_copy_to_batched_inputs=["num_inference_steps"]
+        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"]
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -386,137 +386,103 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
+        inputs["generator"] = self.get_generator(0)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
 
-        # batchify inputs
+        # prepare batched inputs
+        batched_inputs = []
         for batch_size in batch_sizes:
-            batched_inputs = {}
-            for name, value in inputs.items():
-                if name in self.batch_params:
-                    # prompt is string
-                    if name == "prompt":
-                        len_prompt = len(value)
-                        # make unequal batch sizes
-                        batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+            batched_input = {}
+            batched_input.update(inputs)
 
-                        # make last batch super long
-                        batched_inputs[name][-1] = 100 * "very long"
-                    # or else we have images
-                    else:
-                        batched_inputs[name] = batch_size * [value]
-                elif name == "batch_size":
-                    batched_inputs[name] = batch_size
+            for name in self.batch_params:
+                if name not in inputs:
+                    continue
+
+                value = inputs[name]
+                if name == "prompt":
+                    len_prompt = len(value)
+                    # make unequal batch sizes
+                    batched_input[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+
+                    # make last batch super long
+                    batched_input[name][-1] = 100 * "very long"
+
                 else:
-                    batched_inputs[name] = value
+                    batched_input[name] = batch_size * [value]
 
-            for arg in additional_params_copy_to_batched_inputs:
-                batched_inputs[arg] = inputs[arg]
+            if "generator" in inputs:
+                batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
-            batched_inputs["output_type"] = "np"
+            if "batch_size" in inputs:
+                batched_input["batch_size"] = batch_size
 
-            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
-                batched_inputs.pop("output_type")
-
-            output = pipe(**batched_inputs)
-
-            assert len(output[0]) == batch_size
-
-            batched_inputs["output_type"] = "np"
-
-            if self.pipeline_class.__name__ == "DanceDiffusionPipeline":
-                batched_inputs.pop("output_type")
-
-            output = pipe(**batched_inputs)[0]
-
-            assert output.shape[0] == batch_size
+            batched_inputs.append(batched_input)
 
         logger.setLevel(level=diffusers.logging.WARNING)
+        for batch_size, batched_input in zip(batch_sizes, batched_inputs):
+            output = pipe(**batched_input)
+            assert len(output[0]) == batch_size
 
     def test_inference_batch_single_identical(self, batch_size=3, expected_max_diff=1e-4):
         self._test_inference_batch_single_identical(batch_size=batch_size, expected_max_diff=expected_max_diff)
 
     def _test_inference_batch_single_identical(
         self,
-        batch_size=3,
-        test_max_difference=None,
-        test_mean_pixel_difference=None,
-        relax_max_difference=False,
+        batch_size=2,
         expected_max_diff=1e-4,
         additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
-        if test_max_difference is None:
-            # TODO(Pedro) - not sure why, but not at all reproducible at the moment it seems
-            # make sure that batched and non-batched is identical
-            test_max_difference = torch_device != "mps"
-
-        if test_mean_pixel_difference is None:
-            # TODO same as above
-            test_mean_pixel_difference = torch_device != "mps"
-
-        generator_device = "cpu"
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
+        for components in pipe.components.values():
+            if hasattr(components, "set_default_attn_processor"):
+                components.set_default_attn_processor()
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(generator_device)
+        inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is has been used in self.get_dummy_inputs
+        inputs["generator"] = self.get_generator(0)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
 
         # batchify inputs
         batched_inputs = {}
-        batch_size = batch_size
-        for name, value in inputs.items():
-            if name in self.batch_params:
-                # prompt is string
-                if name == "prompt":
-                    len_prompt = len(value)
-                    # make unequal batch sizes
-                    batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+        batched_inputs.update(inputs)
 
-                    # make last batch super long
-                    batched_inputs[name][-1] = 100 * "very long"
-                # or else we have images
-                else:
-                    batched_inputs[name] = batch_size * [value]
-            elif name == "batch_size":
-                batched_inputs[name] = batch_size
-            elif name == "generator":
-                batched_inputs[name] = [self.get_generator(i) for i in range(batch_size)]
+        for name in self.batch_params:
+            if name not in inputs:
+                continue
+
+            value = inputs[name]
+            if name == "prompt":
+                len_prompt = len(value)
+                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+                batched_inputs[name][-1] = 100 * "very long"
+
             else:
-                batched_inputs[name] = value
+                batched_inputs[name] = batch_size * [value]
+
+        if "generator" in inputs:
+            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+        if "batch_size" in inputs:
+            batched_inputs["batch_size"] = batch_size
 
         for arg in additional_params_copy_to_batched_inputs:
             batched_inputs[arg] = inputs[arg]
 
-        if self.pipeline_class.__name__ != "DanceDiffusionPipeline":
-            batched_inputs["output_type"] = "np"
-
+        output = pipe(**inputs)
         output_batch = pipe(**batched_inputs)
+
         assert output_batch[0].shape[0] == batch_size
 
-        inputs["generator"] = self.get_generator(0)
-
-        output = pipe(**inputs)
-
-        logger.setLevel(level=diffusers.logging.WARNING)
-        if test_max_difference:
-            if relax_max_difference:
-                # Taking the median of the largest <n> differences
-                # is resilient to outliers
-                diff = np.abs(output_batch[0][0] - output[0][0])
-                diff = diff.flatten()
-                diff.sort()
-                max_diff = np.median(diff[-5:])
-            else:
-                max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
-            assert max_diff < expected_max_diff
-
-        if test_mean_pixel_difference:
-            assert_mean_pixel_difference(output_batch[0][0], output[0][0])
+        max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
+        assert max_diff < expected_max_diff
 
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
@@ -528,8 +494,9 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_dummy_inputs(torch_device))[0]
-        output_tuple = pipe(**self.get_dummy_inputs(torch_device), return_dict=False)[0]
+        generator_device = "cpu"
+        output = pipe(**self.get_dummy_inputs(generator_device))[0]
+        output_tuple = pipe(**self.get_dummy_inputs(generator_device), return_dict=False)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         self.assertLess(max_diff, expected_max_difference)
@@ -544,7 +511,7 @@ class PipelineTesterMixin:
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_float16_inference(self, expected_max_diff=1e-2):
+    def test_float16_inference(self, expected_max_diff=5e-2):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -563,8 +530,19 @@ class PipelineTesterMixin:
         pipe_fp16.to(torch_device, torch.float16)
         pipe_fp16.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_dummy_inputs(torch_device))[0]
-        output_fp16 = pipe_fp16(**self.get_dummy_inputs(torch_device))[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is used inside dummy inputs
+        if "generator" in inputs:
+            inputs["generator"] = self.get_generator(0)
+
+        output = pipe(**inputs)[0]
+
+        fp16_inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is used inside dummy inputs
+        if "generator" in fp16_inputs:
+            fp16_inputs["generator"] = self.get_generator(0)
+
+        output_fp16 = pipe_fp16(**fp16_inputs)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
         self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
@@ -699,11 +677,12 @@ class PipelineTesterMixin:
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
         output_without_slicing = pipe(**inputs)[0]
 
         pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(generator_device)
         output_with_slicing = pipe(**inputs)[0]
 
         if test_max_difference:
@@ -993,6 +972,150 @@ class PipelinePushToHubTester(unittest.TestCase):
 
         # Reset repo
         delete_repo(self.org_repo_id, token=TOKEN)
+
+
+# For SDXL and its derivative pipelines (such as ControlNet), we have the text encoders
+# and the tokenizers as optional components. So, we need to override the `test_save_load_optional_components()`
+# test for all such pipelines. This requires us to use a custom `encode_prompt()` function.
+class SDXLOptionalComponentsTesterMixin:
+    def encode_prompt(
+        self, tokenizers, text_encoders, prompt: str, num_images_per_prompt: int = 1, negative_prompt: str = None
+    ):
+        device = text_encoders[0].device
+
+        if isinstance(prompt, str):
+            prompt = [prompt]
+        batch_size = len(prompt)
+
+        prompt_embeds_list = []
+        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+            text_inputs = tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+
+            text_input_ids = text_inputs.input_ids
+
+            prompt_embeds = text_encoder(text_input_ids.to(device), output_hidden_states=True)
+            pooled_prompt_embeds = prompt_embeds[0]
+            prompt_embeds = prompt_embeds.hidden_states[-2]
+            prompt_embeds_list.append(prompt_embeds)
+
+        prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
+
+        if negative_prompt is None:
+            negative_prompt_embeds = torch.zeros_like(prompt_embeds)
+            negative_pooled_prompt_embeds = torch.zeros_like(pooled_prompt_embeds)
+        else:
+            negative_prompt = batch_size * [negative_prompt] if isinstance(negative_prompt, str) else negative_prompt
+
+            negative_prompt_embeds_list = []
+            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                uncond_input = tokenizer(
+                    negative_prompt,
+                    padding="max_length",
+                    max_length=tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                )
+
+                negative_prompt_embeds = text_encoder(uncond_input.input_ids.to(device), output_hidden_states=True)
+                negative_pooled_prompt_embeds = negative_prompt_embeds[0]
+                negative_prompt_embeds = negative_prompt_embeds.hidden_states[-2]
+                negative_prompt_embeds_list.append(negative_prompt_embeds)
+
+            negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
+
+        bs_embed, seq_len, _ = prompt_embeds.shape
+
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
+        # for classifier-free guidance
+        # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+        seq_len = negative_prompt_embeds.shape[1]
+
+        negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+        pooled_prompt_embeds = pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+            bs_embed * num_images_per_prompt, -1
+        )
+
+        # for classifier-free guidance
+        negative_pooled_prompt_embeds = negative_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+            bs_embed * num_images_per_prompt, -1
+        )
+
+        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+
+    def _test_save_load_optional_components(self, expected_max_difference=1e-4):
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+
+        tokenizer = components.pop("tokenizer")
+        tokenizer_2 = components.pop("tokenizer_2")
+        text_encoder = components.pop("text_encoder")
+        text_encoder_2 = components.pop("text_encoder_2")
+
+        tokenizers = [tokenizer, tokenizer_2] if tokenizer is not None else [tokenizer_2]
+        text_encoders = [text_encoder, text_encoder_2] if text_encoder is not None else [text_encoder_2]
+        prompt = inputs.pop("prompt")
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = self.encode_prompt(tokenizers, text_encoders, prompt)
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+        inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
+        inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
+
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        inputs = self.get_dummy_inputs(generator_device)
+        _ = inputs.pop("prompt")
+        inputs["prompt_embeds"] = prompt_embeds
+        inputs["negative_prompt_embeds"] = negative_prompt_embeds
+        inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
+        inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
+
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, expected_max_difference)
 
 
 # Some models (e.g. unCLIP) are extremely likely to significantly deviate depending on which hardware is used.

@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 Install 🤗 Diffusers for whichever deep learning library you're working with.
 
-🤗 Diffusers is tested on Python 3.7+, PyTorch 1.7.0+ and Flax. Follow the installation instructions below for the deep learning library you are using:
+🤗 Diffusers is tested on Python 3.8+, PyTorch 1.7.0+ and Flax. Follow the installation instructions below for the deep learning library you are using:
 
 - [PyTorch](https://pytorch.org/get-started/locally/) installation instructions.
 - [Flax](https://flax.readthedocs.io/en/latest/) installation instructions.
@@ -106,7 +106,7 @@ pip install -e ".[flax]"
 
 These commands will link the folder you cloned the repository to and your Python library paths.
 Python will now look inside the folder you cloned to in addition to the normal library paths.
-For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.7/site-packages/`, Python will also search the `~/diffusers/` folder you cloned to.
+For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.8/site-packages/`, Python will also search the `~/diffusers/` folder you cloned to.
 
 <Tip warning={true}>
 

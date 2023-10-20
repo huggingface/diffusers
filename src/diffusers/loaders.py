@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 import re
-import warnings
 from collections import defaultdict
 from contextlib import nullcontext
 from io import BytesIO
@@ -24,25 +23,36 @@ import requests
 import safetensors
 import torch
 from huggingface_hub import hf_hub_download, model_info
+from packaging import version
 from torch import nn
 
+from . import __version__
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
+    USE_PEFT_BACKEND,
     _get_model_file,
+    convert_state_dict_to_diffusers,
+    convert_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
     deprecate,
+    get_adapter_name,
+    get_peft_kwargs,
     is_accelerate_available,
-    is_accelerate_version,
     is_omegaconf_available,
     is_transformers_available,
     logging,
+    recurse_remove_peft_layers,
+    scale_lora_layers,
+    set_adapter_layers,
+    set_weights_and_activate_adapters,
 )
 from .utils.import_utils import BACKENDS_MAPPING
 
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel, PreTrainedTokenizer
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -61,6 +71,8 @@ TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
 
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
+
+LORA_DEPRECATION_MESSAGE = "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT make sure to install the latest PEFT and transformers packages in the future."
 
 
 class PatchedLoraProjection(nn.Module):
@@ -96,7 +108,7 @@ class PatchedLoraProjection(nn.Module):
 
         return super().state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
 
-    def _fuse_lora(self, lora_scale=1.0):
+    def _fuse_lora(self, lora_scale=1.0, safe_fusing=False):
         if self.lora_linear_layer is None:
             return
 
@@ -110,6 +122,14 @@ class PatchedLoraProjection(nn.Module):
             w_up = w_up * self.lora_linear_layer.network_alpha / self.lora_linear_layer.rank
 
         fused_weight = w_orig + (lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
+
+        if safe_fusing and torch.isnan(fused_weight).any().item():
+            raise ValueError(
+                "This LoRA weight seems to be broken. "
+                f"Encountered NaN values when trying to fuse LoRA weights for {self}."
+                "LoRA weights will not be fused."
+            )
+
         self.regular_linear_layer.weight.data = fused_weight.to(device=device, dtype=dtype)
 
         # we can drop the lora layer now
@@ -308,6 +328,9 @@ class UNet2DConditionLoadersMixin:
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
         # See https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
         network_alphas = kwargs.pop("network_alphas", None)
+
+        _pipeline = kwargs.pop("_pipeline", None)
+
         is_network_alphas_none = network_alphas is None
 
         allow_pickle = False
@@ -377,7 +400,7 @@ class UNet2DConditionLoadersMixin:
         # fill attn processors
         lora_layers_list = []
 
-        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
+        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys()) and not USE_PEFT_BACKEND
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
@@ -461,6 +484,7 @@ class UNet2DConditionLoadersMixin:
                     load_model_dict_into_meta(lora, value_dict, device=device, dtype=dtype)
                 else:
                     lora.load_state_dict(value_dict)
+
         elif is_custom_diffusion:
             attn_processors = {}
             custom_diffusion_grouped_dict = defaultdict(dict)
@@ -490,18 +514,50 @@ class UNet2DConditionLoadersMixin:
                         cross_attention_dim=cross_attention_dim,
                     )
                     attn_processors[key].load_state_dict(value_dict)
-
-            self.set_attn_processor(attn_processors)
+        elif USE_PEFT_BACKEND:
+            # In that case we have nothing to do as loading the adapter weights is already handled above by `set_peft_model_state_dict`
+            # on the Unet
+            pass
         else:
             raise ValueError(
                 f"{model_file} does not seem to be in the correct format expected by LoRA or Custom Diffusion training."
             )
 
-        # set lora layers
-        for target_module, lora_layer in lora_layers_list:
-            target_module.set_lora_layer(lora_layer)
+        # <Unsafe code
+        # We can be sure that the following works as it just sets attention processors, lora layers and puts all in the same dtype
+        # Now we remove any existing hooks to
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
 
-        self.to(dtype=self.dtype, device=self.device)
+        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `lora_lora_weights_into_unet`
+        if not USE_PEFT_BACKEND:
+            if _pipeline is not None:
+                for _, component in _pipeline.components.items():
+                    if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+
+                        logger.info(
+                            "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                        )
+                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+            # only custom diffusion needs to set attn processors
+            if is_custom_diffusion:
+                self.set_attn_processor(attn_processors)
+
+            # set lora layers
+            for target_module, lora_layer in lora_layers_list:
+                target_module.set_lora_layer(lora_layer)
+
+            self.to(dtype=self.dtype, device=self.device)
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
@@ -559,6 +615,7 @@ class UNet2DConditionLoadersMixin:
         """
         from .models.attention_processor import (
             CustomDiffusionAttnProcessor,
+            CustomDiffusionAttnProcessor2_0,
             CustomDiffusionXFormersAttnProcessor,
         )
 
@@ -578,7 +635,10 @@ class UNet2DConditionLoadersMixin:
         os.makedirs(save_directory, exist_ok=True)
 
         is_custom_diffusion = any(
-            isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor))
+            isinstance(
+                x,
+                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
+            )
             for (_, x) in self.attn_processors.items()
         )
         if is_custom_diffusion:
@@ -586,7 +646,14 @@ class UNet2DConditionLoadersMixin:
                 {
                     y: x
                     for (y, x) in self.attn_processors.items()
-                    if isinstance(x, (CustomDiffusionAttnProcessor, CustomDiffusionXFormersAttnProcessor))
+                    if isinstance(
+                        x,
+                        (
+                            CustomDiffusionAttnProcessor,
+                            CustomDiffusionAttnProcessor2_0,
+                            CustomDiffusionXFormersAttnProcessor,
+                        ),
+                    )
                 }
             )
             state_dict = model_to_save.state_dict()
@@ -607,20 +674,158 @@ class UNet2DConditionLoadersMixin:
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
-    def fuse_lora(self, lora_scale=1.0):
+    def fuse_lora(self, lora_scale=1.0, safe_fusing=False):
         self.lora_scale = lora_scale
+        self._safe_fusing = safe_fusing
         self.apply(self._fuse_lora_apply)
 
     def _fuse_lora_apply(self, module):
-        if hasattr(module, "_fuse_lora"):
-            module._fuse_lora(self.lora_scale)
+        if not USE_PEFT_BACKEND:
+            if hasattr(module, "_fuse_lora"):
+                module._fuse_lora(self.lora_scale, self._safe_fusing)
+        else:
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            if isinstance(module, BaseTunerLayer):
+                if self.lora_scale != 1.0:
+                    module.scale_layer(self.lora_scale)
+                module.merge(safe_merge=self._safe_fusing)
 
     def unfuse_lora(self):
         self.apply(self._unfuse_lora_apply)
 
     def _unfuse_lora_apply(self, module):
-        if hasattr(module, "_unfuse_lora"):
-            module._unfuse_lora()
+        if not USE_PEFT_BACKEND:
+            if hasattr(module, "_unfuse_lora"):
+                module._unfuse_lora()
+        else:
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            if isinstance(module, BaseTunerLayer):
+                module.unmerge()
+
+    def set_adapters(
+        self,
+        adapter_names: Union[List[str], str],
+        weights: Optional[Union[List[float], float]] = None,
+    ):
+        """
+        Sets the adapter layers for the unet.
+
+        Args:
+            adapter_names (`List[str]` or `str`):
+                The names of the adapters to use.
+            weights (`Union[List[float], float]`, *optional*):
+                The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
+                adapters.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `set_adapters()`.")
+
+        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+
+        if weights is None:
+            weights = [1.0] * len(adapter_names)
+        elif isinstance(weights, float):
+            weights = [weights] * len(adapter_names)
+
+        if len(adapter_names) != len(weights):
+            raise ValueError(
+                f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
+            )
+
+        set_weights_and_activate_adapters(self, adapter_names, weights)
+
+    def disable_lora(self):
+        """
+        Disables the active LoRA layers for the unet.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+        set_adapter_layers(self, enabled=False)
+
+    def enable_lora(self):
+        """
+        Enables the active LoRA layers for the unet.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+        set_adapter_layers(self, enabled=True)
+
+
+def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
+    cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+    force_download = kwargs.pop("force_download", False)
+    resume_download = kwargs.pop("resume_download", False)
+    proxies = kwargs.pop("proxies", None)
+    local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+    use_auth_token = kwargs.pop("use_auth_token", None)
+    revision = kwargs.pop("revision", None)
+    subfolder = kwargs.pop("subfolder", None)
+    weight_name = kwargs.pop("weight_name", None)
+    use_safetensors = kwargs.pop("use_safetensors", None)
+
+    allow_pickle = False
+    if use_safetensors is None:
+        use_safetensors = True
+        allow_pickle = True
+
+    user_agent = {
+        "file_type": "text_inversion",
+        "framework": "pytorch",
+    }
+    state_dicts = []
+    for pretrained_model_name_or_path in pretrained_model_name_or_paths:
+        if not isinstance(pretrained_model_name_or_path, (dict, torch.Tensor)):
+            # 3.1. Load textual inversion file
+            model_file = None
+
+            # Let's first try to load .safetensors weights
+            if (use_safetensors and weight_name is None) or (
+                weight_name is not None and weight_name.endswith(".safetensors")
+            ):
+                try:
+                    model_file = _get_model_file(
+                        pretrained_model_name_or_path,
+                        weights_name=weight_name or TEXT_INVERSION_NAME_SAFE,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        user_agent=user_agent,
+                    )
+                    state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                except Exception as e:
+                    if not allow_pickle:
+                        raise e
+
+                    model_file = None
+
+            if model_file is None:
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=weight_name or TEXT_INVERSION_NAME,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+                state_dict = torch.load(model_file, map_location="cpu")
+        else:
+            state_dict = pretrained_model_name_or_path
+
+        state_dicts.append(state_dict)
+
+    return state_dicts
 
 
 class TextualInversionLoaderMixin:
@@ -628,7 +833,7 @@ class TextualInversionLoaderMixin:
     Load textual inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
-    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):
+    def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
         r"""
         Processes prompts that include a special token corresponding to a multi-vector textual inversion embedding to
         be replaced with multiple special tokens each corresponding to one of the vectors. If the prompt has no textual
@@ -655,7 +860,7 @@ class TextualInversionLoaderMixin:
 
         return prompts
 
-    def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):
+    def _maybe_convert_prompt(self, prompt: str, tokenizer: "PreTrainedTokenizer"):  # noqa: F821
         r"""
         Maybe convert a prompt into a "multi vector"-compatible prompt. If the prompt includes a token that corresponds
         to a multi-vector textual inversion embedding, this function will process the prompt so that the special token
@@ -685,12 +890,103 @@ class TextualInversionLoaderMixin:
 
         return prompt
 
+    def _check_text_inv_inputs(self, tokenizer, text_encoder, pretrained_model_name_or_paths, tokens):
+        if tokenizer is None:
+            raise ValueError(
+                f"{self.__class__.__name__} requires `self.tokenizer` or passing a `tokenizer` of type `PreTrainedTokenizer` for calling"
+                f" `{self.load_textual_inversion.__name__}`"
+            )
+
+        if text_encoder is None:
+            raise ValueError(
+                f"{self.__class__.__name__} requires `self.text_encoder` or passing a `text_encoder` of type `PreTrainedModel` for calling"
+                f" `{self.load_textual_inversion.__name__}`"
+            )
+
+        if len(pretrained_model_name_or_paths) != len(tokens):
+            raise ValueError(
+                f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)} "
+                f"Make sure both lists have the same length."
+            )
+
+        valid_tokens = [t for t in tokens if t is not None]
+        if len(set(valid_tokens)) < len(valid_tokens):
+            raise ValueError(f"You have passed a list of tokens that contains duplicates: {tokens}")
+
+    @staticmethod
+    def _retrieve_tokens_and_embeddings(tokens, state_dicts, tokenizer):
+        all_tokens = []
+        all_embeddings = []
+        for state_dict, token in zip(state_dicts, tokens):
+            if isinstance(state_dict, torch.Tensor):
+                if token is None:
+                    raise ValueError(
+                        "You are trying to load a textual inversion embedding that has been saved as a PyTorch tensor. Make sure to pass the name of the corresponding token in this case: `token=...`."
+                    )
+                loaded_token = token
+                embedding = state_dict
+            elif len(state_dict) == 1:
+                # diffusers
+                loaded_token, embedding = next(iter(state_dict.items()))
+            elif "string_to_param" in state_dict:
+                # A1111
+                loaded_token = state_dict["name"]
+                embedding = state_dict["string_to_param"]["*"]
+            else:
+                raise ValueError(
+                    f"Loaded state dictonary is incorrect: {state_dict}. \n\n"
+                    "Please verify that the loaded state dictionary of the textual embedding either only has a single key or includes the `string_to_param`"
+                    " input key."
+                )
+
+            if token is not None and loaded_token != token:
+                logger.info(f"The loaded token: {loaded_token} is overwritten by the passed token {token}.")
+            else:
+                token = loaded_token
+
+            if token in tokenizer.get_vocab():
+                raise ValueError(
+                    f"Token {token} already in tokenizer vocabulary. Please choose a different token name or remove {token} and embedding from the tokenizer and text encoder."
+                )
+
+            all_tokens.append(token)
+            all_embeddings.append(embedding)
+
+        return all_tokens, all_embeddings
+
+    @staticmethod
+    def _extend_tokens_and_embeddings(tokens, embeddings, tokenizer):
+        all_tokens = []
+        all_embeddings = []
+
+        for embedding, token in zip(embeddings, tokens):
+            if f"{token}_1" in tokenizer.get_vocab():
+                multi_vector_tokens = [token]
+                i = 1
+                while f"{token}_{i}" in tokenizer.added_tokens_encoder:
+                    multi_vector_tokens.append(f"{token}_{i}")
+                    i += 1
+
+                raise ValueError(
+                    f"Multi-vector Token {multi_vector_tokens} already in tokenizer vocabulary. Please choose a different token name or remove the {multi_vector_tokens} and embedding from the tokenizer and text encoder."
+                )
+
+            is_multi_vector = len(embedding.shape) > 1 and embedding.shape[0] > 1
+            if is_multi_vector:
+                all_tokens += [token] + [f"{token}_{i}" for i in range(1, embedding.shape[0])]
+                all_embeddings += [e for e in embedding]  # noqa: C416
+            else:
+                all_tokens += [token]
+                all_embeddings += [embedding[0]] if len(embedding.shape) > 1 else [embedding]
+
+        return all_tokens, all_embeddings
+
     def load_textual_inversion(
         self,
         pretrained_model_name_or_path: Union[str, List[str], Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]],
         token: Optional[Union[str, List[str]]] = None,
-        tokenizer: Optional[PreTrainedTokenizer] = None,
-        text_encoder: Optional[PreTrainedModel] = None,
+        tokenizer: Optional["PreTrainedTokenizer"] = None,  # noqa: F821
+        text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
         **kwargs,
     ):
         r"""
@@ -790,25 +1086,44 @@ class TextualInversionLoaderMixin:
         ```
 
         """
+        # 1. Set correct tokenizer and text encoder
         tokenizer = tokenizer or getattr(self, "tokenizer", None)
         text_encoder = text_encoder or getattr(self, "text_encoder", None)
 
-        if tokenizer is None:
+        # 2. Normalize inputs
+        pretrained_model_name_or_paths = (
+            [pretrained_model_name_or_path]
+            if not isinstance(pretrained_model_name_or_path, list)
+            else pretrained_model_name_or_path
+        )
+        tokens = len(pretrained_model_name_or_paths) * [token] if (isinstance(token, str) or token is None) else token
+
+        # 3. Check inputs
+        self._check_text_inv_inputs(tokenizer, text_encoder, pretrained_model_name_or_paths, tokens)
+
+        # 4. Load state dicts of textual embeddings
+        state_dicts = load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
+
+        # 4. Retrieve tokens and embeddings
+        tokens, embeddings = self._retrieve_tokens_and_embeddings(tokens, state_dicts, tokenizer)
+
+        # 5. Extend tokens and embeddings for multi vector
+        tokens, embeddings = self._extend_tokens_and_embeddings(tokens, embeddings, tokenizer)
+
+        # 6. Make sure all embeddings have the correct size
+        expected_emb_dim = text_encoder.get_input_embeddings().weight.shape[-1]
+        if any(expected_emb_dim != emb.shape[-1] for emb in embeddings):
             raise ValueError(
-                f"{self.__class__.__name__} requires `self.tokenizer` or passing a `tokenizer` of type `PreTrainedTokenizer` for calling"
-                f" `{self.load_textual_inversion.__name__}`"
+                "Loaded embeddings are of incorrect shape. Expected each textual inversion embedding "
+                "to be of shape {input_embeddings.shape[-1]}, but are {embeddings.shape[-1]} "
             )
 
-        if text_encoder is None:
-            raise ValueError(
-                f"{self.__class__.__name__} requires `self.text_encoder` or passing a `text_encoder` of type `PreTrainedModel` for calling"
-                f" `{self.load_textual_inversion.__name__}`"
-            )
+        # 7. Now we can be sure that loading the embedding matrix works
+        # < Unsafe code:
 
-        # Remove any existing hooks.
+        # 7.1 Offload all hooks in case the pipeline was cpu offloaded before make sure, we offload and onload again
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
-        recursive = False
         for _, component in self.components.items():
             if isinstance(component, nn.Module):
                 if hasattr(component, "_hf_hook"):
@@ -817,167 +1132,33 @@ class TextualInversionLoaderMixin:
                     logger.info(
                         "Accelerate hooks detected. Since you have called `load_textual_inversion()`, the previous hooks will be first removed. Then the textual inversion parameters will be loaded and the hooks will be applied again."
                     )
-                    recursive = is_sequential_cpu_offload
-                    remove_hook_from_module(component, recurse=recursive)
+                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
-        force_download = kwargs.pop("force_download", False)
-        resume_download = kwargs.pop("resume_download", False)
-        proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
-        revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None)
-        weight_name = kwargs.pop("weight_name", None)
-        use_safetensors = kwargs.pop("use_safetensors", None)
+        # 7.2 save expected device and dtype
+        device = text_encoder.device
+        dtype = text_encoder.dtype
 
-        allow_pickle = False
-        if use_safetensors is None:
-            use_safetensors = True
-            allow_pickle = True
+        # 7.3 Increase token embedding matrix
+        text_encoder.resize_token_embeddings(len(tokenizer) + len(tokens))
+        input_embeddings = text_encoder.get_input_embeddings().weight
 
-        user_agent = {
-            "file_type": "text_inversion",
-            "framework": "pytorch",
-        }
-
-        if not isinstance(pretrained_model_name_or_path, list):
-            pretrained_model_name_or_paths = [pretrained_model_name_or_path]
-        else:
-            pretrained_model_name_or_paths = pretrained_model_name_or_path
-
-        if isinstance(token, str):
-            tokens = [token]
-        elif token is None:
-            tokens = [None] * len(pretrained_model_name_or_paths)
-        else:
-            tokens = token
-
-        if len(pretrained_model_name_or_paths) != len(tokens):
-            raise ValueError(
-                f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)}"
-                f"Make sure both lists have the same length."
-            )
-
-        valid_tokens = [t for t in tokens if t is not None]
-        if len(set(valid_tokens)) < len(valid_tokens):
-            raise ValueError(f"You have passed a list of tokens that contains duplicates: {tokens}")
-
-        token_ids_and_embeddings = []
-
-        for pretrained_model_name_or_path, token in zip(pretrained_model_name_or_paths, tokens):
-            if not isinstance(pretrained_model_name_or_path, (dict, torch.Tensor)):
-                # 1. Load textual inversion file
-                model_file = None
-                # Let's first try to load .safetensors weights
-                if (use_safetensors and weight_name is None) or (
-                    weight_name is not None and weight_name.endswith(".safetensors")
-                ):
-                    try:
-                        model_file = _get_model_file(
-                            pretrained_model_name_or_path,
-                            weights_name=weight_name or TEXT_INVERSION_NAME_SAFE,
-                            cache_dir=cache_dir,
-                            force_download=force_download,
-                            resume_download=resume_download,
-                            proxies=proxies,
-                            local_files_only=local_files_only,
-                            use_auth_token=use_auth_token,
-                            revision=revision,
-                            subfolder=subfolder,
-                            user_agent=user_agent,
-                        )
-                        state_dict = safetensors.torch.load_file(model_file, device="cpu")
-                    except Exception as e:
-                        if not allow_pickle:
-                            raise e
-
-                        model_file = None
-
-                if model_file is None:
-                    model_file = _get_model_file(
-                        pretrained_model_name_or_path,
-                        weights_name=weight_name or TEXT_INVERSION_NAME,
-                        cache_dir=cache_dir,
-                        force_download=force_download,
-                        resume_download=resume_download,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
-                        revision=revision,
-                        subfolder=subfolder,
-                        user_agent=user_agent,
-                    )
-                    state_dict = torch.load(model_file, map_location="cpu")
-            else:
-                state_dict = pretrained_model_name_or_path
-
-            # 2. Load token and embedding correcly from file
-            loaded_token = None
-            if isinstance(state_dict, torch.Tensor):
-                if token is None:
-                    raise ValueError(
-                        "You are trying to load a textual inversion embedding that has been saved as a PyTorch tensor. Make sure to pass the name of the corresponding token in this case: `token=...`."
-                    )
-                embedding = state_dict
-            elif len(state_dict) == 1:
-                # diffusers
-                loaded_token, embedding = next(iter(state_dict.items()))
-            elif "string_to_param" in state_dict:
-                # A1111
-                loaded_token = state_dict["name"]
-                embedding = state_dict["string_to_param"]["*"]
-
-            if token is not None and loaded_token != token:
-                logger.info(f"The loaded token: {loaded_token} is overwritten by the passed token {token}.")
-            else:
-                token = loaded_token
-
-            embedding = embedding.to(dtype=text_encoder.dtype, device=text_encoder.device)
-
-            # 3. Make sure we don't mess up the tokenizer or text encoder
-            vocab = tokenizer.get_vocab()
-            if token in vocab:
-                raise ValueError(
-                    f"Token {token} already in tokenizer vocabulary. Please choose a different token name or remove {token} and embedding from the tokenizer and text encoder."
-                )
-            elif f"{token}_1" in vocab:
-                multi_vector_tokens = [token]
-                i = 1
-                while f"{token}_{i}" in tokenizer.added_tokens_encoder:
-                    multi_vector_tokens.append(f"{token}_{i}")
-                    i += 1
-
-                raise ValueError(
-                    f"Multi-vector Token {multi_vector_tokens} already in tokenizer vocabulary. Please choose a different token name or remove the {multi_vector_tokens} and embedding from the tokenizer and text encoder."
-                )
-
-            is_multi_vector = len(embedding.shape) > 1 and embedding.shape[0] > 1
-
-            if is_multi_vector:
-                tokens = [token] + [f"{token}_{i}" for i in range(1, embedding.shape[0])]
-                embeddings = [e for e in embedding]  # noqa: C416
-            else:
-                tokens = [token]
-                embeddings = [embedding[0]] if len(embedding.shape) > 1 else [embedding]
-
+        # 7.4 Load token and embedding
+        for token, embedding in zip(tokens, embeddings):
             # add tokens and get ids
-            tokenizer.add_tokens(tokens)
-            token_ids = tokenizer.convert_tokens_to_ids(tokens)
-            token_ids_and_embeddings += zip(token_ids, embeddings)
-
+            tokenizer.add_tokens(token)
+            token_id = tokenizer.convert_tokens_to_ids(token)
+            input_embeddings.data[token_id] = embedding
             logger.info(f"Loaded textual inversion embedding for {token}.")
 
-        # resize token embeddings and set all new embeddings
-        text_encoder.resize_token_embeddings(len(tokenizer))
-        for token_id, embedding in token_ids_and_embeddings:
-            text_encoder.get_input_embeddings().weight.data[token_id] = embedding
+        input_embeddings.to(dtype=dtype, device=device)
 
-        # offload back
+        # 7.5 Offload the model again
         if is_model_cpu_offload:
             self.enable_model_cpu_offload()
         elif is_sequential_cpu_offload:
             self.enable_sequential_cpu_offload()
+
+        # / Unsafe Code >
 
 
 class LoraLoaderMixin:
@@ -989,7 +1170,9 @@ class LoraLoaderMixin:
     unet_name = UNET_NAME
     num_fused_loras = 0
 
-    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_lora_weights(
+        self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], adapter_name=None, **kwargs
+    ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
         `self.text_encoder`.
@@ -1009,41 +1192,38 @@ class LoraLoaderMixin:
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
         """
-        # Remove any existing hooks.
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        recurive = False
-        for _, component in self.components.items():
-            if isinstance(component, nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    recurive = is_sequential_cpu_offload
-                    remove_hook_from_module(component, recurse=recurive)
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
+        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint.")
 
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
-        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
         self.load_lora_into_unet(
-            state_dict, network_alphas=network_alphas, unet=self.unet, low_cpu_mem_usage=low_cpu_mem_usage
+            state_dict,
+            network_alphas=network_alphas,
+            unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            adapter_name=adapter_name,
+            _pipeline=self,
         )
         self.load_lora_into_text_encoder(
             state_dict,
             network_alphas=network_alphas,
-            text_encoder=self.text_encoder,
+            text_encoder=getattr(self, self.text_encoder_name)
+            if not hasattr(self, "text_encoder")
+            else self.text_encoder,
             lora_scale=self.lora_scale,
             low_cpu_mem_usage=low_cpu_mem_usage,
+            adapter_name=adapter_name,
+            _pipeline=self,
         )
-
-        # Offload back.
-        if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
 
     @classmethod
     def lora_state_dict(
@@ -1189,6 +1369,7 @@ class LoraLoaderMixin:
             state_dict = pretrained_model_name_or_path_or_dict
 
         network_alphas = None
+        # TODO: replace it with a method from `state_dict_utils`
         if all(
             (
                 k.startswith("lora_te_")
@@ -1341,7 +1522,40 @@ class LoraLoaderMixin:
         return new_state_dict
 
     @classmethod
-    def load_lora_into_unet(cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None):
+    def _optionally_disable_offloading(cls, _pipeline):
+        """
+        Optionally removes offloading in case the pipeline has been already sequentially offloaded to CPU.
+
+        Args:
+            _pipeline (`DiffusionPipeline`):
+                The pipeline to disable offloading for.
+
+        Returns:
+            tuple:
+                A tuple indicating if `is_model_cpu_offload` or `is_sequential_cpu_offload` is True.
+        """
+        is_model_cpu_offload = False
+        is_sequential_cpu_offload = False
+
+        if _pipeline is not None:
+            for _, component in _pipeline.components.items():
+                if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
+                    if not is_model_cpu_offload:
+                        is_model_cpu_offload = isinstance(component._hf_hook, CpuOffload)
+                    if not is_sequential_cpu_offload:
+                        is_sequential_cpu_offload = isinstance(component._hf_hook, AlignDevicesHook)
+
+                    logger.info(
+                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                    )
+                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+
+        return (is_model_cpu_offload, is_sequential_cpu_offload)
+
+    @classmethod
+    def load_lora_into_unet(
+        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, adapter_name=None, _pipeline=None
+    ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
 
@@ -1359,10 +1573,13 @@ class LoraLoaderMixin:
                 tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
-        # then the `state_dict` keys should have `self.unet_name` and/or `self.text_encoder_name` as
+        # then the `state_dict` keys should have `cls.unet_name` and/or `cls.text_encoder_name` as
         # their prefixes.
         keys = list(state_dict.keys())
 
@@ -1383,13 +1600,73 @@ class LoraLoaderMixin:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
             warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
-            warnings.warn(warn_message)
+            logger.warn(warn_message)
 
-        unet.load_attn_procs(state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage)
+        if USE_PEFT_BACKEND and len(state_dict.keys()) > 0:
+            from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+
+            if adapter_name in getattr(unet, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the Unet - please select a new adapter name."
+                )
+
+            state_dict = convert_unet_state_dict_to_peft(state_dict)
+
+            if network_alphas is not None:
+                # The alphas state dict have the same structure as Unet, thus we convert it to peft format using
+                # `convert_unet_state_dict_to_peft` method.
+                network_alphas = convert_unet_state_dict_to_peft(network_alphas)
+
+            rank = {}
+            for key, val in state_dict.items():
+                if "lora_B" in key:
+                    rank[key] = val.shape[1]
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
+            lora_config = LoraConfig(**lora_config_kwargs)
+
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(unet)
+
+            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
+            # otherwise loading LoRA weights will lead to an error
+            is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
+
+            inject_adapter_in_model(lora_config, unet, adapter_name=adapter_name)
+            incompatible_keys = set_peft_model_state_dict(unet, state_dict, adapter_name)
+
+            if incompatible_keys is not None:
+                # check only for unexpected keys
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                        f" {unexpected_keys}. "
+                    )
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
+
+        unet.load_attn_procs(
+            state_dict, network_alphas=network_alphas, low_cpu_mem_usage=low_cpu_mem_usage, _pipeline=_pipeline
+        )
 
     @classmethod
     def load_lora_into_text_encoder(
-        cls, state_dict, network_alphas, text_encoder, prefix=None, lora_scale=1.0, low_cpu_mem_usage=None
+        cls,
+        state_dict,
+        network_alphas,
+        text_encoder,
+        prefix=None,
+        lora_scale=1.0,
+        low_cpu_mem_usage=None,
+        adapter_name=None,
+        _pipeline=None,
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `text_encoder`
@@ -1412,6 +1689,9 @@ class LoraLoaderMixin:
                 tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
                 Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
                 argument to `True` will raise an error.
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
 
@@ -1432,55 +1712,36 @@ class LoraLoaderMixin:
             if len(text_encoder_lora_state_dict) > 0:
                 logger.info(f"Loading {prefix}.")
                 rank = {}
+                text_encoder_lora_state_dict = convert_state_dict_to_diffusers(text_encoder_lora_state_dict)
 
-                if any("to_out_lora" in k for k in text_encoder_lora_state_dict.keys()):
-                    # Convert from the old naming convention to the new naming convention.
-                    #
-                    # Previously, the old LoRA layers were stored on the state dict at the
-                    # same level as the attention block i.e.
-                    # `text_model.encoder.layers.11.self_attn.to_out_lora.up.weight`.
-                    #
-                    # This is no actual module at that point, they were monkey patched on to the
-                    # existing module. We want to be able to load them via their actual state dict.
-                    # They're in `PatchedLoraProjection.lora_linear_layer` now.
+                if USE_PEFT_BACKEND:
+                    # convert state dict
+                    text_encoder_lora_state_dict = convert_state_dict_to_peft(text_encoder_lora_state_dict)
+
                     for name, _ in text_encoder_attn_modules(text_encoder):
-                        text_encoder_lora_state_dict[
-                            f"{name}.q_proj.lora_linear_layer.up.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.up.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.k_proj.lora_linear_layer.up.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.up.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.v_proj.lora_linear_layer.up.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.up.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.out_proj.lora_linear_layer.up.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.up.weight")
+                        rank_key = f"{name}.out_proj.lora_B.weight"
+                        rank[rank_key] = text_encoder_lora_state_dict[rank_key].shape[1]
 
-                        text_encoder_lora_state_dict[
-                            f"{name}.q_proj.lora_linear_layer.down.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_q_lora.down.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.k_proj.lora_linear_layer.down.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_k_lora.down.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.v_proj.lora_linear_layer.down.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_v_lora.down.weight")
-                        text_encoder_lora_state_dict[
-                            f"{name}.out_proj.lora_linear_layer.down.weight"
-                        ] = text_encoder_lora_state_dict.pop(f"{name}.to_out_lora.down.weight")
+                    patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
+                    if patch_mlp:
+                        for name, _ in text_encoder_mlp_modules(text_encoder):
+                            rank_key_fc1 = f"{name}.fc1.lora_B.weight"
+                            rank_key_fc2 = f"{name}.fc2.lora_B.weight"
 
-                for name, _ in text_encoder_attn_modules(text_encoder):
-                    rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
-                    rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
+                            rank[rank_key_fc1] = text_encoder_lora_state_dict[rank_key_fc1].shape[1]
+                            rank[rank_key_fc2] = text_encoder_lora_state_dict[rank_key_fc2].shape[1]
+                else:
+                    for name, _ in text_encoder_attn_modules(text_encoder):
+                        rank_key = f"{name}.out_proj.lora_linear_layer.up.weight"
+                        rank.update({rank_key: text_encoder_lora_state_dict[rank_key].shape[1]})
 
-                patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
-                if patch_mlp:
-                    for name, _ in text_encoder_mlp_modules(text_encoder):
-                        rank_key_fc1 = f"{name}.fc1.lora_linear_layer.up.weight"
-                        rank_key_fc2 = f"{name}.fc2.lora_linear_layer.up.weight"
-                        rank.update({rank_key_fc1: text_encoder_lora_state_dict[rank_key_fc1].shape[1]})
-                        rank.update({rank_key_fc2: text_encoder_lora_state_dict[rank_key_fc2].shape[1]})
+                    patch_mlp = any(".mlp." in key for key in text_encoder_lora_state_dict.keys())
+                    if patch_mlp:
+                        for name, _ in text_encoder_mlp_modules(text_encoder):
+                            rank_key_fc1 = f"{name}.fc1.lora_linear_layer.up.weight"
+                            rank_key_fc2 = f"{name}.fc2.lora_linear_layer.up.weight"
+                            rank[rank_key_fc1] = text_encoder_lora_state_dict[rank_key_fc1].shape[1]
+                            rank[rank_key_fc2] = text_encoder_lora_state_dict[rank_key_fc2].shape[1]
 
                 if network_alphas is not None:
                     alpha_keys = [
@@ -1490,36 +1751,94 @@ class LoraLoaderMixin:
                         k.replace(f"{prefix}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
                     }
 
-                cls._modify_text_encoder(
-                    text_encoder,
-                    lora_scale,
-                    network_alphas,
-                    rank=rank,
-                    patch_mlp=patch_mlp,
-                    low_cpu_mem_usage=low_cpu_mem_usage,
-                )
+                if USE_PEFT_BACKEND:
+                    from peft import LoraConfig
 
-                # set correct dtype & device
-                text_encoder_lora_state_dict = {
-                    k: v.to(device=text_encoder.device, dtype=text_encoder.dtype)
-                    for k, v in text_encoder_lora_state_dict.items()
-                }
-                if low_cpu_mem_usage:
-                    device = next(iter(text_encoder_lora_state_dict.values())).device
-                    dtype = next(iter(text_encoder_lora_state_dict.values())).dtype
-                    unexpected_keys = load_model_dict_into_meta(
-                        text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype
+                    lora_config_kwargs = get_peft_kwargs(
+                        rank, network_alphas, text_encoder_lora_state_dict, is_unet=False
                     )
+
+                    lora_config = LoraConfig(**lora_config_kwargs)
+
+                    # adapter_name
+                    if adapter_name is None:
+                        adapter_name = get_adapter_name(text_encoder)
+
+                    is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
+
+                    # inject LoRA layers and load the state dict
+                    # in transformers we automatically check whether the adapter name is already in use or not
+                    text_encoder.load_adapter(
+                        adapter_name=adapter_name,
+                        adapter_state_dict=text_encoder_lora_state_dict,
+                        peft_config=lora_config,
+                    )
+
+                    # scale LoRA layers with `lora_scale`
+                    scale_lora_layers(text_encoder, weight=lora_scale)
                 else:
-                    load_state_dict_results = text_encoder.load_state_dict(text_encoder_lora_state_dict, strict=False)
-                    unexpected_keys = load_state_dict_results.unexpected_keys
-
-                if len(unexpected_keys) != 0:
-                    raise ValueError(
-                        f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
+                    cls._modify_text_encoder(
+                        text_encoder,
+                        lora_scale,
+                        network_alphas,
+                        rank=rank,
+                        patch_mlp=patch_mlp,
+                        low_cpu_mem_usage=low_cpu_mem_usage,
                     )
+
+                    is_pipeline_offloaded = _pipeline is not None and any(
+                        isinstance(c, torch.nn.Module) and hasattr(c, "_hf_hook")
+                        for c in _pipeline.components.values()
+                    )
+                    if is_pipeline_offloaded and low_cpu_mem_usage:
+                        low_cpu_mem_usage = True
+                        logger.info(
+                            f"Pipeline {_pipeline.__class__} is offloaded. Therefore low cpu mem usage loading is forced."
+                        )
+
+                    if low_cpu_mem_usage:
+                        device = next(iter(text_encoder_lora_state_dict.values())).device
+                        dtype = next(iter(text_encoder_lora_state_dict.values())).dtype
+                        unexpected_keys = load_model_dict_into_meta(
+                            text_encoder, text_encoder_lora_state_dict, device=device, dtype=dtype
+                        )
+                    else:
+                        load_state_dict_results = text_encoder.load_state_dict(
+                            text_encoder_lora_state_dict, strict=False
+                        )
+                        unexpected_keys = load_state_dict_results.unexpected_keys
+
+                    if len(unexpected_keys) != 0:
+                        raise ValueError(
+                            f"failed to load text encoder state dict, unexpected keys: {load_state_dict_results.unexpected_keys}"
+                        )
+
+                    # <Unsafe code
+                    # We can be sure that the following works as all we do is change the dtype and device of the text encoder
+                    # Now we remove any existing hooks to
+                    is_model_cpu_offload = False
+                    is_sequential_cpu_offload = False
+                    if _pipeline is not None:
+                        for _, component in _pipeline.components.items():
+                            if isinstance(component, torch.nn.Module):
+                                if hasattr(component, "_hf_hook"):
+                                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
+                                    is_sequential_cpu_offload = isinstance(
+                                        getattr(component, "_hf_hook"), AlignDevicesHook
+                                    )
+                                    logger.info(
+                                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
+                                    )
+                                    remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
                 text_encoder.to(device=text_encoder.device, dtype=text_encoder.dtype)
+
+                # Offload back.
+                if is_model_cpu_offload:
+                    _pipeline.enable_model_cpu_offload()
+                elif is_sequential_cpu_offload:
+                    _pipeline.enable_sequential_cpu_offload()
+                # Unsafe code />
 
     @property
     def lora_scale(self) -> float:
@@ -1528,10 +1847,29 @@ class LoraLoaderMixin:
         return self._lora_scale if hasattr(self, "_lora_scale") else 1.0
 
     def _remove_text_encoder_monkey_patch(self):
-        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+        if USE_PEFT_BACKEND:
+            remove_method = recurse_remove_peft_layers
+        else:
+            remove_method = self._remove_text_encoder_monkey_patch_classmethod
+
+        if hasattr(self, "text_encoder"):
+            remove_method(self.text_encoder)
+
+            # In case text encoder have no Lora attached
+            if USE_PEFT_BACKEND and getattr(self.text_encoder, "peft_config", None) is not None:
+                del self.text_encoder.peft_config
+                self.text_encoder._hf_peft_config_loaded = None
+        if hasattr(self, "text_encoder_2"):
+            remove_method(self.text_encoder_2)
+            if USE_PEFT_BACKEND:
+                del self.text_encoder_2.peft_config
+                self.text_encoder_2._hf_peft_config_loaded = None
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
+        if version.parse(__version__) > version.parse("0.23"):
+            deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.25", LORA_DEPRECATION_MESSAGE)
+
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
                 attn_module.q_proj.lora_linear_layer = None
@@ -1558,6 +1896,8 @@ class LoraLoaderMixin:
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
+        if version.parse(__version__) > version.parse("0.23"):
+            deprecate("_modify_text_encoder", "0.25", LORA_DEPRECATION_MESSAGE)
 
         def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
             linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
@@ -1623,7 +1963,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def save_lora_weights(
-        self,
+        cls,
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
@@ -1663,7 +2003,7 @@ class LoraLoaderMixin:
                 unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
             )
 
-            unet_lora_state_dict = {f"{self.unet_name}.{module_name}": param for module_name, param in weights.items()}
+            unet_lora_state_dict = {f"{cls.unet_name}.{module_name}": param for module_name, param in weights.items()}
             state_dict.update(unet_lora_state_dict)
 
         if text_encoder_lora_layers is not None:
@@ -1674,12 +2014,12 @@ class LoraLoaderMixin:
             )
 
             text_encoder_lora_state_dict = {
-                f"{self.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
+                f"{cls.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
             }
             state_dict.update(text_encoder_lora_state_dict)
 
         # Save the model
-        self.write_lora_layers(
+        cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
             is_main_process=is_main_process,
@@ -1688,6 +2028,7 @@ class LoraLoaderMixin:
             safe_serialization=safe_serialization,
         )
 
+    @staticmethod
     def write_lora_layers(
         state_dict: Dict[str, torch.Tensor],
         save_directory: str,
@@ -1761,7 +2102,7 @@ class LoraLoaderMixin:
                 diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
 
                 # SDXL specificity.
-                if "emb" in diffusers_name:
+                if "emb" in diffusers_name and "time.emb.proj" not in diffusers_name:
                     pattern = r"\.\d+(?=\D*$)"
                     diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
                 if ".in." in diffusers_name:
@@ -1773,6 +2114,13 @@ class LoraLoaderMixin:
                 if "skip" in diffusers_name:
                     diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
 
+                # LyCORIS specificity.
+                if "time.emb.proj" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("time.emb.proj", "time_emb_proj")
+                if "conv.shortcut" in diffusers_name:
+                    diffusers_name = diffusers_name.replace("conv.shortcut", "conv_shortcut")
+
+                # General coverage.
                 if "transformer_blocks" in diffusers_name:
                     if "attn1" in diffusers_name or "attn2" in diffusers_name:
                         diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
@@ -1890,14 +2238,31 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        for _, module in self.unet.named_modules():
-            if hasattr(module, "set_lora_layer"):
-                module.set_lora_layer(None)
+        if not USE_PEFT_BACKEND:
+            if version.parse(__version__) > version.parse("0.23"):
+                logger.warn(
+                    "You are using `unload_lora_weights` to disable and unload lora weights. If you want to iteratively enable and disable adapter weights,"
+                    "you can use `pipe.enable_lora()` or `pipe.disable_lora()`. After installing the latest version of PEFT."
+                )
+
+            for _, module in self.unet.named_modules():
+                if hasattr(module, "set_lora_layer"):
+                    module.set_lora_layer(None)
+        else:
+            recurse_remove_peft_layers(self.unet)
+            if hasattr(self.unet, "peft_config"):
+                del self.unet.peft_config
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
 
-    def fuse_lora(self, fuse_unet: bool = True, fuse_text_encoder: bool = True, lora_scale: float = 1.0):
+    def fuse_lora(
+        self,
+        fuse_unet: bool = True,
+        fuse_text_encoder: bool = True,
+        lora_scale: float = 1.0,
+        safe_fusing: bool = False,
+    ):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
 
@@ -1914,6 +2279,8 @@ class LoraLoaderMixin:
                 LoRA parameters then it won't have any effect.
             lora_scale (`float`, defaults to 1.0):
                 Controls how much to influence the outputs with the LoRA parameters.
+            safe_fusing (`bool`, defaults to `False`):
+                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
         """
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
@@ -1923,26 +2290,42 @@ class LoraLoaderMixin:
                 )
 
         if fuse_unet:
-            self.unet.fuse_lora(lora_scale)
+            self.unet.fuse_lora(lora_scale, safe_fusing=safe_fusing)
 
-        def fuse_text_encoder_lora(text_encoder):
-            for _, attn_module in text_encoder_attn_modules(text_encoder):
-                if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                    attn_module.q_proj._fuse_lora(lora_scale)
-                    attn_module.k_proj._fuse_lora(lora_scale)
-                    attn_module.v_proj._fuse_lora(lora_scale)
-                    attn_module.out_proj._fuse_lora(lora_scale)
+        if USE_PEFT_BACKEND:
+            from peft.tuners.tuners_utils import BaseTunerLayer
 
-            for _, mlp_module in text_encoder_mlp_modules(text_encoder):
-                if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                    mlp_module.fc1._fuse_lora(lora_scale)
-                    mlp_module.fc2._fuse_lora(lora_scale)
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
+                # TODO(Patrick, Younes): enable "safe" fusing
+                for module in text_encoder.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        if lora_scale != 1.0:
+                            module.scale_layer(lora_scale)
+
+                        module.merge()
+
+        else:
+            if version.parse(__version__) > version.parse("0.23"):
+                deprecate("fuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
+
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
+                for _, attn_module in text_encoder_attn_modules(text_encoder):
+                    if isinstance(attn_module.q_proj, PatchedLoraProjection):
+                        attn_module.q_proj._fuse_lora(lora_scale, safe_fusing)
+                        attn_module.k_proj._fuse_lora(lora_scale, safe_fusing)
+                        attn_module.v_proj._fuse_lora(lora_scale, safe_fusing)
+                        attn_module.out_proj._fuse_lora(lora_scale, safe_fusing)
+
+                for _, mlp_module in text_encoder_mlp_modules(text_encoder):
+                    if isinstance(mlp_module.fc1, PatchedLoraProjection):
+                        mlp_module.fc1._fuse_lora(lora_scale, safe_fusing)
+                        mlp_module.fc2._fuse_lora(lora_scale, safe_fusing)
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
-                fuse_text_encoder_lora(self.text_encoder)
+                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing)
             if hasattr(self, "text_encoder_2"):
-                fuse_text_encoder_lora(self.text_encoder_2)
+                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing)
 
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
@@ -1962,20 +2345,39 @@ class LoraLoaderMixin:
                 LoRA parameters then it won't have any effect.
         """
         if unfuse_unet:
-            self.unet.unfuse_lora()
+            if not USE_PEFT_BACKEND:
+                self.unet.unfuse_lora()
+            else:
+                from peft.tuners.tuners_utils import BaseTunerLayer
 
-        def unfuse_text_encoder_lora(text_encoder):
-            for _, attn_module in text_encoder_attn_modules(text_encoder):
-                if isinstance(attn_module.q_proj, PatchedLoraProjection):
-                    attn_module.q_proj._unfuse_lora()
-                    attn_module.k_proj._unfuse_lora()
-                    attn_module.v_proj._unfuse_lora()
-                    attn_module.out_proj._unfuse_lora()
+                for module in self.unet.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        module.unmerge()
 
-            for _, mlp_module in text_encoder_mlp_modules(text_encoder):
-                if isinstance(mlp_module.fc1, PatchedLoraProjection):
-                    mlp_module.fc1._unfuse_lora()
-                    mlp_module.fc2._unfuse_lora()
+        if USE_PEFT_BACKEND:
+            from peft.tuners.tuners_utils import BaseTunerLayer
+
+            def unfuse_text_encoder_lora(text_encoder):
+                for module in text_encoder.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        module.unmerge()
+
+        else:
+            if version.parse(__version__) > version.parse("0.23"):
+                deprecate("unfuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
+
+            def unfuse_text_encoder_lora(text_encoder):
+                for _, attn_module in text_encoder_attn_modules(text_encoder):
+                    if isinstance(attn_module.q_proj, PatchedLoraProjection):
+                        attn_module.q_proj._unfuse_lora()
+                        attn_module.k_proj._unfuse_lora()
+                        attn_module.v_proj._unfuse_lora()
+                        attn_module.out_proj._unfuse_lora()
+
+                for _, mlp_module in text_encoder_mlp_modules(text_encoder):
+                    if isinstance(mlp_module.fc1, PatchedLoraProjection):
+                        mlp_module.fc1._unfuse_lora()
+                        mlp_module.fc2._unfuse_lora()
 
         if unfuse_text_encoder:
             if hasattr(self, "text_encoder"):
@@ -1984,6 +2386,214 @@ class LoraLoaderMixin:
                 unfuse_text_encoder_lora(self.text_encoder_2)
 
         self.num_fused_loras -= 1
+
+    def set_adapters_for_text_encoder(
+        self,
+        adapter_names: Union[List[str], str],
+        text_encoder: Optional[PreTrainedModel] = None,
+        text_encoder_weights: List[float] = None,
+    ):
+        """
+        Sets the adapter layers for the text encoder.
+
+        Args:
+            adapter_names (`List[str]` or `str`):
+                The names of the adapters to use.
+            text_encoder (`torch.nn.Module`, *optional*):
+                The text encoder module to set the adapter layers for. If `None`, it will try to get the `text_encoder`
+                attribute.
+            text_encoder_weights (`List[float]`, *optional*):
+                The weights to use for the text encoder. If `None`, the weights are set to `1.0` for all the adapters.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        def process_weights(adapter_names, weights):
+            if weights is None:
+                weights = [1.0] * len(adapter_names)
+            elif isinstance(weights, float):
+                weights = [weights]
+
+            if len(adapter_names) != len(weights):
+                raise ValueError(
+                    f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
+                )
+            return weights
+
+        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+        text_encoder_weights = process_weights(adapter_names, text_encoder_weights)
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
+        if text_encoder is None:
+            raise ValueError(
+                "The pipeline does not have a default `pipe.text_encoder` class. Please make sure to pass a `text_encoder` instead."
+            )
+        set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
+
+    def disable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
+        """
+        Disables the LoRA layers for the text encoder.
+
+        Args:
+            text_encoder (`torch.nn.Module`, *optional*):
+                The text encoder module to disable the LoRA layers for. If `None`, it will try to get the
+                `text_encoder` attribute.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
+        if text_encoder is None:
+            raise ValueError("Text Encoder not found.")
+        set_adapter_layers(text_encoder, enabled=False)
+
+    def enable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
+        """
+        Enables the LoRA layers for the text encoder.
+
+        Args:
+            text_encoder (`torch.nn.Module`, *optional*):
+                The text encoder module to enable the LoRA layers for. If `None`, it will try to get the `text_encoder`
+                attribute.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
+        if text_encoder is None:
+            raise ValueError("Text Encoder not found.")
+        set_adapter_layers(self.text_encoder, enabled=True)
+
+    def set_adapters(
+        self,
+        adapter_names: Union[List[str], str],
+        adapter_weights: Optional[List[float]] = None,
+    ):
+        # Handle the UNET
+        self.unet.set_adapters(adapter_names, adapter_weights)
+
+        # Handle the Text Encoder
+        if hasattr(self, "text_encoder"):
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, adapter_weights)
+        if hasattr(self, "text_encoder_2"):
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, adapter_weights)
+
+    def disable_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        # Disable unet adapters
+        self.unet.disable_lora()
+
+        # Disable text encoder adapters
+        if hasattr(self, "text_encoder"):
+            self.disable_lora_for_text_encoder(self.text_encoder)
+        if hasattr(self, "text_encoder_2"):
+            self.disable_lora_for_text_encoder(self.text_encoder_2)
+
+    def enable_lora(self):
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        # Enable unet adapters
+        self.unet.enable_lora()
+
+        # Enable text encoder adapters
+        if hasattr(self, "text_encoder"):
+            self.enable_lora_for_text_encoder(self.text_encoder)
+        if hasattr(self, "text_encoder_2"):
+            self.enable_lora_for_text_encoder(self.text_encoder_2)
+
+    def get_active_adapters(self) -> List[str]:
+        """
+        Gets the list of the current active adapters.
+
+        Example:
+
+        ```python
+        from diffusers import DiffusionPipeline
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+        ).to("cuda")
+        pipeline.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
+        pipeline.get_active_adapters()
+        ```
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError(
+                "PEFT backend is required for this method. Please install the latest version of PEFT `pip install -U peft`"
+            )
+
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        active_adapters = []
+
+        for module in self.unet.modules():
+            if isinstance(module, BaseTunerLayer):
+                active_adapters = module.active_adapters
+                break
+
+        return active_adapters
+
+    def get_list_adapters(self) -> Dict[str, List[str]]:
+        """
+        Gets the current list of all available adapters in the pipeline.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError(
+                "PEFT backend is required for this method. Please install the latest version of PEFT `pip install -U peft`"
+            )
+
+        set_adapters = {}
+
+        if hasattr(self, "text_encoder") and hasattr(self.text_encoder, "peft_config"):
+            set_adapters["text_encoder"] = list(self.text_encoder.peft_config.keys())
+
+        if hasattr(self, "text_encoder_2") and hasattr(self.text_encoder_2, "peft_config"):
+            set_adapters["text_encoder_2"] = list(self.text_encoder_2.peft_config.keys())
+
+        if hasattr(self, "unet") and hasattr(self.unet, "peft_config"):
+            set_adapters["unet"] = list(self.unet.peft_config.keys())
+
+        return set_adapters
+
+    def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
+        """
+        Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
+        you want to load multiple adapters and free some GPU memory.
+
+        Args:
+            adapter_names (`List[str]`):
+                List of adapters to send device to.
+            device (`Union[torch.device, str, int]`):
+                Device to send the adapters to. Can be either a torch device, a str or an integer.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for this method.")
+
+        from peft.tuners.tuners_utils import BaseTunerLayer
+
+        # Handle the UNET
+        for unet_module in self.unet.modules():
+            if isinstance(unet_module, BaseTunerLayer):
+                for adapter_name in adapter_names:
+                    unet_module.lora_A[adapter_name].to(device)
+                    unet_module.lora_B[adapter_name].to(device)
+
+        # Handle the text encoder
+        modules_to_process = []
+        if hasattr(self, "text_encoder"):
+            modules_to_process.append(self.text_encoder)
+
+        if hasattr(self, "text_encoder_2"):
+            modules_to_process.append(self.text_encoder_2)
+
+        for text_encoder in modules_to_process:
+            # loop over submodules
+            for text_encoder_module in text_encoder.modules():
+                if isinstance(text_encoder_module, BaseTunerLayer):
+                    for adapter_name in adapter_names:
+                        text_encoder_module.lora_A[adapter_name].to(device)
+                        text_encoder_module.lora_B[adapter_name].to(device)
 
 
 class FromSingleFileMixin:
@@ -2099,6 +2709,7 @@ class FromSingleFileMixin:
         from .pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
         original_config_file = kwargs.pop("original_config_file", None)
+        config_files = kwargs.pop("config_files", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
@@ -2141,8 +2752,12 @@ class FromSingleFileMixin:
             from .models.controlnet import ControlNetModel
             from .pipelines.controlnet.multicontrolnet import MultiControlNetModel
 
-            # Model type will be inferred from the checkpoint.
-            if not isinstance(controlnet, (ControlNetModel, MultiControlNetModel)):
+            #  list/tuple or a single instance of ControlNetModel or MultiControlNetModel
+            if not (
+                isinstance(controlnet, (ControlNetModel, MultiControlNetModel))
+                or isinstance(controlnet, (list, tuple))
+                and isinstance(controlnet[0], ControlNetModel)
+            ):
                 raise ValueError("ControlNet needs to be passed if loading from ControlNet pipeline.")
         elif "StableDiffusion" in pipeline_name:
             # Model type will be inferred from the checkpoint.
@@ -2216,6 +2831,8 @@ class FromSingleFileMixin:
             vae=vae,
             tokenizer=tokenizer,
             original_config_file=original_config_file,
+            config_files=config_files,
+            local_files_only=local_files_only,
         )
 
         if torch_dtype is not None:
@@ -2563,7 +3180,12 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
     """This class overrides `LoraLoaderMixin` with LoRA loading/saving code that's specific to SDXL"""
 
     # Overrride to properly handle the loading and unloading of the additional text encoder.
-    def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_lora_weights(
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        adapter_name: Optional[str] = None,
+        **kwargs,
+    ):
         """
         Load LoRA weights specified in `pretrained_model_name_or_path_or_dict` into `self.unet` and
         `self.text_encoder`.
@@ -2581,6 +3203,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
@@ -2588,32 +3213,19 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.
 
-        # Remove any existing hooks.
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate.hooks import AlignDevicesHook, CpuOffload, remove_hook_from_module
-        else:
-            raise ImportError("Offloading requires `accelerate v0.17.0` or higher.")
-
-        is_model_cpu_offload = False
-        is_sequential_cpu_offload = False
-        recursive = False
-        for _, component in self.components.items():
-            if isinstance(component, torch.nn.Module):
-                if hasattr(component, "_hf_hook"):
-                    is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                    is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
-                    logger.info(
-                        "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
-                    )
-                    recursive = is_sequential_cpu_offload
-                    remove_hook_from_module(component, recurse=recursive)
+        # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(
             pretrained_model_name_or_path_or_dict,
             unet_config=self.unet.config,
             **kwargs,
         )
-        self.load_lora_into_unet(state_dict, network_alphas=network_alphas, unet=self.unet)
+        is_correct_format = all("lora" in key for key in state_dict.keys())
+        if not is_correct_format:
+            raise ValueError("Invalid LoRA checkpoint.")
 
+        self.load_lora_into_unet(
+            state_dict, network_alphas=network_alphas, unet=self.unet, adapter_name=adapter_name, _pipeline=self
+        )
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:
             self.load_lora_into_text_encoder(
@@ -2622,6 +3234,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder,
                 prefix="text_encoder",
                 lora_scale=self.lora_scale,
+                adapter_name=adapter_name,
+                _pipeline=self,
             )
 
         text_encoder_2_state_dict = {k: v for k, v in state_dict.items() if "text_encoder_2." in k}
@@ -2632,17 +3246,13 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 text_encoder=self.text_encoder_2,
                 prefix="text_encoder_2",
                 lora_scale=self.lora_scale,
+                adapter_name=adapter_name,
+                _pipeline=self,
             )
-
-        # Offload back.
-        if is_model_cpu_offload:
-            self.enable_model_cpu_offload()
-        elif is_sequential_cpu_offload:
-            self.enable_sequential_cpu_offload()
 
     @classmethod
     def save_lora_weights(
-        self,
+        cls,
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
@@ -2693,7 +3303,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
             state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
-        self.write_lora_layers(
+        cls.write_lora_layers(
             state_dict=state_dict,
             save_directory=save_directory,
             is_main_process=is_main_process,
@@ -2703,5 +3313,17 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         )
 
     def _remove_text_encoder_monkey_patch(self):
-        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
-        self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)
+        if USE_PEFT_BACKEND:
+            recurse_remove_peft_layers(self.text_encoder)
+            # TODO: @younesbelkada handle this in transformers side
+            if getattr(self.text_encoder, "peft_config", None) is not None:
+                del self.text_encoder.peft_config
+                self.text_encoder._hf_peft_config_loaded = None
+
+            recurse_remove_peft_layers(self.text_encoder_2)
+            if getattr(self.text_encoder_2, "peft_config", None) is not None:
+                del self.text_encoder_2.peft_config
+                self.text_encoder_2._hf_peft_config_loaded = None
+        else:
+            self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
+            self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)

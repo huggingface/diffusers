@@ -7,7 +7,7 @@ import warnings
 from typing import List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator

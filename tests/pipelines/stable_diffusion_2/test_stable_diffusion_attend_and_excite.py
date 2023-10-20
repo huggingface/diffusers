@@ -28,10 +28,10 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     load_numpy,
+    nightly,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     skip_mps,
-    slow,
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -187,7 +187,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
 
 
 @require_torch_gpu
-@slow
+@nightly
 class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
     # Attend and excite requires being able to run a backward pass at
     # inference time. There's no deterministic backward operator for pad

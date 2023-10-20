@@ -2,7 +2,7 @@ import inspect
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.utils.checkpoint
 
