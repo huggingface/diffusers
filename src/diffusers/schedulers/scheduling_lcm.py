@@ -337,7 +337,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]  # LCM Inference Steps Schedule
 
-        self.timesteps = torch.from_numpy(timesteps.copy()).to(device)
+        self.timesteps = torch.from_numpy(timesteps.copy()).to(device=device, dtype=torch.long)
 
         self._step_index = None
 

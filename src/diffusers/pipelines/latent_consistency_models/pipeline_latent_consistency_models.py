@@ -644,13 +644,12 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                ts = torch.full((bs,), t, device=device, dtype=torch.long)
                 latents = latents.to(prompt_embeds.dtype)
 
                 # model prediction (v-prediction, eps, x)
                 model_pred = self.unet(
                     latents,
-                    ts,
+                    t,
                     timestep_cond=w_embedding,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
