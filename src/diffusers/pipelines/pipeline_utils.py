@@ -338,12 +338,11 @@ def _get_pipeline_class(
             file_name = path.name
             custom_pipeline = path.parent.absolute()
         elif hub_repo_id is not None:
-            custom_pipeline = hub_repo_id
             file_name = f"{custom_pipeline}.py"
+            custom_pipeline = hub_repo_id
         else:
             file_name = CUSTOM_PIPELINE_FILE_NAME
 
-        
         return get_class_from_dynamic_module(
             custom_pipeline, module_file=file_name, class_name=class_name, hub_repo_id=hub_repo_id, cache_dir=cache_dir, revision=revision if hub_revision is None else hub_revision
         )
@@ -1691,7 +1690,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 CUSTOM_PIPELINE_FILE_NAME,
             ]
 
-            load_pipe_from_hub = custom_pipeline is not None and "{custom_pipeline}.py" in model_filenames
+            load_pipe_from_hub = custom_pipeline is not None and f"{custom_pipeline}.py" in filenames
             load_components_from_hub = len(custom_components) > 0
 
             if load_pipe_from_hub and not trust_remote_code:
@@ -1813,7 +1812,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # retrieve pipeline class from local file
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
-            cls_name = cls_name[4:] if cls_name.startswith("Flax") else cls_name
+            cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
 
             pipeline_class = getattr(diffusers, cls_name, None)
 
