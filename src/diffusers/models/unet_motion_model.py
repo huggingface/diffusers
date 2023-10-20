@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -19,7 +18,7 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, logging
+from ..utils import logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -43,19 +42,6 @@ from .unet_motion_blocks import (
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-@dataclass
-class UNet2DConditionOutput(BaseOutput):
-    """
-    The output of [`UNet2DConditionModel`].
-
-    Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
-            The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
-    """
-
-    sample: torch.FloatTensor = None
 
 
 class UNetMotionModel(ModelMixin, ConfigMixin):
@@ -648,7 +634,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        num_frames = sample.shape[2]
+        batch, channels, num_frames, height, width = sample.shape
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
@@ -663,7 +649,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
         # 2. pre-process
-        sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
+        sample = sample.permute(0, 2, 1, 3, 4).reshape((batch * num_frames, channels, height, width))
         sample = self.conv_in(sample)
 
         # 3. down
@@ -676,6 +662,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
+                    num_frames=num_frames,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb, num_frames=num_frames)
