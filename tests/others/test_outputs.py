@@ -83,9 +83,7 @@ class ConfigTester(unittest.TestCase):
         self.assertFalse(torch.utils._pytree._is_leaf(x))
 
         expected_flat_outs = [data]
-        expected_tree_spec = torch.utils._pytree.TreeSpec(
-            CustomOutput, ["images"], [torch.utils._pytree.LeafSpec()]
-        )
+        expected_tree_spec = torch.utils._pytree.TreeSpec(CustomOutput, ["images"], [torch.utils._pytree.LeafSpec()])
 
         actual_flat_outs, actual_tree_spec = torch.utils._pytree.tree_flatten(x)
         self.assertEqual(expected_flat_outs, actual_flat_outs)
