@@ -40,7 +40,15 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 [[autodoc]] StableDiffusionXLControlNetPipeline
 	- all
 	- __call__
+## StableDiffusionXLControlNetImg2ImgPipeline
+[[autodoc]] StableDiffusionXLControlNetImg2ImgPipeline
+	- all
+	- __call__
 
+## StableDiffusionXLControlNetInpaintPipeline
+[[autodoc]] StableDiffusionXLControlNetInpaintPipeline
+	- all
+	- __call__
 ## StableDiffusionPipelineOutput
 
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
