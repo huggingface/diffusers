@@ -625,6 +625,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
             width,
             prompt_embeds.dtype,
             device,
+            generator,
             latents,
         )
         bs = batch_size * num_images_per_prompt
