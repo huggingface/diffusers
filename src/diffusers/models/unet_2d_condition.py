@@ -1100,10 +1100,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     encoder_attention_mask=encoder_attention_mask,
                 )
             else:
-                sample = self.mid_block(
-                    sample,
-                    emb,
-                )
+                sample = self.mid_block(sample, emb)
 
             # To support T2I-Adapter-XL
             if (
