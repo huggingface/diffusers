@@ -45,9 +45,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import MotionAdapter, AnimatedDiffPipeline
         >>> from diffusers.utils import export_to_video
 
-        >>> pipe = TextToVideoSDPipeline.from_pretrained(
-        ...     "damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16"
-        ... )
+        >>> pipe = AnimateDiffPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", motion_adapter=adapter)
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "Spiderman is surfing"
@@ -59,21 +57,27 @@ EXAMPLE_DOC_STRING = """
 
 
 def tensor2vid(video: torch.Tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) -> List[np.ndarray]:
-    # This code is copied from https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-    # reshape to ncfhw
-    mean = torch.tensor(mean, device=video.device).reshape(1, -1, 1, 1, 1)
-    std = torch.tensor(std, device=video.device).reshape(1, -1, 1, 1, 1)
+    # Based on:
+    # https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
+
+    device = video.device
+
+    mean = torch.tensor(mean).reshape(1, -1, 1, 1, 1).to(device)
+    std = torch.tensor(std).reshape(1, -1, 1, 1, 1).to(device)
+
     # unnormalize back to [0,1]
     video = video.mul_(std).add_(mean)
     video.clamp_(0, 1)
-    # prepare the final outputs
-    i, c, f, h, w = video.shape
-    images = video.permute(2, 3, 0, 4, 1).reshape(
-        f, h, i * w, c
-    )  # 1st (frames, h, batch_size, w, c) 2nd (frames, h, batch_size * w, c)
-    images = images.unbind(dim=0)  # prepare a list of indvidual (consecutive frames)
-    images = [(image.cpu().numpy() * 255).astype("uint8") for image in images]  # f h w c
-    return images
+
+    batch_size, channels, num_frames, height, width = video.shape
+    outputs = []
+    for batch_idx in range(batch_size):
+        batch_vid = video[batch_idx].permute(1, 2, 3, 0)
+        images = batch_vid.unbind(dim=0)
+        batch_output = [(image.cpu().numpy() * 255).astype("uint8") for image in images]
+        outputs.append(batch_output)
+
+    return outputs
 
 
 @dataclass
@@ -314,29 +318,19 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
         return prompt_embeds, negative_prompt_embeds
 
     def decode_latents(self, latents):
-        latents = 1 / self.vae.config.scaling_factor * latents
-
         batch_size, channels, num_frames, height, width = latents.shape
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
+        latents = latents / self.vae.config.scaling_factor
 
         output_frames = []
+
+        # decode frame by frame to avoid OOM
         for frame_idx in range(latents.shape[0]):
-            output_frames.append(self.vae.decode(latents[frame_idx].unsqueeze(0)).sample)
+            frame = self.vae.decode(latents[frame_idx].unsqueeze(0), return_dict=False)[0]
+            output_frames.append(frame)
 
         output = torch.cat(output_frames)
-        video = (
-            output[None, :]
-            .reshape(
-                (
-                    batch_size,
-                    num_frames,
-                    -1,
-                )
-                + output.shape[2:]
-            )
-            .permute(0, 2, 1, 3, 4)
-        )
-        video = (video / 2 + 0.5).clamp(0, 1)
+        video = output[None, :].permute(0, 2, 1, 3, 4)
         video = video.float()
 
         return video
@@ -657,11 +651,11 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
-        # Post-processing
-        video_tensor = self.decode_latents(latents)
-
         if output_type == "latent":
             return AnimateDiffPipelineOutput(frames=latents)
+
+        # Post-processing
+        video_tensor = self.decode_latents(latents)
 
         if output_type == "pt":
             video = video_tensor
