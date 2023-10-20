@@ -503,7 +503,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         height: Optional[int] = 768,
         width: Optional[int] = 768,
         num_inference_steps: int = 4,
-        guidance_scale: float = 7.5,
+        guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -533,6 +533,9 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
+                Note that the original latent consistency models paper uses a different CFG formulation where the
+                guidance scales are decreased by 1 (so in the paper formulation CFG is enabled when
+                `guidance_scale > 0`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -590,7 +593,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        # do_classifier_free_guidance = guidance_scale > 0.0  # In LCM Implementation:  cfg_noise = noise_cond + cfg_scale * (noise_cond - noise_uncond) , (cfg_scale > 0.0 using CFG)
+        # do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
         lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
@@ -628,7 +631,10 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         bs = batch_size * num_images_per_prompt
 
         # 6. Get Guidance Scale Embedding
-        w = torch.tensor(guidance_scale).repeat(bs)
+        # NOTE: We use the Imagen CFG formulation that StableDiffusionPipeline uses rather than the original LCM paper
+        # CFG formulation, so we need to subtract 1 from the input guidance_scale.
+        # LCM CFG formulation:  cfg_noise = noise_cond + cfg_scale * (noise_cond - noise_uncond), (cfg_scale > 0.0 using CFG)
+        w = torch.tensor(guidance_scale - 1).repeat(bs)
         w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=256).to(device=device, dtype=latents.dtype)
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
