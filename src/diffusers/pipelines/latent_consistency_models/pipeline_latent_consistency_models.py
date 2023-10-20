@@ -467,11 +467,11 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
     # Currently StableDiffusionPipeline.check_inputs with negative prompt stuff removed
     def check_inputs(
         self,
-        prompt,
-        height,
-        width,
-        callback_steps,
-        prompt_embeds=None,
+        prompt: Union[str, List[str]],
+        height: Optional[int],
+        width: Optional[int],
+        callback_steps: int,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
