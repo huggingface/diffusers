@@ -324,7 +324,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     if "disable_self_attentions" in unet_params:
         config["only_cross_attention"] = unet_params.disable_self_attentions
 
-    if "num_classes" in unet_params and type(unet_params.num_classes) == int:
+    if "num_classes" in unet_params and isinstance(unet_params.num_classes, int):
         config["num_class_embeds"] = unet_params.num_classes
 
     if controlnet:
