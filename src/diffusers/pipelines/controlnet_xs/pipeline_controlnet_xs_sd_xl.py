@@ -735,7 +735,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                #added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 # predict the noise residual
                 noise_pred = self.controlnet(
@@ -746,7 +746,8 @@ class StableDiffusionXLControlNetXSPipeline(
                     hint=image, # todo: better naming
                     #cross_attention_kwargs=cross_attention_kwargs,
                     #return_dict=False,
-                )[0]
+                    added_cond_kwargs=added_cond_kwargs,
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:

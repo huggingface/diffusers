@@ -279,7 +279,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         y=c.get("vector", None)
 
         if no_control or self.no_control:
-            return self.base_model(x, timesteps, encoder_hidden_states, added_cond_kwargs={}, **kwargs)
+            return self.base_model(x, timesteps, encoder_hidden_states, **kwargs)
 
         # time embeddings
         timesteps = timesteps[None]
@@ -349,7 +349,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales) # add info from ctrl encoder 
             h_base = torch.cat([h_base, hs_base.pop()], dim=1) # concat info from base encoder+ctrl encoder
             h_base = m_base(h_base, temb, cemb, context)
-        return self.base_model.conv_out(h_base)
+        return UNet2DConditionOutput(sample=self.base_model.conv_out(h_base))
 
     def make_zero_conv(self, in_channels, out_channels=None):
         # keep running track # todo: better comment
