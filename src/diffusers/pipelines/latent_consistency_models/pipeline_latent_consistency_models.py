@@ -595,11 +595,14 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         # 3. Encode input prompt
         lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
 
+        # NOTE: when a LCM is distilled from an LDM via latent consistency distillation (Algorithm 1) with guided
+        # distillation, the forward pass of the LCM learns to approximate sampling from the LDM using CFG with the
+        # unconditional prompt "" (the empty string). Due to this, LCMs currently do not support negative prompts.
         prompt_embeds, _ = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
-            False,  # Don't need to get negative prompts due to LCM guided distillation
+            False,
             negative_prompt=None,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=None,
