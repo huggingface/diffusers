@@ -192,7 +192,7 @@ class FlaxModelMixin(PushToHubMixin):
         ```"""
         return self._cast_floating_to(params, jnp.float16, mask)
 
-    def init_weights(self, rng: jax.random.KeyArray) -> Dict:
+    def init_weights(self, rng: jax.Array) -> Dict:
         raise NotImplementedError(f"init_weights method has to be implemented for {self}")
 
     @classmethod
