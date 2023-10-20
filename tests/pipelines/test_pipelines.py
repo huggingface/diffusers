@@ -863,16 +863,17 @@ class CustomPipelineTests(unittest.TestCase):
         assert output_str == "This is a test"
 
     def test_remote_components(self):
-
         # make sure that trust remote code has to be passed
         with self.assertRaises(ValueError):
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-components")
 
         # Check that only loading custom componets "my_unet", "my_scheduler" works
-        pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-components", trust_remote_code=True)
+        pipeline = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-sdxl-custom-components", trust_remote_code=True
+        )
 
-        assert pipeline.config.unet == ('diffusers_modules.local.my_unet_model', 'MyUNetModel')
-        assert pipeline.config.scheduler == ('diffusers_modules.local.my_scheduler', 'MyScheduler')
+        assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+        assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
         assert pipeline.__class__.__name__ == "StableDiffusionXLPipeline"
 
         pipeline = pipeline.to(torch_device)
@@ -881,10 +882,12 @@ class CustomPipelineTests(unittest.TestCase):
         assert images.shape == (1, 64, 64, 3)
 
         # Check that only loading custom componets "my_unet", "my_scheduler" and explicit custom pipeline works
-        pipeline = DiffusionPipeline.from_pretrained("/home/patrick/tiny-stable-diffusion-xl-pipe", custom_pipeline="my_pipeline")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "/home/patrick/tiny-stable-diffusion-xl-pipe", custom_pipeline="my_pipeline"
+        )
 
-        assert pipeline.config.unet == ('diffusers_modules.local.my_unet_model', 'MyUNetModel')
-        assert pipeline.config.scheduler == ('diffusers_modules.local.my_scheduler', 'MyScheduler')
+        assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+        assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
         assert pipeline.__class__.__name__ == "MyPipeline"
 
         pipeline = pipeline.to(torch_device)
@@ -898,11 +901,12 @@ class CustomPipelineTests(unittest.TestCase):
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-all")
 
         # Check that only loading custom componets "my_unet", "my_scheduler" and auto custom pipeline works
-        pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-all", trust_remote_code=True)
+        pipeline = DiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-sdxl-custom-all", trust_remote_code=True
+        )
 
-
-        assert pipeline.config.unet == ('diffusers_modules.local.my_unet_model', 'MyUNetModel')
-        assert pipeline.config.scheduler == ('diffusers_modules.local.my_scheduler', 'MyScheduler')
+        assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
+        assert pipeline.config.scheduler == ("diffusers_modules.local.my_scheduler", "MyScheduler")
         assert pipeline.__class__.__name__ == "MyPipeline"
 
         pipeline = pipeline.to(torch_device)

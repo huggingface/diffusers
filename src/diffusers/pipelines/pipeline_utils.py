@@ -305,7 +305,9 @@ def maybe_raise_or_warn(
         )
 
 
-def get_class_obj_and_candidates(library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None):
+def get_class_obj_and_candidates(
+    library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=None, cache_dir=None
+):
     """Simple helper method to retrieve class object of module as well as potential parent class objects"""
     if is_pipeline_module:
         pipeline_module = getattr(pipelines, library_name)
@@ -315,7 +317,9 @@ def get_class_obj_and_candidates(library_name, class_name, importable_classes, p
     elif library_name not in LOADABLE_CLASSES.keys():
         # load custom component
         component_folder = os.path.join(cache_dir, component_name)
-        class_obj = get_class_from_dynamic_module(component_folder, module_file=library_name + ".py", class_name=class_name)
+        class_obj = get_class_from_dynamic_module(
+            component_folder, module_file=library_name + ".py", class_name=class_name
+        )
         class_candidates = {c: class_obj for c in importable_classes.keys()}
     else:
         # else we just import it from the library.
@@ -328,9 +332,16 @@ def get_class_obj_and_candidates(library_name, class_name, importable_classes, p
 
 
 def _get_pipeline_class(
-    class_obj, config, load_connected_pipeline=False, custom_pipeline=None, hub_repo_id=None, hub_revision=None, class_name=None, cache_dir=None, revision=None
+    class_obj,
+    config,
+    load_connected_pipeline=False,
+    custom_pipeline=None,
+    hub_repo_id=None,
+    hub_revision=None,
+    class_name=None,
+    cache_dir=None,
+    revision=None,
 ):
-
     if custom_pipeline is not None:
         if custom_pipeline.endswith(".py"):
             path = Path(custom_pipeline)
@@ -344,7 +355,12 @@ def _get_pipeline_class(
             file_name = CUSTOM_PIPELINE_FILE_NAME
 
         return get_class_from_dynamic_module(
-            custom_pipeline, module_file=file_name, class_name=class_name, hub_repo_id=hub_repo_id, cache_dir=cache_dir, revision=revision if hub_revision is None else hub_revision
+            custom_pipeline,
+            module_file=file_name,
+            class_name=class_name,
+            hub_repo_id=hub_repo_id,
+            cache_dir=cache_dir,
+            revision=revision if hub_revision is None else hub_revision,
         )
 
     if class_obj != DiffusionPipeline:
@@ -397,7 +413,13 @@ def load_sub_model(
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     # retrieve class candidates
     class_obj, class_candidates = get_class_obj_and_candidates(
-        library_name, class_name, importable_classes, pipelines, is_pipeline_module, component_name=name, cache_dir=cached_folder
+        library_name,
+        class_name,
+        importable_classes,
+        pipelines,
+        is_pipeline_module,
+        component_name=name,
+        cache_dir=cached_folder,
     )
 
     load_method_name = None
@@ -1093,7 +1115,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         custom_class_name = None
         if os.path.isfile(os.path.join(cached_folder, f"{custom_pipeline}.py")):
             custom_pipeline = os.path.join(cached_folder, f"{custom_pipeline}.py")
-        elif isinstance(config_dict["_class_name"], (list, tuple)) and os.path.isfile(os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")):
+        elif isinstance(config_dict["_class_name"], (list, tuple)) and os.path.isfile(
+            os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
+        ):
             custom_pipeline = os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
             custom_class_name = config_dict["_class_name"][1]
 
@@ -1562,9 +1586,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 `False` for non-ONNX pipelines and `True` for ONNX pipelines. ONNX weights include both files ending
                 with `.onnx` and `.pb`.
             trust_remote_code (`bool`, *optional*, defaults to `False`):
-                Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This option
-                should only be set to `True` for repositories you trust and in which you have read the code, as it will
-                execute code present on the Hub on your local machine.
+                Whether or not to allow for custom pipelines and components defined on the Hub in their own files. This
+                option should only be set to `True` for repositories you trust and in which you have read the code, as
+                it will execute code present on the Hub on your local machine.
 
         Returns:
             `os.PathLike`:
@@ -1677,7 +1701,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # this enables downloading schedulers, tokenizers, ...
             allow_patterns += [f"{k}/*" for k in folder_names if k not in model_folder_names]
             # add custom component files
-            allow_patterns += [f"{k}/{f}.py" for k,f in custom_components.items()]
+            allow_patterns += [f"{k}/{f}.py" for k, f in custom_components.items()]
             # add custom pipeline file
             allow_patterns += [f"{custom_pipeline}.py"] if f"{custom_pipeline}.py" in filenames else []
             # also allow downloading config.json files with the model
