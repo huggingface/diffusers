@@ -984,7 +984,7 @@ class StableDiffusionControlNetPipeline(
         )
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # Relevant thread: 
+                # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
                 if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_than_2_1:
                     torch._inductor.cudagraph_mark_step_begin()
