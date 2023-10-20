@@ -416,9 +416,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. Clip or threshold "predicted x_0"
         if self.config.thresholding:
-            pred_original_sample = self._threshold_sample(pred_original_sample)
+            predicted_original_sample = self._threshold_sample(predicted_original_sample)
         elif self.config.clip_sample:
-            pred_original_sample = pred_original_sample.clamp(
+            predicted_original_sample = predicted_original_sample.clamp(
                 -self.config.clip_sample_range, self.config.clip_sample_range
             )
 
