@@ -808,14 +808,20 @@ class ResidualTemporalBlock1D(nn.Module):
         out_channels (`int`): Number of output channels.
         embed_dim (`int`): Embedding dimension.
         kernel_size (`int` or `tuple`): Size of the convolving kernel.
+        groups (`int`, default `8`): Number of groups for the group normalization.
     """
 
     def __init__(
-        self, inp_channels: int, out_channels: int, embed_dim: int, kernel_size: Union[int, Tuple[int, int]] = 5
+        self,
+        inp_channels: int,
+        out_channels: int,
+        embed_dim: int,
+        kernel_size: Union[int, Tuple[int, int]] = 5,
+        groups: int = 8,
     ):
         super().__init__()
-        self.conv_in = Conv1dBlock(inp_channels, out_channels, kernel_size)
-        self.conv_out = Conv1dBlock(out_channels, out_channels, kernel_size)
+        self.conv_in = Conv1dBlock(inp_channels, out_channels, kernel_size, groups)
+        self.conv_out = Conv1dBlock(out_channels, out_channels, kernel_size, groups)
 
         self.time_emb_act = nn.Mish()
         self.time_emb = nn.Linear(embed_dim, out_channels)
