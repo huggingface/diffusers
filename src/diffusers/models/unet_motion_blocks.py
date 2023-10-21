@@ -39,7 +39,7 @@ def get_down_block(
     motion_num_attention_heads=8,
     motion_attention_bias=False,
     motion_activation_fn="geglu",
-    motion_max_seq_length=24,
+    motion_max_seq_length=32,
 ):
     if down_block_type == "DownBlockMotion":
         return DownBlockMotion(
@@ -114,7 +114,7 @@ def get_up_block(
     motion_num_attention_heads=8,
     motion_attention_bias=False,
     motion_activation_fn="geglu",
-    motion_max_seq_length=24,
+    motion_max_seq_length=32,
 ):
     if up_block_type == "UpBlockMotion":
         return UpBlockMotion(
@@ -185,10 +185,7 @@ class MotionAttnProcessor(nn.Module):
         temb=None,
         scale=1.0,
     ):
-        # Apply position embedding
-        hidden_states = hidden_states.permute(1, 0, 2)
         hidden_states = self.pos_embed(hidden_states)
-        hidden_states = hidden_states.permute(1, 0, 2)
 
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -420,7 +417,7 @@ class DownBlockMotion(nn.Module):
         motion_num_attention_heads=8,
         motion_attention_bias=False,
         motion_activation_fn="geglu",
-        motion_max_seq_length=24,
+        motion_max_seq_length=32,
     ):
         super().__init__()
         resnets = []
@@ -536,7 +533,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         motion_num_attention_heads=8,
         motion_attention_bias=False,
         motion_activation_fn="geglu",
-        motion_max_seq_length=24,
+        motion_max_seq_length=32,
     ):
         super().__init__()
         resnets = []
@@ -714,7 +711,7 @@ class CrossAttnUpBlockMotion(nn.Module):
         motion_num_attention_heads=8,
         motion_attention_bias=False,
         motion_activation_fn="geglu",
-        motion_max_seq_length=24,
+        motion_max_seq_length=32,
     ):
         super().__init__()
         resnets = []
@@ -896,7 +893,7 @@ class UpBlockMotion(nn.Module):
         motion_num_attention_heads=8,
         motion_attention_bias=False,
         motion_activation_fn="geglu",
-        motion_max_seq_length=24,
+        motion_max_seq_length=32,
     ):
         super().__init__()
         resnets = []
@@ -1023,7 +1020,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         motion_num_attention_heads=8,
         motion_attention_bias=False,
         motion_activation_fn="geglu",
-        motion_max_seq_length=24,
+        motion_max_seq_length=32,
     ):
         super().__init__()
 

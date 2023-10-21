@@ -250,20 +250,27 @@ class GaussianFourierProjection(nn.Module):
 
 
 class PositionalEmbedding(nn.Module):
-    def __init__(self, embed_dim: int, max_seq_length: int = 24):
+    """Apply positional information to a sequence of embeddings.
+
+    Args:
+        embed_dim: (int): Dimension of the positional embedding.
+        max_seq_length: Maximum sequence length to apply positional embeddings
+
+    """
+
+    def __init__(self, embed_dim: int, max_seq_length: int = 32):
         super().__init__()
         position = torch.arange(max_seq_length).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / embed_dim))
 
         pe = torch.zeros(max_seq_length, 1, embed_dim)
-        pe[:, 0, 0::2] = torch.sin(position * div_term)
-        pe[:, 0, 1::2] = torch.cos(position * div_term)
-
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
         self.register_buffer("pe", pe)
 
     def forward(self, x):
-        seq_length = x.shape[0]
-        x = x + self.pe[:seq_length]
+        _, seq_length, _ = x.shape
+        x = x + self.pe[:, :seq_length]
         return x
 
 
