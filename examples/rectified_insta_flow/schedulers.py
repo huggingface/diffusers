@@ -53,12 +53,23 @@ class ReflowScheduler(SchedulerMixin, ConfigMixin):
     Args:
         num_train_timesteps (`int`, defaults to 1000):
             The number of diffusion steps to train the model.
+        distill (`bool`, defaults to False):
+            Whether we are doing the distilled version of rectified flow.
+        timestep_spacing (`str`, defaults to `"leading"`):
+            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
+            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
     """
 
     order = 1
 
     @register_to_config
-    def __init__(self, num_train_timesteps: int = 1000, distill=False):
+    def __init__(
+        self,
+        num_train_timesteps: int = 1000,
+        distill=False,
+        timestep_spacing: str = "leading",
+        steps_offset: int = 0,
+    ):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
         self.num_train_timesteps = num_train_timesteps
