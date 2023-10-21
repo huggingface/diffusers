@@ -140,7 +140,7 @@ class SPADEGroupNorm(nn.Module):
         gamma = self.conv_gamma(actv)
         beta = self.conv_beta(actv)
 
-        return x*gamma +beta
+        return x*(1+gamma) + beta
 
 class SISEncBlock(nn.Module):
     """
@@ -199,7 +199,7 @@ class SISEncBlock(nn.Module):
         y1 = self.gn2(self.conv1(self.activation(self.gn1(x_ds))))
         ## Embedding FC
         b,w = torch.chunk(self.embmlp(emb),2,dim=-1)
-        y2 = w[...,None,None]*y1 + b[...,None,None] 
+        y2 = (1+w[...,None,None])*y1 + b[...,None,None] 
         # THIRD STAGE
         y3 = self.conv2(self.activation(y2))
         h = y3+x_skip
@@ -251,7 +251,7 @@ class SISDecBlock(nn.Module):
         s2 = self.spade2(y1,cond)
         ################ Embedding FC
         b,w = torch.chunk(self.embmlp(emb),2,dim=-1)
-        y2 = w[...,None,None]*s2 + b[...,None,None]
+        y2 = (1+w[...,None,None]*s2) + b[...,None,None]
         ################# Third stage
         y3 = self.conv2(self.activation(y2))
         h = y3+x_skip
