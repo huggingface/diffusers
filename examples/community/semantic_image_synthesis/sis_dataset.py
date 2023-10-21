@@ -62,10 +62,12 @@ class SISDataset(Dataset):
             
     def transform(self,img,mask):
         resize = transforms.Resize(self.img_size)
+        resize_target = transforms.Resize(self.img_size,interpolation=transforms.InterpolationMode.NEAREST)
+
         to_tensor = transforms.ToTensor()
         normalize = transforms.Normalize(0.5,0.5)
         img = normalize(to_tensor(resize(img)))
-        mask = resize(mask)
+        mask = resize_target(mask)
         return img,np.array(mask)
     
     @property
