@@ -963,7 +963,7 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
                 latents = latents * vae.config.scaling_factor
                 seeds = batch["seed"]
                 generators = [torch.Generator(device=accelerator.device).manual_seed(seed) for seed in seeds]
-                noise = randn_tensor(latents[0].shape, generator=generators, device=latents.device, dtype=latents.dtype)
+                noise = randn_tensor(latents.shape, generator=generators, device=latents.device, dtype=latents.dtype)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 if not distill:
@@ -974,8 +974,10 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
 
                 # timesteps scaled between 0 and 1. However, as 999 is noise and 0 is ground truth, reverse timesteps
                 scaled_timesteps = timesteps.to(weight_dtype) / noise_scheduler.config.num_train_timesteps
-                noisy_latents = noise*scaled_timesteps+latents*(1-scaled_timesteps)
-
+                noisy_latents = []
+                for i in range(bsz):
+                    noisy_latents.append((noise[i]*scaled_timesteps[i]+latents[i]*(1-scaled_timesteps[i]))[None])
+                noisy_latents = torch.cat(noisy_latents, dim=0)
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
