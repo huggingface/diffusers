@@ -4,8 +4,8 @@ import math
 import os
 import random
 import shutil
+import sys
 from pathlib import Path
-from schedulers import ReflowScheduler
 
 import accelerate
 import datasets
@@ -18,36 +18,41 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset, load_from_disk, Dataset, Image
+from datasets import Dataset, Image, load_dataset, load_from_disk
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from schedulers import ReflowScheduler
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel, DPMSolverMultistepScheduler
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import randn_tensor
-import sys
 
 
 def make_text_dataset(
-        unet: UNet2DConditionModel,
-        dataset: Dataset,
-        pretrained_model_path: str,
-        caption_column: str,
-        output_dir: str,
-        image_column: str,
-        accelerator: Accelerator,
-        guidance_scale: float = 7.5,
-        num_inference_steps: int = 50,
-        reflow: bool = False,
-    ):
+    unet: UNet2DConditionModel,
+    dataset: Dataset,
+    pretrained_model_path: str,
+    caption_column: str,
+    output_dir: str,
+    image_column: str,
+    accelerator: Accelerator,
+    guidance_scale: float = 7.5,
+    num_inference_steps: int = 50,
+    reflow: bool = False,
+):
     """
     Construct dataset from a given text, seed, and the output image and save/push to hub
     """
@@ -71,7 +76,9 @@ def make_text_dataset(
         seed = random.randint(0, sys.maxsize)
         generator = torch.Generator(device=accelerator.device).manual_seed(seed)
         file_path = os.path.join(generated_image_folder, f"{i}.jpg")
-        image = pipeline(text, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator).images[0]
+        image = pipeline(
+            text, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator
+        ).images[0]
         image.save(file_path)
         output_dataset[image_column].append(file_path)
         output_dataset[caption_column].append(text)
@@ -81,6 +88,7 @@ def make_text_dataset(
     output_dataset.save_to_disk(dataset_output_path)
     del pipeline
     return output_dataset
+
 
 if is_wandb_available():
     import wandb
@@ -199,7 +207,9 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
     images = []
     for i in range(len(args.validation_prompts)):
         with torch.autocast("cuda"):
-            image = pipeline(args.validation_prompts[i], num_inference_steps=1, guidance_scale=1.0, generator=generator).images[0]
+            image = pipeline(
+                args.validation_prompts[i], num_inference_steps=1, guidance_scale=1.0, generator=generator
+            ).images[0]
 
         images.append(image)
 
@@ -551,9 +561,11 @@ def main():
         flow_output_dir = os.path.join(output_dir, str(i))
         args.output_dir = flow_output_dir
         unet = rectified_flow(args, unet=unet, reflow_step=i)
-    distill_output_dir = os.path.join(output_dir, 'distill')
+    distill_output_dir = os.path.join(output_dir, "distill")
     args.output_dir = distill_output_dir
     unet = rectified_flow(args, unet=unet, reflow_step=i, distill=True)
+
+
 def rectified_flow(args, unet=None, reflow_step=0, distill=False):
     if args.non_ema_revision is not None:
         deprecate(
@@ -574,7 +586,6 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
-
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -773,7 +784,18 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
         if reflow_step > 0:
             guidance_scale = 1
             num_inference_steps = 1
-        dataset['train'] = make_text_dataset(unet, dataset['train'], args.pretrained_model_name_or_path, args.caption_column, args.output_dir, args.image_column, accelerator, guidance_scale=guidance_scale, num_inference_steps=num_inference_steps, reflow=reflow_step > 0)
+        dataset["train"] = make_text_dataset(
+            unet,
+            dataset["train"],
+            args.pretrained_model_name_or_path,
+            args.caption_column,
+            args.output_dir,
+            args.image_column,
+            accelerator,
+            guidance_scale=guidance_scale,
+            num_inference_steps=num_inference_steps,
+            reflow=reflow_step > 0,
+        )
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
     column_names = dataset["train"].column_names
@@ -843,7 +865,7 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example["input_ids"] for example in examples])
-        seeds =  [example["seed"] for example in examples]
+        seeds = [example["seed"] for example in examples]
         return {"pixel_values": pixel_values, "input_ids": input_ids, "seed": seeds}
 
     # DataLoaders creation:
@@ -967,16 +989,22 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 if not distill:
-                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                    timesteps = torch.randint(
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
+                    )
                 else:
-                    timesteps = torch.ones((bsz,), device=latents.device)*noise_scheduler.config.num_train_timesteps,
+                    timesteps = (
+                        torch.ones((bsz,), device=latents.device) * noise_scheduler.config.num_train_timesteps,
+                    )
                 timesteps = timesteps.long()
 
                 # timesteps scaled between 0 and 1. However, as 999 is noise and 0 is ground truth, reverse timesteps
                 scaled_timesteps = timesteps.to(weight_dtype) / noise_scheduler.config.num_train_timesteps
                 noisy_latents = []
                 for i in range(bsz):
-                    noisy_latents.append((noise[i]*scaled_timesteps[i]+latents[i]*(1-scaled_timesteps[i]))[None])
+                    noisy_latents.append(
+                        (noise[i] * scaled_timesteps[i] + latents[i] * (1 - scaled_timesteps[i]))[None]
+                    )
                 noisy_latents = torch.cat(noisy_latents, dim=0)
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
@@ -988,7 +1016,7 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
                 if distill:
                     target = latents
                 else:
-                    target = latents-noise
+                    target = latents - noise
                 # Predict the noise residual and compute loss
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
@@ -1071,15 +1099,7 @@ def rectified_flow(args, unet=None, reflow_step=0, distill=False):
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
                 log_validation(
-                    vae,
-                    text_encoder,
-                    tokenizer,
-                    unet,
-                    args,
-                    accelerator,
-                    weight_dtype,
-                    global_step,
-                    distill
+                    vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, global_step, distill
                 )
                 if args.use_ema:
                     # Switch back to the original UNet parameters.

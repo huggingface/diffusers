@@ -14,7 +14,6 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
-import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -22,9 +21,8 @@ import numpy as np
 import torch
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.utils import BaseOutput
-from diffusers.utils.torch_utils import randn_tensor
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
+from diffusers.utils import BaseOutput
 
 
 @dataclass
@@ -44,6 +42,7 @@ class ReflowSchedulerOutput(BaseOutput):
     prev_sample: torch.FloatTensor
     pred_original_sample: Optional[torch.FloatTensor] = None
 
+
 class ReflowScheduler(SchedulerMixin, ConfigMixin):
     """
     `ReflowScheduler` is a simple scheduler made for working with rectified flows.
@@ -59,16 +58,13 @@ class ReflowScheduler(SchedulerMixin, ConfigMixin):
     order = 1
 
     @register_to_config
-    def __init__(
-        self,
-        num_train_timesteps: int = 1000,
-        distill=False
-    ):
+    def __init__(self, num_train_timesteps: int = 1000, distill=False):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
         self.num_train_timesteps = num_train_timesteps
         self.distill = distill
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
+
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
@@ -195,10 +191,10 @@ class ReflowScheduler(SchedulerMixin, ConfigMixin):
 
         if not self.distill:
             prev_t = self.previous_timestep(t)
-            scale = (prev_t-t)/self.num_train_timesteps
+            scale = (prev_t - t) / self.num_train_timesteps
 
-            pred_prev_sample = sample+scale*model_output
-            pred_original_sample = sample+(1-t/self.num_train_timesteps)*model_output
+            pred_prev_sample = sample + scale * model_output
+            pred_original_sample = sample + (1 - t / self.num_train_timesteps) * model_output
         else:
             pred_prev_sample = model_output
             pred_original_sample = model_output
