@@ -291,6 +291,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
+        elif self.class_embedding is None and class_labels is not None:
+            raise ValueError("class_embedding needs to be initialized in order to use class conditioning")
 
         # 2. pre-process
         skip_sample = sample
