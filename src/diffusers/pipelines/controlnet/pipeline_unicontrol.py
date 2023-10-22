@@ -965,7 +965,6 @@ class StableDiffusionUniControlPipeline(
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
             controlnet_keep.append(keeps[0])
-        print(f"controlnet keeps: {controlnet_keep}")
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -997,7 +996,6 @@ class StableDiffusionUniControlPipeline(
                 if not isinstance(image, list):
                     image = [image]
 
-                print(batch_size, control_model_input.shape)
                 for indiv_task_index, (indiv_task, indiv_image) in enumerate(zip(task, image)):
                     task_text = name_to_instruction[task_to_name[indiv_task]]
                     task_id = tasks_to_id[task_to_name[indiv_task]]
