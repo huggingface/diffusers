@@ -1,0 +1,84 @@
+- sections:
+  - local: index
+    title: 🧨 Diffusers
+  - local: quicktour
+    title: 簡単な案内
+  - local: stable_diffusion
+    title: 効果的で効率的な拡散モデル
+  - local: installation
+    title: インストール
+  - local: in_translation
+      title: 翻訳について
+  title: はじめに
+- sections:
+  - local: tutorials/tutorial_overview
+    title: 概要
+  - local: using-diffusers/write_own_pipeline
+    title: モデルとスケジューラを理解する
+  - local: tutorials/autopipeline
+    title: 自動パイプライン
+  - local: tutorials/basic_training
+    title: 拡散モデルのトレーニング
+  - local: tutorials/using_peft_for_inference
+    title: PEFTで効率よく生成
+  title: チュートリアル
+- sections:
+  - sections:
+    - local: using-diffusers/loading_overview
+      title: 概要
+    - local: using-diffusers/loading
+      title: パイプライン、モデル、スケジューラのロード
+    - local: using-diffusers/schedulers
+      title: 異なるスケジューラのロードと比較
+    - local: using-diffusers/custom_pipeline_overview
+      title: コミュニティ・パイプラインをロードする
+    - local: using-diffusers/using_safetensors
+      title: 安全なモデルのロード
+    - local: using-diffusers/other-formats
+      title: 様々なStable Diffusionフォーマットのロード
+    - local: using-diffusers/push_to_hub
+      title: ファイルをハブにプッシュする
+    title: 技術
+  - sections:
+    - local: using-diffusers/pipeline_overview
+      title: 概要
+    - local: using-diffusers/sdxl
+      title: Stable Diffusion XL
+    title: 生成のためのパイプライン
+  - sections:
+    - local: training/overview
+      title: 概要
+    - local: training/create_dataset
+      title: トレーニングのためのデータセット作成
+    - local: training/text_inversion
+      title: Textual Inversion
+    - local: training/dreambooth
+      title: Dreambooth
+    title: トレーニング
+  title: Diffusersの使い方
+- sections:
+  - local: optimization/opt_overview
+    title: 概要
+  - sections:
+    - local: optimization/fp16
+      title: 生成のスピードアップ
+    - local: optimization/memory
+      title: メモリー使用の削減
+    - local: optimization/torch2.0
+      title: Torch 2.0
+    - local: optimization/tome
+      title: トークンのマージ
+    title: 一般的な最適化
+  - sections:
+    - local: optimization/open_vino
+      title: OpenVINO
+    title: 最適化されたモデルタイプ
+  title: 最適化
+- sections:
+  - sections:
+    - sections:
+      - local: api/pipelines/stable_diffusion/stable_diffusion_xl
+        title: Stable Diffusion XL
+      title: Stable Diffusion
+    title: パイプライン
+  title: API
