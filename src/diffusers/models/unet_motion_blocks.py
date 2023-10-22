@@ -371,7 +371,7 @@ class MotionModules(nn.Module):
         cross_attention_dim=None,
         activation_fn="geglu",
         norm_num_groups=32,
-        max_seq_length=24,
+        max_seq_length=32,
     ):
         super().__init__()
         self.motion_modules = nn.ModuleList([])
@@ -446,6 +446,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
             attention_bias=motion_attention_bias,
             num_attention_heads=motion_num_attention_heads,
             layers_per_block=motion_mid_block_layers_per_block,
+            max_seq_length=motion_max_seq_length,
         )
 
         reversed_block_out_channels = list(reversed(block_out_channels))
