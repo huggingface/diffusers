@@ -24,6 +24,7 @@ from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unet_motion_model import MotionAdapter
+from ...image_processor import VaeImageProcessor
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -56,25 +57,16 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def tensor2vid(video: torch.Tensor, mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) -> List[np.ndarray]:
+def tensor2vid(video: torch.Tensor, processor, output_type="np"):
     # Based on:
     # https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-
-    device = video.device
-
-    mean = torch.tensor(mean).reshape(1, -1, 1, 1, 1).to(device)
-    std = torch.tensor(std).reshape(1, -1, 1, 1, 1).to(device)
-
-    # unnormalize back to [0,1]
-    video = video.mul_(std).add_(mean)
-    video.clamp_(0, 1)
 
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
     for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 2, 3, 0)
-        images = batch_vid.unbind(dim=0)
-        batch_output = [(image.cpu().numpy() * 255).astype("uint8") for image in images]
+        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
+        batch_output = processor.postprocess(batch_vid, output_type)
+
         outputs.append(batch_output)
 
     return outputs
@@ -135,6 +127,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def encode_prompt(
         self,
@@ -331,7 +324,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
 
         output = torch.cat(output_frames)
         video = output[None, :].permute(0, 2, 1, 3, 4)
-        video = video.float()
+        video = video
 
         return video
 
@@ -469,7 +462,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        num_frames: Optional[int],
+        num_frames: Optional[int] = 16,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -481,7 +474,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "tensor",
+        output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
@@ -530,8 +523,8 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            output_type (`str`, *optional*, defaults to `"np"`):
-                The output format of the generated video. Choose between `torch.FloatTensor` or `np.array`.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] instead
                 of a plain tuple.
@@ -660,7 +653,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
         if output_type == "pt":
             video = video_tensor
         else:
-            video = tensor2vid(video_tensor)
+            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
