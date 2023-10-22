@@ -254,6 +254,20 @@ class SchedulerCommonTest(unittest.TestCase):
     forward_default_kwargs = ()
 
     @property
+    def default_timestep(self):
+        return 0
+
+    # NOTE: currently taking the convention that default_timestep_2 > default_timestep (alternatively,
+    # default_timestep_2 comes earlier in the timestep schedule than default_timestep)
+    @property
+    def default_timestep_2(self):
+        return 1
+
+    @property
+    def default_num_inference_steps(self):
+        return 100
+
+    @property
     def dummy_sample(self):
         batch_size = 4
         num_channels = 3
@@ -309,10 +323,11 @@ class SchedulerCommonTest(unittest.TestCase):
 
         return model
 
-    def check_over_configs(self, time_step=0, **config):
+    def check_over_configs(self, time_step=None, **config):
         kwargs = dict(self.forward_default_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
+        time_step = time_step if time_step is not None else self.default_timestep
 
         for scheduler_class in self.scheduler_classes:
             # TODO(Suraj) - delete the following two lines once DDPM, DDIM, and PNDM have timesteps casted to float by default
@@ -366,11 +381,12 @@ class SchedulerCommonTest(unittest.TestCase):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def check_over_forward(self, time_step=0, **forward_kwargs):
+    def check_over_forward(self, time_step=None, **forward_kwargs):
         kwargs = dict(self.forward_default_kwargs)
         kwargs.update(forward_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
+        time_step = time_step if time_step is not None else self.default_timestep
 
         for scheduler_class in self.scheduler_classes:
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
@@ -414,7 +430,7 @@ class SchedulerCommonTest(unittest.TestCase):
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
         for scheduler_class in self.scheduler_classes:
-            timestep = 1
+            timestep = self.default_timestep_2
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
                 timestep = float(timestep)
 
@@ -499,8 +515,8 @@ class SchedulerCommonTest(unittest.TestCase):
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
-        timestep_0 = 1
-        timestep_1 = 0
+        timestep_0 = self.default_timestep_2
+        timestep_1 = self.default_timestep
 
         for scheduler_class in self.scheduler_classes:
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
@@ -560,7 +576,7 @@ class SchedulerCommonTest(unittest.TestCase):
         kwargs = dict(self.forward_default_kwargs)
         num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
-        timestep = 0
+        timestep = self.default_timestep
         if len(self.scheduler_classes) > 0 and self.scheduler_classes[0] == IPNDMScheduler:
             timestep = 1
 
@@ -644,7 +660,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 continue
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
-            scheduler.set_timesteps(100)
+            scheduler.set_timesteps(self.default_num_inference_steps)
 
             sample = self.dummy_sample.to(torch_device)
             if scheduler_class == CMStochasticIterativeScheduler:
