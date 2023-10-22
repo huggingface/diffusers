@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Installation
+# インストール
 
 Install 🤗 Diffusers for whichever deep learning library you're working with.
 
@@ -54,37 +54,39 @@ pip install diffusers["flax"] transformers
 
 ## Install from source
 
-Before installing 🤗 Diffusers from source, make sure you have `torch` and 🤗 Accelerate installed.
+ソースからのインストール
 
-For `torch` installation, refer to the `torch` [installation](https://pytorch.org/get-started/locally/#start-locally) guide.
+ソースから🤗 Diffusersをインストールする前に、`torch`と🤗 Accelerateがインストールされていることを確認してください。
 
-To install 🤗 Accelerate:
+`torch`のインストールについては、`torch` [インストール](https://pytorch.org/get-started/locally/#start-locally)ガイドを参照してください。
+
+🤗 Accelerateをインストールするには：
 
 ```bash
 pip install accelerate
 ```
 
-Install 🤗 Diffusers from source with the following command:
+以下のコマンドでソースから🤗 Diffusersをインストールできます：
 
 ```bash
 pip install git+https://github.com/huggingface/diffusers
 ```
 
-This command installs the bleeding edge `main` version rather than the latest `stable` version.
-The `main` version is useful for staying up-to-date with the latest developments.
-For instance, if a bug has been fixed since the last official release but a new release hasn't been rolled out yet.
-However, this means the `main` version may not always be stable.
-We strive to keep the `main` version operational, and most issues are usually resolved within a few hours or a day.
-If you run into a problem, please open an [Issue](https://github.com/huggingface/diffusers/issues/new/choose), so we can fix it even sooner!
+このコマンドは最新の `stable` バージョンではなく、最先端の `main` バージョンをインストールします。
+`main`バージョンは最新の開発に対応するのに便利です。
+例えば、前回の公式リリース以降にバグが修正されたが、新しいリリースがまだリリースされていない場合などには都合がいいです。
+しかし、これは `main` バージョンが常に安定しているとは限らないです。
+私たちは `main` バージョンを運用し続けるよう努力しており、ほとんどの問題は通常数時間から1日以内に解決されます。
+もし問題が発生した場合は、[Issue](https://github.com/huggingface/diffusers/issues/new/choose) を開いてください！
 
-## Editable install
+## 編集可能なインストール
 
-You will need an editable install if you'd like to:
+以下の場合、編集可能なインストールが必要です：
 
-* Use the `main` version of the source code.
-* Contribute to 🤗 Diffusers and need to test changes in the code.
+* ソースコードの `main` バージョンを使用する。
+* 🤗 Diffusers に貢献し、コードの変更をテストする必要がある場合。
 
-Clone the repository and install 🤗 Diffusers with the following commands:
+リポジトリをクローンし、次のコマンドで 🤗 Diffusers をインストールしてください：
 
 ```bash
 git clone https://github.com/huggingface/diffusers.git
@@ -104,43 +106,42 @@ pip install -e ".[flax]"
 </jax>
 </frameworkcontent>
 
-These commands will link the folder you cloned the repository to and your Python library paths.
-Python will now look inside the folder you cloned to in addition to the normal library paths.
-For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.8/site-packages/`, Python will also search the `~/diffusers/` folder you cloned to.
+これらのコマンドは、リポジトリをクローンしたフォルダと Python のライブラリパスをリンクします。
+Python は通常のライブラリパスに加えて、クローンしたフォルダの中を探すようになります。
+例えば、Python パッケージが通常 `~/anaconda3/envs/main/lib/python3.8/site-packages/` にインストールされている場合、Python はクローンした `~/diffusers/` フォルダも同様に参照します。
 
 <Tip warning={true}>
 
-You must keep the `diffusers` folder if you want to keep using the library.
+ライブラリを使い続けたい場合は、`diffusers`フォルダを残しておく必要があります。
 
 </Tip>
 
-Now you can easily update your clone to the latest version of 🤗 Diffusers with the following command:
+これで、以下のコマンドで簡単にクローンを最新版の🤗 Diffusersにアップデートできます：
 
 ```bash
 cd ~/diffusers/
 git pull
 ```
 
-Your Python environment will find the `main` version of 🤗 Diffusers on the next run.
+Python環境は次の実行時に `main` バージョンの🤗 Diffusersを見つけます。
 
-## Notice on telemetry logging
+## テレメトリー・ロギングに関するお知らせ
 
-Our library gathers telemetry information during `from_pretrained()` requests.
-This data includes the version of Diffusers and PyTorch/Flax, the requested model or pipeline class,
-and the path to a pre-trained checkpoint if it is hosted on the Hub.
-This usage data helps us debug issues and prioritize new features.
-Telemetry is only sent when loading models and pipelines from the HuggingFace Hub,
-and is not collected during local usage.
+このライブラリは `from_pretrained()` リクエスト中にデータを収集します。
+このデータには Diffusers と PyTorch/Flax のバージョン、要求されたモデルやパイプラインクラスが含まれます。
+また、Hubでホストされている場合は、事前に学習されたチェックポイントへのパスが含まれます。
+この使用データは問題のデバッグや新機能の優先順位付けに役立ちます。
+テレメトリーはHuggingFace Hubからモデルやパイプラインをロードするときのみ送信されます。ローカルでの使用中は収集されません。
 
-We understand that not everyone wants to share additional information, and we respect your privacy,
-so you can disable telemetry collection by setting the `DISABLE_TELEMETRY` environment variable from your terminal:
+我々は、すべての人が追加情報を共有したくないことを理解し、あなたのプライバシーを尊重します。
+そのため、ターミナルから `DISABLE_TELEMETRY` 環境変数を設定することで、データ収集を無効にすることができます：
 
-On Linux/MacOS:
+Linux/MacOSの場合
 ```bash
 export DISABLE_TELEMETRY=YES
 ```
 
-On Windows:
+Windows の場合
 ```bash
 set DISABLE_TELEMETRY=YES
 ```
