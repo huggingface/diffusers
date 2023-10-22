@@ -24,7 +24,7 @@ from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
-from .lora import LoRACompatibleConv2d, LoRACompatibleLinear
+from .lora import LoRACompatibleConv1d, LoRACompatibleConv2d, LoRACompatibleLinear
 
 
 class Upsample1D(nn.Module):
@@ -57,24 +57,35 @@ class Upsample1D(nn.Module):
         self.use_conv = use_conv
         self.use_conv_transpose = use_conv_transpose
         self.name = name
+        conv_cls = nn.Conv1d if USE_PEFT_BACKEND else LoRACompatibleConv1d
 
-        self.conv = None
         if use_conv_transpose:
             self.conv = nn.ConvTranspose1d(channels, self.out_channels, 4, 2, 1)
         elif use_conv:
-            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, padding=1)
+            self.conv = conv_cls(self.channels, self.out_channels, 3, padding=1)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        assert inputs.shape[1] == self.channels
+    def forward(
+        self, hidden_states: torch.Tensor, output_size: Optional[int] = None, scale: float = 1.0
+    ) -> torch.Tensor:
+        assert hidden_states.shape[1] == self.channels
+
         if self.use_conv_transpose:
-            return self.conv(inputs)
+            return self.conv(hidden_states)
 
-        outputs = F.interpolate(inputs, scale_factor=2.0, mode="nearest")
+        # if `output_size` is passed we force the interpolation output
+        # size and do not make use of `scale_factor=2`
+        if output_size is None:
+            hidden_states = F.interpolate(hidden_states, scale_factor=2.0, mode="nearest")
+        else:
+            hidden_states = F.interpolate(hidden_states, size=output_size, mode="nearest")
 
         if self.use_conv:
-            outputs = self.conv(outputs)
+            if isinstance(self.conv, LoRACompatibleConv2d) and not USE_PEFT_BACKEND:
+                hidden_states = self.conv(hidden_states, scale)
+            else:
+                hidden_states = self.conv(hidden_states)
 
-        return outputs
+        return hidden_states
 
 
 class Downsample1D(nn.Module):
@@ -115,9 +126,24 @@ class Downsample1D(nn.Module):
             assert self.channels == self.out_channels
             self.conv = nn.AvgPool1d(kernel_size=stride, stride=stride)
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
-        assert inputs.shape[1] == self.channels
-        return self.conv(inputs)
+    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
+        assert hidden_states.shape[1] == self.channels
+
+        if self.use_conv and self.padding == 0:
+            pad = (0, 1)
+            hidden_states = F.pad(hidden_states, pad, mode="constant", value=0)
+
+        assert hidden_states.shape[1] == self.channels
+
+        if not USE_PEFT_BACKEND:
+            if isinstance(self.conv, LoRACompatibleConv1d):
+                hidden_states = self.conv(hidden_states, scale)
+            else:
+                hidden_states = self.conv(hidden_states)
+        else:
+            hidden_states = self.conv(hidden_states)
+
+        return hidden_states
 
 
 class Upsample2D(nn.Module):
@@ -164,7 +190,9 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(self, hidden_states: torch.Tensor, output_size: Optional[int] = None, scale: float = 1.0):
+    def forward(
+        self, hidden_states: torch.Tensor, output_size: Optional[int] = None, scale: float = 1.0
+    ) -> torch.Tensor:
         assert hidden_states.shape[1] == self.channels
 
         if self.use_conv_transpose:
