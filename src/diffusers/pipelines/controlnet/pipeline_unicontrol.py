@@ -996,7 +996,7 @@ class StableDiffusionUniControlPipeline(
                     image = [image]
 
                 print(controlnet_keep, controlnet_conditioning_scale)
-                for indiv_task_index, (indiv_task, indiv_image, indiv_cond_scale) in enumerate(zip(task, image, cond_scales)):
+                for indiv_task_index, (indiv_task, indiv_image) in enumerate(zip(task, image)):
                     task_text = name_to_instruction[task_to_name[indiv_task]]
                     task_id = tasks_to_id[task_to_name[indiv_task]]
                     task_text_embeds = self.encode_task(task_text)
@@ -1013,7 +1013,7 @@ class StableDiffusionUniControlPipeline(
                         return_dict=False,
                     )
 
-                    if i == 0:
+                    if indiv_task_index == 0:
                         down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
                     else:
                         down_block_res_samples = [
