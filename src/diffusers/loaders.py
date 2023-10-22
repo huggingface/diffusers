@@ -448,15 +448,15 @@ class UNet2DConditionLoadersMixin:
                 rank = value_dict["lora.down.weight"].shape[0]
 
                 if isinstance(attn_processor, LoRACompatibleConv2d):
-                    in_features = attn_processor.in_channels
-                    out_features = attn_processor.out_channels
+                    in_channels = attn_processor.in_channels
+                    out_channels = attn_processor.out_channels
                     kernel_size = attn_processor.kernel_size
 
                     ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
                     with ctx():
                         lora = LoRAConv2dLayer(
-                            in_features=in_features,
-                            out_features=out_features,
+                            in_channels=in_channels,
+                            out_channels=out_channels,
                             rank=rank,
                             kernel_size=kernel_size,
                             stride=attn_processor.stride,
