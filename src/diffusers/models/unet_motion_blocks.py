@@ -169,10 +169,82 @@ def get_up_block(
 
 class MotionAttnProcessor(nn.Module):
     r"""
+    Default processor for performing attention-related computations.
+    """
+
+    def __init__(self, in_channels, max_seq_length=32):
+        super().__init__()
+        self.pos_embed = PositionalEmbedding(embed_dim=in_channels, max_seq_length=max_seq_length)
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+        scale=1.0,
+    ):
+        residual = hidden_states
+        hidden_states = self.pos_embed(hidden_states)
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states, scale=scale)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states, scale=scale)
+        value = attn.to_v(encoder_hidden_states, scale=scale)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states, scale=scale)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class MotionAttnProcessor2_0(nn.Module):
+    r"""
     Attention Processor for performing attention-related computations in the Motion Modules.
     """
 
-    def __init__(self, in_channels, max_seq_length=24):
+    def __init__(self, in_channels, max_seq_length=32):
         super().__init__()
         self.pos_embed = PositionalEmbedding(embed_dim=in_channels, max_seq_length=max_seq_length)
 
@@ -275,14 +347,18 @@ class MotionBlock(nn.Module):
             attention_bias=attention_bias,
             num_attention_heads=num_attention_heads,
         )
+        processor_cls = MotionAttnProcessor2_0 if is_torch_version(">=", "2.0.0") else MotionAttnProcessor
+
         for block in self.temporal_transformer.transformer_blocks:
-            block.attn1.set_processor(MotionAttnProcessor(in_channels=in_channels, max_seq_length=max_seq_length))
-            block.attn2.set_processor(MotionAttnProcessor(in_channels=in_channels, max_seq_length=max_seq_length))
+            block.attn1.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
+            block.attn2.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
 
-    def forward(self, x, encoder_hidden_states=None, num_frames=1):
-        x = self.temporal_transformer(x, encoder_hidden_states=encoder_hidden_states, num_frames=num_frames).sample
+    def forward(self, hidden_states, encoder_hidden_states=None, num_frames=1):
+        hidden_states = self.temporal_transformer(
+            hidden_states, encoder_hidden_states=encoder_hidden_states, num_frames=num_frames
+        ).sample
 
-        return x
+        return hidden_states
 
 
 class MotionModules(nn.Module):
@@ -319,26 +395,26 @@ class MotionAdapter(ModelMixin, ConfigMixin):
     def __init__(
         self,
         block_out_channels=(320, 640, 1280, 1280),
-        layers_per_block=2,
-        mid_block_num_layers=1,
-        num_attention_heads=8,
-        attention_bias=False,
-        cross_attention_dim=None,
-        activation_fn="geglu",
-        norm_num_groups=32,
-        max_seq_length=24,
+        motion_layers_per_block=2,
+        motion_mid_block_layers_per_block=1,
+        motion_num_attention_heads=8,
+        motion_attention_bias=False,
+        motion_cross_attention_dim=None,
+        motion_activation_fn="geglu",
+        motion_norm_num_groups=32,
+        motion_max_seq_length=32,
     ):
-        """Container to store Motion Modules
+        """Container to store AnimateDiff Motion Modules
 
         Args:
             block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
-            The tuple of output channels for each block.
+            The tuple of output channels for each UNet block.
             layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
             num_attention_heads (`int`, *optional*):
-            The number of attention heads. If not defined, defaults to `attention_head_dim`
+            The number of heads to use in each attention layer.
             attention_bias (bool, optional, defaults to False): Whether to include bias in attention layers.
-            cross_attention_dim (_type_, optional): _description_. Defaults to None.
-            activation_fn (str, optional): _description_. Defaults to "geglu".
+            cross_attention_dim (int, optional, Defaults to None): Set in order to use cross attention.
+            activation_fn (str, optional, Defaults to "geglu"): Activation Function.
             norm_num_groups (int, optional): _description_. Defaults to 32.
             max_seq_length (int, optional): _description_. Defaults to 24.
         """
@@ -352,24 +428,24 @@ class MotionAdapter(ModelMixin, ConfigMixin):
             down_blocks.append(
                 MotionModules(
                     in_channels=output_channel,
-                    norm_num_groups=norm_num_groups,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    attention_bias=attention_bias,
-                    num_attention_heads=num_attention_heads,
-                    max_seq_length=max_seq_length,
-                    layers_per_block=layers_per_block,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    activation_fn=motion_activation_fn,
+                    attention_bias=motion_attention_bias,
+                    num_attention_heads=motion_num_attention_heads,
+                    max_seq_length=motion_max_seq_length,
+                    layers_per_block=motion_layers_per_block,
                 )
             )
 
         self.mid_block = MotionModules(
             in_channels=block_out_channels[-1],
-            norm_num_groups=norm_num_groups,
-            cross_attention_dim=cross_attention_dim,
-            activation_fn=activation_fn,
-            attention_bias=attention_bias,
-            num_attention_heads=num_attention_heads,
-            layers_per_block=mid_block_num_layers,
+            norm_num_groups=motion_norm_num_groups,
+            cross_attention_dim=motion_cross_attention_dim,
+            activation_fn=motion_activation_fn,
+            attention_bias=motion_attention_bias,
+            num_attention_heads=motion_num_attention_heads,
+            layers_per_block=motion_mid_block_layers_per_block,
         )
 
         reversed_block_out_channels = list(reversed(block_out_channels))
@@ -379,13 +455,13 @@ class MotionAdapter(ModelMixin, ConfigMixin):
             up_blocks.append(
                 MotionModules(
                     in_channels=output_channel,
-                    norm_num_groups=norm_num_groups,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    attention_bias=attention_bias,
-                    num_attention_heads=num_attention_heads,
-                    max_seq_length=max_seq_length,
-                    layers_per_block=layers_per_block + 1,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    activation_fn=motion_activation_fn,
+                    attention_bias=motion_attention_bias,
+                    num_attention_heads=motion_num_attention_heads,
+                    max_seq_length=motion_max_seq_length,
+                    layers_per_block=motion_layers_per_block + 1,
                 )
             )
 

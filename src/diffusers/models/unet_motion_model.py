@@ -28,12 +28,15 @@ from .attention_processor import (
 )
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
+from .unet_2d_condition import UNet2DConditionModel
 from .unet_3d_condition import UNet3DConditionOutput
 from .unet_motion_blocks import (
     CrossAttnDownBlockMotion,
     CrossAttnUpBlockMotion,
     DownBlockMotion,
     MotionAdapter,
+    MotionAttnProcessor,
+    MotionAttnProcessor2_0,
     UNetMidBlockCrossAttnMotion,
     UpBlockMotion,
     get_down_block,
@@ -92,6 +95,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         motion_attention_bias=False,
         motion_activation_fn="geglu",
         motion_max_seq_length=24,
+        motion_layers_per_block=2,
+        motion_mid_block_layers_per_block=1,
     ):
         super().__init__()
 
@@ -266,7 +271,15 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         )
 
     @classmethod
-    def from_unet2d(cls, unet, motion_adapter: Optional[MotionAdapter] = None, **kwargs):
+    def from_unet2d(
+        cls,
+        unet: UNet2DConditionModel,
+        motion_adapter: Optional[MotionAdapter] = None,
+        load_weights: bool = True,
+        **kwargs,
+    ):
+        has_motion_adapter = motion_adapter is not None
+
         # based on https://github.com/guoyww/AnimateDiff/blob/895f3220c06318ea0760131ec70408b466c49333/animatediff/models/unet.py#L459
         config = unet.config
         config["_class_name"] = cls.__name__
@@ -285,20 +298,63 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
                 up_blocks.append("CrossAttnUpBlockMotion")
             else:
                 up_blocks.append("UpBlockMotion")
+
         config["up_block_types"] = up_blocks
 
-        state_dict = unet.state_dict()
-        if motion_adapter is not None:
-            state_dict.update(motion_adapter.state_dict())
+        if has_motion_adapter:
+            config["motion_norm_num_groups"] = motion_adapter.config["motion_norm_num_groups"]
+            config["motion_cross_attention_dim"] = motion_adapter.config["motion_cross_attention_dim"]
+            config["motion_num_attention_heads"] = motion_adapter.config["motion_num_attention_heads"]
+            config["motion_attention_bias"] = motion_adapter.config["motion_attention_bias"]
+            config["motion_activation_fn"] = motion_adapter.config["motion_activation_fn"]
+            config["motion_max_seq_length"] = motion_adapter.config["motion_max_seq_length"]
+            config["motion_layers_per_block"] = motion_adapter.config["motion_layers_per_block"]
+            config["motion_mid_block_layers_per_block"] = motion_adapter.config["motion_mid_block_layers_per_block"]
 
         model = cls.from_config(config)
-        model.load_state_dict(state_dict, strict=False)
+
+        if load_weights:
+            model.conv_in.load_state_dict(unet.conv_in.state_dict())
+            model.time_proj.load_state_dict(unet.time_proj.state_dict())
+            model.time_embedding.load_state_dict(unet.time_embedding.state_dict())
+
+            for i, down_block in enumerate(unet.down_blocks):
+                model.down_blocks[i].resnets.load_state_dict(down_block.resnets.state_dict())
+                if hasattr(model.down_blocks[i], "attentions"):
+                    model.down_blocks[i].attentions.load_state_dict(down_block.attentions.state_dict())
+                if model.down_blocks[i].downsamplers:
+                    model.down_blocks[i].downsamplers.load_state_dict(down_block.downsamplers.state_dict())
+
+            for i, up_block in enumerate(unet.up_blocks):
+                model.up_blocks[i].resnets.load_state_dict(up_block.resnets.state_dict())
+                if hasattr(model.up_blocks[i], "attentions"):
+                    model.up_blocks[i].attentions.load_state_dict(up_block.attentions.state_dict())
+                if model.up_blocks[i].upsamplers:
+                    model.up_blocks[i].upsamplers.load_state_dict(up_block.upsamplers.state_dict())
+
+            model.mid_block.resnets.load_state_dict(unet.mid_block.resnets.state_dict())
+            model.mid_block.attentions.load_state_dict(unet.mid_block.attentions.state_dict())
+
+            if unet.conv_norm_out is not None:
+                model.conv_norm_out.load_state_dict(unet.conv_norm_out.state_dict())
+
+            if unet.conv_act is not None:
+                model.conv_act.load_state_dict(unet.conv_act.state_dict())
+
+            model.conv_out.load_state_dict(unet.conv_out.state_dict())
+
+            if has_motion_adapter:
+                model.load_motion_modules(motion_adapter)
 
         return model
 
     def load_motion_modules(self, motion_adapter: Optional[MotionAdapter]):
-        motion_state_dict = motion_adapter.state_dict()
-        self.load_state_dict(motion_state_dict)
+        for i, down_block in enumerate(motion_adapter.down_blocks):
+            self.down_blocks[i].motion_modules.load_state_dict(down_block.motion_modules.state_dict())
+        for i, up_block in enumerate(motion_adapter.up_blocks):
+            self.up_blocks[i].motion_modules.load_state_dict(up_block.motion_modules.state_dict())
+
+        self.mid_block.motion_modules.load_state_dict(motion_adapter.mid_block.motion_modules.state_dict())
 
     def save_motion_modules(
         self,
@@ -310,14 +366,22 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         **kwargs,
     ):
         state_dict = self.state_dict()
-
         # Extract all motion modules
         motion_state_dict = {}
         for k, v in state_dict.items():
-            if "motion_modules" in k:
+            if k.contains("motion_modules"):
                 motion_state_dict[k] = v
 
-        adapter = MotionAdapter.from_config(self.config)
+        adapter = MotionAdapter(
+            motion_norm_num_groups=self.config["motion_norm_num_groups"],
+            motion_cross_attention_dim=self.config["motion_cross_attention_dim"],
+            motion_num_attention_heads=self.config["motion_num_attention_heads"],
+            motion_attention_bias=self.config["motion_attention_bias"],
+            motion_activation_fn=self.config["motion_activation_fn"],
+            motion_max_seq_length=self.config["motion_max_seq_length"],
+            motion_layers_per_block=self.config["motion_layers_per_block"],
+            motion_mid_block_layers_per_block=self.config["motion_mid_block_layers_per_block"],
+        )
         adapter.load_state_dict(motion_state_dict)
         adapter.save_pretrained(
             save_directory=save_directory,
@@ -444,6 +508,13 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
             )
 
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "processor"):
+                # ignore attention processors from motion modules
+                if isinstance(module.processor, MotionAttnProcessor) or isinstance(
+                    module.processor, MotionAttnProcessor2_0
+                ):
+                    return
+
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
                     module.set_processor(processor, _remove_lora=_remove_lora)
@@ -496,7 +567,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin):
         for module in self.children():
             fn_recursive_feed_forward(module, None, 0)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
