@@ -1020,7 +1020,7 @@ class StableDiffusionUniControlPipeline(
                     task_text = name_to_instruction[task_to_name[indiv_task]]
                     task_id = tasks_to_id[task_to_name[indiv_task]]
                     task_text_embeds = self.encode_task(task_text)
-                    print(f"indiv_image shape is:{indiv_image.shape}")
+
                     down_samples, mid_sample = self.controlnet(
                         control_model_input, # x or sample
                         t, # timesteps
