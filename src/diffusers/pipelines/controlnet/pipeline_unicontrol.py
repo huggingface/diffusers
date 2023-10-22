@@ -39,7 +39,6 @@ from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from .multicontrolnet import MultiControlNetModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -153,7 +152,7 @@ class StableDiffusionUniControlPipeline(
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
+        controlnet: ControlNetModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
@@ -177,8 +176,6 @@ class StableDiffusionUniControlPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        if isinstance(controlnet, (list, tuple)):
-            controlnet = MultiControlNetModel(controlnet)
 
         self.register_modules(
             vae=vae,
@@ -529,9 +526,14 @@ class StableDiffusionUniControlPipeline(
                 f" {type(callback_steps)}."
             )
         
-        if task not in task_to_name:
+        if task is None or (isinstance(task, list) and len(task) == 0):
             raise ValueError(
-                f"`task` needs to be one of {list(task_to_name.keys())}"
+                f"`task` cannot be empty"
+            )
+        
+        if not set(task).issubset(task_to_name.keys()):
+            raise ValueError(
+                f"Values for `task` can only be {list(task_to_name.keys())}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -562,10 +564,10 @@ class StableDiffusionUniControlPipeline(
 
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
-        if isinstance(self.controlnet, MultiControlNetModel):
+        if isinstance(task, list):
             if isinstance(prompt, list):
                 logger.warning(
-                    f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
+                    f"You have {len(task)} ControlNet conditionings and you have passed {len(prompt)}"
                     " prompts. The conditionings will be fixed across the prompts."
                 )
 
@@ -574,26 +576,22 @@ class StableDiffusionUniControlPipeline(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
         )
         if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+            isinstance(task, str)
         ):
             self.check_image(image, prompt, prompt_embeds)
         elif (
-            isinstance(self.controlnet, MultiControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+            isinstance(task, list)
         ):
             if not isinstance(image, list):
-                raise TypeError("For multiple controlnets: `image` must be type `list`")
+                raise TypeError("For multiple conditioning tasks: `image` must be type `list`")
 
             # When `image` is a nested list:
             # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
             elif any(isinstance(i, list) for i in image):
                 raise ValueError("A single batch of multiple conditionings are supported at the moment.")
-            elif len(image) != len(self.controlnet.nets):
+            elif len(image) != len(task):
                 raise ValueError(
-                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
+                    f"For multiple conditioning tasks: `image` must have the same length as the number of tasks, but got {len(image)} images and {len(task)} conditioning tasks."
                 )
 
             for image_ in image:
@@ -603,26 +601,22 @@ class StableDiffusionUniControlPipeline(
 
         # Check `controlnet_conditioning_scale`
         if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+            isinstance(task, str)
         ):
             if not isinstance(controlnet_conditioning_scale, float):
-                raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
+                raise TypeError("For single conditioning task: `controlnet_conditioning_scale` must be type `float`.")
         elif (
-            isinstance(self.controlnet, MultiControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+            isinstance(task, list)
         ):
             if isinstance(controlnet_conditioning_scale, list):
                 if any(isinstance(i, list) for i in controlnet_conditioning_scale):
                     raise ValueError("A single batch of multiple conditionings are supported at the moment.")
             elif isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
-                self.controlnet.nets
+                task
             ):
                 raise ValueError(
-                    "For multiple controlnets: When `controlnet_conditioning_scale` is specified as `list`, it must have"
-                    " the same length as the number of controlnets"
+                    "For multiple conditioning tasks: When `controlnet_conditioning_scale` is specified as `list`, it must have"
+                    " the same length as the number of tasks."
                 )
         else:
             assert False
@@ -638,10 +632,10 @@ class StableDiffusionUniControlPipeline(
                 f"`control_guidance_start` has {len(control_guidance_start)} elements, but `control_guidance_end` has {len(control_guidance_end)} elements. Make sure to provide the same number of elements to each list."
             )
 
-        if isinstance(self.controlnet, MultiControlNetModel):
-            if len(control_guidance_start) != len(self.controlnet.nets):
+        if isinstance(task, list):
+            if len(control_guidance_start) != len(task):
                 raise ValueError(
-                    f"`control_guidance_start`: {control_guidance_start} has {len(control_guidance_start)} elements but there are {len(self.controlnet.nets)} controlnets available. Make sure to provide {len(self.controlnet.nets)}."
+                    f"`control_guidance_start`: {control_guidance_start} has {len(control_guidance_start)} elements but there are {len(task)} conditioning tasks available. Make sure to provide {len(task)}."
                 )
 
         for start, end in zip(control_guidance_start, control_guidance_end):
@@ -743,7 +737,7 @@ class StableDiffusionUniControlPipeline(
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        task: str,
+        task: Union[str, List[str]] = None,
         prompt: Union[str, List[str]] = None,
         image: PipelineImageInput = None,
         height: Optional[int] = None,
@@ -771,6 +765,8 @@ class StableDiffusionUniControlPipeline(
         The call function to the pipeline for generation.
 
         Args:
+            task (`str` or `List[str]`, *optional*):
+                The task or tasks to guide image generation. Number of tasks needs to match the input image.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             image (`torch.FloatTensor`, `PIL.Image.Image`, `np.ndarray`, `List[torch.FloatTensor]`, `List[PIL.Image.Image]`, `List[np.ndarray]`,:
@@ -855,7 +851,7 @@ class StableDiffusionUniControlPipeline(
         elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
         elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
-            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+            mult = len(task) if isinstance(task, list) else 1
             control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
                 control_guidance_end
             ]
@@ -888,8 +884,8 @@ class StableDiffusionUniControlPipeline(
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
-            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
+        if isinstance(task, list) and isinstance(controlnet_conditioning_scale, float):
+            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(task)
 
         global_pool_conditions = (
             controlnet.config.global_pool_conditions
@@ -992,21 +988,31 @@ class StableDiffusionUniControlPipeline(
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
-                task_text = name_to_instruction[task_to_name[task]]
-                task_id = tasks_to_id[task_to_name[task]]
-                task_text_embeds = self.encode_task(task_text)
+                for i, (indiv_task, indiv_image, indiv_cond_scale) in enumerate(zip(list(task), list(image), list(cond_scale))):
+                    task_text = name_to_instruction[task_to_name[indiv_task]]
+                    task_id = tasks_to_id[task_to_name[indiv_task]]
+                    task_text_embeds = self.encode_task(task_text)
 
-                down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    control_model_input, # x or sample
-                    t, # timesteps
-                    task_text_embeds=task_text_embeds,
-                    task_id=task_id,
-                    encoder_hidden_states=controlnet_prompt_embeds, #context
-                    controlnet_cond=image, #hint
-                    conditioning_scale=cond_scale,
-                    guess_mode=guess_mode,
-                    return_dict=False,
-                )
+                    down_samples, mid_sample = self.controlnet(
+                        control_model_input, # x or sample
+                        t, # timesteps
+                        task_text_embeds=task_text_embeds,
+                        task_id=task_id,
+                        encoder_hidden_states=controlnet_prompt_embeds, #context
+                        controlnet_cond=indiv_image, #hint
+                        conditioning_scale=indiv_cond_scale,
+                        guess_mode=guess_mode,
+                        return_dict=False,
+                    )
+
+                    if i == 0:
+                        down_block_res_samples, mid_block_res_sample = down_samples, mid_sample
+                    else:
+                        down_block_res_samples = [
+                            samples_prev + samples_curr
+                            for samples_prev, samples_curr in zip(down_block_res_samples, down_samples)
+                        ]
+                        mid_block_res_sample += mid_sample
 
                 if guess_mode and do_classifier_free_guidance:
                     # Infered ControlNet only for the conditional batch.
