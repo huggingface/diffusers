@@ -12,32 +12,32 @@ specific language governing permissions and limitations under the License.
 
 # インストール
 
-Install 🤗 Diffusers for whichever deep learning library you're working with.
+お使いのディープラーニングライブラリに合わせてDiffusersをインストールできます。
 
-🤗 Diffusers is tested on Python 3.8+, PyTorch 1.7.0+ and Flax. Follow the installation instructions below for the deep learning library you are using:
+🤗 DiffusersはPython 3.8+、PyTorch 1.7.0+、Flaxでテストされています。使用するディープラーニングライブラリの以下のインストール手順に従ってください：
 
-- [PyTorch](https://pytorch.org/get-started/locally/) installation instructions.
-- [Flax](https://flax.readthedocs.io/en/latest/) installation instructions.
+- [PyTorch](https://pytorch.org/get-started/locally/)のインストール手順。
+- [Flax](https://flax.readthedocs.io/en/latest/)のインストール手順。
 
-## Install with pip
+## pip でインストール
 
-You should install 🤗 Diffusers in a [virtual environment](https://docs.python.org/3/library/venv.html).
-If you're unfamiliar with Python virtual environments, take a look at this [guide](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
-A virtual environment makes it easier to manage different projects and avoid compatibility issues between dependencies.
+Diffusersは[仮想環境](https://docs.python.org/3/library/venv.html)の中でインストールすることが推奨されています。
+Python の仮想環境についてよく知らない場合は、こちらの [ガイド](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/) を参照してください。
+仮想環境は異なるプロジェクトの管理を容易にし、依存関係間の互換性の問題を回避します。
 
-Start by creating a virtual environment in your project directory:
+ではさっそく、プロジェクトディレクトリに仮想環境を作ってみます：
 
 ```bash
 python -m venv .env
 ```
 
-Activate the virtual environment:
+仮想環境をアクティブにします：
 
 ```bash
 source .env/bin/activate
 ```
 
-🤗 Diffusers also relies on the 🤗 Transformers library, and you can install both with the following command:
+🤗 Diffusers もまた 🤗 Transformers ライブラリに依存しており、以下のコマンドで両方をインストールできます：
 
 <frameworkcontent>
 <pt>
@@ -52,9 +52,7 @@ pip install diffusers["flax"] transformers
 </jax>
 </frameworkcontent>
 
-## Install from source
-
-ソースからのインストール
+## ソースからのインストール
 
 ソースから🤗 Diffusersをインストールする前に、`torch`と🤗 Accelerateがインストールされていることを確認してください。
 
