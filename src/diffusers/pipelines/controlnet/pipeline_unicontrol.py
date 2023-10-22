@@ -988,6 +988,8 @@ class StableDiffusionUniControlPipeline(
                 #cast all not iterable objects to list so single task conditioning can be treated as a special case of multi task conditioning.
                 if not isinstance(controlnet_conditioning_scale, list):
                     cond_scales = [controlnet_conditioning_scale]
+                else:
+                    cond_scales = controlnet_conditioning_scale
                 
                 if not isinstance(task, list):
                     task = [task]
