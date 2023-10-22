@@ -8,5 +8,5 @@
   - local: installation
     title: インストール
   - local: in_translation
-      title: 翻訳について
+    title: 翻訳について
   title: はじめに
