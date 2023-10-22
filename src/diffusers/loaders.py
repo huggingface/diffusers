@@ -312,7 +312,7 @@ class UNet2DConditionLoadersMixin:
         from .models.attention_processor import (
             CustomDiffusionAttnProcessor,
         )
-        from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
+        from .models.lora import LoRACompatibleConv2d, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -447,7 +447,7 @@ class UNet2DConditionLoadersMixin:
                 # or add_{k,v,q,out_proj}_proj_lora layers.
                 rank = value_dict["lora.down.weight"].shape[0]
 
-                if isinstance(attn_processor, LoRACompatibleConv):
+                if isinstance(attn_processor, LoRACompatibleConv2d):
                     in_features = attn_processor.in_channels
                     out_features = attn_processor.out_channels
                     kernel_size = attn_processor.kernel_size
@@ -473,7 +473,7 @@ class UNet2DConditionLoadersMixin:
                             mapped_network_alphas.get(key),
                         )
                 else:
-                    raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
+                    raise ValueError(f"Module {key} is not a LoRACompatibleConv2d or LoRACompatibleLinear module.")
 
                 value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
                 lora_layers_list.append((attn_processor, lora))

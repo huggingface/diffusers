@@ -24,7 +24,7 @@ from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
-from .lora import LoRACompatibleConv, LoRACompatibleLinear
+from .lora import LoRACompatibleConv2d, LoRACompatibleLinear
 
 
 class Upsample1D(nn.Module):
@@ -150,7 +150,7 @@ class Upsample2D(nn.Module):
         self.use_conv = use_conv
         self.use_conv_transpose = use_conv_transpose
         self.name = name
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv2d
 
         conv = None
         if use_conv_transpose:
@@ -195,12 +195,12 @@ class Upsample2D(nn.Module):
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
-                if isinstance(self.conv, LoRACompatibleConv) and not USE_PEFT_BACKEND:
+                if isinstance(self.conv, LoRACompatibleConv2d) and not USE_PEFT_BACKEND:
                     hidden_states = self.conv(hidden_states, scale)
                 else:
                     hidden_states = self.conv(hidden_states)
             else:
-                if isinstance(self.Conv2d_0, LoRACompatibleConv) and not USE_PEFT_BACKEND:
+                if isinstance(self.Conv2d_0, LoRACompatibleConv2d) and not USE_PEFT_BACKEND:
                     hidden_states = self.Conv2d_0(hidden_states, scale)
                 else:
                     hidden_states = self.Conv2d_0(hidden_states)
@@ -239,7 +239,7 @@ class Downsample2D(nn.Module):
         self.padding = padding
         stride = 2
         self.name = name
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv2d
 
         if use_conv:
             conv = conv_cls(self.channels, self.out_channels, 3, stride=stride, padding=padding)
@@ -266,7 +266,7 @@ class Downsample2D(nn.Module):
         assert hidden_states.shape[1] == self.channels
 
         if not USE_PEFT_BACKEND:
-            if isinstance(self.conv, LoRACompatibleConv):
+            if isinstance(self.conv, LoRACompatibleConv2d):
                 hidden_states = self.conv(hidden_states, scale)
             else:
                 hidden_states = self.conv(hidden_states)
@@ -617,7 +617,7 @@ class ResnetBlock2D(nn.Module):
         self.skip_time_act = skip_time_act
 
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv2d
 
         if groups_out is None:
             groups_out = groups
