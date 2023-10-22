@@ -957,14 +957,15 @@ class StableDiffusionUniControlPipeline(
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7.1 Create tensor stating which controlnets to keep
+        # 7.1 Create tensor stating at which steps to retain controlnet conditioning.
         controlnet_keep = []
         for i in range(len(timesteps)):
             keeps = [
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            controlnet_keep.append(keeps[0] if isinstance(task, str) else keeps)
+        controlnet_keep = keeps
+        print("controlnet keeps: {controlnet_keep}")
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -984,15 +985,12 @@ class StableDiffusionUniControlPipeline(
                     control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
 
-                if isinstance(controlnet_keep[i], list):
-                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
-                else:
-                    controlnet_cond_scale = controlnet_conditioning_scale
-                    if isinstance(controlnet_cond_scale, list):
-                        controlnet_cond_scale = controlnet_cond_scale[0]
-                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
-
-                for i, (indiv_task, indiv_image, indiv_cond_scale) in enumerate(zip(list(task), list(image), list(cond_scale))):
+                #cast all not iterable objects to list so single task conditioning can be treated as a special case of multi task conditioning.
+                if not isinstance(controlnet_conditioning_scale, list):
+                    cond_scales = [controlnet_conditioning_scale]
+                
+                print(controlnet_keep, controlnet_conditioning_scale)
+                for indiv_task_index, (indiv_task, indiv_image, indiv_cond_scale) in enumerate(zip(list(task), list(image), cond_scales)):
                     task_text = name_to_instruction[task_to_name[indiv_task]]
                     task_id = tasks_to_id[task_to_name[indiv_task]]
                     task_text_embeds = self.encode_task(task_text)
@@ -1004,7 +1002,7 @@ class StableDiffusionUniControlPipeline(
                         task_id=task_id,
                         encoder_hidden_states=controlnet_prompt_embeds, #context
                         controlnet_cond=indiv_image, #hint
-                        conditioning_scale=indiv_cond_scale,
+                        conditioning_scale=cond_scales[indiv_task_index] * controlnet_keep[i], # number or a list. controlnet vs multicontrolnet. For our case, always needs to be a number
                         guess_mode=guess_mode,
                         return_dict=False,
                     )
