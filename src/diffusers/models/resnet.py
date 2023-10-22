@@ -577,6 +577,102 @@ class KUpsample2D(nn.Module):
         return F.conv_transpose2d(inputs, weight, stride=2, padding=self.pad * 2 + 1)
 
 
+class ResnetBlock1D(nn.Module):
+    r"""
+    A Resnet block.
+
+    Parameters:
+        in_channels (`int`): The number of channels in the input.
+        out_channels (`int`, *optional*, default to be `None`):
+            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
+        dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
+        groups (`int`, *optional*, default to `1`): The number of groups to use for the first normalization layer.
+        groups_out (`int`, *optional*, default to None):
+            The number of groups to use for the second normalization layer. if set to None, same as `groups`.
+        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
+        non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
+        output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
+        use_conv_shortcut (`bool`, default to `True`):
+            If `True`, add a 1x1 nn.conv2d layer for skip-connection.
+        conv_shortcut_bias (`bool`, *optional*, default to `False`):  If `True`, adds a learnable bias to the
+            `conv_shortcut` output.
+        conv_1d_out_channels (`int`, *optional*, default to `None`): the number of channels in the output.
+            If None, same as `out_channels`.
+        is_last (`bool`, default to `False`): If `True`, skips a final normalization and activation layer.
+    """
+
+    def __init__(
+        self,
+        *,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        dropout: float = 0.0,
+        groups: int = 1,
+        groups_out: Optional[int] = None,
+        eps: float = 1e-6,
+        non_linearity: str = "gelu",
+        output_scale_factor: float = 1.0,
+        use_conv_shortcut: bool = True,
+        conv_shortcut_bias: bool = False,
+        conv_1d_out_channels: Optional[int] = None,
+        is_last: bool = False,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+        self.output_scale_factor = output_scale_factor
+        self.is_last = is_last
+
+        conv_cls = nn.Conv1d if USE_PEFT_BACKEND else LoRACompatibleConv1d
+
+        if groups_out is None:
+            groups_out = groups
+
+        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=5, stride=1, padding=2)
+        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
+        self.dropout = torch.nn.Dropout(dropout)
+
+        conv_1d_out_channels = conv_1d_out_channels or out_channels
+        self.conv2 = conv_cls(out_channels, conv_1d_out_channels, kernel_size=5, stride=1, padding=2)
+
+        self.nonlinearity1 = get_activation(non_linearity)
+
+        if not self.is_last:
+            self.group_norm2 = nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
+            self.nonlinearity2 = nn.GELU()
+
+        self.use_conv_shortcut = (
+            self.in_channels != conv_1d_out_channels if use_conv_shortcut is None else use_conv_shortcut
+        )
+
+        self.conv_shortcut = None
+        if self.use_conv_shortcut:
+            self.conv_shortcut = conv_cls(
+                in_channels, conv_1d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
+            )
+
+    def forward(self, input_tensor, temb, scale: float = 1.0):
+        hidden_states = self.conv1(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv1(input_tensor)
+        hidden_states = self.norm1(hidden_states)
+        hidden_states = self.nonlinearity1(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
+
+        if not self.is_last:
+            hidden_states = self.group_norm2(hidden_states)
+            hidden_states = self.nonlinearity2(hidden_states)
+
+        if self.conv_shortcut is not None:
+            input_tensor = (
+                self.conv_shortcut(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv_shortcut(input_tensor)
+            )
+
+        output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
+
+        return output_tensor
+
+
 class ResnetBlock2D(nn.Module):
     r"""
     A Resnet block.

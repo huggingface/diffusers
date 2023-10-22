@@ -12,29 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import is_torch_version, logging
+from ..utils.torch_utils import apply_freeu
 from .activations import get_activation
-from .resnet import Downsample1D, ResidualTemporalBlock1D, Upsample1D, rearrange_dims
+from .resnet import Downsample1D, ResidualTemporalBlock1D, ResnetBlock1D, Upsample1D, rearrange_dims
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class DownResnetBlock1D(nn.Module):
     def __init__(
         self,
-        in_channels,
-        out_channels=None,
-        num_layers=1,
-        conv_shortcut=False,
-        temb_channels=32,
-        groups=32,
-        groups_out=None,
-        non_linearity=None,
-        time_embedding_norm="default",
-        output_scale_factor=1.0,
-        add_downsample=True,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        num_layers: int = 1,
+        conv_shortcut: bool = False,
+        temb_channels: int = 32,
+        groups: int = 32,
+        groups_out: Optional[int] = None,
+        non_linearity: Optional[str] = None,
+        time_embedding_norm: str = "default",
+        output_scale_factor: float = 1.0,
+        add_downsample: bool = True,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -548,50 +554,194 @@ class AttnUpBlock1D(nn.Module):
 
 
 class UpBlock1D(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(
+        self,
+        in_channels: int,
+        prev_output_channel: int,
+        out_channels: int,
+        resolution_idx: int = None,
+        dropout: float = 0.0,
+        num_layers: int = 3,
+        resnet_eps: float = 1e-6,
+        resnet_act_fn: str = "gelu",
+        resnet_groups: int = 1,
+        output_scale_factor: float = 1.0,
+        add_upsample: bool = True,
+    ):
         super().__init__()
-        mid_channels = in_channels if mid_channels is None else mid_channels
+        resnets = []
 
-        resnets = [
-            ResConvBlock(2 * in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels),
-        ]
+        for i in range(num_layers):
+            is_last = i == num_layers - 1
+
+            res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
+
+            resnets.append(
+                ResnetBlock1D(
+                    in_channels=resnet_in_channels + res_skip_channels,
+                    out_channels=out_channels,
+                    dropout=dropout,
+                    groups=resnet_groups,
+                    eps=resnet_eps,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    is_last=is_last,
+                )
+            )
 
         self.resnets = nn.ModuleList(resnets)
-        self.up = Upsample1d(kernel="cubic")
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
-        res_hidden_states = res_hidden_states_tuple[-1]
-        hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+        if add_upsample:
+            self.upsamplers = nn.ModuleList([Upsample1d(kernel="cubic")])
+        else:
+            self.upsamplers = None
+
+        self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
+
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
 
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states)
+            # pop res hidden states
+            res_hidden_states = res_hidden_states_tuple[-1]
+            res_hidden_states_tuple = res_hidden_states_tuple[:-1]
 
-        hidden_states = self.up(hidden_states)
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
+            hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+
+            if self.training and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
+            else:
+                hidden_states = resnet(hidden_states, temb, scale=scale)
+
+        if self.upsamplers is not None:
+            for upsampler in self.upsamplers:
+                hidden_states = upsampler(hidden_states, upsample_size, scale=scale)
 
         return hidden_states
 
 
 class UpBlock1DNoSkip(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(
+        self,
+        in_channels: int,
+        prev_output_channel: int,
+        out_channels: int,
+        resolution_idx: int = None,
+        dropout: float = 0.0,
+        num_layers: int = 3,
+        resnet_eps: float = 1e-6,
+        resnet_act_fn: str = "gelu",
+        resnet_groups: int = 1,
+        output_scale_factor: float = 1.0,
+    ):
         super().__init__()
-        mid_channels = in_channels if mid_channels is None else mid_channels
+        resnets = []
 
-        resnets = [
-            ResConvBlock(2 * in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels, is_last=True),
-        ]
+        for i in range(num_layers):
+            is_last = i == num_layers - 1
+            res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
+
+            resnets.append(
+                ResnetBlock1D(
+                    in_channels=resnet_in_channels + res_skip_channels,
+                    out_channels=out_channels,
+                    dropout=dropout,
+                    groups=resnet_groups,
+                    eps=resnet_eps,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    is_last=is_last,
+                )
+            )
 
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
-        res_hidden_states = res_hidden_states_tuple[-1]
-        hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+        self.gradient_checkpointing = False
+        self.resolution_idx = resolution_idx
+
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
+        is_freeu_enabled = (
+            getattr(self, "s1", None)
+            and getattr(self, "s2", None)
+            and getattr(self, "b1", None)
+            and getattr(self, "b2", None)
+        )
 
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states)
+            # pop res hidden states
+            res_hidden_states = res_hidden_states_tuple[-1]
+            res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+
+            # FreeU: Only operate on the first two stages
+            if is_freeu_enabled:
+                hidden_states, res_hidden_states = apply_freeu(
+                    self.resolution_idx,
+                    hidden_states,
+                    res_hidden_states,
+                    s1=self.s1,
+                    s2=self.s2,
+                    b1=self.b1,
+                    b2=self.b2,
+                )
+
+            hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+
+            if self.training and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb
+                    )
+            else:
+                hidden_states = resnet(hidden_states, temb, scale=scale)
+
+        if self.upsamplers is not None:
+            for upsampler in self.upsamplers:
+                hidden_states = upsampler(hidden_states, upsample_size, scale=scale)
 
         return hidden_states
 
@@ -614,7 +764,29 @@ def get_down_block(down_block_type, num_layers, in_channels, out_channels, temb_
     raise ValueError(f"{down_block_type} does not exist.")
 
 
-def get_up_block(up_block_type, num_layers, in_channels, out_channels, temb_channels, add_upsample):
+def get_up_block(
+    up_block_type,
+    num_layers,
+    in_channels,
+    out_channels,
+    prev_output_channel,
+    temb_channels,
+    add_upsample,
+    resnet_eps,
+    resnet_act_fn="gelu",
+    resolution_idx=None,
+    num_attention_heads=None,
+    resnet_groups=1,
+    attention_head_dim=None,
+    dropout=0.0,
+):
+    # If attn head dim is not defined, we default it to the number of heads
+    if attention_head_dim is None:
+        logger.warn(
+            f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
+        )
+        attention_head_dim = num_attention_heads
+
     if up_block_type == "UpResnetBlock1D":
         return UpResnetBlock1D(
             in_channels=in_channels,
@@ -624,11 +796,33 @@ def get_up_block(up_block_type, num_layers, in_channels, out_channels, temb_chan
             add_upsample=add_upsample,
         )
     elif up_block_type == "UpBlock1D":
-        return UpBlock1D(in_channels=in_channels, out_channels=out_channels)
+        return UpBlock1D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            prev_output_channel=prev_output_channel,
+            resolution_idx=resolution_idx,
+            dropout=dropout,
+            add_upsample=add_upsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
+        )
     elif up_block_type == "AttnUpBlock1D":
         return AttnUpBlock1D(in_channels=in_channels, out_channels=out_channels)
     elif up_block_type == "UpBlock1DNoSkip":
-        return UpBlock1DNoSkip(in_channels=in_channels, out_channels=out_channels)
+        return UpBlock1DNoSkip(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            prev_output_channel=prev_output_channel,
+            resolution_idx=resolution_idx,
+            dropout=dropout,
+            add_upsample=add_upsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
+        )
     raise ValueError(f"{up_block_type} does not exist.")
 
 

@@ -64,7 +64,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             Tuple of block output channels.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock1D"`): Block type for middle of UNet.
         out_block_type (`str`, *optional*, defaults to `None`): Optional output processing block of UNet.
-        act_fn (`str`, *optional*, defaults to `None`): Optional activation function in UNet blocks.
+        act_fn (`str`, defaults to `gelu`): activation function in UNet blocks.
         norm_num_groups (`int`, *optional*, defaults to 8): The number of groups for normalization.
         layers_per_block (`int`, *optional*, defaults to 1): The number of layers per block.
         downsample_each_block (`int`, *optional*, defaults to `False`):
@@ -88,10 +88,13 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         mid_block_type: Tuple[str] = "UNetMidBlock1D",
         out_block_type: str = None,
         block_out_channels: Tuple[int] = (32, 32, 64),
-        act_fn: str = None,
-        norm_num_groups: int = 8,
         layers_per_block: int = 1,
         downsample_each_block: bool = False,
+        dropout: float = 0.0,
+        act_fn: str = "gelu",
+        attention_head_dim: Optional[int] = 8,
+        norm_num_groups: int = 1,
+        norm_eps: float = 1e-5,
     ):
         super().__init__()
         self.sample_size = sample_size
@@ -127,11 +130,10 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
             output_channel = block_out_channels[i]
+            is_final_block = i == len(block_out_channels) - 1
 
             if i == 0:
                 input_channel += extra_in_channels
-
-            is_final_block = i == len(block_out_channels) - 1
 
             down_block = get_down_block(
                 down_block_type,
@@ -175,8 +177,14 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 num_layers=layers_per_block,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
+                prev_output_channel=prev_output_channel,
                 temb_channels=block_out_channels[0],
                 add_upsample=not is_final_block,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
+                attention_head_dim=attention_head_dim if attention_head_dim is not None else output_channel,
+                dropout=dropout,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -236,17 +244,17 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             down_block_res_samples += res_samples
 
         # 3. mid
-        if self.mid_block:
+        if self.mid_block is not None:
             sample = self.mid_block(sample, timestep_embed)
 
         # 4. up
-        for i, upsample_block in enumerate(self.up_blocks):
+        for upsample_block in self.up_blocks:
             res_samples = down_block_res_samples[-1:]
             down_block_res_samples = down_block_res_samples[:-1]
             sample = upsample_block(sample, res_hidden_states_tuple=res_samples, temb=timestep_embed)
 
         # 5. post-process
-        if self.out_block:
+        if self.out_block is not None:
             sample = self.out_block(sample, timestep_embed)
 
         if not return_dict:
