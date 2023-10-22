@@ -989,8 +989,14 @@ class StableDiffusionUniControlPipeline(
                 if not isinstance(controlnet_conditioning_scale, list):
                     cond_scales = [controlnet_conditioning_scale]
                 
+                if not isinstance(task, list):
+                    task = [task]
+                
+                if not isinstance(image, list):
+                    image = [image]
+
                 print(controlnet_keep, controlnet_conditioning_scale)
-                for indiv_task_index, (indiv_task, indiv_image, indiv_cond_scale) in enumerate(zip(list(task), list(image), cond_scales)):
+                for indiv_task_index, (indiv_task, indiv_image, indiv_cond_scale) in enumerate(zip(task, image, cond_scales)):
                     task_text = name_to_instruction[task_to_name[indiv_task]]
                     task_id = tasks_to_id[task_to_name[indiv_task]]
                     task_text_embeds = self.encode_task(task_text)
@@ -1029,7 +1035,6 @@ class StableDiffusionUniControlPipeline(
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
-                    # UNCOMMENT TO ADD CONDITIONING
                     down_block_additional_residuals=down_block_res_samples,
                     mid_block_additional_residual=mid_block_res_sample,
                     return_dict=False,
