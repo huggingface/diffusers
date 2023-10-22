@@ -1,0 +1,11 @@
+git+https://github.com/moreh-dev/diffusers.git@main
+accelerate==0.21.0
+transformers==4.34.1
+ftfy==6.1.1
+Jinja2==3.1.2
+matplotlib==3.7.2
+opencv-python>=4.8.0
+datasets==2.14.2
+tensorboard
+protobuf>=3.19.6,<4
+pytest==7.4.2
