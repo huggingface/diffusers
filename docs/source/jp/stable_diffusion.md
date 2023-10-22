@@ -9,18 +9,18 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 -->
-                                                               
-# Effective and efficient diffusion
+
+# 効果的で効率的な拡散モデル
 
 [[open-in-colab]]
 
-Getting the [`DiffusionPipeline`] to generate images in a certain style or include what you want can be tricky. Often times, you have to run the [`DiffusionPipeline`] several times before you end up with an image you're happy with. But generating something out of nothing is a computationally intensive process, especially if you're running inference over and over again. 
+[`DiffusionPipeline`]を使って特定のスタイルで画像を生成したり、希望する画像を生成したりするのは難しいことです。多くの場合、[`DiffusionPipeline`]を何度か実行してからでないと満足のいく画像は得られません。しかし、何もないところから何かを生成するにはたくさんの計算が必要です。生成を何度も何度も実行する場合、特にたくさんの計算量が必要になります。
 
-This is why it's important to get the most *computational* (speed) and *memory* (GPU RAM) efficiency from the pipeline to reduce the time between inference cycles so you can iterate faster.
+そのため、パイプラインから*計算*（速度）と*メモリ*（GPU RAM）の効率を最大限に引き出し、生成サイクル間の時間を短縮することで、より高速な反復処理を行えるようにすることが重要です。
 
-This tutorial walks you through how to generate faster and better with the [`DiffusionPipeline`].
+このチュートリアルでは、[`DiffusionPipeline`]を用いて、より速く、より良い計算を行う方法を説明します。
 
-Begin by loading the [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) model:
+まず、[`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)モデルをロードします：
 
 ```python
 from diffusers import DiffusionPipeline
@@ -29,7 +29,7 @@ model_id = "runwayml/stable-diffusion-v1-5"
 pipeline = DiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 ```
 
-The example prompt you'll use is a portrait of an old warrior chief, but feel free to use your own prompt:
+ここで使用するプロンプトの例は年老いた戦士の長の肖像画ですが、ご自由に変更してください：
 
 ```python
 prompt = "portrait photo of a old warrior chief"
@@ -39,17 +39,17 @@ prompt = "portrait photo of a old warrior chief"
 
 <Tip>
 
-💡 If you don't have access to a GPU, you can use one for free from a GPU provider like [Colab](https://colab.research.google.com/)!
+💡 GPUを利用できない場合は、[Colab](https://colab.research.google.com/)のようなGPUプロバイダーから無料で利用できます！
 
 </Tip>
 
-One of the simplest ways to speed up inference is to place the pipeline on a GPU the same way you would with any PyTorch module:
+画像生成を高速化する最も簡単な方法の1つは、PyTorchモジュールと同じようにGPU上にパイプラインを配置することです：
 
 ```python
 pipeline = pipeline.to("cuda")
 ```
 
-To make sure you can use the same image and improve on it, use a [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) and set a seed for [reproducibility](./using-diffusers/reproducibility):
+同じイメージを使って改良できるようにするには、[`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html)を使い、[reproducibility](./using-diffusers/reproducibility)の種を設定します：
 
 ```python
 import torch
@@ -57,7 +57,7 @@ import torch
 generator = torch.Generator("cuda").manual_seed(0)
 ```
 
-Now you can generate an image:
+これで画像を生成できます：
 
 ```python
 image = pipeline(prompt, generator=generator).images[0]
@@ -68,9 +68,9 @@ image
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_1.png">
 </div>
 
-This process took ~30 seconds on a T4 GPU (it might be faster if your allocated GPU is better than a T4). By default, the [`DiffusionPipeline`] runs inference with full `float32` precision for 50 inference steps. You can speed this up by switching to a lower precision like `float16` or running fewer inference steps. 
+この処理にはT4 GPUで~30秒かかりました（割り当てられているGPUがT4より優れている場合はもっと速いかもしれません）。デフォルトでは、[`DiffusionPipeline`]は完全な`float32`精度で生成を50ステップ実行します。float16`のような低い精度に変更するか、推論ステップ数を減らすことで高速化することができます。
 
-Let's start by loading the model in `float16` and generate an image:
+まずは `float16` でモデルをロードして画像を生成してみましょう：
 
 ```python
 import torch
@@ -86,15 +86,15 @@ image
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_2.png">
 </div>
 
-This time, it only took ~11 seconds to generate the image, which is almost 3x faster than before!
+今回、画像生成にかかった時間はわずか11秒で、以前より3倍近く速くなりました！
 
 <Tip>
 
-💡 We strongly suggest always running your pipelines in `float16`, and so far, we've rarely seen any degradation in output quality.
+💡 パイプラインは常に `float16` で実行することを強くお勧めします。
 
 </Tip>
 
-Another option is to reduce the number of inference steps. Choosing a more efficient scheduler could help decrease the number of steps without sacrificing output quality. You can find which schedulers are compatible with the current model in the [`DiffusionPipeline`] by calling the `compatibles` method:
+生成ステップ数を減らすという方法もあります。より効率的なスケジューラを選択することで、出力品質を犠牲にすることなくステップ数を減らすことができます。`compatibles`メソッドを呼び出すことで、[`DiffusionPipeline`]の現在のモデルと互換性のあるスケジューラを見つけることができます：
 
 ```python
 pipeline.scheduler.compatibles
@@ -115,7 +115,7 @@ pipeline.scheduler.compatibles
 ]
 ```
 
-The Stable Diffusion model uses the [`PNDMScheduler`] by default which usually requires ~50 inference steps, but more performant schedulers like [`DPMSolverMultistepScheduler`], require only ~20 or 25 inference steps. Use the [`ConfigMixin.from_config`] method to load a new scheduler:
+Stable Diffusionモデルはデフォルトで[`PNDMScheduler`]を使用します。このスケジューラは通常~50の推論ステップを必要としますが、[`DPMSolverMultistepScheduler`]のような高性能なスケジューラでは~20または25の推論ステップで済みます。[`ConfigMixin.from_config`]メソッドを使用すると、新しいスケジューラをロードすることができます：
 
 ```python
 from diffusers import DPMSolverMultistepScheduler
@@ -123,7 +123,7 @@ from diffusers import DPMSolverMultistepScheduler
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 ```
 
-Now set the `num_inference_steps` to 20:
+ここで `num_inference_steps` を20に設定します：
 
 ```python
 generator = torch.Generator("cuda").manual_seed(0)
@@ -135,13 +135,13 @@ image
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_3.png">
 </div>
 
-Great, you've managed to cut the inference time to just 4 seconds! ⚡️
+推論時間をわずか4秒に短縮することに成功した！⚡️
 
-## Memory
+## メモリー
 
-The other key to improving pipeline performance is consuming less memory, which indirectly implies more speed, since you're often trying to maximize the number of images generated per second. The easiest way to see how many images you can generate at once is to try out different batch sizes until you get an `OutOfMemoryError` (OOM).
+パイプラインのパフォーマンスを向上させるもう1つの鍵は、消費メモリを少なくすることです。一度に生成できる画像の数を確認する最も簡単な方法は、`OutOfMemoryError`（OOM）が発生するまで、さまざまなバッチサイズを試してみることです。
 
-Create a function that'll generate a batch of images from a list of prompts and `Generators`. Make sure to assign each `Generator` a seed so you can reuse it if it produces a good result.
+文章と `Generators` のリストから画像のバッチを生成する関数を作成します。各 `Generator` にシードを割り当てて、良い結果が得られた場合に再利用できるようにします。
 
 ```python
 def get_inputs(batch_size=1):
@@ -152,7 +152,7 @@ def get_inputs(batch_size=1):
     return {"prompt": prompts, "generator": generator, "num_inference_steps": num_inference_steps}
 ```
 
-Start with `batch_size=4` and see how much memory you've consumed:
+`batch_size=4`で開始し、どれだけメモリを消費したかを確認します：
 
 ```python
 from diffusers.utils import make_image_grid 
@@ -161,13 +161,13 @@ images = pipeline(**get_inputs(batch_size=4)).images
 make_image_grid(images, 2, 2)
 ```
 
-Unless you have a GPU with more RAM, the code above probably returned an `OOM` error! Most of the memory is taken up by the cross-attention layers. Instead of running this operation in a batch, you can run it sequentially to save a significant amount of memory. All you have to do is configure the pipeline to use the [`~DiffusionPipeline.enable_attention_slicing`] function:
+大容量のRAMを搭載したGPUでない限り、上記のコードはおそらく`OOM`エラーを返したはずです！メモリの大半はクロスアテンションレイヤーが占めています。この処理をバッチで実行する代わりに、逐次実行することでメモリを大幅に節約できます。必要なのは、[`~DiffusionPipeline.enable_attention_slicing`]関数を使用することだけです：
 
 ```python
 pipeline.enable_attention_slicing()
 ```
 
-Now try increasing the `batch_size` to 8!
+今度は`batch_size`を8にしてみてください！
 
 ```python
 images = pipeline(**get_inputs(batch_size=8)).images
@@ -178,21 +178,21 @@ make_image_grid(images, rows=2, cols=4)
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_5.png">
 </div>
 
-Whereas before you couldn't even generate a batch of 4 images, now you can generate a batch of 8 images at ~3.5 seconds per image! This is probably the fastest you can go on a T4 GPU without sacrificing quality.
+以前は4枚の画像のバッチを生成することさえできませんでしたが、今では8枚の画像のバッチを1枚あたり～3.5秒で生成できます！これはおそらく、品質を犠牲にすることなくT4 GPUでできる最速の処理速度です。
 
-## Quality
+## 品質
 
-In the last two sections, you learned how to optimize the speed of your pipeline by using `fp16`, reducing the number of inference steps by using a more performant scheduler, and enabling attention slicing to reduce memory consumption. Now you're going to focus on how to improve the quality of generated images.
+前の2つのセクションでは、`fp16` を使ってパイプラインの速度を最適化する方法、よりパフォーマン スなスケジューラーを使って生成ステップ数を減らす方法、アテンションスライスを有効 にしてメモリ消費量を減らす方法について学びました。今度は、生成される画像の品質を向上させる方法に焦点を当てます。
 
-### Better checkpoints
+### より良いチェックポイント
 
-The most obvious step is to use better checkpoints. The Stable Diffusion model is a good starting point, and since its official launch, several improved versions have also been released. However, using a newer version doesn't automatically mean you'll get better results. You'll still have to experiment with different checkpoints yourself, and do a little research (such as using [negative prompts](https://minimaxir.com/2022/11/stable-diffusion-negative-prompt/)) to get the best results.
+最も単純なステップは、より良いチェックポイントを使うことです。Stable Diffusionモデルは良い出発点であり、公式発表以来、いくつかの改良版もリリースされています。しかし、新しいバージョンを使ったからといって、自動的に良い結果が得られるわけではありません。最良の結果を得るためには、自分でさまざまなチェックポイントを試してみたり、ちょっとした研究（[ネガティブプロンプト](https://minimaxir.com/2022/11/stable-diffusion-negative-prompt/)の使用など）をしたりする必要があります。
 
-As the field grows, there are more and more high-quality checkpoints finetuned to produce certain styles. Try exploring the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) and [Diffusers Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) to find one you're interested in!
+この分野が成長するにつれて、特定のスタイルを生み出すために微調整された、より質の高いチェックポイントが増えています。[Hub](https://huggingface.co/models?library=diffusers&sort=downloads)や[Diffusers Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery)を探索して、興味のあるものを見つけてみてください！
 
-### Better pipeline components
+### より良いパイプラインコンポーネント
 
-You can also try replacing the current pipeline components with a newer version. Let's try loading the latest [autodecoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae) from Stability AI into the pipeline, and generate some images:
+現在のパイプラインコンポーネントを新しいバージョンに置き換えてみることもできます。Stability AIが提供する最新の[autodecoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae)をパイプラインにロードし、画像を生成してみましょう：
 
 ```python
 from diffusers import AutoencoderKL
@@ -207,21 +207,21 @@ make_image_grid(images, rows=2, cols=4)
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_6.png">
 </div>
 
-### Better prompt engineering
+### より良いプロンプト・エンジニアリング
 
-The text prompt you use to generate an image is super important, so much so that it is called *prompt engineering*. Some considerations to keep during prompt engineering are:
+画像を生成するために使用する文章は、*プロンプトエンジニアリング*と呼ばれる分野を作られるほど、非常に重要です。プロンプト・エンジニアリングで考慮すべき点は以下の通りです：
 
-- How is the image or similar images of the one I want to generate stored on the internet?
-- What additional detail can I give that steers the model towards the style I want?
+- 生成したい画像やその類似画像は、インターネット上にどのように保存されているか？
+- 私が望むスタイルにモデルを誘導するために、どのような追加詳細を与えるべきか？
 
-With this in mind, let's improve the prompt to include color and higher quality details:
+このことを念頭に置いて、プロンプトに色やより質の高いディテールを含めるように改良してみましょう：
 
 ```python
 prompt += ", tribal panther make up, blue on red, side profile, looking away, serious eyes"
 prompt += " 50mm portrait photography, hard rim lighting photography--beta --ar 2:3  --beta --upbeta"
 ```
 
-Generate a batch of images with the new prompt:
+新しいプロンプトで画像のバッチを生成しましょう：
 
 ```python
 images = pipeline(**get_inputs(batch_size=8)).images
@@ -232,7 +232,7 @@ make_image_grid(images, rows=2, cols=4)
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_7.png">
 </div>
 
-Pretty impressive! Let's tweak the second image - corresponding to the `Generator` with a seed of `1` - a bit more by adding some text about the age of the subject:
+かなりいいです！種が`1`の`Generator`に対応する2番目の画像に、被写体の年齢に関するテキストを追加して、もう少し手を加えてみましょう：
 
 ```python
 prompts = [
@@ -251,10 +251,10 @@ make_image_grid(images, 2, 2)
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_8.png">
 </div>
 
-## Next steps
+## 次のステップ
 
-In this tutorial, you learned how to optimize a [`DiffusionPipeline`] for computational and memory efficiency as well as improving the quality of generated outputs. If you're interested in making your pipeline even faster, take a look at the following resources:
+このチュートリアルでは、[`DiffusionPipeline`]を最適化して計算効率とメモリ効率を向上させ、生成される出力の品質を向上させる方法を学びました。パイプラインをさらに高速化することに興味があれば、以下のリソースを参照してください：
 
-- Learn how [PyTorch 2.0](./optimization/torch2.0) and [`torch.compile`](https://pytorch.org/docs/stable/generated/torch.compile.html) can yield 5 - 300% faster inference speed. On an A100 GPU, inference can be up to 50% faster!
-- If you can't use PyTorch 2, we recommend you install [xFormers](./optimization/xformers). Its memory-efficient attention mechanism works great with PyTorch 1.13.1 for faster speed and reduced memory consumption.
-- Other optimization techniques, such as model offloading, are covered in [this guide](./optimization/fp16).
+- [PyTorch 2.0](./optimization/torch2.0)と[`torch.compile`](https://pytorch.org/docs/stable/generated/torch.compile.html)がどのように生成速度を5-300%高速化できるかを学んでください。A100 GPUの場合、画像生成は最大50%速くなります！
+- PyTorch 2が使えない場合は、[xFormers](./optimization/xformers)をインストールすることをお勧めします。このライブラリのメモリ効率の良いアテンションメカニズムは PyTorch 1.13.1 と相性が良く、高速化とメモリ消費量の削減を同時に実現します。
+- モデルのオフロードなど、その他の最適化テクニックは [this guide](./optimization/fp16) でカバーされています。
