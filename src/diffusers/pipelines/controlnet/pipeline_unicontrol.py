@@ -531,9 +531,13 @@ class StableDiffusionUniControlPipeline(
                 f"`task` cannot be empty"
             )
         
-        if not set(task).issubset(task_to_name.keys()):
+        if isinstance(task,list) and not set(task).issubset(task_to_name.keys()):
             raise ValueError(
                 f"Values for `task` can only be {list(task_to_name.keys())}"
+            )
+        elif isinstance(task, str) and task not in task_to_name:
+            raise ValueError(
+                f"Values for `task` can only be {list(task_to_name.keys())} but passed {task}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -960,7 +964,7 @@ class StableDiffusionUniControlPipeline(
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
+            controlnet_keep.append(keeps[0] if isinstance(task, str) else keeps)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
