@@ -920,7 +920,7 @@ class StableDiffusionUniControlPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare image
-        if isinstance(controlnet, ControlNetModel):
+        if isinstance(task, str):
             image = self.prepare_image(
                 image=image,
                 width=width,
@@ -934,6 +934,26 @@ class StableDiffusionUniControlPipeline(
             )
             height, width = image.shape[-2:]
 
+        elif isinstance(task, list):
+            images = []
+
+            for image_ in image:
+                image_ = self.prepare_image(
+                    image=image_,
+                    width=width,
+                    height=height,
+                    batch_size=batch_size * num_images_per_prompt,
+                    num_images_per_prompt=num_images_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
+
+                images.append(image_)
+
+            image = images
+            height, width = image[0].shape[-2:]
         else:
             assert False
 
