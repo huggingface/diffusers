@@ -93,7 +93,7 @@ class UniControlTaskMOEEmbedding(nn.Module):
         # hint -> canny condition hint
         # context -> prompt embedding
         # task_id_embed -> from task name embedding
-
+        print(f"x, hint, context, task_id_embed, task_id: {x.shape}, {hint.shape}, {context.shape}, {task_id_emb.shape}, {task_id}")
         BS_Real = x.shape[0]
 
         guided_hint = self.input_hint_block_list_moe[task_id](hint)
