@@ -34,13 +34,19 @@ from diffusers.utils import logging
 from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
+from ..test_pipelines_common import (
+    PipelineTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
+    assert_mean_pixel_difference,
+)
 
 
 enable_full_determinism()
 
 
-class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionXLAdapterPipelineFastTests(
+    PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionXLAdapterPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
@@ -214,6 +220,9 @@ class StableDiffusionXLAdapterPipelineFastTests(PipelineTesterMixin, unittest.Te
             expected_out_image_size,
             expected_out_image_size,
         )
+
+    def test_save_load_optional_components(self):
+        return self._test_save_load_optional_components()
 
 
 class StableDiffusionXLMultiAdapterPipelineFastTests(

@@ -17,6 +17,8 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
+  - local: tutorials/using_peft_for_inference
+    title: Inference with PEFT
   title: Tutorials
 - sections:
   - sections:
