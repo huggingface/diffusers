@@ -498,6 +498,7 @@ class LatentConsistencyModelPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 4,
+        original_inference_steps: int = None,
         guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -524,6 +525,11 @@ class LatentConsistencyModelPipeline(
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            original_inference_steps (`int`, *optional*):
+                The original number of inference steps use to generate a linearly-spaced timestep schedule, from which
+                we will draw `num_inference_steps` evenly spaced timesteps from as our final timestep schedule,
+                following the Skipping-Step method in the paper (see Section 4.3). If not set this will default to the
+                scheduler's `original_inference_steps` attribute.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
@@ -608,7 +614,7 @@ class LatentConsistencyModelPipeline(
         )
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        self.scheduler.set_timesteps(num_inference_steps, device, original_inference_steps=original_inference_steps)
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variable

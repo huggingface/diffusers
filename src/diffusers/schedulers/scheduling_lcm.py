@@ -149,8 +149,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
         trained_betas (`np.ndarray`, *optional*):
             Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
-        origin_steps (`int`, *optional*, defaults to 50):
-            TODO
+        original_inference_steps (`int`, *optional*, defaults to 50):
+            The default number of inference steps used to generate a linearly-spaced timestep schedule, from which we
+            will ultimately take `num_inference_steps` evenly spaced timesteps to form the final timestep schedule.
         clip_sample (`bool`, defaults to `True`):
             Clip the predicted sample for numerical stability.
         clip_sample_range (`float`, defaults to 1.0):
@@ -194,7 +195,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-        origin_steps: int = 50,
+        original_inference_steps: int = 50,
         clip_sample: bool = False,
         clip_sample_range: float = 1.0,
         set_alpha_to_one: bool = True,
@@ -315,13 +316,25 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         return sample
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        device: Union[str, torch.device] = None,
+        original_inference_steps: Optional[int] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+            original_inference_steps (`int`, *optional*):
+                The original number of inference steps, which will be used to generate a linearly-spaced timestep
+                schedule (which is different from the standard `diffusers` implementation). We will then take
+                `num_inference_steps` timesteps from this schedule, evenly spaced in terms of indices, and use that as
+                our final timestep schedule. If not set, this will default to the `original_inference_steps` attribute.
         """
 
         if num_inference_steps > self.config.num_train_timesteps:
@@ -332,14 +345,18 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         self.num_inference_steps = num_inference_steps
+        original_steps = original_inference_steps if original_inference_steps is not None else self.original_inference_steps
 
-        # LCM Timesteps Setting:  # Linear Spacing
-        c = self.config.num_train_timesteps // self.config.origin_steps
+        # LCM Timesteps Setting
+        # Currently, only linear spacing is supported.
+        c = self.config.num_train_timesteps // original_steps
+        # LCM Training Steps Schedule
         lcm_origin_timesteps = (
-            np.asarray(list(range(1, self.config.origin_steps + 1))) * c - 1
-        )  # LCM Training  Steps Schedule
+            np.asarray(list(range(1, original_steps + 1))) * c - 1
+        )
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
-        timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]  # LCM Inference Steps Schedule
+        # LCM Inference Steps Schedule
+        timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]
 
         self.timesteps = torch.from_numpy(timesteps.copy()).to(device=device, dtype=torch.long)
 
