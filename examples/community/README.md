@@ -45,6 +45,7 @@ FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback fr
 sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion Pipeline](#stable-diffusion-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) | 
 prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) | 
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
+|   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -2185,3 +2186,35 @@ images = pipe(prompt=prompt, num_inference_steps=num_inference_steps, guidance_s
 For any questions or feedback, feel free to reach out to [Simian Luo](https://github.com/luosiallen).
 
 You can also try this pipeline directly in the [🚀 official spaces](https://huggingface.co/spaces/SimianLuo/Latent_Consistency_Model).
+
+
+
+### Latent Consistency Img2img Pipeline
+
+This pipeline extends the Latent Consistency Pipeline to allow it to take an input image.
+
+```py
+from diffusers import DiffusionPipeline
+import torch
+
+pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_img2img")
+
+# To save GPU memory, torch.float16 can be used, but it may compromise image quality.
+pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+```
+
+- 2. Run inference with as little as 4 steps:
+
+```py
+prompt = "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
+
+
+input_image=Image.open("myimg.png")
+
+strength = 0.5 #strength =0 (no change) strength=1 (completely overwrite image)
+
+# Can be set to 1~50 steps. LCM support fast inference even <= 4 steps. Recommend: 1~8 steps.
+num_inference_steps = 4 
+
+images = pipe(prompt=prompt, image=input_image, strength=strength, num_inference_steps=num_inference_steps, guidance_scale=8.0, lcm_origin_steps=50, output_type="pil").images
+```

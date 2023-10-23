@@ -169,7 +169,7 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
 
     def prepare_latents(self, image, timestep, batch_size, num_channels_latents, height, width, dtype, device, latents=None, generator=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        
+
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -177,7 +177,7 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
 
         image = image.to(device=device, dtype=dtype)
 
-        #batch_size = batch_size * num_images_per_prompt
+        # batch_size = batch_size * num_images_per_prompt
 
         if image.shape[1] == 4:
             init_latents = image
@@ -207,7 +207,7 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
                 " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
                 " your script to pass as many initial images as text prompts to suppress this warning."
             )
-            #deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
+            # deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
             additional_image_per_prompt = batch_size // init_latents.shape[0]
             init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
         elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
@@ -225,10 +225,7 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
         latents = init_latents
 
         return latents
-        
-        
-        
-        
+
         if latents is None:
             latents = torch.randn(shape, dtype=dtype).to(device)
         else:
@@ -259,7 +256,7 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
             emb = torch.nn.functional.pad(emb, (0, 1))
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
-    
+
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -314,9 +311,9 @@ class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
         image = self.image_processor.preprocess(image)
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(strength,num_inference_steps, lcm_origin_steps)
-        #timesteps = self.scheduler.timesteps
-        #timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, 1.0, device)
+        self.scheduler.set_timesteps(strength, num_inference_steps, lcm_origin_steps)
+        # timesteps = self.scheduler.timesteps
+        # timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, 1.0, device)
         timesteps = self.scheduler.timesteps
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
@@ -665,7 +662,7 @@ class LCMSchedulerWithTimestamp(SchedulerMixin, ConfigMixin):
 
         # LCM Timesteps Setting:  # Linear Spacing
         c = self.config.num_train_timesteps // lcm_origin_steps
-        lcm_origin_timesteps = np.asarray(list(range(1, int(lcm_origin_steps*stength) + 1))) * c - 1  # LCM Training  Steps Schedule
+        lcm_origin_timesteps = np.asarray(list(range(1, int(lcm_origin_steps * stength) + 1))) * c - 1  # LCM Training  Steps Schedule
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]  # LCM Inference Steps Schedule
 
