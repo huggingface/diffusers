@@ -345,15 +345,15 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         self.num_inference_steps = num_inference_steps
-        original_steps = original_inference_steps if original_inference_steps is not None else self.original_inference_steps
+        original_steps = (
+            original_inference_steps if original_inference_steps is not None else self.original_inference_steps
+        )
 
         # LCM Timesteps Setting
         # Currently, only linear spacing is supported.
         c = self.config.num_train_timesteps // original_steps
         # LCM Training Steps Schedule
-        lcm_origin_timesteps = (
-            np.asarray(list(range(1, original_steps + 1))) * c - 1
-        )
+        lcm_origin_timesteps = np.asarray(list(range(1, original_steps + 1))) * c - 1
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
         # LCM Inference Steps Schedule
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]
