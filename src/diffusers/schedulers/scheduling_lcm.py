@@ -191,9 +191,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
         num_train_timesteps: int = 1000,
-        beta_start: float = 0.0001,
-        beta_end: float = 0.02,
-        beta_schedule: str = "linear",
+        beta_start: float = 0.00085,
+        beta_end: float = 0.012,
+        beta_schedule: str = "scaled_linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         original_inference_steps: int = 50,
         clip_sample: bool = False,
