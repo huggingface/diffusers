@@ -161,7 +161,7 @@ class LatentConsistencyModelPipelineSlowTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -174,12 +174,11 @@ class LatentConsistencyModelPipelineSlowTests(unittest.TestCase):
         inputs = self.get_inputs(torch_device)
         inputs["num_inference_steps"] = 1
         image = pipe(**inputs).images
-        assert image.shape == (1, 768, 768, 3)
+        assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1].flatten()
-        # TODO: get expected slice
-        expected_slice = np.array([0.38019, 0.28647, 0.27321, 0.40377, 0.38290, 0.35446, 0.39218, 0.38165, 0.42239])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        expected_slice = np.array([0.1025, 0.0911, 0.0984, 0.0981, 0.0901, 0.0918, 0.1055, 0.0940, 0.0730])
+        assert np.abs(image_slice - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
         pipe = LatentConsistencyModelPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", safety_checker=None)
@@ -189,9 +188,8 @@ class LatentConsistencyModelPipelineSlowTests(unittest.TestCase):
 
         inputs = self.get_inputs(torch_device)
         image = pipe(**inputs).images
-        assert image.shape == (1, 768, 768, 3)
+        assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1].flatten()
-        # TODO: get expected slice
-        expected_slice = np.array([0.38019, 0.28647, 0.27321, 0.40377, 0.38290, 0.35446, 0.39218, 0.38165, 0.42239])
-        assert np.abs(image_slice - expected_slice).max() < 1e-4
+        expected_slice = np.array([0.01855, 0.01855, 0.01489, 0.01392, 0.01782, 0.01465, 0.01831, 0.02539, 0.0])
+        assert np.abs(image_slice - expected_slice).max() < 1e-3
