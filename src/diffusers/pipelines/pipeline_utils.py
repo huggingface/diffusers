@@ -1837,6 +1837,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # retrieve pipeline class from local file
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
             cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
+            print(f"From from_pretrained: cls_name: {cls_name}")
 
             pipeline_class = getattr(diffusers, cls_name, None)
 
