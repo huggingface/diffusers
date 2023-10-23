@@ -17,7 +17,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
@@ -151,7 +150,7 @@ class LatentConsistencyModelPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         gc.collect()
         torch.cuda.empty_cache()
-    
+
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))

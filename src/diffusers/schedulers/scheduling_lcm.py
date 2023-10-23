@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -35,6 +35,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class LCMSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's `step` function output.
+
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample `(x_{t-1})` of previous timestep. `prev_sample` should be used as next model input in the
@@ -56,9 +57,9 @@ def betas_for_alpha_bar(
 ):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
-    (1-beta) over time from t = [0,1].
-    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
-    to that part of the diffusion process.
+    (1-beta) over time from t = [0,1]. Contains a function alpha_bar that takes an argument t and transforms it to the
+    cumulative product of (1-beta) up to that part of the diffusion process.
+
     Args:
         num_diffusion_timesteps (`int`): the number of betas to produce.
         max_beta (`float`): the maximum beta to use; use values lower than 1 to
@@ -131,11 +132,10 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
     `LCMScheduler` extends the denoising procedure introduced in denoising diffusion probabilistic models (DDPMs) with
     non-Markovian guidance.
 
-    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`].
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. [`~ConfigMixin`] takes care of storing all config
+    attributes that are passed in the scheduler's `__init__` function, such as `num_train_timesteps`. They can be
+    accessed via `scheduler.config.num_train_timesteps`. [`SchedulerMixin`] provides general loading and saving
+    functionality via the [`SchedulerMixin.save_pretrained`] and [`~SchedulerMixin.from_pretrained`] functions.
 
     Args:
         num_train_timesteps (`int`, defaults to 1000):
@@ -269,6 +269,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
+
         Args:
             sample (`torch.FloatTensor`):
                 The input sample.
@@ -317,6 +318,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
+
         Args:
             num_inference_steps (`int`):
                 The number of diffusion steps used when generating samples with a pre-trained model.
@@ -333,7 +335,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         # LCM Timesteps Setting:  # Linear Spacing
         c = self.config.num_train_timesteps // self.config.origin_steps
-        lcm_origin_timesteps = np.asarray(list(range(1, self.config.origin_steps + 1))) * c - 1  # LCM Training  Steps Schedule
+        lcm_origin_timesteps = (
+            np.asarray(list(range(1, self.config.origin_steps + 1))) * c - 1
+        )  # LCM Training  Steps Schedule
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]  # LCM Inference Steps Schedule
 
@@ -360,6 +364,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
+
         Args:
             model_output (`torch.FloatTensor`):
                 The direct output from learned diffusion model.

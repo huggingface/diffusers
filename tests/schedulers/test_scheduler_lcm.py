@@ -190,7 +190,6 @@ class LCMSchedulerTest(SchedulerCommonTest):
         timestep = self.default_valid_timestep
 
         for scheduler_class in self.scheduler_classes:
-
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 

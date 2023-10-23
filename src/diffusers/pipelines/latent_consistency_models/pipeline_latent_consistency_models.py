@@ -16,16 +16,11 @@
 # and https://github.com/hojonathanho/diffusion
 
 import inspect
-import math
-from dataclasses import dataclass
-from packaging import version
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
 from ...image_processor import VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -33,9 +28,7 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LCMScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
-    deprecate,
     logging,
-    replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
 )
@@ -62,7 +55,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
+class LatentConsistencyModelPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-to-image generation using a latent consistency model.
 
@@ -141,7 +136,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
@@ -174,7 +169,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
@@ -421,7 +416,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
     def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
-        
+
         Args:
             timesteps (`torch.Tensor`):
                 generate embedding vectors at these timesteps
@@ -429,7 +424,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 dimension of the embeddings to generate
             dtype:
                 data type of the generated embeddings
-        
+
         Returns:
             `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
         """
@@ -445,7 +440,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
             emb = torch.nn.functional.pad(emb, (0, 1))
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -463,7 +458,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
-    
+
     # Currently StableDiffusionPipeline.check_inputs with negative prompt stuff removed
     def check_inputs(
         self,
@@ -533,8 +528,8 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
                 Note that the original latent consistency models paper uses a different CFG formulation where the
-                guidance scales are decreased by 1 (so in the paper formulation CFG is enabled when
-                `guidance_scale > 0`).
+                guidance scales are decreased by 1 (so in the paper formulation CFG is enabled when `guidance_scale >
+                0`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -635,7 +630,9 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
         # CFG formulation, so we need to subtract 1 from the input guidance_scale.
         # LCM CFG formulation:  cfg_noise = noise_cond + cfg_scale * (noise_cond - noise_uncond), (cfg_scale > 0.0 using CFG)
         w = torch.tensor(guidance_scale - 1).repeat(bs)
-        w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=self.unet.config.time_cond_proj_dim).to(device=device, dtype=latents.dtype)
+        w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=self.unet.config.time_cond_proj_dim).to(
+            device=device, dtype=latents.dtype
+        )
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, None)
@@ -657,9 +654,7 @@ class LatentConsistencyModelPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents, denoised = self.scheduler.step(
-                    model_pred, t, latents, **extra_step_kwargs, return_dict=False
-                )
+                latents, denoised = self.scheduler.step(model_pred, t, latents, **extra_step_kwargs, return_dict=False)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
