@@ -8,8 +8,8 @@ Customized normalization layers for supporting various models in 🤗 Diffusers.
 
 ## AdaLayerNormZero
 
-[[autodoc]] models.activations.AdaLayerNormZero
+[[autodoc]] models.normalization.AdaLayerNormZero
 
 ## AdaGroupNorm
 
-[[autodoc]] models.activations.AdaGroupNorm
+[[autodoc]] models.normalization.AdaGroupNorm
