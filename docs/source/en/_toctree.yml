@@ -162,6 +162,10 @@
   title: Conceptual Guides
 - sections:
   - sections:
+    - local: api/activations
+      title: Custom Activation Functions
+    - local: api/normalization
+      title: Custom Normalization Layers
     - local: api/attnprocessor
       title: Attention Processor
     - local: api/diffusion_pipeline
