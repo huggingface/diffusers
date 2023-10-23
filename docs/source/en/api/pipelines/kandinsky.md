@@ -396,7 +396,7 @@ t2i_pipe.unet.set_attn_processor(AttnAddedKVProcessor())
 ```
 
 With PyTorch >= 2.0, you can also use Kandinsky with `torch.compile` which depending 
-on your hardware can signficantly speed-up your inference time once the model is compiled.
+on your hardware can significantly speed-up your inference time once the model is compiled.
 To use Kandinsksy with `torch.compile`, you can do:
 
 ```py

@@ -1,51 +1,41 @@
-# 🧨 Stable Diffusion in JAX / Flax !
+# JAX/Flax
 
 [[open-in-colab]]
 
-🤗 Hugging Face [Diffusers](https://github.com/huggingface/diffusers) supports Flax since version `0.5.1`! This allows for super fast inference on Google TPUs, such as those available in Colab, Kaggle or Google Cloud Platform.
+🤗 Diffusers supports Flax for super fast inference on Google TPUs, such as those available in Colab, Kaggle or Google Cloud Platform. This guide shows you how to run inference with Stable Diffusion using JAX/Flax.
 
-This notebook shows how to run inference using JAX / Flax. If you want more details about how Stable Diffusion works or want to run it in GPU, please refer to [this notebook](https://huggingface.co/docs/diffusers/stable_diffusion).
-
-First, make sure you are using a TPU backend. If you are running this notebook in Colab, select `Runtime` in the menu above, then select the option "Change runtime type" and then select `TPU` under the `Hardware accelerator` setting.
-
-Note that JAX is not exclusive to TPUs, but it shines on that hardware because each TPU server has 8 TPU accelerators working in parallel.
-
-## Setup
-
-First make sure diffusers is installed.
+Before you begin, make sure you have the necessary libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install jax==0.3.25 jaxlib==0.3.25 flax transformers ftfy
-#!pip install diffusers
+#!pip install -q jax==0.3.25 jaxlib==0.3.25 flax transformers ftfy
+#!pip install -q diffusers
 ```
 
-```python
-import jax.tools.colab_tpu
+You should also make sure you're using a TPU backend. While JAX does not run exclusively on TPUs, you'll get the best performance on a TPU because each server has 8 TPU accelerators working in parallel.
 
-jax.tools.colab_tpu.setup_tpu()
+If you are running this guide in Colab, select *Runtime* in the menu above, select the option *Change runtime type*, and then select *TPU* under the *Hardware accelerator* setting. Import JAX and quickly check whether you're using a TPU:
+
+```python
 import jax
-```
+import jax.tools.colab_tpu
+jax.tools.colab_tpu.setup_tpu()
 
-```python
 num_devices = jax.device_count()
 device_type = jax.devices()[0].device_kind
 
 print(f"Found {num_devices} JAX devices of type {device_type}.")
 assert (
-    "TPU" in device_type
-), "Available device is not a TPU, please select TPU from Edit > Notebook settings > Hardware accelerator"
+    "TPU" in device_type, 
+    "Available device is not a TPU, please select TPU from Edit > Notebook settings > Hardware accelerator"
+)
+"Found 8 JAX devices of type Cloud TPU."
 ```
 
-```python out
-Found 8 JAX devices of type Cloud TPU.
-```
-
-Then we import all the dependencies.
+Great, now you can import the rest of the dependencies you'll need:
 
 ```python
 import numpy as np
-import jax
 import jax.numpy as jnp
 
 from pathlib import Path
@@ -58,17 +48,12 @@ from huggingface_hub import notebook_login
 from diffusers import FlaxStableDiffusionPipeline
 ```
 
-## Model Loading
+## Load a model
 
-TPU devices support `bfloat16`, an efficient half-float type. We'll use it for our tests, but you can also use `float32` to use full precision instead.
+Flax is a functional framework, so models are stateless and parameters are stored outside of them. Loading a pretrained Flax pipeline returns *both* the pipeline and the model weights (or parameters). In this guide, you'll use `bfloat16`, a more efficient half-float type that is supported by TPUs (you can also use `float32` for full precision if you want).
 
 ```python
 dtype = jnp.bfloat16
-```
-
-Flax is a functional framework, so models are stateless and parameters are stored outside them. Loading the pre-trained Flax pipeline will return both the pipeline itself and the model weights (or parameters). We are using a `bf16` version of the weights, which leads to type warnings that you can safely ignore.
-
-```python
 pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     revision="bf16",
@@ -78,95 +63,87 @@ pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
 
 ## Inference
 
-Since TPUs usually have 8 devices working in parallel, we'll replicate our prompt as many times as devices we have. Then we'll perform inference on the 8 devices at once, each responsible for generating one image. Thus, we'll get 8 images in the same amount of time it takes for one chip to generate a single one.
+TPUs usually have 8 devices working in parallel, so let's use the same prompt for each device. This means you can perform inference on 8 devices at once, with each device generating one image. As a result, you'll get 8 images in the same amount of time it takes for one chip to generate a single image!
 
-After replicating the prompt, we obtain the tokenized text ids by invoking the `prepare_inputs` function of the pipeline. The length of the tokenized text is set to 77 tokens, as required by the configuration of the underlying CLIP Text model.
+<Tip>
+
+Learn more details in the [How does parallelization work?](#how-does-parallelization-work) section.
+
+</Tip>
+
+After replicating the prompt, get the tokenized text ids by calling the `prepare_inputs` function on the pipeline. The length of the tokenized text is set to 77 tokens as required by the configuration of the underlying CLIP text model.
 
 ```python
 prompt = "A cinematic film still of Morgan Freeman starring as Jimi Hendrix, portrait, 40mm lens, shallow depth of field, close up, split lighting, cinematic"
 prompt = [prompt] * jax.device_count()
 prompt_ids = pipeline.prepare_inputs(prompt)
 prompt_ids.shape
+"(8, 77)"
 ```
 
-```python out
-(8, 77)
-```
-
-### Replication and parallelization
-
-Model parameters and inputs have to be replicated across the 8 parallel devices we have. The parameters dictionary is replicated using `flax.jax_utils.replicate`, which traverses the dictionary and changes the shape of the weights so they are repeated 8 times. Arrays are replicated using `shard`.
+Model parameters and inputs have to be replicated across the 8 parallel devices. The parameters dictionary is replicated with [`flax.jax_utils.replicate`](https://flax.readthedocs.io/en/latest/api_reference/flax.jax_utils.html#flax.jax_utils.replicate) which traverses the dictionary and changes the shape of the weights so they are repeated 8 times. Arrays are replicated using `shard`.
 
 ```python
+# parameters
 p_params = replicate(params)
-```
 
-```python
+# arrays
 prompt_ids = shard(prompt_ids)
 prompt_ids.shape
+"(8, 1, 77)"
 ```
 
-```python out
-(8, 1, 77)
-```
+This shape means each one of the 8 devices receives as an input a `jnp` array with shape `(1, 77)`, where `1` is the batch size per device. On TPUs with sufficient memory, you could have a batch size larger than `1` if you want to generate multiple images (per chip) at once.
 
-That shape means that each one of the `8` devices will receive as an input a `jnp` array with shape `(1, 77)`. `1` is therefore the batch size per device. In TPUs with sufficient memory, it could be larger than `1` if we wanted to generate multiple images (per chip) at once.
+Next, create a random number generator to pass to the generation function. This is standard procedure in Flax, which is very serious and opinionated about random numbers. All functions that deal with random numbers are expected to receive a generator to ensure reproducibility, even when you're training across multiple distributed devices.
 
-We are almost ready to generate images! We just need to create a random number generator to pass to the generation function. This is the standard procedure in Flax, which is very serious and opinionated about random numbers – all functions that deal with random numbers are expected to receive a generator. This ensures reproducibility, even when we are training across multiple distributed devices.
-
-The helper function below uses a seed to initialize a random number generator. As long as we use the same seed, we'll get the exact same results. Feel free to use different seeds when exploring results later in the notebook.
+The helper function below uses a seed to initialize a random number generator. As long as you use the same seed, you'll get the exact same results. Feel free to use different seeds when exploring results later in the guide.
 
 ```python
 def create_key(seed=0):
     return jax.random.PRNGKey(seed)
 ```
 
-We obtain a rng and then "split" it 8 times so each device receives a different generator. Therefore, each device will create a different image, and the full process is reproducible.
+The helper function, or `rng`, is split 8 times so each device receives a different generator and generates a different image.
 
 ```python
 rng = create_key(0)
 rng = jax.random.split(rng, jax.device_count())
 ```
 
-JAX code can be compiled to an efficient representation that runs very fast. However, we need to ensure that all inputs have the same shape in subsequent calls; otherwise, JAX will have to recompile the code, and we wouldn't be able to take advantage of the optimized speed.
+To take advantage of JAX's optimized speed on a TPU, pass `jit=True` to the pipeline to compile the JAX code into an efficient representation and to ensure the model runs in parallel across the 8 devices.
 
-The Flax pipeline can compile the code for us if we pass `jit = True` as an argument. It will also ensure that the model runs in parallel in the 8 available devices.
+<Tip warning={true}>
 
-The first time we run the following cell it will take a long time to compile, but subequent calls (even with different inputs) will be much faster. For example, it took more than a minute to compile in a TPU v2-8 when I tested, but then it takes about **`7s`** for future inference runs.
+You need to ensure all your inputs have the same shape in subsequent calls, other JAX will need to recompile the code which is slower.
 
-```
+</Tip>
+
+The first inference run takes more time because it needs to compile the code, but subsequent calls (even with different inputs) are much faster. For example, it took more than a minute to compile on a TPU v2-8, but then it takes about **7s** on a future inference run!
+
+```py
 %%time
 images = pipeline(prompt_ids, p_params, rng, jit=True)[0]
+
+"CPU times: user 56.2 s, sys: 42.5 s, total: 1min 38s"
+"Wall time: 1min 29s"
 ```
 
-```python out
-CPU times: user 56.2 s, sys: 42.5 s, total: 1min 38s
-Wall time: 1min 29s
-```
-
-The returned array has shape `(8, 1, 512, 512, 3)`. We reshape it to get rid of the second dimension and obtain 8 images of `512 × 512 × 3` and then convert them to PIL.
-
-```python
-images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
-images = pipeline.numpy_to_pil(images)
-```
-
-### Visualization
+The returned array has shape `(8, 1, 512, 512, 3)` which should be reshaped to remove the second dimension and get 8 images of `512 × 512 × 3`. Then you can use the [`~utils.numpy_to_pil`] function to convert the arrays into images.
 
 ```python
 from diffusers import make_image_grid
 
+images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
+images = pipeline.numpy_to_pil(images)
 make_image_grid(images, 2, 4)
 ```
 
 ![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/stable_diffusion_jax_how_to_cell_38_output_0.jpeg)
 
-
 ## Using different prompts
 
-We don't have to replicate the _same_ prompt in all the devices. We can do whatever we want: generate 2 prompts 4 times each, or even generate 8 different prompts at once. Let's do that!
-
-First, we'll refactor the input preparation code into a handy function:
+You don't necessarily have to use the same prompt on all devices. For example, to generate 8 different prompts:
 
 ```python
 prompts = [
@@ -179,9 +156,7 @@ prompts = [
     "Armchair in the shape of an avocado",
     "Clown astronaut in space, with Earth in the background",
 ]
-```
 
-```python
 prompt_ids = pipeline.prepare_inputs(prompts)
 prompt_ids = shard(prompt_ids)
 
@@ -197,46 +172,41 @@ make_image_grid(images, 2, 4)
 
 ## How does parallelization work?
 
-We said before that the `diffusers` Flax pipeline automatically compiles the model and runs it in parallel on all available devices. We'll now briefly look inside that process to show how it works.
+The Flax pipeline in 🤗 Diffusers automatically compiles the model and runs it in parallel on all available devices. Let's take a closer look at how that process works.
 
-JAX parallelization can be done in multiple ways. The easiest one revolves around using the `jax.pmap` function to achieve single-program, multiple-data (SPMD) parallelization. It means we'll run several copies of the same code, each on different data inputs. More sophisticated approaches are possible, we invite you to go over the [JAX documentation](https://jax.readthedocs.io/en/latest/index.html) and the [`pjit` pages](https://jax.readthedocs.io/en/latest/jax-101/08-pjit.html?highlight=pjit) to explore this topic if you are interested!
+JAX parallelization can be done in multiple ways. The easiest one revolves around using the [`jax.pmap`](https://jax.readthedocs.io/en/latest/_autosummary/jax.pmap.html) function to achieve single-program multiple-data (SPMD) parallelization. It means running several copies of the same code, each on different data inputs. More sophisticated approaches are possible, and you can go over to the JAX [documentation](https://jax.readthedocs.io/en/latest/index.html) to explore this topic in more detail if you are interested!
 
-`jax.pmap` does two things for us:
-- Compiles (or `jit`s) the code, as if we had invoked `jax.jit()`. This does not happen when we call `pmap`, but the first time the pmapped function is invoked.
-- Ensures the compiled code runs in parallel in all the available devices.
+`jax.pmap` does two things:
 
-To show how it works we `pmap` the `_generate` method of the pipeline, which is the private method that runs generates images. Please, note that this method may be renamed or removed in future releases of `diffusers`.
+1. Compiles (or "`jit`s") the code which is similar to `jax.jit()`. This does not happen when you call `pmap`, and only the first time the `pmap`ped function is called.
+2. Ensures the compiled code runs in parallel on all available devices.
+
+To demonstrate, call `pmap` on the pipeline's `_generate` method (this is a private method that generates images and may be renamed or removed in future releases of 🤗 Diffusers):
 
 ```python
 p_generate = pmap(pipeline._generate)
 ```
 
-After we use `pmap`, the prepared function `p_generate` will conceptually do the following:
-* Invoke a copy of the underlying function `pipeline._generate` in each device.
-* Send each device a different portion of the input arguments. That's what sharding is used for. In our case, `prompt_ids` has shape `(8, 1, 77, 768)`. This array will be split in `8` and each copy of `_generate` will receive an input with shape `(1, 77, 768)`.
+After calling `pmap`, the prepared function `p_generate` will:
 
-We can code `_generate` completely ignoring the fact that it will be invoked in parallel. We just care about our batch size (`1` in this example) and the dimensions that make sense for our code, and don't have to change anything to make it work in parallel.
+1. Make a copy of the underlying function, `pipeline._generate`, on each device.
+2. Send each device a different portion of the input arguments (this is why its necessary to call the *shard* function). In this case, `prompt_ids` has shape `(8, 1, 77, 768)` so the array is split into 8 and each copy of `_generate` receives an input with shape `(1, 77, 768)`.
 
-The same way as when we used the pipeline call, the first time we run the following cell it will take a while, but then it will be much faster.
+The most important thing to pay attention to here is the batch size (1 in this example), and the input dimensions that make sense for your code. You don't have to change anything else to make the code work in parallel.
 
-```
+The first time you call the pipeline takes more time, but the calls afterward are much faster. The `block_until_ready` function is used to correctly measure inference time because JAX uses asynchronous dispatch and returns control to the Python loop as soon as it can. You don't need to use that in your code; blocking occurs automatically when you want to use the result of a computation that has not yet been materialized.
+
+```py
 %%time
 images = p_generate(prompt_ids, p_params, rng)
 images = images.block_until_ready()
-images.shape
+"CPU times: user 1min 15s, sys: 18.2 s, total: 1min 34s"
+"Wall time: 1min 15s"
 ```
 
-```python out
-CPU times: user 1min 15s, sys: 18.2 s, total: 1min 34s
-Wall time: 1min 15s
-```
+Check your image dimensions to see if they're correct:
 
 ```python
 images.shape
+"(8, 1, 512, 512, 3)"
 ```
-
-```python out
-(8, 1, 512, 512, 3)
-```
-
-We use `block_until_ready()` to correctly measure inference time, because JAX uses asynchronous dispatch and returns control to the Python loop as soon as it can. You don't need to use that in your code; blocking will occur automatically when you want to use the result of a computation that has not yet been materialized.

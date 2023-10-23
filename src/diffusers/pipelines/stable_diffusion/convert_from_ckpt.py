@@ -304,8 +304,6 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
                 class_embed_type = "projection"
             assert "adm_in_channels" in unet_params
             projection_class_embeddings_input_dim = unet_params.adm_in_channels
-        else:
-            raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params.num_classes}")
 
     config = {
         "sample_size": image_size // vae_scale_factor,
@@ -322,6 +320,12 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
         "projection_class_embeddings_input_dim": projection_class_embeddings_input_dim,
         "transformer_layers_per_block": transformer_layers_per_block,
     }
+
+    if "disable_self_attentions" in unet_params:
+        config["only_cross_attention"] = unet_params.disable_self_attentions
+
+    if "num_classes" in unet_params and isinstance(unet_params.num_classes, int):
+        config["num_class_embeds"] = unet_params.num_classes
 
     if controlnet:
         config["conditioning_channels"] = unet_params.hint_channels
@@ -441,6 +445,10 @@ def convert_ldm_unet_checkpoint(
         new_checkpoint["add_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
         new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
 
+    # Relevant to StableDiffusionUpscalePipeline
+    if "num_class_embeds" in config:
+        new_checkpoint["class_embedding.weight"] = unet_state_dict["label_emb.weight"]
+
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
 
@@ -496,6 +504,7 @@ def convert_ldm_unet_checkpoint(
 
         if len(attentions):
             paths = renew_attention_paths(attentions)
+
             meta_path = {"old": f"input_blocks.{i}.1", "new": f"down_blocks.{block_id}.attentions.{layer_in_block_id}"}
             assign_to_checkpoint(
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
@@ -778,7 +787,12 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
 def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder=None):
     if text_encoder is None:
         config_name = "openai/clip-vit-large-patch14"
-        config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
+        try:
+            config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: 'openai/clip-vit-large-patch14'."
+            )
 
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():
@@ -913,7 +927,12 @@ def convert_open_clip_checkpoint(
     # text_model = CLIPTextModelWithProjection.from_pretrained(
     #    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
     # )
-    config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs, local_files_only=local_files_only)
+    try:
+        config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs, local_files_only=local_files_only)
+    except Exception:
+        raise ValueError(
+            f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: '{config_name}'."
+        )
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
@@ -1210,6 +1229,7 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionControlNetPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
+        StableDiffusionUpscalePipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
@@ -1256,25 +1276,43 @@ def download_from_original_stable_diffusion_ckpt(
         key_name_v2_1 = "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight"
         key_name_sd_xl_base = "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias"
         key_name_sd_xl_refiner = "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias"
+        is_upscale = pipeline_class == StableDiffusionUpscalePipeline
+
+        config_url = None
 
         # model_type = "v1"
-        config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+        if config_files is not None and "v1" in config_files:
+            original_config_file = config_files["v1"]
+        else:
+            config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
 
         if key_name_v2_1 in checkpoint and checkpoint[key_name_v2_1].shape[-1] == 1024:
             # model_type = "v2"
-            config_url = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
-
+            if config_files is not None and "v2" in config_files:
+                original_config_file = config_files["v2"]
+            else:
+                config_url = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
             if global_step == 110000:
                 # v2.1 needs to upcast attention
                 upcast_attention = True
         elif key_name_sd_xl_base in checkpoint:
             # only base xl has two text embedders
-            config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
+            if config_files is not None and "xl" in config_files:
+                original_config_file = config_files["xl"]
+            else:
+                config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml"
         elif key_name_sd_xl_refiner in checkpoint:
             # only refiner xl has embedder and one text embedders
-            config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml"
+            if config_files is not None and "xl_refiner" in config_files:
+                original_config_file = config_files["xl_refiner"]
+            else:
+                config_url = "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml"
 
-        original_config_file = BytesIO(requests.get(config_url).content)
+        if is_upscale:
+            config_url = "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml"
+
+        if config_url is not None:
+            original_config_file = BytesIO(requests.get(config_url).content)
 
     original_config = OmegaConf.load(original_config_file)
 
@@ -1296,6 +1334,8 @@ def download_from_original_stable_diffusion_ckpt(
 
     if num_in_channels is None and pipeline_class == StableDiffusionInpaintPipeline:
         num_in_channels = 9
+    if num_in_channels is None and pipeline_class == StableDiffusionUpscalePipeline:
+        num_in_channels = 7
     elif num_in_channels is None:
         num_in_channels = 4
 
@@ -1379,9 +1419,13 @@ def download_from_original_stable_diffusion_ckpt(
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
+    if pipeline_class == StableDiffusionUpscalePipeline:
+        image_size = original_config.model.params.unet_config.params.image_size
+
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet_config["upcast_attention"] = upcast_attention
+
     path = checkpoint_path_or_dict if isinstance(checkpoint_path_or_dict, str) else ""
     converted_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=path, extract_ema=extract_ema
@@ -1430,10 +1474,18 @@ def download_from_original_stable_diffusion_ckpt(
         config_name = "stabilityai/stable-diffusion-2"
         config_kwargs = {"subfolder": "text_encoder"}
 
-        text_model = convert_open_clip_checkpoint(checkpoint, config_name, **config_kwargs)
-        tokenizer = CLIPTokenizer.from_pretrained(
-            "stabilityai/stable-diffusion-2", subfolder="tokenizer", local_files_only=local_files_only
+        text_model = convert_open_clip_checkpoint(
+            checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
         )
+
+        try:
+            tokenizer = CLIPTokenizer.from_pretrained(
+                "stabilityai/stable-diffusion-2", subfolder="tokenizer", local_files_only=local_files_only
+            )
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'stabilityai/stable-diffusion-2'."
+            )
 
         if stable_unclip is None:
             if controlnet:
@@ -1446,8 +1498,29 @@ def download_from_original_stable_diffusion_ckpt(
                     controlnet=controlnet,
                     safety_checker=None,
                     feature_extractor=None,
-                    requires_safety_checker=False,
                 )
+                if hasattr(pipe, "requires_safety_checker"):
+                    pipe.requires_safety_checker = False
+
+            elif pipeline_class == StableDiffusionUpscalePipeline:
+                scheduler = DDIMScheduler.from_pretrained(
+                    "stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler"
+                )
+                low_res_scheduler = DDPMScheduler.from_pretrained(
+                    "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
+                )
+
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_model,
+                    tokenizer=tokenizer,
+                    unet=unet,
+                    scheduler=scheduler,
+                    low_res_scheduler=low_res_scheduler,
+                    safety_checker=None,
+                    feature_extractor=None,
+                )
+
             else:
                 pipe = pipeline_class(
                     vae=vae,
@@ -1457,8 +1530,10 @@ def download_from_original_stable_diffusion_ckpt(
                     scheduler=scheduler,
                     safety_checker=None,
                     feature_extractor=None,
-                    requires_safety_checker=False,
                 )
+                if hasattr(pipe, "requires_safety_checker"):
+                    pipe.requires_safety_checker = False
+
         else:
             image_normalizer, image_noising_scheduler = stable_unclip_image_noising_components(
                 original_config, clip_stats_path=clip_stats_path, device=device
@@ -1489,9 +1564,14 @@ def download_from_original_stable_diffusion_ckpt(
                         karlo_model, subfolder="prior", local_files_only=local_files_only
                     )
 
-                    prior_tokenizer = CLIPTokenizer.from_pretrained(
-                        "openai/clip-vit-large-patch14", local_files_only=local_files_only
-                    )
+                    try:
+                        prior_tokenizer = CLIPTokenizer.from_pretrained(
+                            "openai/clip-vit-large-patch14", local_files_only=local_files_only
+                        )
+                    except Exception:
+                        raise ValueError(
+                            f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+                        )
                     prior_text_model = CLIPTextModelWithProjection.from_pretrained(
                         "openai/clip-vit-large-patch14", local_files_only=local_files_only
                     )
@@ -1524,10 +1604,22 @@ def download_from_original_stable_diffusion_ckpt(
                 raise NotImplementedError(f"unknown `stable_unclip` type: {stable_unclip}")
     elif model_type == "PaintByExample":
         vision_model = convert_paint_by_example_checkpoint(checkpoint)
-        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
-        feature_extractor = AutoFeatureExtractor.from_pretrained(
-            "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
-        )
+        try:
+            tokenizer = CLIPTokenizer.from_pretrained(
+                "openai/clip-vit-large-patch14", local_files_only=local_files_only
+            )
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+            )
+        try:
+            feature_extractor = AutoFeatureExtractor.from_pretrained(
+                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
+            )
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the feature_extractor in the following path: 'CompVis/stable-diffusion-safety-checker'."
+            )
         pipe = PaintByExamplePipeline(
             vae=vae,
             image_encoder=vision_model,
@@ -1540,11 +1632,16 @@ def download_from_original_stable_diffusion_ckpt(
         text_model = convert_ldm_clip_checkpoint(
             checkpoint, local_files_only=local_files_only, text_encoder=text_encoder
         )
-        tokenizer = (
-            CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
-            if tokenizer is None
-            else tokenizer
-        )
+        try:
+            tokenizer = (
+                CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", local_files_only=local_files_only)
+                if tokenizer is None
+                else tokenizer
+            )
+        except Exception:
+            raise ValueError(
+                f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+            )
 
         if load_safety_checker:
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
@@ -1580,18 +1677,33 @@ def download_from_original_stable_diffusion_ckpt(
             )
     elif model_type in ["SDXL", "SDXL-Refiner"]:
         if model_type == "SDXL":
-            tokenizer = CLIPTokenizer.from_pretrained(
-                "openai/clip-vit-large-patch14", local_files_only=local_files_only
-            )
+            try:
+                tokenizer = CLIPTokenizer.from_pretrained(
+                    "openai/clip-vit-large-patch14", local_files_only=local_files_only
+                )
+            except Exception:
+                raise ValueError(
+                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+                )
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
-            tokenizer_2 = CLIPTokenizer.from_pretrained(
-                "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
-            )
+            try:
+                tokenizer_2 = CLIPTokenizer.from_pretrained(
+                    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
+                )
+            except Exception:
+                raise ValueError(
+                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k' with `pad_token` set to '!'."
+                )
 
             config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
             config_kwargs = {"projection_dim": 1280}
             text_encoder_2 = convert_open_clip_checkpoint(
-                checkpoint, config_name, prefix="conditioner.embedders.1.model.", has_projection=True, **config_kwargs
+                checkpoint,
+                config_name,
+                prefix="conditioner.embedders.1.model.",
+                has_projection=True,
+                local_files_only=local_files_only,
+                **config_kwargs,
             )
 
             if is_accelerate_available():  # SBM Now move model to cpu.
@@ -1625,14 +1737,23 @@ def download_from_original_stable_diffusion_ckpt(
         else:
             tokenizer = None
             text_encoder = None
-            tokenizer_2 = CLIPTokenizer.from_pretrained(
-                "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
-            )
-
+            try:
+                tokenizer_2 = CLIPTokenizer.from_pretrained(
+                    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
+                )
+            except Exception:
+                raise ValueError(
+                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k' with `pad_token` set to '!'."
+                )
             config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
             config_kwargs = {"projection_dim": 1280}
             text_encoder_2 = convert_open_clip_checkpoint(
-                checkpoint, config_name, prefix="conditioner.embedders.0.model.", has_projection=True, **config_kwargs
+                checkpoint,
+                config_name,
+                prefix="conditioner.embedders.0.model.",
+                has_projection=True,
+                local_files_only=local_files_only,
+                **config_kwargs,
             )
 
             if is_accelerate_available():  # SBM Now move model to cpu.

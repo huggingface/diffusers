@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, Optional, Union
 import numpy as np
 import torch
 
+from .models import UNet2DConditionModel
 from .utils import deprecate, is_transformers_available
 
 
@@ -24,6 +25,51 @@ def set_seed(seed: int):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     # ^^ safe to call this function even if cuda is not available
+
+
+def compute_snr(noise_scheduler, timesteps):
+    """
+    Computes SNR as per
+    https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+    """
+    alphas_cumprod = noise_scheduler.alphas_cumprod
+    sqrt_alphas_cumprod = alphas_cumprod**0.5
+    sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+
+    # Expand the tensors.
+    # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
+    sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
+    while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
+        sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
+    alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
+
+    sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
+    while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
+        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
+    sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
+
+    # Compute SNR.
+    snr = (alpha / sigma) ** 2
+    return snr
+
+
+def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
+    r"""
+    Returns:
+        A state dict containing just the LoRA parameters.
+    """
+    lora_state_dict = {}
+
+    for name, module in unet.named_modules():
+        if hasattr(module, "set_lora_layer"):
+            lora_layer = getattr(module, "lora_layer")
+            if lora_layer is not None:
+                current_lora_layer_sd = lora_layer.state_dict()
+                for lora_layer_matrix_name, lora_param in current_lora_layer_sd.items():
+                    # The matrix name can either be "down" or "up".
+                    lora_state_dict[f"unet.{name}.lora.{lora_layer_matrix_name}"] = lora_param
+
+    return lora_state_dict
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14

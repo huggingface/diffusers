@@ -131,6 +131,9 @@ class FlaxAttention(nn.Module):
             Dropout rate
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
+        split_head_dim (`bool`, *optional*, defaults to `False`):
+            Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
+            enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
 
@@ -140,6 +143,7 @@ class FlaxAttention(nn.Module):
     dim_head: int = 64
     dropout: float = 0.0
     use_memory_efficient_attention: bool = False
+    split_head_dim: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
@@ -177,9 +181,15 @@ class FlaxAttention(nn.Module):
         key_proj = self.key(context)
         value_proj = self.value(context)
 
-        query_states = self.reshape_heads_to_batch_dim(query_proj)
-        key_states = self.reshape_heads_to_batch_dim(key_proj)
-        value_states = self.reshape_heads_to_batch_dim(value_proj)
+        if self.split_head_dim:
+            b = hidden_states.shape[0]
+            query_states = jnp.reshape(query_proj, (b, -1, self.heads, self.dim_head))
+            key_states = jnp.reshape(key_proj, (b, -1, self.heads, self.dim_head))
+            value_states = jnp.reshape(value_proj, (b, -1, self.heads, self.dim_head))
+        else:
+            query_states = self.reshape_heads_to_batch_dim(query_proj)
+            key_states = self.reshape_heads_to_batch_dim(key_proj)
+            value_states = self.reshape_heads_to_batch_dim(value_proj)
 
         if self.use_memory_efficient_attention:
             query_states = query_states.transpose(1, 0, 2)
@@ -206,14 +216,23 @@ class FlaxAttention(nn.Module):
             hidden_states = hidden_states.transpose(1, 0, 2)
         else:
             # compute attentions
-            attention_scores = jnp.einsum("b i d, b j d->b i j", query_states, key_states)
+            if self.split_head_dim:
+                attention_scores = jnp.einsum("b t n h, b f n h -> b n f t", key_states, query_states)
+            else:
+                attention_scores = jnp.einsum("b i d, b j d->b i j", query_states, key_states)
+
             attention_scores = attention_scores * self.scale
-            attention_probs = nn.softmax(attention_scores, axis=2)
+            attention_probs = nn.softmax(attention_scores, axis=-1 if self.split_head_dim else 2)
 
             # attend to values
-            hidden_states = jnp.einsum("b i j, b j d -> b i d", attention_probs, value_states)
+            if self.split_head_dim:
+                hidden_states = jnp.einsum("b n f t, b t n h -> b f n h", attention_probs, value_states)
+                b = hidden_states.shape[0]
+                hidden_states = jnp.reshape(hidden_states, (b, -1, self.heads * self.dim_head))
+            else:
+                hidden_states = jnp.einsum("b i j, b j d -> b i d", attention_probs, value_states)
+                hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
 
-        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         hidden_states = self.proj_attn(hidden_states)
         return self.dropout_layer(hidden_states, deterministic=deterministic)
 
@@ -239,6 +258,9 @@ class FlaxBasicTransformerBlock(nn.Module):
             Parameters `dtype`
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
+        split_head_dim (`bool`, *optional*, defaults to `False`):
+            Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
+            enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
     """
     dim: int
     n_heads: int
@@ -247,15 +269,28 @@ class FlaxBasicTransformerBlock(nn.Module):
     only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
     use_memory_efficient_attention: bool = False
+    split_head_dim: bool = False
 
     def setup(self):
         # self attention (or cross_attention if only_cross_attention is True)
         self.attn1 = FlaxAttention(
-            self.dim, self.n_heads, self.d_head, self.dropout, self.use_memory_efficient_attention, dtype=self.dtype
+            self.dim,
+            self.n_heads,
+            self.d_head,
+            self.dropout,
+            self.use_memory_efficient_attention,
+            self.split_head_dim,
+            dtype=self.dtype,
         )
         # cross attention
         self.attn2 = FlaxAttention(
-            self.dim, self.n_heads, self.d_head, self.dropout, self.use_memory_efficient_attention, dtype=self.dtype
+            self.dim,
+            self.n_heads,
+            self.d_head,
+            self.dropout,
+            self.use_memory_efficient_attention,
+            self.split_head_dim,
+            dtype=self.dtype,
         )
         self.ff = FlaxFeedForward(dim=self.dim, dropout=self.dropout, dtype=self.dtype)
         self.norm1 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
@@ -308,6 +343,9 @@ class FlaxTransformer2DModel(nn.Module):
             Parameters `dtype`
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             enable memory efficient attention https://arxiv.org/abs/2112.05682
+        split_head_dim (`bool`, *optional*, defaults to `False`):
+            Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
+            enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
     """
     in_channels: int
     n_heads: int
@@ -318,6 +356,7 @@ class FlaxTransformer2DModel(nn.Module):
     only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
     use_memory_efficient_attention: bool = False
+    split_head_dim: bool = False
 
     def setup(self):
         self.norm = nn.GroupNorm(num_groups=32, epsilon=1e-5)
@@ -343,6 +382,7 @@ class FlaxTransformer2DModel(nn.Module):
                 only_cross_attention=self.only_cross_attention,
                 dtype=self.dtype,
                 use_memory_efficient_attention=self.use_memory_efficient_attention,
+                split_head_dim=self.split_head_dim,
             )
             for _ in range(self.depth)
         ]

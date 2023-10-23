@@ -62,7 +62,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             The prior tokenizer to be used for text inputs.
         prior_text_encoder (`CLIPTextModel`):
             The prior text encoder to be used for text inputs.
-        prior (`WuerstchenPrior`):
+        prior_prior (`WuerstchenPrior`):
             The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
@@ -119,8 +119,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
         `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
         """
-        self.prior_pipe.enable_model_cpu_offload()
-        self.decoder_pipe.enable_model_cpu_offload()
+        self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
+        self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
 
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
@@ -144,7 +144,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Optional[Union[str, List[str]]] = None,
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
@@ -161,6 +161,10 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        prior_callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        prior_callback_steps: int = 1,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -190,7 +194,7 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
                 `prior_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely linked
                 to the text `prompt`, usually at the expense of lower image quality.
-            prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 30):
+            prior_num_inference_steps (`Union[int, Dict[float, int]]`, *optional*, defaults to 60):
                 The number of prior denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. For more specific timestep spacing, you can pass customized
                 `prior_timesteps`
@@ -222,6 +226,19 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+            prior_callback (`Callable`, *optional*):
+                A function that will be called every `prior_callback_steps` steps during inference. The function will
+                be called with the following arguments: `prior_callback(step: int, timestep: int, latents:
+                torch.FloatTensor)`.
+            prior_callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
 
         Examples:
 
@@ -244,12 +261,14 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             latents=latents,
             output_type="pt",
             return_dict=False,
+            callback=prior_callback,
+            callback_steps=prior_callback_steps,
         )
         image_embeddings = prior_outputs[0]
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
-            prompt=prompt,
+            prompt=prompt if prompt is not None else "",
             num_inference_steps=num_inference_steps,
             timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
@@ -257,5 +276,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             generator=generator,
             output_type=output_type,
             return_dict=return_dict,
+            callback=callback,
+            callback_steps=callback_steps,
         )
+
         return outputs

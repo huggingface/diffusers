@@ -378,6 +378,56 @@ images_fusion = pipe(
 ).images
 ```
 
+## Working with multiple LoRA checkpoints
+
+With the `fuse_lora()` method as described above, it's possible to load multiple LoRA checkpoints. Let's work through a complete example. First we load the base pipeline:
+
+```python
+from diffusers import StableDiffusionXLPipeline, AutoencoderKL
+import torch
+
+vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    vae=vae,
+    torch_dtype=torch.float16,
+)
+pipe.to("cuda")
+```
+
+Then let's two LoRA checkpoints and fuse them with specific `lora_scale` values:
+
+```python
+# LoRA one.
+pipe.load_lora_weights("goofyai/cyborg_style_xl")
+pipe.fuse_lora(lora_scale=0.7)
+
+# LoRA two.
+pipe.load_lora_weights("TheLastBen/Pikachu_SDXL")
+pipe.fuse_lora(lora_scale=0.7)
+```
+
+<Tip>
+
+Play with the `lora_scale` parameter when working with multiple LoRAs to control the amount of their influence on the final outputs.
+
+</Tip>
+
+Let's see them in action:
+
+```python
+prompt = "cyborg style pikachu"
+image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
+```
+
+![cyborg_pikachu](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/cyborg_pikachu.png)
+
+<Tip warning={true}>
+
+Currently, unfusing multiple LoRA checkpoints is not possible. 
+
+</Tip>
+
 ## Supporting different LoRA checkpoints from Diffusers
 
 🤗 Diffusers supports loading checkpoints from popular LoRA trainers such as [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). In this section, we outline the current API's details and limitations. 
@@ -477,8 +527,8 @@ base_model_id = "stabilityai/stable-diffusion-xl-base-0.9"
 pipeline = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights(".", weight_name="Kamepan.safetensors")
 
-prompt = "anime screencap, glint, drawing, best quality, light smile, shy, a full body of a girl wearing wedding dress in the middle of the forest beneath the trees, fireflies, big eyes, 2d, cute, anime girl, waifu, cel shading, magical girl, vivid colors, (outline:1.1), manga anime artstyle, masterpiece, offical wallpaper, glint <lora:kame_sdxl_v2:1>"
-negative_prompt = "(deformed, bad quality, sketch, depth of field, blurry:1.1), grainy, bad anatomy, bad perspective, old, ugly, realistic, cartoon, disney, bad propotions"
+prompt = "anime screencap, glint, drawing, best quality, light smile, shy, a full body of a girl wearing wedding dress in the middle of the forest beneath the trees, fireflies, big eyes, 2d, cute, anime girl, waifu, cel shading, magical girl, vivid colors, (outline:1.1), manga anime artstyle, masterpiece, official wallpaper, glint <lora:kame_sdxl_v2:1>"
+negative_prompt = "(deformed, bad quality, sketch, depth of field, blurry:1.1), grainy, bad anatomy, bad perspective, old, ugly, realistic, cartoon, disney, bad proportions"
 generator = torch.manual_seed(2947883060)
 num_inference_steps = 30
 guidance_scale = 7
