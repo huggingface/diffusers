@@ -53,8 +53,6 @@ from .unet_2d_blocks import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-#TODO Umer: Remove attention_bias again
-
 @dataclass
 class UNet2DConditionOutput(BaseOutput):
     """
