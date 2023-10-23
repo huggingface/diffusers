@@ -75,27 +75,24 @@ EXAMPLE_DOC_STRING = """
         >>> mask_image = mask_image.resize((1024, 1024))
 
 
-        >>> def make_inpaint_condition(image, image_mask):
-        ...     image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
-        ...     image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
-
-        ...     assert image.shape[0:1] == image_mask.shape[0:1], "image and image_mask must have the same image size"
-        ...     image[image_mask < 0.5] = 0  # set as masked pixel
-        ...     image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
-        ...     image = torch.from_numpy(image)
+        >>> def make_canny_condition(image):
+        ...     image = np.array(image)
+        ...     image = cv2.Canny(image, 100, 200)
+        ...     image = image[:, :, None]
+        ...     image = np.concatenate([image, image, image], axis=2)
+        ...     image = Image.fromarray(image)
         ...     return image
 
 
-        >>> control_image = make_inpaint_condition(init_image, mask_image)
+        >>> control_image = make_canny_condition(init_image)
 
         >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float32
+        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
         ... )
         >>> pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float32
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
         ... )
 
-        >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         >>> pipe.enable_model_cpu_offload()
 
         >>> # generate image
@@ -777,13 +774,14 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 "However, either the image or the noise timestep has not been provided."
             )
 
-        if image.shape[1] == 4:
-            image_latents = image.to(device=device, dtype=dtype)
-        elif return_image_latents or (latents is None and not is_strength_max):
+        if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
-            image_latents = self._encode_vae_image(image=image, generator=generator)
 
-        image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
+            if image.shape[1] == 4:
+                image_latents = image
+            else:
+                image_latents = self._encode_vae_image(image=image, generator=generator)
+            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
 
         if latents is None and add_noise:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
