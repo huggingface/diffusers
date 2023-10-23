@@ -1264,12 +1264,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             deprecate(
                 "T2I should not use down_block_additional_residuals",
                 "1.3.0",
-                (
-                    "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated     "
-                    "                   and will be removed in diffusers 1.3.0.  `down_block_additional_residuals`"
-                    " should only be used                        for ControlNet. Please make sure use"
-                    " `down_intrablock_additional_residuals` instead. "
-                ),
+                "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated         "
+                "               and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only"
+                " be used                        for ControlNet. Please make sure use"
+                " `down_intrablock_additional_residuals` instead. ",
                 standard_warn=False,
             )
             down_intrablock_additional_residuals = down_block_additional_residuals
