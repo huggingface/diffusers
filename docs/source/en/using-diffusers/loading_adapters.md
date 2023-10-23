@@ -20,15 +20,15 @@ This guide will show you how to load DreamBooth, textual inversion, and LoRA wei
 
 <Tip>
 
-You can start by looking at [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer), [LoRA the Explorer](multimodalart/LoraTheExplorer), and the [Diffusers Models Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) for checkpoints and embeddings to use.
+Feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer), [LoRA the Explorer](multimodalart/LoraTheExplorer), and the [Diffusers Models Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) for checkpoints and embeddings to use.
 
 </Tip>
 
 ## DreamBooth
 
-[DreamBooth](https://dreambooth.github.io/) finetunes the *entire diffusion model* on just several images of a subject to generate images of the subject in new styles and settings. This method works by using a special word in the prompt that the model learns to associate with the subject image. Of all the training methods, DreamBooth produces the largest file size (usually a few GBs) because it is a full checkpoint model. But this also means loading a DreamBooth checkpoint is the same as loading any other checkpoint.
+[DreamBooth](https://dreambooth.github.io/) finetunes an *entire diffusion model* on just several images of a subject to generate images of that subject in new styles and settings. This method works by using a special word in the prompt that the model learns to associate with the subject image. Of all the training methods, DreamBooth produces the largest file size (usually a few GBs) because it is a full checkpoint model.
 
-For example, the [herge_style](https://huggingface.co/sd-dreambooth-library/herge-style) checkpoint is trained on just 10 images drawn by Hergé and now it can generate images in that style. For it to work, you need to include the special word `herge_style` in your prompt to trigger the checkpoint:
+Let's load the [herge_style](https://huggingface.co/sd-dreambooth-library/herge-style) checkpoint, which is trained on just 10 images drawn by Hergé, to generate images in that style. For it to work, you need to include the special word `herge_style` in your prompt to trigger the checkpoint:
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -45,9 +45,9 @@ image = pipeline(prompt).images[0]
 
 ## Textual inversion
 
-[Textual inversion](https://textual-inversion.github.io/) is very similar to DreamBooth, and it can also personalize a diffusion model to generate certain concepts (styles, objects) from just a few images. This method works by training and finding new embeddings that represent the images you provide with a special word in the prompt. As a result, the diffusion model weights stays the same and the training process produces a relatively tiny (a few KBs) file.
+[Textual inversion](https://textual-inversion.github.io/) is very similar to DreamBooth and it can also personalize a diffusion model to generate certain concepts (styles, objects) from just a few images. This method works by training and finding new embeddings that represent the images you provide with a special word in the prompt. As a result, the diffusion model weights stays the same and the training process produces a relatively tiny (a few KBs) file.
 
-Because textual inversion creates embeddings, you need to use textual inversion with another model. For example, load a model:
+Because textual inversion creates embeddings, it cannot be used on its own like DreamBooth and requires another model.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -56,7 +56,7 @@ import torch
 pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
 ```
 
-Then you can load the textual inversion embeddings with the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] method and generate some images. Let's load the [sd-concepts-library/gta5-artwork](https://huggingface.co/sd-concepts-library/gta5-artwork) embeddings, and you'll need to include the special word `<gta5-artwork>` in your prompt to trigger it:
+Now you can load the textual inversion embeddings with the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] method and generate some images. Let's load the [sd-concepts-library/gta5-artwork](https://huggingface.co/sd-concepts-library/gta5-artwork) embeddings and you'll need to include the special word `<gta5-artwork>` in your prompt to trigger it:
 
 ```py
 pipeline.load_textual_inversion("sd-concepts-library/gta5-artwork")
@@ -68,11 +68,9 @@ image = pipeline(prompt).images[0]
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_txt_embed.png" />
 </div>
 
-Textual inversion can also be trained on undesirable things to create *negative embeddings* to discourage a model from generating images with those undesirable things like blurry images or extra fingers on a hand. This can be a easy way to improve your prompt. You'll load the embeddings the same way with the [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] method.
+Textual inversion can also be trained on undesirable things to create *negative embeddings* to discourage a model from generating images with those undesirable things like blurry images or extra fingers on a hand. This can be a easy way to quickly improve your prompt. You'll also load the embeddings with [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`], but this time, you'll need two more parameters:
 
-This time, you'll need two more parameters:
-
-- `weight_name`: specifies the weight file to load if the file was saved in the 🤗 Diffusers format but saved with a specific name or if the file is in the A1111 format
+- `weight_name`: specifies the weight file to load if the file was saved in the 🤗 Diffusers format with a specific name or if the file is stored in the A1111 format
 - `token`: specifies the special word to use in the prompt to trigger the embeddings
 
 Let's load the [sayakpaul/EasyNegative-test](https://huggingface.co/sayakpaul/EasyNegative-test) embeddings:
@@ -86,7 +84,7 @@ pipeline.load_textual_inversion(
 Now you can use the `token` to generate an image with the negative embeddings:
 
 ```py
-prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
+prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration, EasyNegative"
 negative_prompt = "EasyNegative"
 
 image = pipeline(prompt, negative_prompt=negative_prompt, num_inference_steps=50).images[0]
@@ -100,7 +98,13 @@ image = pipeline(prompt, negative_prompt=negative_prompt, num_inference_steps=50
 
 [Low-Rank Adaptation (LoRA)](https://huggingface.co/papers/2106.09685) is a popular training technique because it is fast and generates smaller file sizes (a couple hundred MBs). Like the other methods in this guide, LoRA can train a model to learn new styles from just a few images. It works by inserting new weights into the diffusion model and then only the new weights are trained instead of the entire model. This makes LoRAs faster to train and easier to store.
 
-LoRAs also need to be used with another model. For example, load a model:
+<Tip>
+
+LoRA is a very general training technique that can be used with other training methods. For example, it is common to train a model with DreamBooth and LoRA.
+
+</Tip>
+
+LoRAs also need to be used with another model:
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -126,7 +130,7 @@ The [`~loaders.LoraLoaderMixin.load_lora_weights`] method loads LoRA weights int
 - the LoRA weights don't have separate identifiers for the UNet and text encoder
 - the LoRA weights have separate identifiers for the UNet and text encoder
 
-But if you only need to load LoRA into the UNet, then you can use the [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`] method. Let's load the [jbilcke-hf/sdxl-cinematic-1](https://huggingface.co/jbilcke-hf/sdxl-cinematic-1) LoRA:
+But if you only need to load LoRA weights into the UNet, then you can use the [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`] method. Let's load the [jbilcke-hf/sdxl-cinematic-1](https://huggingface.co/jbilcke-hf/sdxl-cinematic-1) LoRA:
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -162,7 +166,7 @@ It can be fun to use multiple LoRAs together to create something entirely new an
 
 <Tip>
 
-Fusing the weights can lead to a speedup in inference latency because you don't need to separately load the base model and LoRA! You can save your fused pipeline with [`~DiffusionPipeline.save_pretrained`] to avoid loading and fusng the weights every time you want to use the model.
+Fusing the weights can lead to a speedup in inference latency because you don't need to separately load the base model and LoRA! You can save your fused pipeline with [`~DiffusionPipeline.save_pretrained`] to avoid loading and fusing the weights every time you want to use the model.
 
 </Tip>
 
@@ -212,6 +216,38 @@ prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, mast
 image = pipeline(prompt).images[0]
 ```
 
+### 🤗 PEFT
+
+<Tip>
+
+Read the [Inference with 🤗 PEFT](../tutorials/using_peft_for_inference) tutorial to learn more its integration with 🤗 Diffusers and how you can easily work with and juggle multiple adapters.
+
+</Tip>
+
+Another way you can load and use multiple LoRAs is to specify the `adapter_name` parameter in [`~loaders.LoraLoaderMixin.load_lora_weights`]. This method takes advantage of the 🤗 PEFT integration. For example, load and name both LoRA weights:
+
+```py
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline.load_lora_weights("ostris/ikea-instructions-lora-sdxl", weight_name="ikea_instructions_xl_v1_5.safetensors", adapter_name="ikea")
+pipeline.load_lora_weights("ostris/super-cereal-sdxl-lora", weight_name="cereal_box_sdxl_v1.safetensors", adapter_name="cereal")
+```
+
+Now use the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] to activate both LoRAs, and you can configure how much weight each LoRA should have on the output:
+
+```py
+pipeline.set_adapters(["ikea", "cereal"], adapter_weights=[0.7, 0.5])
+```
+
+Then generate an image:
+
+```py
+prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
+image = pipeline(prompt, num_inference_steps=30, cross_attention_kwargs={"scale": 1.0}).images[0]
+```
+
 ### Kohya and TheLastBen
 
 Other popular LoRA trainers from the community include those by [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). These trainers create different LoRA checkpoints than those trained by 🤗 Diffusers, but they can still be loaded in the same way.
@@ -222,7 +258,7 @@ Let's download the [Blueprintify SD XL 1.0](https://civitai.com/models/150986/bl
 !wget https://civitai.com/api/download/models/168776 -O blueprintify-sd-xl-10.safetensors
 ```
 
-Load the LoRA checkpoint with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method, and specify filename in the `weight_name` parameter: 
+Load the LoRA checkpoint with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method, and specify the filename in the `weight_name` parameter:
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -232,7 +268,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusi
 pipeline.load_lora_weights("path/to/weights", weight_name="blueprintify-sd-xl-10.safetensors")
 ```
 
-Then you can generate an image as you normally would:
+Generate an image:
 
 ```py
 # use bl3uprint in the prompt to trigger the LoRA
