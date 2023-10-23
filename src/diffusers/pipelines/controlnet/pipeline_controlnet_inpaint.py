@@ -19,7 +19,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
-from PIL import Image,ImageFilter, ImageOps
 import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
@@ -101,24 +100,6 @@ EXAMPLE_DOC_STRING = """
         ... ).images[0]
         ```
 """
-
-# yiyi notes: fill the image with mask color. This is a feature from auto1111 that I'm testing
-def fill(image, mask):
-    """fills masked regions with colors from image using blur. Not extremely effective."""
-
-    image_mod = Image.new('RGBA', (image.width, image.height))
-
-    image_masked = Image.new('RGBa', (image.width, image.height))
-    image_masked.paste(image.convert("RGBA").convert("RGBa"), mask=ImageOps.invert(mask.convert('L')))
-
-    image_masked = image_masked.convert('RGBa')
-
-    for radius, repeats in [(256, 1), (64, 1), (16, 2), (4, 4), (2, 2), (0, 1)]:
-        blurred = image_masked.filter(ImageFilter.GaussianBlur(radius)).convert('RGBA')
-        for _ in range(repeats):
-            image_mod.alpha_composite(blurred)
-
-    return image_mod.convert("RGB")
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.prepare_mask_and_masked_image
@@ -1243,8 +1224,9 @@ class StableDiffusionControlNetInpaintPipeline(
             prompt_embeds.dtype,
             device,
             generator,
-            do_classifier_free_guidance,)
-        
+            do_classifier_free_guidance,
+        )
+
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         num_channels_unet = self.unet.config.in_channels
@@ -1258,7 +1240,7 @@ class StableDiffusionControlNetInpaintPipeline(
             device,
             generator,
             latents,
-            image=  masked_image_latents[0][None,:] if num_channels_unet==4 else init_image,
+            image=masked_image_latents[0][None, :] if num_channels_unet == 4 else init_image,
             timestep=latent_timestep,
             is_strength_max=is_strength_max,
             return_noise=True,
@@ -1269,7 +1251,6 @@ class StableDiffusionControlNetInpaintPipeline(
             latents, noise, image_latents = latents_outputs
         else:
             latents, noise = latents_outputs
-
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
