@@ -16,7 +16,6 @@
 """Fine-tuning script for Stable Diffusion XL for text2image with support for LoRA."""
 
 import argparse
-import itertools
 import logging
 import math
 import os
@@ -37,12 +36,12 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-from peft import LoraConfig
-from peft.utils import get_peft_model_state_dict
 
 import diffusers
 from diffusers import (
@@ -52,7 +51,6 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import LoraLoaderMixin, text_encoder_lora_state_dict
-from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
@@ -1145,7 +1143,7 @@ def main(args):
             text_encoder_lora_layers = text_encoder_lora_state_dict(text_encoder_one)
 
             text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_one)
-            text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_2_lora_layers)
+            text_encoder_2_lora_layers = get_peft_model_state_dict(text_encoder_two)
         else:
             text_encoder_lora_layers = None
             text_encoder_2_lora_layers = None
