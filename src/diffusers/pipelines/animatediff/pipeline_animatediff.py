@@ -20,11 +20,11 @@ import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unet_motion_model import MotionAdapter
-from ...image_processor import VaeImageProcessor
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -524,7 +524,8 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or `np.array`.
+                The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
+                `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] instead
                 of a plain tuple.
@@ -660,8 +661,5 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
 
         if not return_dict:
             return (video,)
-
-        # Offload all models
-        self.maybe_free_model_hooks()
 
         return AnimateDiffPipelineOutput(frames=video)

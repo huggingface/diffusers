@@ -18,6 +18,7 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -47,7 +48,7 @@ from .unet_motion_blocks import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class UNetMotionModel(ModelMixin, ConfigMixin):
+class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     A modified conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a
     sample shaped output.
