@@ -19,6 +19,7 @@ import unittest
 
 import numpy as np
 import torch
+from parameterized import parameterized
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
@@ -137,11 +138,100 @@ class AdapterTests:
         }
         return components
 
-    def get_dummy_inputs(self, device, seed=0, num_images=1):
-        if num_images == 1:
-            image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+    def get_dummy_components_with_full_downscaling(self, adapter_type):
+        """Get dummy components with x8 VAE downscaling and 4 UNet down blocks.
+        These dummy components are intended to fully-exercise the T2I-Adapter
+        downscaling behavior.
+        """
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(32, 32, 32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
+            up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+            cross_attention_dim=32,
+        )
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[32, 32, 32, 64],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+        )
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=32,
+            intermediate_size=37,
+            layer_norm_eps=1e-05,
+            num_attention_heads=4,
+            num_hidden_layers=5,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        torch.manual_seed(0)
+
+        if adapter_type == "full_adapter" or adapter_type == "light_adapter":
+            adapter = T2IAdapter(
+                in_channels=3,
+                channels=[32, 32, 32, 64],
+                num_res_blocks=2,
+                downscale_factor=8,
+                adapter_type=adapter_type,
+            )
+        elif adapter_type == "multi_adapter":
+            adapter = MultiAdapter(
+                [
+                    T2IAdapter(
+                        in_channels=3,
+                        channels=[32, 32, 32, 64],
+                        num_res_blocks=2,
+                        downscale_factor=8,
+                        adapter_type="full_adapter",
+                    ),
+                    T2IAdapter(
+                        in_channels=3,
+                        channels=[32, 32, 32, 64],
+                        num_res_blocks=2,
+                        downscale_factor=8,
+                        adapter_type="full_adapter",
+                    ),
+                ]
+            )
         else:
-            image = [floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device) for _ in range(num_images)]
+            raise ValueError(
+                f"Unknown adapter type: {adapter_type}, must be one of 'full_adapter', 'light_adapter', or 'multi_adapter''"
+            )
+
+        components = {
+            "adapter": adapter,
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0, height=64, width=64, num_images=1):
+        if num_images == 1:
+            image = floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(device)
+        else:
+            image = [
+                floats_tensor((1, 3, height, width), rng=random.Random(seed)).to(device) for _ in range(num_images)
+            ]
 
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -170,10 +260,44 @@ class AdapterTests:
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    @parameterized.expand(
+        [
+            # (dim=264) The internal feature map will be 33x33 after initial pixel unshuffling (downscaled x8).
+            ((4 * 8 + 1) * 8),
+            # (dim=272) The internal feature map will be 17x17 after the first T2I down block (downscaled x16).
+            ((4 * 4 + 1) * 16),
+            # (dim=288) The internal feature map will be 9x9 after the second T2I down block (downscaled x32).
+            ((4 * 2 + 1) * 32),
+            # (dim=320) The internal feature map will be 5x5 after the third T2I down block (downscaled x64).
+            ((4 * 1 + 1) * 64),
+        ]
+    )
+    def test_multiple_image_dimensions(self, dim):
+        """Test that the T2I-Adapter pipeline supports any input dimension that
+        is divisible by the adapter's `downscale_factor`. This test was added in
+        response to an issue where the T2I Adapter's downscaling padding
+        behavior did not match the UNet's behavior.
+
+        Note that we have selected `dim` values to produce odd resolutions at
+        each downscaling level.
+        """
+        components = self.get_dummy_components_with_full_downscaling()
+        sd_pipe = StableDiffusionAdapterPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device, height=dim, width=dim)
+        image = sd_pipe(**inputs).images
+
+        assert image.shape == (1, dim, dim, 3)
+
 
 class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         return super().get_dummy_components("full_adapter")
+
+    def get_dummy_components_with_full_downscaling(self):
+        return super().get_dummy_components_with_full_downscaling("full_adapter")
 
     def test_stable_diffusion_adapter_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -195,6 +319,9 @@ class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterM
     def get_dummy_components(self):
         return super().get_dummy_components("light_adapter")
 
+    def get_dummy_components_with_full_downscaling(self):
+        return super().get_dummy_components_with_full_downscaling("light_adapter")
+
     def test_stable_diffusion_adapter_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -215,8 +342,11 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
     def get_dummy_components(self):
         return super().get_dummy_components("multi_adapter")
 
-    def get_dummy_inputs(self, device, seed=0):
-        inputs = super().get_dummy_inputs(device, seed, num_images=2)
+    def get_dummy_components_with_full_downscaling(self):
+        return super().get_dummy_components_with_full_downscaling("multi_adapter")
+
+    def get_dummy_inputs(self, device, height=64, width=64, seed=0):
+        inputs = super().get_dummy_inputs(device, seed, height=height, width=width, num_images=2)
         inputs["adapter_conditioning_scale"] = [0.5, 0.5]
         return inputs
 
