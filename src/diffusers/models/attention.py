@@ -19,7 +19,7 @@ from torch import nn
 
 from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import get_activation
+from .activations import GEGLU, GELU, ApproximateGELU, get_activation
 from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
 from .lora import LoRACompatibleLinear
@@ -331,79 +331,6 @@ class FeedForward(nn.Module):
             else:
                 hidden_states = module(hidden_states)
         return hidden_states
-
-
-class GELU(nn.Module):
-    r"""
-    GELU activation function with tanh approximation support with `approximate="tanh"`.
-
-    Parameters:
-        dim_in (`int`): The number of channels in the input.
-        dim_out (`int`): The number of channels in the output.
-        approximate (`str`, *optional*, defaults to `"none"`): If `"tanh"`, use tanh approximation.
-    """
-
-    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none"):
-        super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
-        self.approximate = approximate
-
-    def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type != "mps":
-            return F.gelu(gate, approximate=self.approximate)
-        # mps: gelu is not implemented for float16
-        return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
-
-    def forward(self, hidden_states):
-        hidden_states = self.proj(hidden_states)
-        hidden_states = self.gelu(hidden_states)
-        return hidden_states
-
-
-class GEGLU(nn.Module):
-    r"""
-    A variant of the gated linear unit activation function from https://arxiv.org/abs/2002.05202.
-
-    Parameters:
-        dim_in (`int`): The number of channels in the input.
-        dim_out (`int`): The number of channels in the output.
-    """
-
-    def __init__(self, dim_in: int, dim_out: int):
-        super().__init__()
-        linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
-
-        self.proj = linear_cls(dim_in, dim_out * 2)
-
-    def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type != "mps":
-            return F.gelu(gate)
-        # mps: gelu is not implemented for float16
-        return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
-
-    def forward(self, hidden_states, scale: float = 1.0):
-        args = () if USE_PEFT_BACKEND else (scale,)
-        hidden_states, gate = self.proj(hidden_states, *args).chunk(2, dim=-1)
-        return hidden_states * self.gelu(gate)
-
-
-class ApproximateGELU(nn.Module):
-    r"""
-    The approximate form of Gaussian Error Linear Unit (GELU). For more details, see section 2:
-    https://arxiv.org/abs/1606.08415.
-
-    Parameters:
-        dim_in (`int`): The number of channels in the input.
-        dim_out (`int`): The number of channels in the output.
-    """
-
-    def __init__(self, dim_in: int, dim_out: int):
-        super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.proj(x)
-        return x * torch.sigmoid(1.702 * x)
 
 
 class AdaLayerNorm(nn.Module):
