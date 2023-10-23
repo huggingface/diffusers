@@ -39,7 +39,7 @@ import PIL.Image
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class LatentConsistencyModelPipeline_img2img(DiffusionPipeline):
+class LatentConsistencyModelImg2ImgPipeline(DiffusionPipeline):
     _optional_components = ["scheduler"]
 
     def __init__(
@@ -48,7 +48,7 @@ class LatentConsistencyModelPipeline_img2img(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: "LCMScheduler_withTimestamp",
+        scheduler: "LCMSchedulerWithTimestamp",
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
@@ -58,7 +58,7 @@ class LatentConsistencyModelPipeline_img2img(DiffusionPipeline):
         scheduler = (
             scheduler
             if scheduler is not None
-            else LCMScheduler_withTimestamp(
+            else LCMSchedulerWithTimestamp(
                 beta_start=0.00085, beta_end=0.0120, beta_schedule="scaled_linear", prediction_type="epsilon"
             )
         )
@@ -477,7 +477,7 @@ def rescale_zero_terminal_snr(betas):
     return betas
 
 
-class LCMScheduler_withTimestamp(SchedulerMixin, ConfigMixin):
+class LCMSchedulerWithTimestamp(SchedulerMixin, ConfigMixin):
     """
     This class modifies LCMScheduler to add a timestamp argument to set_timesteps
 
