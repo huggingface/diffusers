@@ -29,7 +29,7 @@ class AdaLayerNorm(nn.Module):
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the dictionary of embeddings.
+        num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
     def __init__(self, embedding_dim: int, num_embeddings: int):
@@ -52,7 +52,7 @@ class AdaLayerNormZero(nn.Module):
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the dictionary of embeddings.
+        num_embeddings (`int`): The size of the embeddings dictionary.
     """
 
     def __init__(self, embedding_dim: int, num_embeddings: int):
@@ -83,7 +83,7 @@ class AdaGroupNorm(nn.Module):
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the dictionary of embeddings.
+        num_embeddings (`int`): The size of the embeddings dictionary.
         num_groups (`int`): The number of groups to separate the channels into.
         act_fn (`str`, *optional*, defaults to `None`): The activation function to use.
         eps (`float`, *optional*, defaults to `1e-5`): The epsilon value to use for numerical stability.

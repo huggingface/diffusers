@@ -163,9 +163,9 @@
 - sections:
   - sections:
     - local: api/activations
-      title: Custom Activation Functions
+      title: Custom activation functions
     - local: api/normalization
-      title: Custom Normalization Layers
+      title: Custom normalization layers
     - local: api/attnprocessor
       title: Attention Processor
     - local: api/diffusion_pipeline
