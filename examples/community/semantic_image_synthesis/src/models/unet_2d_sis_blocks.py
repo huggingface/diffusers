@@ -186,7 +186,7 @@ class SISEncBlock(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
-        self.attention = Attention(query_dim=out_channels,heads=out_channels//attention_head_dim,dim_head=attention_head_dim) if attention else nn.Identity()
+        self.attention = Attention(query_dim=out_channels,heads=out_channels//attention_head_dim,dim_head=attention_head_dim) if attention else None
         # Activation function
         self.activation = get_activation(activation)
         
@@ -204,7 +204,8 @@ class SISEncBlock(nn.Module):
         y3 = self.conv2(self.activation(y2))
         h = y3+x_skip
         # ATTN [OPTIONAL]
-        h = self.attention(h)
+        if self.attention:
+            h = h+self.attention(h)
         return h
 
 class SISDecBlock(nn.Module):
@@ -238,7 +239,7 @@ class SISDecBlock(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
-        self.attention = Attention(query_dim=out_channels,heads=out_channels//attention_head_dim,dim_head=attention_head_dim) if attention else nn.Identity()
+        self.attention = Attention(query_dim=out_channels,heads=out_channels//attention_head_dim,dim_head=attention_head_dim) if attention else None
         self.upsample = nn.Upsample(scale_factor=2) if upsample else nn.Identity()
         self.activation = get_activation(activation)
     def forward(self,x,emb,cond):
@@ -256,7 +257,8 @@ class SISDecBlock(nn.Module):
         y3 = self.conv2(self.activation(y2))
         h = y3+x_skip
         ################# Attention
-        h = self.attention(h)
+        if self.attention:
+            h = h+self.attention(h)
         ################# Upsample
         h = self.upsample(h)
         return h
@@ -370,4 +372,8 @@ class SISDecConvBlock(SISSequential):
                 embedding_dim,
                 activation=activation))
         # We add the convolution layer...
-        self.append(nn.Conv2d(in_channels,out_channels,3,1,1))
+        # Like : 
+        # https://github.com/WeilunWang/semantic-diffusion-model/blob/main/guided_diffusion/unet.py#L774-L777
+        self.append(nn.GroupNorm(32,in_channels))
+        self.append(nn.SiLU())
+        self.append(zero_module(nn.Conv2d(in_channels,out_channels,3,1,1)))

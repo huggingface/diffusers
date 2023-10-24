@@ -176,7 +176,8 @@ class UNet2DSISModel(ModelMixin,ConfigMixin):
                 cond = F.one_hot(cond.unsqueeze(0).long(),num_classes=self.cls_count).to(self.device).float().permute(0,3,1,2)
             elif cond.shape==torch.Size([b,1,h,w]):
                 cond = F.one_hot(cond.squeeze(1).long(),num_classes=self.cls_count).to(self.device).float().permute(0,3,1,2)
-
+            elif cond.shape == torch.Size([b,self.cls_count,h,w]):
+                cond = cond.to(self.device).float()
         assert cond.shape==torch.Size([b,self.cls_count,h,w]),"Condition should be one hot encoding of shape [b,nClasses,h,w]"
         # Encoder...
         y = x
