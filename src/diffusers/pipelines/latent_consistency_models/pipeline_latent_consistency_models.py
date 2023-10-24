@@ -186,16 +186,16 @@ class LatentConsistencyModelPipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        device: torch.device,
-        num_images_per_prompt: int,
-        do_classifier_free_guidance: bool,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt,
+        device,
+        num_images_per_prompt,
+        do_classifier_free_guidance,
+        negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
-    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+    ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -381,7 +381,7 @@ class LatentConsistencyModelPipeline(
         return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size: int, num_channels_latents: int, height: int, width: int, dtype: torch.dtype, device: torch.device, generator: torch.Generator, latents: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
