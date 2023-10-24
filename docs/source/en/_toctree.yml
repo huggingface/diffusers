@@ -252,6 +252,8 @@
       title: Kandinsky
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
+    - local: api/pipelines/latent_consistency_models
+      title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
@@ -368,6 +370,8 @@
       title: KDPM2AncestralDiscreteScheduler
     - local: api/schedulers/dpm_discrete
       title: KDPM2DiscreteScheduler
+    - local: api/schedulers/lcm
+      title: LCMScheduler
     - local: api/schedulers/lms_discrete
       title: LMSDiscreteScheduler
     - local: api/schedulers/pndm
