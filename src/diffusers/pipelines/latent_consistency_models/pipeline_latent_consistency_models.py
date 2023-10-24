@@ -186,16 +186,16 @@ class LatentConsistencyModelPipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        num_images_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
-    ):
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         r"""
         Encodes the prompt into text encoder hidden states.
 
