@@ -35,27 +35,20 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class LatentConsistencyModelPipeline(DiffusionPipeline):
-    _optional_components = ["scheduler"]
-
     def __init__(
         self,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: "LCMScheduler",
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
 
-        scheduler = (
-            scheduler
-            if scheduler is not None
-            else LCMScheduler(
-                beta_start=0.00085, beta_end=0.0120, beta_schedule="scaled_linear", prediction_type="epsilon"
-            )
+        scheduler = LCMScheduler(
+            beta_start=0.00085, beta_end=0.0120, beta_schedule="scaled_linear", prediction_type="epsilon"
         )
 
         self.register_modules(
