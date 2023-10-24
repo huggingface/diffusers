@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, TuneAVideoPipeline, UNet3DConditionModel
-from diffusers.utils.testing_utils import load_numpy, skip_mps, slow
+from diffusers.utils.testing_utils import load_numpy, skip_mps, slow, numpy_cosine_similarity_distance
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
