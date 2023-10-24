@@ -58,7 +58,6 @@ from diffusers.training_utils import unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.22.0.dev0")
 
@@ -66,7 +65,7 @@ logger = get_logger(__name__)
 
 
 def save_model_card(
-    repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None, vae_path=None
+        repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None, vae_path=None
 ):
     img_str = ""
     for i, image in enumerate(images):
@@ -102,7 +101,7 @@ Special VAE used for training: {vae_path}.
 
 
 def import_model_class_from_model_name_or_path(
-    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
@@ -178,7 +177,9 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
-        "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
+        "--image_column", type=str, default="image", help="The column of the dataset containing the target image. By "
+                                                          "default, the standard Image Dataset maps out 'file_name' "
+                                                          "to 'image'."
     )
     parser.add_argument(
         "--caption_column",
@@ -579,13 +580,10 @@ class DreamBoothDataset(Dataset):
         self.instance_images_path = dataset["train"][image_column]
 
         if args.caption_column is None:
-            try:
-                caption_column = column_names[1]
-                logger.info(f"caption column defaulting to {caption_column}")
-                self.custom_instance_prompts = dataset["train"][caption_column]
-            except IndexError:
-                logger.info(f"no caption column provided, deaulting to instance_prompt for all images")
-                self.custom_instance_prompts = None
+            logger.info(f"No caption column provided, defaulting to instance_prompt for all images. If your dataset "
+                        f"contains captions/prompts for the images, make sure to specify the "
+                        f"column as --caption_column")
+            self.custom_instance_prompts = None
         else:
             caption_column = args.caption_column
             if caption_column not in column_names:
@@ -818,7 +816,7 @@ def main(args):
             pipeline.to(accelerator.device)
 
             for example in tqdm(
-                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
                 images = pipeline(example["prompt"]).images
 
@@ -1038,7 +1036,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Optimization parameters
