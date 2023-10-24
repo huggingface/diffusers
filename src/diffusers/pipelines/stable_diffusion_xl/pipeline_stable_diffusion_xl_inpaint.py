@@ -799,8 +799,12 @@ class StableDiffusionXLInpaintPipeline(
                     - (denoising_start * self.scheduler.config.num_train_timesteps)
                 )
             )
-            timesteps = list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps))
-            return torch.tensor(timesteps), len(timesteps)
+
+            num_inference_steps = len(list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps)))
+            if self.scheduler.order == 2:
+                num_inference_steps = num_inference_steps + 1
+            timesteps = timesteps[-num_inference_steps:]
+            return timesteps, num_inference_steps
 
         return timesteps, num_inference_steps - t_start
 
