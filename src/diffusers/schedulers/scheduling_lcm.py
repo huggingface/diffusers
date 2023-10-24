@@ -349,6 +349,20 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             original_inference_steps if original_inference_steps is not None else self.original_inference_steps
         )
 
+        if original_steps > self.config.num_train_timesteps:
+            raise ValueError(
+                f"`original_steps`: {original_steps} cannot be larger than `self.config.train_timesteps`:"
+                f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
+                f" maximal {self.config.num_train_timesteps} timesteps."
+            )
+
+        if num_inference_steps > original_steps:
+            raise ValueError(
+                f"`num_inference_steps`: {num_inference_steps} cannot be larger than `original_inference_steps`:"
+                f" {original_steps} because the final timestep schedule will be a subset of the"
+                f" `original_inference_steps`-sized initial timestep schedule."
+            )
+
         # LCM Timesteps Setting
         # Currently, only linear spacing is supported.
         c = self.config.num_train_timesteps // original_steps
