@@ -68,18 +68,16 @@ EXAMPLE_DOC_STRING = """
         >>> mask_image = mask_image.resize((512, 512))
 
 
-        >>> def make_inpaint_condition(image, image_mask):
-        ...     image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
-        ...     image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
-
-        ...     assert image.shape[0:1] == image_mask.shape[0:1], "image and image_mask must have the same image size"
-        ...     image[image_mask > 0.5] = -1.0  # set as masked pixel
-        ...     image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
-        ...     image = torch.from_numpy(image)
+        >>> def make_canny_condition(image):
+        ...     image = np.array(image)
+        ...     image = cv2.Canny(image, 100, 200)
+        ...     image = image[:, :, None]
+        ...     image = np.concatenate([image, image, image], axis=2)
+        ...     image = Image.fromarray(image)
         ...     return image
 
 
-        >>> control_image = make_inpaint_condition(init_image, mask_image)
+        >>> control_image = make_canny_condition(init_image)
 
         >>> controlnet = ControlNetModel.from_pretrained(
         ...     "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16

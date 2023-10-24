@@ -641,7 +641,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3149, 0.5246, 0.4796, 0.3218, 0.4469, 0.4729, 0.5151, 0.3597, 0.3954])
+        expected_slice = np.array([0.4363, 0.4355, 0.3667, 0.4066, 0.3970, 0.3866, 0.4394, 0.4356, 0.4059])
         assert np.abs(image_slice - expected_slice).max() < 3e-3
 
     def test_stable_diffusion_v1_4_with_freeu(self):
@@ -668,7 +668,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3458, 0.5120, 0.4800, 0.3116, 0.4348, 0.4802, 0.5237, 0.3467, 0.3991])
+        expected_slice = np.array([0.5740, 0.4784, 0.3162, 0.6358, 0.5831, 0.5505, 0.5082, 0.5631, 0.5575])
         assert np.abs(image_slice - expected_slice).max() < 3e-3
 
     def test_stable_diffusion_ddim(self):

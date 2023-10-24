@@ -622,8 +622,8 @@ class StableDiffusionXLAdapterPipeline(
             elif isinstance(image, torch.Tensor):
                 height = image.shape[-2]
 
-            # round down to nearest multiple of `self.adapter.total_downscale_factor`
-            height = (height // self.adapter.total_downscale_factor) * self.adapter.total_downscale_factor
+            # round down to nearest multiple of `self.adapter.downscale_factor`
+            height = (height // self.adapter.downscale_factor) * self.adapter.downscale_factor
 
         if width is None:
             if isinstance(image, PIL.Image.Image):
@@ -631,8 +631,8 @@ class StableDiffusionXLAdapterPipeline(
             elif isinstance(image, torch.Tensor):
                 width = image.shape[-1]
 
-            # round down to nearest multiple of `self.adapter.total_downscale_factor`
-            width = (width // self.adapter.total_downscale_factor) * self.adapter.total_downscale_factor
+            # round down to nearest multiple of `self.adapter.downscale_factor`
+            width = (width // self.adapter.downscale_factor) * self.adapter.downscale_factor
 
         return height, width
 

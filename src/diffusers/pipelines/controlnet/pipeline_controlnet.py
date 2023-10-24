@@ -35,7 +35,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -976,8 +976,15 @@ class StableDiffusionControlNetPipeline(
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        is_unet_compiled = is_compiled_module(self.unet)
+        is_controlnet_compiled = is_compiled_module(self.controlnet)
+        is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                # Relevant thread:
+                # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
+                if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
+                    torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
