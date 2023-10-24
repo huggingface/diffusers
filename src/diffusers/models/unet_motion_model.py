@@ -62,9 +62,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     def __init__(
         self,
         sample_size: Optional[int] = None,
-        center_input_sample: bool = False,
-        flip_sin_to_cos: bool = True,
-        freq_shift: int = 0,
         in_channels: int = 4,
         out_channels: int = 4,
         down_block_types: Tuple[str] = (
@@ -90,14 +87,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         attention_head_dim: Union[int, Tuple[int]] = 8,
         use_linear_projection: bool = False,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
-        motion_norm_num_groups=32,
-        motion_cross_attention_dim=None,
-        motion_num_attention_heads=8,
-        motion_attention_bias=False,
-        motion_activation_fn="geglu",
-        motion_max_seq_length=24,
-        motion_layers_per_block=2,
-        motion_mid_block_layers_per_block=1,
+        motion_norm_num_groups: Optional[int] = 32,
+        motion_cross_attention_dim: Optional[int] = None,
+        motion_num_attention_heads: Optional[int] = 8,
+        motion_attention_bias: bool = False,
+        motion_activation_fn: str = "geglu",
+        motion_max_seq_length: Optional[int] = 32,
     ):
         super().__init__()
 
@@ -314,38 +309,38 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         model = cls.from_config(config)
 
-        if load_weights:
-            model.conv_in.load_state_dict(unet.conv_in.state_dict())
-            model.time_proj.load_state_dict(unet.time_proj.state_dict())
-            model.time_embedding.load_state_dict(unet.time_embedding.state_dict())
+        if not load_weights:
+            return model
 
-            for i, down_block in enumerate(unet.down_blocks):
-                model.down_blocks[i].resnets.load_state_dict(down_block.resnets.state_dict())
-                if hasattr(model.down_blocks[i], "attentions"):
-                    model.down_blocks[i].attentions.load_state_dict(down_block.attentions.state_dict())
-                if model.down_blocks[i].downsamplers:
-                    model.down_blocks[i].downsamplers.load_state_dict(down_block.downsamplers.state_dict())
+        model.conv_in.load_state_dict(unet.conv_in.state_dict())
+        model.time_proj.load_state_dict(unet.time_proj.state_dict())
+        model.time_embedding.load_state_dict(unet.time_embedding.state_dict())
 
-            for i, up_block in enumerate(unet.up_blocks):
-                model.up_blocks[i].resnets.load_state_dict(up_block.resnets.state_dict())
-                if hasattr(model.up_blocks[i], "attentions"):
-                    model.up_blocks[i].attentions.load_state_dict(up_block.attentions.state_dict())
-                if model.up_blocks[i].upsamplers:
-                    model.up_blocks[i].upsamplers.load_state_dict(up_block.upsamplers.state_dict())
+        for i, down_block in enumerate(unet.down_blocks):
+            model.down_blocks[i].resnets.load_state_dict(down_block.resnets.state_dict())
+            if hasattr(model.down_blocks[i], "attentions"):
+                model.down_blocks[i].attentions.load_state_dict(down_block.attentions.state_dict())
+            if model.down_blocks[i].downsamplers:
+                model.down_blocks[i].downsamplers.load_state_dict(down_block.downsamplers.state_dict())
 
-            model.mid_block.resnets.load_state_dict(unet.mid_block.resnets.state_dict())
-            model.mid_block.attentions.load_state_dict(unet.mid_block.attentions.state_dict())
+        for i, up_block in enumerate(unet.up_blocks):
+            model.up_blocks[i].resnets.load_state_dict(up_block.resnets.state_dict())
+            if hasattr(model.up_blocks[i], "attentions"):
+                model.up_blocks[i].attentions.load_state_dict(up_block.attentions.state_dict())
+            if model.up_blocks[i].upsamplers:
+                model.up_blocks[i].upsamplers.load_state_dict(up_block.upsamplers.state_dict())
 
-            if unet.conv_norm_out is not None:
-                model.conv_norm_out.load_state_dict(unet.conv_norm_out.state_dict())
+        model.mid_block.resnets.load_state_dict(unet.mid_block.resnets.state_dict())
+        model.mid_block.attentions.load_state_dict(unet.mid_block.attentions.state_dict())
 
-            if unet.conv_act is not None:
-                model.conv_act.load_state_dict(unet.conv_act.state_dict())
+        if unet.conv_norm_out is not None:
+            model.conv_norm_out.load_state_dict(unet.conv_norm_out.state_dict())
+        if unet.conv_act is not None:
+            model.conv_act.load_state_dict(unet.conv_act.state_dict())
+        model.conv_out.load_state_dict(unet.conv_out.state_dict())
 
-            model.conv_out.load_state_dict(unet.conv_out.state_dict())
-
-            if has_motion_adapter:
-                model.load_motion_modules(motion_adapter)
+        if has_motion_adapter:
+            model.load_motion_modules(motion_adapter)
 
         return model
 
@@ -392,21 +387,22 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         **kwargs,
     ):
         state_dict = self.state_dict()
+
         # Extract all motion modules
         motion_state_dict = {}
         for k, v in state_dict.items():
-            if k.contains("motion_modules"):
+            if "motion_modules" in k:
                 motion_state_dict[k] = v
 
         adapter = MotionAdapter(
+            block_out_channels=self.config["block_out_channels"],
             motion_norm_num_groups=self.config["motion_norm_num_groups"],
             motion_cross_attention_dim=self.config["motion_cross_attention_dim"],
             motion_num_attention_heads=self.config["motion_num_attention_heads"],
             motion_attention_bias=self.config["motion_attention_bias"],
             motion_activation_fn=self.config["motion_activation_fn"],
             motion_max_seq_length=self.config["motion_max_seq_length"],
-            motion_layers_per_block=self.config["motion_layers_per_block"],
-            motion_mid_block_layers_per_block=self.config["motion_mid_block_layers_per_block"],
+            motion_layers_per_block=self.config["layers_per_block"],
         )
         adapter.load_state_dict(motion_state_dict)
         adapter.save_pretrained(
