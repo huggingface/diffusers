@@ -34,6 +34,7 @@ from ...schedulers import (
     PNDMScheduler,
 )
 from ...utils import BaseOutput, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -43,16 +44,15 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import MotionAdapter, AnimatedDiffPipeline
-        >>> from diffusers.utils import export_to_video
+        >>> from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+        >>> from diffusers.utils import export_to_gif
 
-        >>> pipe = AnimateDiffPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", motion_adapter=adapter)
-        >>> pipe.enable_model_cpu_offload()
-
-        >>> prompt = "Spiderman is surfing"
-        >>> video_frames = pipe(prompt).frames
-        >>> video_path = export_to_video(video_frames)
-        >>> video_path
+        >>> adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter")
+        >>> pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
+        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
+        >>> output = pipe(prompt="A corgi walking in the park")
+        >>> frames = output.frames[0]
+        >>> export_to_gif(frames, "animation.gif")
         ```
 """
 
@@ -436,22 +436,10 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        if latents is None:
-            rand_device = "cpu" if device.type == "mps" else device
 
-            if isinstance(generator, list):
-                shape = shape
-                # shape = (1,) + shape[1:]
-                latents = [
-                    torch.randn(shape, generator=generator[i], device=rand_device, dtype=dtype)
-                    for i in range(batch_size)
-                ]
-                latents = torch.cat(latents, dim=0).to(device)
-            else:
-                latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype).to(device)
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
             latents = latents.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler

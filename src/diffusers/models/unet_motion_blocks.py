@@ -347,15 +347,20 @@ class MotionBlock(nn.Module):
             attention_bias=attention_bias,
             num_attention_heads=num_attention_heads,
         )
+        self.use_cross_attention = cross_attention_dim is not None
         processor_cls = MotionAttnProcessor2_0 if is_torch_version(">=", "2.0.0") else MotionAttnProcessor
 
         for block in self.temporal_transformer.transformer_blocks:
             block.attn1.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
             block.attn2.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
 
-    def forward(self, hidden_states, encoder_hidden_states=None, num_frames=1):
+    def forward(self, hidden_states, encoder_hidden_states=None, num_frames=1, cross_attention_kwargs=None):
+        encoder_hidden_states = encoder_hidden_states if self.use_cross_attention else None
         hidden_states = self.temporal_transformer(
-            hidden_states, encoder_hidden_states=encoder_hidden_states, num_frames=num_frames
+            hidden_states,
+            encoder_hidden_states=encoder_hidden_states,
+            cross_attention_kwargs=cross_attention_kwargs,
+            num_frames=num_frames,
         ).sample
 
         return hidden_states
@@ -741,7 +746,12 @@ class CrossAttnDownBlockMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)
+                hidden_states = motion_module(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    num_frames=num_frames,
+                )
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -939,7 +949,12 @@ class CrossAttnUpBlockMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)
+                hidden_states = motion_module(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    num_frames=num_frames,
+                )
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1061,6 +1076,12 @@ class UpBlockMotion(nn.Module):
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(resnet), hidden_states, temb
                     )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                )
+
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
                 hidden_states = motion_module(hidden_states, num_frames=num_frames)
@@ -1214,6 +1235,12 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                     return_dict=False,
                 )[0]
                 hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(motion_module),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+                hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
@@ -1228,7 +1255,12 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)
+                hidden_states = motion_module(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    num_frames=num_frames,
+                )
                 hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states

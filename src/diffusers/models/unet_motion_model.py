@@ -349,6 +349,31 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         return model
 
+    def freeze_unet2d_params(self):
+        """Freeze the weights of just the UNet2DConditionModel, and leave the motion modules
+        unfrozen for fine tuning.
+        """
+        # Freeze everything
+        for param in self.parameters():
+            param.requires_grad = False
+
+        # Unfreeze Motion Modules
+        for down_block in self.down_blocks:
+            motion_modules = down_block.motion_modules
+            for param in motion_modules.parameters():
+                param.requires_grad = True
+
+        for up_block in self.up_blocks:
+            motion_modules = up_block.motion_modules
+            for param in motion_modules.parameters():
+                param.requires_grad = True
+
+        motion_modules = self.mid_block.motion_modules
+        for param in motion_modules.parameters():
+            param.requires_grad = True
+
+        return
+
     def load_motion_modules(self, motion_adapter: Optional[MotionAdapter]):
         for i, down_block in enumerate(motion_adapter.down_blocks):
             self.down_blocks[i].motion_modules.load_state_dict(down_block.motion_modules.state_dict())
@@ -510,7 +535,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "processor"):
-                # ignore attention processors from motion modules
+                # ignore the custom attention processors from motion modules
                 if isinstance(module.processor, MotionAttnProcessor) or isinstance(
                     module.processor, MotionAttnProcessor2_0
                 ):
