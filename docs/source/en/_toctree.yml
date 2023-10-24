@@ -164,24 +164,16 @@
   title: Conceptual Guides
 - sections:
   - sections:
-    - local: api/activations
-      title: Custom activation functions
-    - local: api/normalization
-      title: Custom normalization layers
-    - local: api/attnprocessor
-      title: Attention Processor
-    - local: api/logging
-      title: Logging
     - local: api/configuration
       title: Configuration
-    - local: api/outputs
-      title: Outputs
+    - local: api/diffusion_pipeline
+      title: Diffusion Pipeline
     - local: api/loaders
       title: Loaders
-    - local: api/utilities
-      title: Utilities
-    - local: api/image_processor
-      title: VAE Image Processor
+    - local: api/logging
+      title: Logging
+    - local: api/outputs
+      title: Outputs
     title: Main Classes
   - sections:
     - local: api/models/overview
@@ -389,4 +381,16 @@
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers
+  - sections:
+    - local: api/attnprocessor
+      title: Attention Processor
+    - local: api/activations
+      title: Custom activation functions
+    - local: api/normalization
+      title: Custom normalization layers
+    - local: api/utilities
+      title: Utilities
+    - local: api/image_processor
+      title: VAE Image Processor
+    title: Internal classes   
   title: API
