@@ -45,7 +45,7 @@ class UniControlTaskMOEEmbedding(nn.Module):
         super().__init__()
 
         ## MOE with multiple task specific layers. So num of layers = num of tasks
-        ## where each layer = UniControlNetTaskConditioningEmbedding
+        ## where each layer is UniControlNetTaskConditioningEmbedding
         self.input_hint_block_list_moe = nn.ModuleList([])
         for _ in range(all_tasks_num):
             self.input_hint_block_list_moe.append(
@@ -56,8 +56,6 @@ class UniControlTaskMOEEmbedding(nn.Module):
                     )
                 )
 
-        ## Turn 16, 32, 96, 256 as seen in ControlNetConditioningBlock.
-        # Needs refactoring.
         self.input_hint_block_share = nn.ModuleList([
             nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[1], 3, padding=1),
             nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[2], 3, padding=1, stride=2),
@@ -73,31 +71,20 @@ class UniControlTaskMOEEmbedding(nn.Module):
             zero_module(nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[1], 3, padding=1))]
         )
 
-        #The second zero conv is redundant
+        #The second zero conv is redundant.
         self.input_hint_block_zeroconv_1 = nn.ModuleList([
             zero_module(nn.Conv2d(conditioning_embedding_out_channels[3], model_channels, 3, padding=1)),
             zero_module(nn.Conv2d(conditioning_embedding_out_channels[3], model_channels, 3, padding=1))]
         )
         self.task_id_layernet_zeroconv_1 = nn.Linear(time_embed_dim, conditioning_embedding_out_channels[3])
 
-    ##guided hint computation should finish here.
     def forward(self, x, hint, context, task_id_emb, task_id):
 
-        '''
-        x -> 4,4,64,64
-        hint -> 4, 3, 512, 512
-        context - > 4, 77, 768
-        '''
-
-        # x -> input tensor
-        # hint -> canny condition hint
-        # context -> prompt embedding
-        # task_id_embed -> from task name embedding
-        BS_Real = x.shape[0]
+        batch_size = x.shape[0]
 
         guided_hint = self.input_hint_block_list_moe[task_id](hint)
         
-        guided_hint = modulated_conv2d(guided_hint, self.input_hint_block_zeroconv_0[0].weight, self.task_id_layernet_zeroconv_0(task_id_emb).repeat(BS_Real, 1).detach(), padding=1)
+        guided_hint = modulated_conv2d(guided_hint, self.input_hint_block_zeroconv_0[0].weight, self.task_id_layernet_zeroconv_0(task_id_emb).repeat(batch_size, 1).detach(), padding=1)
 
         guided_hint += self.input_hint_block_zeroconv_0[0].bias.unsqueeze(0).unsqueeze(2).unsqueeze(3)
 
@@ -107,7 +94,7 @@ class UniControlTaskMOEEmbedding(nn.Module):
             guided_hint = act(layer(guided_hint))
         
 
-        guided_hint = modulated_conv2d(guided_hint, self.input_hint_block_zeroconv_1[0].weight, self.task_id_layernet_zeroconv_1(task_id_emb).repeat(BS_Real, 1).detach(), padding=1)
+        guided_hint = modulated_conv2d(guided_hint, self.input_hint_block_zeroconv_1[0].weight, self.task_id_layernet_zeroconv_1(task_id_emb).repeat(batch_size, 1).detach(), padding=1)
 
 
         guided_hint += self.input_hint_block_zeroconv_1[0].bias.unsqueeze(0).unsqueeze(2).unsqueeze(3)
@@ -144,7 +131,7 @@ class UniControlTaskIDHypernet(nn.Module):
         self.linear1 = nn.Linear(cross_attention_dim, time_embed_dim)
         self.act = get_activation(act_fn)
         self.linear2 = nn.Linear(time_embed_dim, time_embed_dim)
-        self.post_act_fn = get_activation(act_fn)
+        self.post_act_fn = get_activation(post_act_fn)
 
     def forward(self, in_feature):
         out_embedding = self.linear1(in_feature)
