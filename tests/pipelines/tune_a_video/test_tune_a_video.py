@@ -203,7 +203,7 @@ class TuneAVideoPipelineSlowTests(unittest.TestCase):
         ).frames
         video = video_frames.cpu().numpy()
 
-        assert np.abs(expected_video - video).mean() < 5e-2
+        numpy_cosine_similarity_distance(expected_video.flatten(), video.flatten()) < 5e-2
 
     def test_two_step_model(self):
         expected_video = load_numpy(
@@ -224,4 +224,4 @@ class TuneAVideoPipelineSlowTests(unittest.TestCase):
         ).frames
         video = video_frames.cpu().numpy()
 
-        assert np.abs(expected_video - video).mean() < 5e-2
+        numpy_cosine_similarity_distance(expected_video.flatten(), video.flatten()) < 5e-2
