@@ -2075,8 +2075,8 @@ class UNetMidBlockFlat(nn.Module):
         attn_groups: Optional[int] = None,
         resnet_pre_norm: bool = True,
         add_attention: bool = True,
-        attention_head_dim=1,
-        output_scale_factor=1.0,
+        attention_head_dim: int = 1,
+        output_scale_factor: float = 1.0,
     ):
         super().__init__()
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -2147,7 +2147,7 @@ class UNetMidBlockFlat(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states, temb=None):
+    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if attn is not None:
