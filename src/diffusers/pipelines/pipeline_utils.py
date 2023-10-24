@@ -111,6 +111,7 @@ CALLBACK_ON_STEP_END_INPUTS = [
     "guidance_scale",
     "latents",
     "prompt_embeds",
+    "negative_prompt_embeds",
     "cross_attention_kwargs",
     "guidance_rescale",
 ]
