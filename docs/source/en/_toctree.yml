@@ -81,8 +81,8 @@
     - local: using-diffusers/custom_pipeline_examples
       title: Community pipelines
     - local: using-diffusers/contribute_pipeline
-      title: How to contribute a community pipeline
-    title: Pipelines for Inference
+      title: Contribute a community pipeline
+    title: Specific pipeline examples
   - sections:
     - local: training/overview
       title: Overview
@@ -168,8 +168,6 @@
       title: Custom normalization layers
     - local: api/attnprocessor
       title: Attention Processor
-    - local: api/diffusion_pipeline
-      title: Diffusion Pipeline
     - local: api/logging
       title: Logging
     - local: api/configuration
