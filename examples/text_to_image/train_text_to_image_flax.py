@@ -383,7 +383,8 @@ def main():
         args.pretrained_model_name_or_path, from_pt=args.from_pt, revision=args.revision, subfolder="tokenizer"
     )
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, from_pt=args.from_pt, revision=args.revision, subfolder="text_encoder", dtype=weight_dtype
+        args.pretrained_model_name_or_path, from_pt=args.from_pt, revision=args.revision, subfolder="text_encoder",
+        dtype=weight_dtype
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, from_pt=args.from_pt, revision=args.revision, subfolder="vae", dtype=weight_dtype
