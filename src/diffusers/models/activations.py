@@ -1,5 +1,5 @@
-
 import torch.nn as nn
+
 
 def get_activation(act_fn: str) -> nn.Module:
     """Helper function to get activation function from string.
@@ -16,7 +16,7 @@ def get_activation(act_fn: str) -> nn.Module:
         "silu": nn.SiLU(),
         "mish": nn.Mish(),
         "gelu": nn.GELU(),
-        "relu": nn.ReLU()
+        "relu": nn.ReLU(),
     }
 
     act_fn = act_fn.lower()
