@@ -23,6 +23,8 @@ def pick_tensor(values:Union[torch.Tensor,np.ndarray,list],t:Union[torch.Tensor,
     assert isinstance(t,(int,torch.Tensor,np.ndarray)),'t should be an int, a tensor or an array'
     values = torch.tensor(values) if not isinstance(values,torch.Tensor) else values
     t = torch.tensor(t) if isinstance(t,np.ndarray) else t
+    # We remove items where t = -1
+    t = t.clamp(min=0)
     if isinstance(t,torch.Tensor):
         if len(t.shape)==0:
             indices=torch.tensor([t],dtype=torch.long,device=values.device)
@@ -54,7 +56,7 @@ class DDPMTrainingScheduler(DDPMScheduler):
         Returns:
             _type_: _description_
         """
-        return torch.tensor([max(self.previous_timestep(t),0) for t in timesteps]).long()
+        return torch.tensor([self.previous_timestep(t) for t in timesteps]).long()
     
     def _get_q_mean_variance(self,timesteps:torch.Tensor,sample_0:torch.Tensor,sample_t:torch.Tensor):
         """Returns the posterior mean variance 
@@ -85,6 +87,8 @@ class DDPMTrainingScheduler(DDPMScheduler):
         coef_xt = adapt_tensor(coef_xt,sample_t)
 
         posterior_mean = coef_x0*sample_0+coef_xt*sample_t
+        # We clamp posterior var for stability...
+        posterior_var = posterior_var.clamp(1e-5)
         # We return
         return posterior_mean,posterior_var,torch.log(posterior_var)
     
@@ -110,8 +114,9 @@ class DDPMTrainingScheduler(DDPMScheduler):
         variances = (1 - alpha_prod_ts_prev) / (1 - alpha_prod_ts) * current_beta_ts
 
         # we always take the log of variance, so clamp it to ensure it's not 0
-        variances = torch.clamp(variances, min=1e-7) # Important for mixed precision not to have a too low value.
-
+        variances = torch.clamp(variances, min=1e-5) # Important for mixed precision not to have a too low value.
+        current_beta_ts = torch.clamp(variances,min=1e-5)
+        
         variance_type = self.config.variance_type
         if variance_type == "fixed_small":
             variances = variances
@@ -128,6 +133,7 @@ class DDPMTrainingScheduler(DDPMScheduler):
             frac = (predicted_variances + 1) / 2
             log_variances = frac * adapt_tensor(max_log,frac) + (1 - frac) * adapt_tensor(min_log,frac)
             variances = torch.exp(log_variances)
+        
         return variances,log_variances
 
     def _get_p_mean_variance(self,model_output:torch.Tensor,timesteps:torch.Tensor,scale:float=1.0):
@@ -177,6 +183,6 @@ if __name__=='__main__':
     m_pred = torch.randn((4,6,128,128))
     t_tensor = torch.tensor([0,13,18,32])
 
-    mean,var=noise_scheduler._get_q_mean_variance(t_tensor,x0,xt)
-    mean_p,var_p = noise_scheduler._get_p_mean_variance(m_pred,t_tensor)
+    mean,var,logvar=noise_scheduler._get_q_mean_variance(t_tensor,x0,xt)
+    mean_p,var_p,logvar = noise_scheduler._get_p_mean_variance(m_pred,t_tensor)
     print('terminé')

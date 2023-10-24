@@ -96,14 +96,14 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
             model_cond = torch.cat([segmap,torch.zeros_like(segmap)])
             with torch.no_grad():
                 noise_pred = model(model_input, t, model_cond).sample
-            noise_pred_ucond,noise_pred_cond = noise_pred.chunk(2)
+            noise_pred_cond,noise_pred_ucond = noise_pred.chunk(2)
             noise_pred = noise_pred_ucond+guidance_scale*(noise_pred_cond-noise_pred_ucond)
             # We finally use this noise to sample
             sample = self.scheduler.step(noise_pred,t,sample,generator=generator).prev_sample
 
         # We finally convert it to an image...
-        sample = (sample/2+0.5).clamp(0, 1).squeeze()
-        sample = (sample*255).permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+        sample = 0.5*(sample+1).squeeze()
+        sample = sample.permute(1, 2, 0).cpu().numpy()
         if output_type == "pil":
             sample = self.numpy_to_pil(sample)
 
