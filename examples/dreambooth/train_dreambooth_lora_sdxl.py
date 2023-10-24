@@ -23,6 +23,7 @@ import os
 import shutil
 import warnings
 from pathlib import Path
+from typing import Dict
 
 import numpy as np
 import torch
@@ -40,6 +41,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+from datasets import load_dataset
 
 import diffusers
 from diffusers import (
@@ -142,12 +144,49 @@ def parse_args(input_args=None):
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default=None,
+        help=(
+            "The name of the Dataset (from the HuggingFace hub) containing the training data of instance images (could be your own, possibly private,"
+            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
+            " or to a folder containing files that 🤗 Datasets can understand."
+        ),
+    )
+    parser.add_argument(
+        "--dataset_config_name",
+        type=str,
+        default=None,
+        help="The config of the Dataset, leave as None if there's only one config.",
+    )
+    parser.add_argument(
         "--instance_data_dir",
         type=str,
         default=None,
-        required=True,
-        help="A folder containing the training data of instance images.",
+        help=(
+            "A folder containing the training data. Folder contents must follow the structure described in"
+            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
+            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
+        ),
     )
+
+    parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default=None,
+        help="The directory where the downloaded models and datasets will be stored.",
+    )
+
+    parser.add_argument(
+        "--image_column", type=str, default="image", help="The column of the dataset containing the target image."
+    )
+    parser.add_argument(
+        "--caption_column",
+        type=str,
+        default=None,
+        help="The column of the dataset containing the instance prompt for each image",
+    )
+
     parser.add_argument(
         "--class_data_dir",
         type=str,
@@ -299,8 +338,15 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=5e-4,
+        default=1e-4,
         help="Initial learning rate (after the potential warmup period) to use.",
+    )
+
+    parser.add_argument(
+        "--text_encoder_lr",
+        type=float,
+        default=5e-6,
+        help="Text encoder learning rate to use.",
     )
     parser.add_argument(
         "--scale_lr",
@@ -316,6 +362,14 @@ def parse_args(input_args=None):
             'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
             ' "constant", "constant_with_warmup"]'
         ),
+    )
+
+    parser.add_argument(
+        "--snr_gamma",
+        type=float,
+        action="store_true",
+        help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
+             "More details here: https://arxiv.org/abs/2303.09556.",
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
@@ -335,13 +389,41 @@ def parse_args(input_args=None):
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
     )
+
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--optimizer",
+        type=str,
+        default="prodigy",
+        help=(
+            'The optimizer type to use. Choose between ["adamW", "prodigy"]'
+        ),
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+
+    parser.add_argument(
+        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes. Ignored if "
+                                                     "optimizer is not set to AdamW"
+    )
+
+    parser.add_argument("--adam_beta1", type=float, default=0.9,
+                        help="The beta1 parameter for the Adam and Prodigy optimizers.")
+    parser.add_argument("--adam_beta2", type=float, default=0.999,
+                        help="The beta2 parameter for the Adam and Prodigy optimizers.")
+    parser.add_argument("--prodigy_beta3", type=float, default=None,
+                        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
+                             "uses the value of square root of beta2")
+    parser.add_argument("--prodigy_decouple", type=bool, default=True,
+                        help="Use AdamW style decoupled weight decay")
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-02, help="Weight decay to use. If you're using "
+                                                                               "the Adam optimizer you might want to "
+                                                                               "change value to 1e-4")
+
+    parser.add_argument("--adam_epsilon", type=float, default=1e-08,
+                        help="Epsilon value for the Adam optimizer and Prodigy optimizers.")
+
+    parser.add_argument("--prodigy_use_bias_correction ", type=bool, default=True,
+                        help="Turn on Adam's bias correction. True by default.")
+    parser.add_argument("--prodigy_safeguard_warmup ", type=bool, default=True,
+                        help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default.")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
@@ -414,6 +496,12 @@ def parse_args(input_args=None):
     else:
         args = parser.parse_args()
 
+    if args.dataset_name is None and args.train_data_dir is None:
+        raise ValueError("Specify either `--dataset_name` or `--instance_data_dir`")
+
+    if args.dataset_name is not None and args.train_data_dir is not None:
+        raise ValueError("Specify only one of `--dataset_name` or `--instance_data_dir`")
+
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -440,21 +528,71 @@ class DreamBoothDataset(Dataset):
     """
 
     def __init__(
-        self,
-        instance_data_root,
-        class_data_root=None,
-        class_num=None,
-        size=1024,
-        center_crop=False,
+            self,
+            instance_data_root,
+            instance_prompt,
+            class_prompt,
+            class_data_root=None,
+            class_num=None,
+            size=1024,
+            center_crop=False,
     ):
         self.size = size
         self.center_crop = center_crop
 
         self.instance_data_root = Path(instance_data_root)
-        if not self.instance_data_root.exists():
-            raise ValueError("Instance images root doesn't exists.")
 
-        self.instance_images_path = list(Path(instance_data_root).iterdir())
+        self.instance_prompt = instance_prompt
+        self.custom_instance_prompts = None
+        self.class_prompt = class_prompt
+
+        if args.dataset_name is not None:
+            # Downloading and loading a dataset from the hub.
+            # See more about loading custom images at
+            # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
+            dataset = load_dataset(
+                instance_dataset_name,
+                args.dataset_config_name,
+                cache_dir=args.cache_dir,
+            )
+        else:
+            if not self.instance_data_root.exists():
+                raise ValueError("Instance images root doesn't exists.")
+
+            dataset = load_dataset(instance_data_root,
+                                   cache_dir=args.cache_dir,
+                                   )
+
+        # Preprocessing the datasets.
+        column_names = dataset["train"].column_names
+
+        # 6. Get the column names for input/target.
+        if args.image_column is None:
+            image_column = column_names[0]
+            logger.info(f"image column defaulting to {image_column}")
+        else:
+            image_column = args.image_column
+            if image_column not in column_names:
+                raise ValueError(
+                    f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
+                )
+        self.instance_images_path = dataset["train"][image_column]
+
+        if args.caption_column is None:
+            try:
+                caption_column = column_names[1]
+                logger.info(f"caption column defaulting to {caption_column}")
+                self.custom_instance_prompts = dataset["train"][caption_column]
+            except IndexError:
+                logger.info(f"no caption column provided, deaulting to instance_prompt for all images")
+                self.custom_instance_prompts = None
+        else:
+            caption_column = args.caption_column
+            if caption_column not in column_names:
+                raise ValueError(
+                    f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
+                )
+
         self.num_instance_images = len(self.instance_images_path)
         self._length = self.num_instance_images
 
@@ -484,12 +622,22 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        instance_image = self.instance_images_path[index % self.num_instance_images]
         instance_image = exif_transpose(instance_image)
 
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
+
+        if self.custom_instance_prompts:
+            caption = self.custom_instance_prompts[index % self.num_instance_images]
+            if caption:
+                example["instance_prompt"] = self.custom_instance_prompts[index % self.num_instance_images]
+            else:
+                example["instance_prompt"] = self.instance_prompt
+
+        else:  # costum prompts were provided, but length does not match size of image dataset
+            example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
@@ -498,23 +646,51 @@ class DreamBoothDataset(Dataset):
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
+            example["class_prompt"] = self.class_prompt
 
         return example
 
 
 def collate_fn(examples, with_prior_preservation=False):
     pixel_values = [example["instance_images"] for example in examples]
+    prompts = [example["instance_prompt"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
     if with_prior_preservation:
         pixel_values += [example["class_images"] for example in examples]
+        prompts += [example["class_prompt"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    batch = {"pixel_values": pixel_values}
+    batch = {"pixel_values": pixel_values, "prompts": prompts}
     return batch
+
+
+def compute_snr(timesteps):
+    """
+    Computes SNR as per https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L847-L849
+    """
+    alphas_cumprod = noise_scheduler.alphas_cumprod
+    sqrt_alphas_cumprod = alphas_cumprod ** 0.5
+    sqrt_one_minus_alphas_cumprod = (1.0 - alphas_cumprod) ** 0.5
+
+    # Expand the tensors.
+    # Adapted from https://github.com/TiankaiHang/Min-SNR-Diffusion-Training/blob/521b624bd70c67cee4bdf49225915f5945a872e3/guided_diffusion/gaussian_diffusion.py#L1026
+    sqrt_alphas_cumprod = sqrt_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
+    while len(sqrt_alphas_cumprod.shape) < len(timesteps.shape):
+        sqrt_alphas_cumprod = sqrt_alphas_cumprod[..., None]
+    alpha = sqrt_alphas_cumprod.expand(timesteps.shape)
+
+    sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod.to(device=timesteps.device)[timesteps].float()
+    while len(sqrt_one_minus_alphas_cumprod.shape) < len(timesteps.shape):
+        sqrt_one_minus_alphas_cumprod = sqrt_one_minus_alphas_cumprod[..., None]
+    sigma = sqrt_one_minus_alphas_cumprod.expand(timesteps.shape)
+
+    # Compute SNR.
+    snr = (alpha / sigma) ** 2
+    return snr
 
 
 class PromptDataset(Dataset):
@@ -865,31 +1041,95 @@ def main(args):
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
-    if args.use_8bit_adam:
-        try:
-            import bitsandbytes as bnb
-        except ImportError:
-            raise ImportError(
-                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
-            )
+    # Optimization parameters
+    unet_lora_parameters_with_lr = {"params": unet_lora_parameters, "lr": args.learning_rate}
+    if args.text_encoder_lr:  # different learning rate for text encoder and unet
+        text_lora_parameters_one_with_lr = {"params": text_lora_parameters_one, "lr": args.text_encoder_lr}
+        text_lora_parameters_two_with_lr = {"params": text_lora_parameters_two, "lr": args.text_encoder_lr}
 
-        optimizer_class = bnb.optim.AdamW8bit
     else:
-        optimizer_class = torch.optim.AdamW
+        text_lora_parameters_one_with_lr = {"params": text_lora_parameters_one, "lr": args.learning_rate}
+        text_lora_parameters_two_with_lr = {"params": text_lora_parameters_two, "lr": args.learning_rate}
+
+    params_to_optimize = [unet_lora_parameters_with_lr, text_lora_parameters_one_with_lr,
+                          text_lora_parameters_two_with_lr]
 
     # Optimizer creation
-    params_to_optimize = (
-        itertools.chain(unet_lora_parameters, text_lora_parameters_one, text_lora_parameters_two)
-        if args.train_text_encoder
-        else unet_lora_parameters
+    if args.use_8bit_adam and not args.optimizer.lower() == "AdamW":
+        logger.warn(f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
+                    f"set to {args.optimizer.lower()}")
+
+    if args.optimizer.lower() == "prodigy":
+        try:
+            import prodigyopt
+        except ImportError:
+            raise ImportError("To use Prodigy, please install the prodigyopt library: `pip install prodigyopt`")
+
+        optimizer_class = prodigyopt.Prodigy
+
+        if args.learning_rate <= 0.1:
+            logger.warn(
+                f"Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
+            )
+        if args.text_encoder_lr:
+            logger.warn(
+                f"Learning rates were provided both for the unet and the text encdoer- e.g. text_encoder_lr and learning_rate"
+                f"when using prodigy only learning_rate is used as the initial learning rate"
+            )
+
+        optimizer = optimizer_class(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            beta3=args.prodigy_beta3,
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+            decouple=args.prodigy_decouple,
+            use_bias_correction=args.prodigy_use_bias_correction,
+            safeguard_warmup=args.prodigy_safeguard_warmup,
+        )
+
+
+    elif args.optimizer.lower() == "AdamW":
+        if args.use_8bit_adam:
+            try:
+                import bitsandbytes as bnb
+            except ImportError:
+                raise ImportError(
+                    "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+                )
+
+            optimizer_class = bnb.optim.AdamW8bit
+        else:
+            optimizer_class = torch.optim.AdamW
+
+        optimizer = optimizer_class(
+            params_to_optimize,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported choice of optimizer: {args.optimizer.lower()}. Supported optimizers include [adamW, prodigy]")
+
+    # Dataset and DataLoaders creation:
+    train_dataset = DreamBoothDataset(
+        instance_data_root=args.instance_data_dir,
+        instance_prompt=args.instance_prompt,
+        class_prompt=args.class_prompt,
+        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
+        class_num=args.num_class_images,
+        size=args.resolution,
+        center_crop=args.center_crop,
     )
-    optimizer = optimizer_class(
-        params_to_optimize,
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
+
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=args.train_batch_size,
+        shuffle=True,
+        collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
+        num_workers=args.dataloader_num_workers,
     )
 
     # Computes additional embeddings/ids required by the SDXL UNet.
@@ -918,9 +1158,10 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
-    # Handle instance prompt.
+    # Handle instance prompt. If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images), we encode the instance prompt once to avoid
+    # the redundant encoding.
     instance_time_ids = compute_time_ids()
-    if not args.train_text_encoder:
+    if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
         )
@@ -933,49 +1174,33 @@ def main(args):
                 args.class_prompt, text_encoders, tokenizers
             )
 
-    # Clear the memory here.
-    if not args.train_text_encoder:
+    # Clear the memory here
+    if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         del tokenizers, text_encoders
         gc.collect()
         torch.cuda.empty_cache()
 
-    # Pack the statically computed variables appropriately. This is so that we don't
+    # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images), pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
     add_time_ids = instance_time_ids
     if args.with_prior_preservation:
         add_time_ids = torch.cat([add_time_ids, class_time_ids], dim=0)
 
-    if not args.train_text_encoder:
-        prompt_embeds = instance_prompt_hidden_states
-        unet_add_text_embeds = instance_pooled_prompt_embeds
-        if args.with_prior_preservation:
-            prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
-            unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
-    else:
-        tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
-        tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt)
-        if args.with_prior_preservation:
-            class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt)
-            class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt)
-            tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
-            tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
-
-    # Dataset and DataLoaders creation:
-    train_dataset = DreamBoothDataset(
-        instance_data_root=args.instance_data_dir,
-        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_num=args.num_class_images,
-        size=args.resolution,
-        center_crop=args.center_crop,
-    )
-
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=args.train_batch_size,
-        shuffle=True,
-        collate_fn=lambda examples: collate_fn(examples, args.with_prior_preservation),
-        num_workers=args.dataloader_num_workers,
-    )
+    if not train_dataset.custom_instance_prompts:
+        if not args.train_text_encoder:
+            prompt_embeds = instance_prompt_hidden_states
+            unet_add_text_embeds = instance_pooled_prompt_embeds
+            if args.with_prior_preservation:
+                prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
+                unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
+        else:
+            tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
+            tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt)
+            if args.with_prior_preservation:
+                class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt)
+                class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt)
+                tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
+                tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -1035,7 +1260,7 @@ def main(args):
             path = os.path.basename(args.resume_from_checkpoint)
         else:
             # Get the mos recent checkpoint
-            dirs = os.listdir(args.output_dir)
+            dirs = os.listdir(args.model_dir_name)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1] if len(dirs) > 0 else None
@@ -1048,7 +1273,7 @@ def main(args):
             initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(args.output_dir, path))
+            accelerator.load_state(os.path.join(args.model_dir_name, path))
             global_step = int(path.split("-")[1])
 
             initial_global_step = global_step
@@ -1078,6 +1303,25 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
+                prompts = batch["prompts"]
+
+                # encode batch prompts when custom prompts are provided for each image -
+                if train_dataset.custom_instance_prompts:
+
+                    if not args.train_text_encoder:
+                        prompt_embeds, unet_add_text_embeds = compute_text_embeddings(
+                            prompts, text_encoders, tokenizers)
+                        if args.with_prior_preservation:
+                            prompt_embeds_input = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
+                            unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
+                    else:
+                        tokens_one = tokenize_prompt(tokenizer_one, prompts)
+                        tokens_two = tokenize_prompt(tokenizer_two, prompts)
+                        if args.with_prior_preservation:
+                            class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt)
+                            class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt)
+                            tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
+                            tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
@@ -1107,7 +1351,10 @@ def main(args):
                         "time_ids": add_time_ids.repeat(elems_to_repeat, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat, 1),
                     }
-                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    if not dataset.custom_instance_prompts:  # i.e. we only encoded args.instance_prompt
+                        prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    else:
+                        prompt_embeds_input = prompt_embeds
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
@@ -1141,16 +1388,38 @@ def main(args):
                     model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
                     target, target_prior = torch.chunk(target, 2, dim=0)
 
-                    # Compute instance loss
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
                     # Compute prior loss
                     prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
+                if args.snr_gamma is None:
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                else:
+                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                    # This is discussed in Section 4.2 of the same paper.
+                    snr = compute_snr(timesteps)
+                    base_weight = (
+                            torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[
+                                0] / snr
+                    )
+
+                    if noise_scheduler.config.prediction_type == "v_prediction":
+                        # Velocity objective needs to be floored to an SNR weight of one.
+                        mse_loss_weights = base_weight + 1
+                    else:
+                        # Epsilon and sample both use the same loss weights.
+                        mse_loss_weights = base_weight
+
+                    # We calculate the original loss and then we mean over the non-batch dimensions and
+                    # rebalance the sample-wise losses with their respective loss weights.
+                    # Finally, we take the mean of the rebalanced loss.
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                    loss = loss.mean()
+
+                if args.with_prior_preservation:
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
-                else:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
