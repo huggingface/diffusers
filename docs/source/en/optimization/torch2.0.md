@@ -70,7 +70,7 @@ pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 images = pipe(prompt, num_inference_steps=steps, num_images_per_prompt=batch_size).images[0]
 ```
 
-Depending on GPU type, `torch.compile` can provide an *addtional speed-up* of **5-300x** on top of SDPA! If you're using more recent GPU architectures such as Ampere (A100, 3090), Ada (4090), and Hopper (H100), `torch.compile` is able to squeeze even more performance out of these GPUs.
+Depending on GPU type, `torch.compile` can provide an *additional speed-up* of **5-300x** on top of SDPA! If you're using more recent GPU architectures such as Ampere (A100, 3090), Ada (4090), and Hopper (H100), `torch.compile` is able to squeeze even more performance out of these GPUs.
 
 Compilation requires some time to complete, so it is best suited for situations where you prepare your pipeline once and then perform the same type of inference operations multiple times. For example, calling the compiled pipeline on a different image size triggers compilation again which can be expensive.
 

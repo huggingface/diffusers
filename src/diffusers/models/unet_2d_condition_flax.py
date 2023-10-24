@@ -92,6 +92,9 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         use_memory_efficient_attention (`bool`, *optional*, defaults to `False`):
             Enable memory efficient attention as described [here](https://arxiv.org/abs/2112.05682).
+        split_head_dim (`bool`, *optional*, defaults to `False`):
+            Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
+            enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
     """
 
     sample_size: int = 32
@@ -116,13 +119,14 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
     use_memory_efficient_attention: bool = False
+    split_head_dim: bool = False
     transformer_layers_per_block: Union[int, Tuple[int]] = 1
     addition_embed_type: Optional[str] = None
     addition_time_embed_dim: Optional[int] = None
     addition_embed_type_num_heads: int = 64
     projection_class_embeddings_input_dim: Optional[int] = None
 
-    def init_weights(self, rng: jax.random.KeyArray) -> FrozenDict:
+    def init_weights(self, rng: jax.Array) -> FrozenDict:
         # init input tensors
         sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
@@ -231,6 +235,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
+                    split_head_dim=self.split_head_dim,
                     dtype=self.dtype,
                 )
             else:
@@ -254,6 +259,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             transformer_layers_per_block=transformer_layers_per_block[-1],
             use_linear_projection=self.use_linear_projection,
             use_memory_efficient_attention=self.use_memory_efficient_attention,
+            split_head_dim=self.split_head_dim,
             dtype=self.dtype,
         )
 
@@ -284,6 +290,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     use_linear_projection=self.use_linear_projection,
                     only_cross_attention=only_cross_attention[i],
                     use_memory_efficient_attention=self.use_memory_efficient_attention,
+                    split_head_dim=self.split_head_dim,
                     dtype=self.dtype,
                 )
             else:
@@ -327,6 +334,13 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
             encoder_hidden_states (`jnp.ndarray`): (batch_size, sequence_length, hidden_size) encoder hidden states
+            added_cond_kwargs: (`dict`, *optional*):
+                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
+                are passed along to the UNet blocks.
+            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
+                A tuple of tensors that if specified are added to the residuals of down unet blocks.
+            mid_block_additional_residual: (`torch.Tensor`, *optional*):
+                A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
                 plain tuple.
