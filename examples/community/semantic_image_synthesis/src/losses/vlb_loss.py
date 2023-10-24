@@ -1,11 +1,56 @@
 import torch
 import torch.nn as nn
 
+"""
+Helpers for various likelihood-based losses. These are ported from the original
+Ho et al. diffusion models codebase:
+https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/utils.py
+"""
+import torch
+import numpy as np
+
+def approx_standard_normal_cdf(x):
+    """
+    A fast approximation of the cumulative distribution function of the
+    standard normal.
+    """
+    return 0.5 * (1.0 + torch.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * torch.pow(x, 3))))
+
+def discretized_gaussian_log_likelihood(x, means, log_scales):
+    """
+    Compute the log-likelihood of a Gaussian distribution discretizing to a
+    given image.
+
+    :param x: the target images. It is assumed that this was uint8 values,
+              rescaled to the range [-1, 1].
+    :param means: the Gaussian mean Tensor.
+    :param log_scales: the Gaussian log stddev Tensor.
+    :return: a tensor like x of log probabilities (in nats).
+    """
+    assert x.shape == means.shape == log_scales.shape
+    centered_x = x - means
+    inv_stdv = torch.exp(-log_scales)
+    plus_in = inv_stdv * (centered_x + 1.0 / 255.0)
+    cdf_plus = approx_standard_normal_cdf(plus_in)
+    min_in = inv_stdv * (centered_x - 1.0 / 255.0)
+    cdf_min = approx_standard_normal_cdf(min_in)
+    log_cdf_plus = torch.log(cdf_plus.clamp(min=1e-12))
+    log_one_minus_cdf_min = torch.log((1.0 - cdf_min).clamp(min=1e-12))
+    cdf_delta = cdf_plus - cdf_min
+    log_probs = torch.where(
+        x < -0.999,
+        log_cdf_plus,
+        torch.where(x > 0.999, log_one_minus_cdf_min, torch.log(cdf_delta.clamp(min=1e-12))),
+    )
+    assert log_probs.shape == x.shape
+    return log_probs
+
+
 class VLBLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self,p_mean:torch.Tensor,p_log_var:torch.Tensor,q_mean:torch.Tensor,q_log_var:torch.Tensor):
+    def forward(self,p_mean:torch.Tensor,p_log_var:torch.Tensor,q_mean:torch.Tensor,q_log_var:torch.Tensor,x_0:torch.Tensor,t:torch.Tensor):
         """KL Divergence from log_var
         We take the equation here (based on sigma = sqrt(log))
 
@@ -16,12 +61,22 @@ class VLBLoss(nn.Module):
             p_log_var (torch.Tensor): _description_
             q_mean (torch.Tensor): _description_
             q_log_var (torch.Tensor): _description_
+            x_0 (torch.Tensor): starting image
+            t (torch.Tensor): timesteps
 
         Returns:
             _type_: _description_
         """
+        # We detach p_pean like in : https://proceedings.mlr.press/v139/nichol21a/nichol21a.pdf
+        # In order the VLB to contribute only to train the variance term.
+        # We compute L_{1} + ... + L_{t-1}
         kld = -0.5 + 0.5*(q_log_var - p_log_var) + 0.5*(
             torch.exp(p_log_var)/torch.exp(q_log_var) 
             + 
-            (p_mean - q_mean)**2/torch.exp(q_log_var))
-        return kld
+            (p_mean.detach() - q_mean)**2/torch.exp(q_log_var))
+        kl_div_mean = kld.reshape(x_0.shape[0],-1).mean(dim=1)
+        # We compute L_{0}
+        l_0 = -discretized_gaussian_log_likelihood(x_0,p_mean,0.5 *p_log_var)
+        l_0_mean = l_0.reshape(x_0.shape[0],-1).mean(dim=1)
+        vlb_loss_batch = torch.where((t>0),kl_div_mean,l_0_mean).mean()
+        return vlb_loss_batch

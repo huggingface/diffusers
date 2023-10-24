@@ -6,6 +6,7 @@ from src.pipelines.semantic_only_diffusion import SemanticOnlyDiffusionPipeline
 from src.schedulers.ddpm_training import DDPMScheduler,DDPMTrainingScheduler
 from src.models import UNet2DOutput,UNet2DSISModel,get_config
 from src.losses.vlb_loss import VLBLoss
+import copy
 
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -25,6 +26,7 @@ import numpy as np
 import os
 from typing import List
 from tqdm import tqdm
+import wandb
 
 assert version.parse(accelerate.__version__) >= version.parse("0.16.0"),"Accelerate version should be higher than 0.16.0"
 
@@ -37,10 +39,11 @@ parser.add_argument('--dataset_ann_dir',type=str,default='/mnt/c/BUSDATA/Dataset
 parser.add_argument('--dataset_img_size',type=int,default=128)
 parser.add_argument('--output_dir',type=str,default='/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/')
 parser.add_argument('--train_batch_size',type=int,default=2)
-parser.add_argument('--max_train_steps',type=int,default=5)
+parser.add_argument('--train_ucond_prob',type=float,default=0.1)
+parser.add_argument('--max_train_steps',type=int,default=10)
 parser.add_argument('--ddp_variance_type',type=str,default='learned_range',
                     choices=['fixed_small','fixed_log','fixed_large','fixed_large_log','learned','learned_range'],)
-parser.add_argument('--ddp_guidance_scale',type=float,default=1.5,
+parser.add_argument('--ddp_guidance_scale',type=float,default=7.5,
                     help='Unconditionnal guidance.')
 parser.add_argument("--gradient_accumulation_steps",type=int,default=1,
                     help="Number of updates steps to accumulate before performing a backward/update pass.")
@@ -51,10 +54,10 @@ parser.add_argument("--optim_weight_decay",type=float,default=1e-2,
     help='optimizer weight decay like in paper'
 )
 parser.add_argument("--optim_max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-parser.add_argument("--learning_rate",type=float,default=1e-5,
+parser.add_argument("--learning_rate",type=float,default=1e-4,
     help="Initial learning rate (after the potential warmup period) to use.",
 )
-parser.add_argument("--scale_lr",action="store_true",default=True,
+parser.add_argument("--scale_lr",action="store_true",default=False,
     help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
 )
 parser.add_argument("--lr_scheduler",type=str,default="cosine",
@@ -76,7 +79,7 @@ parser.add_argument("--mixed_precision",type=str,
                     ))
 parser.add_argument('--val_every_nepochs',type=int,default=5,help='Number of training epochs before validation...')
 parser.add_argument('--val_num_samples',type=int,default=10)
-parser.add_argument("--tracker_name",type=str,default=['mlflow','tensorboard'],
+parser.add_argument("--tracker_name",type=str,default=['mlflow','wandb'],
                     help=(
                         'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
                         ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
@@ -97,6 +100,7 @@ def main(
         dataset_img_size:int,
         output_dir:str,
         train_batch_size:int,
+        train_ucond_prob:float,
         max_train_steps:int,
         ddp_variance_type:str,
         ddp_guidance_scale:float,
@@ -128,15 +132,22 @@ def main(
     # We create the logging directory...
     logdir_name =  f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-SISModel"
     logdir_path = os.path.join(output_dir,logdir_name)
-    
+    project_dir = output_dir
+    if resume_from_checkpoint.upper()=='NONE':
+        # We won't from checkpoint then we'll create the logdir to save the model...
+        project_dir=logdir_path
+
+    print(f'Project Directory : {project_dir}')
     # Configure Accelerate
-    accelerator_project_configuration = ProjectConfiguration(project_dir=output_dir,logging_dir=logdir_path)
+    accelerator_project_configuration = ProjectConfiguration(project_dir=project_dir,logging_dir=logdir_path)
     accelerator = Accelerator(
         gradient_accumulation_steps=gradient_accumulation_steps,
         mixed_precision=mixed_precision,
         log_with=tracker_name,
         project_config=accelerator_project_configuration,
     )
+    if accelerator.scaler is not None:
+        accelerator.scaler.set_growth_interval(100)
     if accelerator.is_main_process:
         os.makedirs(logdir_path,exist_ok=True)
 
@@ -214,8 +225,10 @@ def main(
     else:
         optimizer_class = torch.optim.AdamW
     if scale_lr:
-         # We rescale Lr with different parameters...
-         learning_rate= learning_rate * gradient_accumulation_steps * train_batch_size * accelerator.num_processes
+         # We rescale Lr to be coherent with original implementation...
+         # 
+         learning_rate= learning_rate * gradient_accumulation_steps * train_batch_size * accelerator.num_processes/64
+         optim_weight_decay = optim_weight_decay*gradient_accumulation_steps*train_batch_size*accelerator.num_processes/64
     optimizer = optimizer_class(
         unet.parameters(),
         lr=learning_rate,
@@ -230,7 +243,7 @@ def main(
     )
     # Create Diffusion Items
     # We use a custom DDPM Scheduler dedicated for training...
-    noise_scheduler = DDPMTrainingScheduler(variance_type=ddp_variance_type)
+    noise_scheduler = DDPMTrainingScheduler(variance_type=ddp_variance_type,beta_schedule='squaredcos_cap_v2')
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / gradient_accumulation_steps)
     num_train_epochs = math.ceil(max_train_steps / num_update_steps_per_epoch)
 
@@ -250,12 +263,15 @@ def main(
             path = os.path.basename(resume_from_checkpoint)
         else:
             # Get the most recent checkpoint
-            dirs = os.listdir(output_dir)
+            dirs = os.listdir(project_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1] if len(dirs) > 0 else None
-
-        if path is None:
+        # Output Dir
+        checkpoint_path=project_dir
+        if path !=None:
+            checkpoint_path = os.path.join(project_dir,path)
+        if path is None or not os.path.exists(checkpoint_path):
             accelerator.print(
                 f"Checkpoint '{resume_from_checkpoint}' does not exist. Starting a new training run."
             )
@@ -263,7 +279,7 @@ def main(
             initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(output_dir, path))
+            accelerator.load_state(checkpoint_path)
             global_step = int(path.split("-")[1])
 
             initial_global_step = global_step
@@ -279,7 +295,7 @@ def main(
         disable=not accelerator.is_local_main_process,
     )
     if accelerator.is_main_process:
-        accelerator.init_trackers("train-sis")
+        accelerator.init_trackers("train-sis-CelebA")
     # We create the training loop
     for epoch in range(first_epoch, num_train_epochs):
         # Training Loop
@@ -294,22 +310,25 @@ def main(
                 # We create a noise like X
                 noise = torch.randn_like(x)
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (x.shape[0],), device=x.device)
+                # We create condition and replace y by ucond when necessary...
+                cond = F.one_hot(y.long(),num_classes=train_dataset.cls_count).to(x.device).float().permute(0,3,1,2)
+                ucond = torch.rand(len(y),device=x.device)<train_ucond_prob
+                cond = cond*ucond[...,None,None,None]
+                # We sample the noise
                 x_t = noise_scheduler.add_noise(x,noise,timesteps.long())
                 if not learned_variance:
-                    model_pred = unet.forward(x_t,timesteps,y).sample
+                    model_pred = unet.forward(x_t,timesteps,cond).sample
                 else:
                     # We predict the variance and we'll have to apply VLB Loss
-                    model_output = unet.forward(x_t,timesteps,y).sample
+                    model_output = unet.forward(x_t,timesteps,cond).sample
                     # Here need to :
                     # Get predicted variance with DDPM Scheduler
                     model_pred,_,logvar_pred = noise_scheduler._get_p_mean_variance(model_output,timesteps)
                     # Get q variance with DDPM Scheduler
                     q_mean,_,q_logvar = noise_scheduler._get_q_mean_variance(timesteps,x,x_t)
-                    kl_div = VLBLoss().forward(model_pred,logvar_pred,q_mean,q_logvar)
-                    kl_div_mean = kl_div.reshape(x.shape[0],-1).mean(dim=1)
-                    # We compute the VLB Loss, for t>1 
-                    # if t = 1 we just want model_pred to be x_0, already handled by L_simple
-                    vlb_loss_batch = lambda_vlb*torch.where((timesteps>1),kl_div_mean,0.0).mean()
+                    # We compute the VLB Loss
+                    vlb_loss_batch = lambda_vlb*VLBLoss().forward(model_pred,logvar_pred,q_mean,q_logvar,x,timesteps)
+                    
                     loss_total_batch+=vlb_loss_batch
                     vlb_loss += accelerator.gather(vlb_loss_batch.repeat(train_batch_size)).mean() / gradient_accumulation_steps
 
@@ -332,7 +351,13 @@ def main(
                 if use_ema:
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
-                logs = {"loss_simple": simple_loss.detach().item(),"loss_total": total_loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+
+                logs = {
+                    "loss_simple": simple_loss.detach().item(),
+                    "loss_total": total_loss.detach().item(), 
+                    "lr": lr_scheduler.get_last_lr()[0]}
+                if accelerator.scaler is not None:
+                    logs['scaler_scale']=accelerator.scaler.get_scale()
                 if learned_variance:
                     logs['loss_vlb']=vlb_loss.detach().item()
                 global_step += 1
@@ -345,7 +370,7 @@ def main(
                     if accelerator.is_main_process:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if checkpointing_total_limit is not None:
-                            checkpoints = os.listdir(output_dir)
+                            checkpoints = os.listdir(project_dir)
                             checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
                             checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
@@ -359,10 +384,10 @@ def main(
                                 logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
                                 for removing_checkpoint in removing_checkpoints:
-                                    removing_checkpoint = os.path.join(output_dir, removing_checkpoint)
+                                    removing_checkpoint = os.path.join(project_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(output_dir, f"checkpoint-{global_step}")
+                        save_path = os.path.join(project_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
                     
@@ -373,11 +398,15 @@ def main(
         if accelerator.is_main_process:
             images = []
             image_ids = []
+            scales = np.linspace(1.5,2*ddp_guidance_scale,len(val_dataloader))
             if  epoch % val_every_nepochs == 0:
                 logger.info(
                     f"Running validation... \n Generating {val_num_samples} images"
                 )
-                val_scheduler = DDPMScheduler().from_config(noise_scheduler.config)
+                # For validation, we use a linear scheduler...
+                scheduler_config = copy.deepcopy(noise_scheduler.config)
+                scheduler_config['beta_schedule']='linear'
+                val_scheduler = DDPMScheduler().from_config(scheduler_config)
                 # create pipeline
                 pipeline = SemanticOnlyDiffusionPipeline(
                     unet=accelerator.unwrap_model(unet),
@@ -385,15 +414,15 @@ def main(
                 )
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
-
+                
                 # run inference
-                for batch in tqdm(val_dataloader,desc='Validation'):
+                for i,batch in enumerate(tqdm(val_dataloader,desc='Validation')):
                     x,y,id = batch
                     x=x.unsqueeze(0)
-                    y=y.unsqueeze(0)
+                    y=y.unsqueeze(0)                    
 
                     generator = torch.Generator(device=accelerator.device).manual_seed(seed)
-                    images.append(pipeline(segmap=y, num_inference_steps=50, guidance_scale=ddp_guidance_scale,generator=generator, eta=1.0).images[0])
+                    images.append(pipeline(segmap=y, num_inference_steps=50, guidance_scale=scales[i],generator=generator, eta=1.0).images[0])
                     image_ids.append(id)
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
@@ -403,7 +432,7 @@ def main(
                         tracker.log(
                             {
                                 "validation": [
-                                    wandb.Image(image, caption=f"{i}: {image_ids[i]}")
+                                    wandb.Image(image, caption=f"{i}: {image_ids[i]} - scale {scales[i]}")
                                     for i, image in enumerate(images)
                                 ]
                             }
@@ -415,8 +444,8 @@ def main(
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
         unet:UNet2DSISModel
-        unet.save_pretrained(output_dir)
-        noise_scheduler.save_pretrained(output_dir)
+        unet.save_pretrained(project_dir)
+        noise_scheduler.save_pretrained(project_dir)
 
 if __name__ == '__main__':
     # Force main to have the rights arguments.
