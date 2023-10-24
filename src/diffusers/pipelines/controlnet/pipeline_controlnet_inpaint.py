@@ -982,6 +982,7 @@ class StableDiffusionControlNetInpaintPipeline(
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
+        use_masked_image_as_init=True,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1231,6 +1232,12 @@ class StableDiffusionControlNetInpaintPipeline(
         num_channels_latents = self.vae.config.latent_channels
         num_channels_unet = self.unet.config.in_channels
         return_image_latents = num_channels_unet == 4
+        init_image = (
+            masked_image_latents.chunk(2)[0]
+            if num_channels_unet == 4 and not use_masked_image_as_init
+            else init_image,
+        )
+
         latents_outputs = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -1240,7 +1247,7 @@ class StableDiffusionControlNetInpaintPipeline(
             device,
             generator,
             latents,
-            image=masked_image_latents[0][None, :] if num_channels_unet == 4 else init_image,
+            image=init_image,
             timestep=latent_timestep,
             is_strength_max=is_strength_max,
             return_noise=True,
