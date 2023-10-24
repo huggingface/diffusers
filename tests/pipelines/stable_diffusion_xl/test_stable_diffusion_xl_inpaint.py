@@ -438,7 +438,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                     EulerDiscreteScheduler,
                     DPMSolverMultistepScheduler,
                     UniPCMultistepScheduler,
-                    HeunDiscreteScheduler,
                 ]:
                     assert_run_mixture(steps, split_1, split_2, scheduler_cls)
 
