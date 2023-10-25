@@ -804,7 +804,7 @@ class StableDiffusionXLInpaintPipeline(
             if self.scheduler.order == 2:
                 num_inference_steps = num_inference_steps + 1
                 
-                # because t_n+1 >= t_n, we slice the timesteps starting from the end
+            # because t_n+1 >= t_n, we slice the timesteps starting from the end
             timesteps = timesteps[-num_inference_steps:]
             return timesteps, num_inference_steps
 
