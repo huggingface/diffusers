@@ -9,7 +9,7 @@ from ..utils import is_torch_version
 from ..utils.torch_utils import apply_freeu
 from .attention_processor import Attention
 from .dual_transformer_2d import DualTransformer2DModel
-from .embeddings import PositionalEmbedding
+from .embeddings import PositionalEmbedding, get_timestep_embedding
 from .modeling_utils import ModelMixin
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
@@ -257,7 +257,17 @@ class MotionAttnProcessor2_0(nn.Module):
         temb=None,
         scale=1.0,
     ):
-        hidden_states = self.pos_embed(hidden_states)
+        """
+        pos_embed = (
+            get_timestep_embedding(torch.arange(32), hidden_states.shape[-1]).unsqueeze(0).to(hidden_states.dtype)
+        )
+        """
+        pos_embed = PositionalEmbedding(embed_dim=hidden_states.shape[-1], max_seq_length=32)
+        pos_embed.to("cuda")
+
+        # hidden_states = hidden_states + pos_embed[:, : hidden_states.shape[1]].to(hidden_states.device)
+        # hidden_states = self.pos_embed(hidden_states)
+        hidden_states = pos_embed(hidden_states)
 
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -338,7 +348,7 @@ class MotionBlock(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.temporal_transformer = TransformerTemporalModel(
+        self.temporal_transformer = TransformerTemporalMotionModel(
             in_channels=in_channels,
             norm_num_groups=norm_num_groups,
             cross_attention_dim=cross_attention_dim,
@@ -348,11 +358,6 @@ class MotionBlock(nn.Module):
             num_attention_heads=num_attention_heads,
         )
         self.use_cross_attention = cross_attention_dim is not None
-        processor_cls = MotionAttnProcessor2_0 if is_torch_version(">=", "2.0.0") else MotionAttnProcessor
-
-        for block in self.temporal_transformer.transformer_blocks:
-            block.attn1.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
-            block.attn2.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
 
     def forward(self, hidden_states, encoder_hidden_states=None, num_frames=1, cross_attention_kwargs=None):
         encoder_hidden_states = encoder_hidden_states if self.use_cross_attention else None

@@ -247,7 +247,6 @@ class TransformerTemporalMotionModel(ModelMixin, ConfigMixin):
                     attention_bias=attention_bias,
                     double_self_attention=double_self_attention,
                     norm_elementwise_affine=norm_elementwise_affine,
-                    max_seq_length=max_seq_length,
                 )
                 for d in range(num_layers)
             ]
@@ -300,11 +299,9 @@ class TransformerTemporalMotionModel(ModelMixin, ConfigMixin):
 
         residual = hidden_states
 
-        hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
-        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
-
         hidden_states = self.norm(hidden_states)
-        hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
+        hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
+        hidden_states = hidden_states.permute(0, 3, 4, 1, 2).reshape(batch_size * height * width, num_frames, channel)
 
         hidden_states = self.proj_in(hidden_states)
 
