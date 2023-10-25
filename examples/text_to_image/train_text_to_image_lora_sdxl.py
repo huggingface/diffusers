@@ -545,14 +545,12 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="tokenizer",
         revision=args.revision,
-        variant=args.variant,
         use_fast=False,
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="tokenizer_2",
         revision=args.revision,
-        variant=args.variant,
         use_fast=False,
     )
 

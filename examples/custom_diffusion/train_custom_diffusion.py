@@ -792,7 +792,6 @@ def main(args):
         tokenizer = AutoTokenizer.from_pretrained(
             args.tokenizer_name,
             revision=args.revision,
-            variant=args.variant,
             use_fast=False,
         )
     elif args.pretrained_model_name_or_path:
@@ -800,7 +799,6 @@ def main(args):
             args.pretrained_model_name_or_path,
             subfolder="tokenizer",
             revision=args.revision,
-            variant=args.variant,
             use_fast=False,
         )
 

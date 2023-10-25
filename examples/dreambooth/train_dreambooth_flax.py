@@ -66,12 +66,6 @@ def parse_args():
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--variant",
-        type=str,
-        default=None,
-        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
-    )
-    parser.add_argument(
         "--tokenizer_name",
         type=str,
         default=None,
@@ -355,7 +349,7 @@ def main():
 
         if cur_class_images < args.num_class_images:
             pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, safety_checker=None, revision=args.revision, variant=args.variant
+                args.pretrained_model_name_or_path, safety_checker=None, revision=args.revision
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -400,7 +394,7 @@ def main():
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant
+            args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
         )
     else:
         raise NotImplementedError("No tokenizer specified!")
@@ -470,7 +464,6 @@ def main():
         subfolder="text_encoder",
         dtype=weight_dtype,
         revision=args.revision,
-        variant=args.variant,
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
         vae_arg,
@@ -482,7 +475,6 @@ def main():
         subfolder="unet",
         dtype=weight_dtype,
         revision=args.revision,
-        variant=args.variant,
     )
 
     # Optimization

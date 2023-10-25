@@ -550,7 +550,7 @@ def main():
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
 
     def deepspeed_zero_init_disabled_context_manager():

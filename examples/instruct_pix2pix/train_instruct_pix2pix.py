@@ -438,7 +438,7 @@ def main():
     # Load scheduler, tokenizer and models.
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
