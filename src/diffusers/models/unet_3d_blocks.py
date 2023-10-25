@@ -724,3 +724,111 @@ class UpBlock3D(nn.Module):
                 hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
+
+
+class DownBlockMotion(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        output_scale_factor=1.0,
+        add_downsample=True,
+        downsample_padding=1,
+        motion_norm_num_groups=32,
+        motion_cross_attention_dim=None,
+        motion_num_attention_heads=8,
+        motion_attention_bias=False,
+        motion_activation_fn="geglu",
+        motion_max_seq_length=32,
+    ):
+        super().__init__()
+        resnets = []
+
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+
+        self.resnets = nn.ModuleList(resnets)
+        self.motion_modules = MotionModules(
+            in_channels=out_channels,
+            norm_num_groups=motion_norm_num_groups,
+            cross_attention_dim=motion_cross_attention_dim,
+            activation_fn=motion_activation_fn,
+            attention_bias=motion_attention_bias,
+            num_attention_heads=motion_num_attention_heads,
+            max_seq_length=motion_max_seq_length,
+            layers_per_block=num_layers,
+        ).motion_modules
+
+        if add_downsample:
+            self.downsamplers = nn.ModuleList(
+                [
+                    Downsample2D(
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                    )
+                ]
+            )
+        else:
+            self.downsamplers = None
+
+        self.gradient_checkpointing = False
+
+    def forward(self, hidden_states, temb=None, scale: float = 1.0, num_frames=1):
+        output_states = ()
+
+        blocks = zip(self.resnets, self.motion_modules)
+        for resnet, motion_module in blocks:
+            if self.training and self.gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                if is_torch_version(">=", "1.11.0"):
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, use_reentrant=False
+                    )
+                else:
+                    hidden_states = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(resnet), hidden_states, temb, scale
+                    )
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(motion_module), hidden_states.requires_grad_(), temb, num_frames
+                )
+
+            else:
+                hidden_states = resnet(hidden_states, temb, scale=scale)
+                hidden_states = motion_module(hidden_states, num_frames=num_frames)
+
+            output_states = output_states + (hidden_states,)
+
+        if self.downsamplers is not None:
+            for downsampler in self.downsamplers:
+                hidden_states = downsampler(hidden_states, scale=scale)
+
+            output_states = output_states + (hidden_states,)
+
+        return hidden_states, output_states

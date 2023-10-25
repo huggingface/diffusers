@@ -13,7 +13,7 @@ from .embeddings import PositionalEmbedding
 from .modeling_utils import ModelMixin
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from .transformer_2d import Transformer2DModel
-from .transformer_temporal import TransformerTemporalModel
+from .transformer_temporal import TransformerTemporalModel, TransformerTemporalMotionModel
 
 
 def get_down_block(
@@ -338,7 +338,7 @@ class MotionBlock(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.temporal_transformer = TransformerTemporalModel(
+        self.temporal_transformer = TransformerTemporalMotionModel(
             in_channels=in_channels,
             norm_num_groups=norm_num_groups,
             cross_attention_dim=cross_attention_dim,
@@ -348,11 +348,6 @@ class MotionBlock(nn.Module):
             num_attention_heads=num_attention_heads,
         )
         self.use_cross_attention = cross_attention_dim is not None
-        processor_cls = MotionAttnProcessor2_0 if is_torch_version(">=", "2.0.0") else MotionAttnProcessor
-
-        for block in self.temporal_transformer.transformer_blocks:
-            block.attn1.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
-            block.attn2.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
 
     def forward(self, hidden_states, encoder_hidden_states=None, num_frames=1, cross_attention_kwargs=None):
         encoder_hidden_states = encoder_hidden_states if self.use_cross_attention else None
