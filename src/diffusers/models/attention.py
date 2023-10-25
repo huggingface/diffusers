@@ -328,7 +328,7 @@ class TemporalPositionEmbedTransformerBlock(nn.Module):
     ):
         super().__init__()
 
-        self.pos_embed = get_timestep_embedding(max_seq_length, dim)[None, :]
+        self.pos_embed = get_timestep_embedding(torch.arange(max_seq_length), dim)[None, :]
         self.only_cross_attention = only_cross_attention
 
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"

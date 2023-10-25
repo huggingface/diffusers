@@ -222,6 +222,7 @@ class TransformerTemporalMotionModel(ModelMixin, ConfigMixin):
         activation_fn: str = "geglu",
         norm_elementwise_affine: bool = True,
         double_self_attention: bool = True,
+        max_seq_length: int = 32,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -246,6 +247,7 @@ class TransformerTemporalMotionModel(ModelMixin, ConfigMixin):
                     attention_bias=attention_bias,
                     double_self_attention=double_self_attention,
                     norm_elementwise_affine=norm_elementwise_affine,
+                    max_seq_length=max_seq_length,
                 )
                 for d in range(num_layers)
             ]
