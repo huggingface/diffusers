@@ -166,8 +166,6 @@
   - sections:
     - local: api/configuration
       title: Configuration
-    - local: api/diffusion_pipeline
-      title: Diffusion Pipeline
     - local: api/loaders
       title: Loaders
     - local: api/logging
