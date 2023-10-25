@@ -4,7 +4,7 @@ description: Sets up miniconda in your ${RUNNER_TEMP} environment and gives you 
 
 inputs:
   python-version:
-    description: If set to any value, dont use sudo to clean the workspace
+    description: If set to any value, don't use sudo to clean the workspace
     required: false
     type: string
     default: "3.9"
@@ -23,7 +23,7 @@ runs:
   using: composite
   steps:
       # Use the same trick from https://github.com/marketplace/actions/setup-miniconda
-      # to refresh the cache daily. This is kind of optional though
+      # to refresh the cache daily. This is kind of optional though.
       - name: Get date
         id: get-date
         shell: bash
