@@ -92,6 +92,12 @@ def parse_args():
         default="ddpm-model-64",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
+    )
     parser.add_argument("--overwrite_output_dir", action="store_true")
     parser.add_argument(
         "--cache_dir",

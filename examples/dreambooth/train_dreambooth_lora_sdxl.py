@@ -142,6 +142,12 @@ def parse_args(input_args=None):
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
+    )
+    parser.add_argument(
         "--instance_data_dir",
         type=str,
         default=None,
@@ -628,7 +634,7 @@ def main(args):
             pipeline = StableDiffusionXLPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
-                revision=args.revision,
+                revision=args.revision, variant=args.variant,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -667,10 +673,10 @@ def main(args):
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant, use_fast=False
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False
+        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, variant=args.variant, use_fast=False
     )
 
     # import correct text encoder classes
@@ -684,10 +690,10 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
     )
     vae_path = (
         args.pretrained_model_name_or_path
@@ -695,10 +701,10 @@ def main(args):
         else args.pretrained_vae_model_name_or_path
     )
     vae = AutoencoderKL.from_pretrained(
-        vae_path, subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None, revision=args.revision
+        vae_path, subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None, revision=args.revision, variant=args.variant
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     # We only train the additional adapter LoRA layers
@@ -1211,10 +1217,10 @@ def main(args):
                 # create pipeline
                 if not args.train_text_encoder:
                     text_encoder_one = text_encoder_cls_one.from_pretrained(
-                        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+                        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
                     )
                     text_encoder_two = text_encoder_cls_two.from_pretrained(
-                        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
+                        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
                     )
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
@@ -1222,7 +1228,7 @@ def main(args):
                     text_encoder=accelerator.unwrap_model(text_encoder_one),
                     text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                     unet=accelerator.unwrap_model(unet),
-                    revision=args.revision,
+                    revision=args.revision, variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
 
@@ -1299,11 +1305,11 @@ def main(args):
         vae = AutoencoderKL.from_pretrained(
             vae_path,
             subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-            revision=args.revision,
+            revision=args.revision, variant=args.variant,
             torch_dtype=weight_dtype,
         )
         pipeline = StableDiffusionXLPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, vae=vae, revision=args.revision, torch_dtype=weight_dtype
+            args.pretrained_model_name_or_path, vae=vae, revision=args.revision, variant=args.variant, torch_dtype=weight_dtype
         )
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it

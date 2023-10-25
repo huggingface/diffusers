@@ -415,13 +415,13 @@ def main():
 
     # Load models and create wrapper for stable diffusion
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
     )
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     # Create sampling rng

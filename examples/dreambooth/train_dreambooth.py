@@ -138,7 +138,7 @@ def log_validation(
         tokenizer=tokenizer,
         text_encoder=text_encoder,
         unet=accelerator.unwrap_model(unet),
-        revision=args.revision,
+        revision=args.revision, variant=args.variant,
         torch_dtype=weight_dtype,
         **pipeline_args,
     )
@@ -239,10 +239,13 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         required=False,
-        help=(
-            "Revision of pretrained model identifier from huggingface.co/models. Trainable model components should be"
-            " float32 precision."
-        ),
+        help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -758,7 +761,7 @@ def model_has_vae(args):
         config_file_name = os.path.join(args.pretrained_model_name_or_path, config_file_name)
         return os.path.isfile(config_file_name)
     else:
-        files_in_repo = model_info(args.pretrained_model_name_or_path, revision=args.revision).siblings
+        files_in_repo = model_info(args.pretrained_model_name_or_path, revision=args.revision, variant=args.variant).siblings
         return any(file.rfilename == config_file_name for file in files_in_repo)
 
 
@@ -858,7 +861,7 @@ def main(args):
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 safety_checker=None,
-                revision=args.revision,
+                revision=args.revision, variant=args.variant,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -897,12 +900,12 @@ def main(args):
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, use_fast=False)
+        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, variant=args.variant, use_fast=False)
     elif args.pretrained_model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
             args.pretrained_model_name_or_path,
             subfolder="tokenizer",
-            revision=args.revision,
+            revision=args.revision, variant=args.variant,
             use_fast=False,
         )
 
@@ -912,18 +915,18 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder = text_encoder_cls.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
 
     if model_has_vae(args):
         vae = AutoencoderKL.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
         )
     else:
         vae = None
 
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
@@ -1378,7 +1381,7 @@ def main(args):
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             unet=accelerator.unwrap_model(unet),
-            revision=args.revision,
+            revision=args.revision, variant=args.variant,
             **pipeline_args,
         )
 

@@ -119,6 +119,12 @@ def parse_args():
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
+    )
+    parser.add_argument(
         "--dataset_name",
         type=str,
         default=None,
@@ -483,10 +489,10 @@ def main():
     vae = AutoencoderKL.from_pretrained(
         vae_path,
         subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-        revision=args.revision,
+        revision=args.revision, variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     # InstructPix2Pix uses an additional image for conditioning. To accommodate that,
@@ -695,10 +701,10 @@ def main():
 
     # Load scheduler, tokenizer and models.
     tokenizer_1 = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant, use_fast=False
     )
     tokenizer_2 = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False
+        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, variant=args.variant, use_fast=False
     )
     text_encoder_cls_1 = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
     text_encoder_cls_2 = import_model_class_from_model_name_or_path(
@@ -708,10 +714,10 @@ def main():
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder_1 = text_encoder_cls_1.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
     text_encoder_2 = text_encoder_cls_2.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
     )
 
     # We ALWAYS pre-compute the additional condition embeddings needed for SDXL
@@ -1108,7 +1114,7 @@ def main():
                         tokenizer=tokenizer_1,
                         tokenizer_2=tokenizer_2,
                         vae=vae,
-                        revision=args.revision,
+                        revision=args.revision, variant=args.variant,
                         torch_dtype=weight_dtype,
                     )
                     pipeline = pipeline.to(accelerator.device)
@@ -1175,7 +1181,7 @@ def main():
             tokenizer_2=tokenizer_2,
             vae=vae,
             unet=unet,
-            revision=args.revision,
+            revision=args.revision, variant=args.variant,
         )
         pipeline.save_pretrained(args.output_dir)
 

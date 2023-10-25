@@ -191,6 +191,12 @@ def parse_args():
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
+    )
+    parser.add_argument(
         "--from_pt",
         action="store_true",
         help="Load the pretrained model from a PyTorch checkpoint.",
@@ -696,7 +702,7 @@ def main():
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+            args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant
         )
     else:
         raise NotImplementedError("No tokenizer specified!")
@@ -725,12 +731,12 @@ def main():
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
         dtype=weight_dtype,
-        revision=args.revision,
+        revision=args.revision, variant=args.variant,
         from_pt=args.from_pt,
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
-        revision=args.revision,
+        revision=args.revision, variant=args.variant,
         subfolder="vae",
         dtype=weight_dtype,
         from_pt=args.from_pt,
@@ -739,7 +745,7 @@ def main():
         args.pretrained_model_name_or_path,
         subfolder="unet",
         dtype=weight_dtype,
-        revision=args.revision,
+        revision=args.revision, variant=args.variant,
         from_pt=args.from_pt,
     )
 
@@ -786,7 +792,7 @@ def main():
         controlnet=controlnet,
         safety_checker=None,
         dtype=weight_dtype,
-        revision=args.revision,
+        revision=args.revision, variant=args.variant,
         from_pt=args.from_pt,
     )
     pipeline_params = jax_utils.replicate(pipeline_params)
