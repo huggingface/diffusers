@@ -1,13 +1,14 @@
+import numpy as np
 import torch
 import torch.nn as nn
+
 
 """
 Helpers for various likelihood-based losses. These are ported from the original
 Ho et al. diffusion models codebase:
 https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/utils.py
 """
-import torch
-import numpy as np
+
 
 def approx_standard_normal_cdf(x):
     """
@@ -15,6 +16,7 @@ def approx_standard_normal_cdf(x):
     standard normal.
     """
     return 0.5 * (1.0 + torch.tanh(np.sqrt(2.0 / np.pi) * (x + 0.044715 * torch.pow(x, 3))))
+
 
 def discretized_gaussian_log_likelihood(x, means, log_scales):
     """
@@ -50,12 +52,20 @@ class VLBLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self,p_mean:torch.Tensor,p_log_var:torch.Tensor,q_mean:torch.Tensor,q_log_var:torch.Tensor,x_0:torch.Tensor,t:torch.Tensor):
+    def forward(
+        self,
+        p_mean: torch.Tensor,
+        p_log_var: torch.Tensor,
+        q_mean: torch.Tensor,
+        q_log_var: torch.Tensor,
+        x_0: torch.Tensor,
+        t: torch.Tensor,
+    ):
         """KL Divergence from log_var
         We take the equation here (based on sigma = sqrt(log))
 
         log(x^1/2) = 1/2 . log(x)
-        
+
         Args:
             p_mean (torch.Tensor): _description_
             p_log_var (torch.Tensor): _description_
@@ -70,13 +80,15 @@ class VLBLoss(nn.Module):
         # We detach p_pean like in : https://proceedings.mlr.press/v139/nichol21a/nichol21a.pdf
         # In order the VLB to contribute only to train the variance term.
         # We compute L_{1} + ... + L_{t-1}
-        kld = -0.5 + 0.5*(q_log_var - p_log_var) + 0.5*(
-            torch.exp(p_log_var)/torch.exp(q_log_var) 
-            + 
-            (p_mean.detach() - q_mean)**2/torch.exp(q_log_var))
-        kl_div_mean = kld.reshape(x_0.shape[0],-1).mean(dim=1)
+        kld = (
+            -0.5
+            + 0.5 * (q_log_var - p_log_var)
+            + 0.5
+            * (torch.exp(p_log_var) / torch.exp(q_log_var) + (p_mean.detach() - q_mean) ** 2 / torch.exp(q_log_var))
+        )
+        kl_div_mean = kld.reshape(x_0.shape[0], -1).mean(dim=1)
         # We compute L_{0}
-        l_0 = -discretized_gaussian_log_likelihood(x_0,p_mean,0.5 *p_log_var)
-        l_0_mean = l_0.reshape(x_0.shape[0],-1).mean(dim=1)
-        vlb_loss_batch = torch.where((t>0),kl_div_mean,l_0_mean).mean()
+        l_0 = -discretized_gaussian_log_likelihood(x_0, p_mean, 0.5 * p_log_var)
+        l_0_mean = l_0.reshape(x_0.shape[0], -1).mean(dim=1)
+        vlb_loss_batch = torch.where((t > 0), kl_div_mean, l_0_mean).mean()
         return vlb_loss_batch

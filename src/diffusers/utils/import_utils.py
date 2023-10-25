@@ -371,8 +371,10 @@ def is_invisible_watermark_available():
 def is_peft_available():
     return _peft_available
 
+
 def is_bitsandbytes_available():
     return _bitsandbytes_available
+
 
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """

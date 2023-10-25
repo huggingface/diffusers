@@ -15,12 +15,12 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-import numpy as np
 
-from ...models.unet_2d_sis import UNet2DSISModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from diffusers.schedulers import DDPMScheduler
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
+from ...models.unet_2d_sis import UNet2DSISModel
 
 
 class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
@@ -84,25 +84,25 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
 
         model = self.unet
 
-        sample = randn_tensor(shape, generator=generator,device=generator.device) * self.scheduler.init_noise_sigma
+        sample = randn_tensor(shape, generator=generator, device=generator.device) * self.scheduler.init_noise_sigma
         sample = sample.to(self.device)
         self.scheduler.set_timesteps(num_inference_steps)
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # prediction step (with segmentation map as input)
-            model_input = torch.cat([sample]*2)
+            model_input = torch.cat([sample] * 2)
             # Like in the documentation example, we scale model_input
             # https://huggingface.co/docs/diffusers/using-diffusers/write_own_pipeline#denoise-the-image
             model_input = self.scheduler.scale_model_input(model_input, timestep=t)
-            model_cond = torch.cat([segmap,torch.zeros_like(segmap)])
+            model_cond = torch.cat([segmap, torch.zeros_like(segmap)])
             with torch.no_grad():
                 noise_pred = model(model_input, t, model_cond).sample
-            noise_pred_cond,noise_pred_ucond = noise_pred.chunk(2)
-            noise_pred = noise_pred_ucond+guidance_scale*(noise_pred_cond-noise_pred_ucond)
+            noise_pred_cond, noise_pred_ucond = noise_pred.chunk(2)
+            noise_pred = noise_pred_ucond + guidance_scale * (noise_pred_cond - noise_pred_ucond)
             # We finally use this noise to sample
-            sample = self.scheduler.step(noise_pred,t,sample,generator=generator).prev_sample
+            sample = self.scheduler.step(noise_pred, t, sample, generator=generator).prev_sample
 
         # We finally convert it to an image...
-        sample = 0.5*(sample+1).squeeze()
+        sample = 0.5 * (sample + 1).squeeze()
         sample = sample.permute(1, 2, 0).cpu().numpy()
         if output_type == "pil":
             sample = self.numpy_to_pil(sample)
