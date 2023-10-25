@@ -1,3 +1,18 @@
+<!---
+Copyright 2023 The HuggingFace Team. All rights reserved.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 ## Textual Inversion fine-tuning example
 
 [Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
@@ -25,12 +40,12 @@ cd diffusers
 pip install .
 ```
 
-Then cd in the example folder  and run
+Then cd in the example folder and run:
 ```bash
 pip install -r requirements.txt
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
@@ -56,7 +71,7 @@ snapshot_download("diffusers/cat_toy_example", local_dir=local_dir, repo_type="d
 ```
 
 This will be our training data.
-Now we can launch the training using
+Now we can launch the training using:
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
@@ -68,12 +83,14 @@ accelerate launch textual_inversion.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --train_data_dir=$DATA_DIR \
   --learnable_property="object" \
-  --placeholder_token="<cat-toy>" --initializer_token="toy" \
+  --placeholder_token="<cat-toy>" \
+  --initializer_token="toy" \
   --resolution=512 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
   --max_train_steps=3000 \
-  --learning_rate=5.0e-04 --scale_lr \
+  --learning_rate=5.0e-04 \
+  --scale_lr \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --push_to_hub \
@@ -83,12 +100,12 @@ accelerate launch textual_inversion.py \
 A full training run takes ~1 hour on one V100 GPU.
 
 **Note**: As described in [the official paper](https://arxiv.org/abs/2208.01618) 
-only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
+only one embedding vector is used for the placeholder token, *e.g.,* `"<cat-toy>"`.
 However, one can also add multiple embedding vectors for the placeholder token 
-to inclease the number of fine-tuneable parameters. This can help the model to learn 
-more complex details. To use multiple embedding vectors, you can should define `--num_vectors` 
-to a number larger than one, *e.g.*:
-```
+to increase the number of fine-tuneable parameters. This can help the model to learn 
+more complex details. To use multiple embedding vectors, you should define `--num_vectors` 
+to a number larger than one, *e.g.,*:
+```bash
 --num_vectors 5
 ```
 
@@ -131,11 +148,13 @@ python textual_inversion_flax.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --train_data_dir=$DATA_DIR \
   --learnable_property="object" \
-  --placeholder_token="<cat-toy>" --initializer_token="toy" \
+  --placeholder_token="<cat-toy>" \
+  --initializer_token="toy" \
   --resolution=512 \
   --train_batch_size=1 \
   --max_train_steps=3000 \
-  --learning_rate=5.0e-04 --scale_lr \
+  --learning_rate=5.0e-04 \
+  --scale_lr \
   --output_dir="textual_inversion_cat"
 ```
 It should be at least 70% faster than the PyTorch script with the same configuration.

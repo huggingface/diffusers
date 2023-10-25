@@ -27,7 +27,7 @@ sys.path.insert(1, git_repo_path)
 
 
 # silence FutureWarning warnings in tests since often we can't act on them until
-# they become normal warnings - i.e. the tests still need to test the current functionality
+# they become normal warnings - i.e., the tests still need to test the current functionality
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 

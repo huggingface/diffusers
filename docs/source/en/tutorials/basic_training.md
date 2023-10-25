@@ -31,7 +31,7 @@ Before you begin, make sure you have 🤗 Datasets installed to load and preproc
 #!pip install diffusers[training]
 ```
 
-We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted:
+We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted. Make sure your token has the write role.
 
 ```py
 >>> from huggingface_hub import notebook_login
@@ -59,7 +59,6 @@ For convenience, create a `TrainingConfig` class containing the training hyperpa
 ```py
 >>> from dataclasses import dataclass
 
-
 >>> @dataclass
 ... class TrainingConfig:
 ...     image_size = 128  # the generated image resolution
@@ -75,6 +74,7 @@ For convenience, create a `TrainingConfig` class containing the training hyperpa
 ...     output_dir = "ddpm-butterflies-128"  # the model name locally and on the HF Hub
 
 ...     push_to_hub = True  # whether to upload the saved model to the HF Hub
+...     hub_model_id = "your-username/my-awesome-model"  # the name of the repository to create on the HF Hub
 ...     hub_private_repo = False
 ...     overwrite_output_dir = True  # overwrite the old model when re-running the notebook
 ...     seed = 0
@@ -165,8 +165,8 @@ Pretrained models in 🧨 Diffusers are easily created from their model class wi
 ...     sample_size=config.image_size,  # the target image resolution
 ...     in_channels=3,  # the number of input channels, 3 for RGB images
 ...     out_channels=3,  # the number of output channels
-...     layers_per_block=2,  # how many ResNet layers to use per UNet block
-...     block_out_channels=(128, 128, 256, 256, 512, 512),  # the number of output channels for each UNet block
+...     layers_per_block=2,  # how many ResNet layers to use per U-Net block
+...     block_out_channels=(128, 128, 256, 256, 512, 512),  # the number of output channels for each U-Net block
 ...     down_block_types=(
 ...         "DownBlock2D",  # a regular ResNet downsampling block
 ...         "DownBlock2D",
@@ -206,7 +206,6 @@ The scheduler behaves differently depending on whether you're using the model fo
 Let's take a look at the [`DDPMScheduler`] and use the `add_noise` method to add some random noise to the `sample_image` from before:
 
 ```py
->>> import torch
 >>> from PIL import Image
 >>> from diffusers import DDPMScheduler
 
@@ -253,9 +252,7 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 ```py
 >>> from diffusers import DDPMPipeline
 >>> from diffusers.utils import make_image_grid
->>> import math
 >>> import os
-
 
 >>> def evaluate(config, epoch, pipeline):
 ...     # Sample some images from random noise (this is the backward diffusion process).
@@ -287,7 +284,6 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 >>> from huggingface_hub import create_repo, upload_folder
 >>> from tqdm.auto import tqdm
 >>> from pathlib import Path
->>> import os
 
 >>> def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler):
 ...     # Initialize accelerator and tensorboard logging
