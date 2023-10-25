@@ -1655,7 +1655,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             ignore_filenames = config_dict.pop("_ignore_files", [])
 
             # retrieve all folder_names that contain relevant files
-            folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
+            folder_names = [k for k, v in config_dict.items() if isinstance(v, list) and k != "_class_name"]
 
             filenames = {sibling.rfilename for sibling in info.siblings}
             model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
@@ -1667,13 +1667,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             custom_components = {}
             for component in folder_names:
                 module_candidate = config_dict[component][0]
-                candidate_file = os.path.join(module_candidate, config_dict[component][1] + ".py")
+                candidate_file = os.path.join(component, module_candidate + ".py")
 
                 if candidate_file in filenames:
                     custom_components[component] = module_candidate
                 elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
+                    import ipdb
+
+                    ipdb.set_trace()
                     raise ValueError(
-                        f"{module_candidate}/{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and {module_candidate} is not a module in 'diffusers/pipelines'."
+                        f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
                     )
 
             if len(variant_filenames) == 0 and variant is not None:
@@ -1849,7 +1852,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
 
             diffusers_module = importlib.import_module(__name__.split(".")[0])
-            pipeline_class = getattr(diffusers_module, cls_name, None)
+            pipeline_class = getattr(diffusers_module, cls_name, None) if isinstance(cls_name, str) else None
 
             if pipeline_class is not None and pipeline_class._load_connected_pipes:
                 modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
