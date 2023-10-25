@@ -3087,13 +3087,13 @@ class FromOriginalControlnetMixin:
         Examples:
 
         ```py
-        from diffusers import StableDiffusionControlnetPipeline, ControlNetModel
+        from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 
         url = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"  # can also be a local path
         model = ControlNetModel.from_single_file(url)
 
         url = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned.safetensors"  # can also be a local path
-        pipe = StableDiffusionControlnetPipeline.from_single_file(url, controlnet=controlnet)
+        pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=controlnet)
         ```
         """
         # import here to avoid circular dependency
