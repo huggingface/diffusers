@@ -1667,6 +1667,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             custom_components = {}
             for component in folder_names:
                 module_candidate = config_dict[component][0]
+
+                if module_candidate is None:
+                    continue
+
                 candidate_file = os.path.join(component, module_candidate + ".py")
 
                 if candidate_file in filenames:
