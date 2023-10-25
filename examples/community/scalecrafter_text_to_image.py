@@ -1,12 +1,14 @@
 from diffusers import StableDiffusionPipeline
 import torch
-
 import torch.nn.functional as F
-import torch
 import math
-
 from diffusers.models.lora import LoRACompatibleConv
 from torch import Tensor
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+
+from diffusers.image_processor import VaeImageProcessor
+from diffusers import AutoencoderKL, UNet2DConditionModel
+from diffusers.schedulers import KarrasDiffusionSchedulers
 
 
 def inflate_kernels(unet, inflate_conv_list, inflation_transform):
@@ -114,9 +116,29 @@ class ScaledAttnProcessor:
 
 
 class ScaleCrafterTexttoImagePipeline(StableDiffusionPipeline):
-    def __init__(self, unet, scheduler):
+    def __init__(
+        self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: KarrasDiffusionSchedulers,
+        feature_extractor: CLIPImageProcessor,
+    ):
         super().__init__()
-        self.register_modules(unet=unet, scheduler=scheduler)
+
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+            feature_extractor=feature_extractor,
+        )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
+
 
     def __call__(self):
           image = torch.randn(
