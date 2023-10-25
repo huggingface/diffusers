@@ -147,7 +147,8 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
         tokenizer=tokenizer,
         unet=accelerator.unwrap_model(unet),
         safety_checker=None,
-        revision=args.revision, variant=args.variant,
+        revision=args.revision,
+        variant=args.variant,
         torch_dtype=weight_dtype,
     )
     pipeline = pipeline.to(accelerator.device)
@@ -1031,7 +1032,8 @@ def main():
             text_encoder=text_encoder,
             vae=vae,
             unet=unet,
-            revision=args.revision, variant=args.variant,
+            revision=args.revision,
+            variant=args.variant,
         )
         pipeline.save_pretrained(args.output_dir)
 

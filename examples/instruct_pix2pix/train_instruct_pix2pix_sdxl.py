@@ -489,7 +489,8 @@ def main():
     vae = AutoencoderKL.from_pretrained(
         vae_path,
         subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-        revision=args.revision, variant=args.variant,
+        revision=args.revision,
+        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
@@ -701,10 +702,18 @@ def main():
 
     # Load scheduler, tokenizer and models.
     tokenizer_1 = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        variant=args.variant,
+        use_fast=False,
     )
     tokenizer_2 = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, variant=args.variant, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_2",
+        revision=args.revision,
+        variant=args.variant,
+        use_fast=False,
     )
     text_encoder_cls_1 = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
     text_encoder_cls_2 = import_model_class_from_model_name_or_path(
@@ -1114,7 +1123,8 @@ def main():
                         tokenizer=tokenizer_1,
                         tokenizer_2=tokenizer_2,
                         vae=vae,
-                        revision=args.revision, variant=args.variant,
+                        revision=args.revision,
+                        variant=args.variant,
                         torch_dtype=weight_dtype,
                     )
                     pipeline = pipeline.to(accelerator.device)
@@ -1181,7 +1191,8 @@ def main():
             tokenizer_2=tokenizer_2,
             vae=vae,
             unet=unet,
-            revision=args.revision, variant=args.variant,
+            revision=args.revision,
+            variant=args.variant,
         )
         pipeline.save_pretrained(args.output_dir)
 

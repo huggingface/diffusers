@@ -725,7 +725,8 @@ def main(args):
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 safety_checker=None,
-                revision=args.revision, variant=args.variant,
+                revision=args.revision,
+                variant=args.variant,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -764,12 +765,15 @@ def main(args):
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, variant=args.variant, use_fast=False)
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.tokenizer_name, revision=args.revision, variant=args.variant, use_fast=False
+        )
     elif args.pretrained_model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(
             args.pretrained_model_name_or_path,
             subfolder="tokenizer",
-            revision=args.revision, variant=args.variant,
+            revision=args.revision,
+            variant=args.variant,
             use_fast=False,
         )
 
@@ -1285,7 +1289,8 @@ def main(args):
                     args.pretrained_model_name_or_path,
                     unet=accelerator.unwrap_model(unet),
                     text_encoder=None if args.pre_compute_text_embeddings else accelerator.unwrap_model(text_encoder),
-                    revision=args.revision, variant=args.variant,
+                    revision=args.revision,
+                    variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
 

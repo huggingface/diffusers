@@ -624,10 +624,18 @@ def main(args):
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        variant=args.variant,
+        use_fast=False,
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, variant=args.variant, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_2",
+        revision=args.revision,
+        variant=args.variant,
+        use_fast=False,
     )
 
     # import correct text encoder classes
@@ -653,7 +661,10 @@ def main(args):
         else args.pretrained_vae_model_name_or_path
     )
     vae = AutoencoderKL.from_pretrained(
-        vae_path, subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None, revision=args.revision, variant=args.variant
+        vae_path,
+        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+        revision=args.revision,
+        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
@@ -1150,13 +1161,15 @@ def main(args):
                 vae = AutoencoderKL.from_pretrained(
                     vae_path,
                     subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-                    revision=args.revision, variant=args.variant,
+                    revision=args.revision,
+                    variant=args.variant,
                 )
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
                     unet=accelerator.unwrap_model(unet),
-                    revision=args.revision, variant=args.variant,
+                    revision=args.revision,
+                    variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
                 if args.prediction_type is not None:
@@ -1203,11 +1216,17 @@ def main(args):
         vae = AutoencoderKL.from_pretrained(
             vae_path,
             subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-            revision=args.revision, variant=args.variant,
+            revision=args.revision,
+            variant=args.variant,
             torch_dtype=weight_dtype,
         )
         pipeline = StableDiffusionXLPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, unet=unet, vae=vae, revision=args.revision, variant=args.variant, torch_dtype=weight_dtype
+            args.pretrained_model_name_or_path,
+            unet=unet,
+            vae=vae,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
         )
         if args.prediction_type is not None:
             scheduler_args = {"prediction_type": args.prediction_type}

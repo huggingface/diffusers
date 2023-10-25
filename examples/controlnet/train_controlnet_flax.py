@@ -731,12 +731,14 @@ def main():
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
         dtype=weight_dtype,
-        revision=args.revision, variant=args.variant,
+        revision=args.revision,
+        variant=args.variant,
         from_pt=args.from_pt,
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
-        revision=args.revision, variant=args.variant,
+        revision=args.revision,
+        variant=args.variant,
         subfolder="vae",
         dtype=weight_dtype,
         from_pt=args.from_pt,
@@ -745,7 +747,8 @@ def main():
         args.pretrained_model_name_or_path,
         subfolder="unet",
         dtype=weight_dtype,
-        revision=args.revision, variant=args.variant,
+        revision=args.revision,
+        variant=args.variant,
         from_pt=args.from_pt,
     )
 
@@ -792,7 +795,8 @@ def main():
         controlnet=controlnet,
         safety_checker=None,
         dtype=weight_dtype,
-        revision=args.revision, variant=args.variant,
+        revision=args.revision,
+        variant=args.variant,
         from_pt=args.from_pt,
     )
     pipeline_params = jax_utils.replicate(pipeline_params)

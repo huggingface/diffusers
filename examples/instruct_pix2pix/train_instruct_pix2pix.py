@@ -443,7 +443,9 @@ def main():
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant)
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+    )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
@@ -920,7 +922,8 @@ def main():
                     unet=accelerator.unwrap_model(unet),
                     text_encoder=accelerator.unwrap_model(text_encoder),
                     vae=accelerator.unwrap_model(vae),
-                    revision=args.revision, variant=args.variant,
+                    revision=args.revision,
+                    variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
                 pipeline = pipeline.to(accelerator.device)
@@ -971,7 +974,8 @@ def main():
             text_encoder=accelerator.unwrap_model(text_encoder),
             vae=accelerator.unwrap_model(vae),
             unet=unet,
-            revision=args.revision, variant=args.variant,
+            revision=args.revision,
+            variant=args.variant,
         )
         pipeline.save_pretrained(args.output_dir)
 

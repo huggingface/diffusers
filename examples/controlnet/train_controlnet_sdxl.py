@@ -73,7 +73,8 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         vae=vae,
         unet=unet,
         controlnet=controlnet,
-        revision=args.revision, variant=args.variant,
+        revision=args.revision,
+        variant=args.variant,
         torch_dtype=weight_dtype,
     )
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
@@ -796,10 +797,18 @@ def main(args):
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, variant=args.variant, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        variant=args.variant,
+        use_fast=False,
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, variant=args.variant, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_2",
+        revision=args.revision,
+        variant=args.variant,
+        use_fast=False,
     )
 
     # import correct text encoder classes
@@ -826,7 +835,8 @@ def main(args):
     vae = AutoencoderKL.from_pretrained(
         vae_path,
         subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-        revision=args.revision, variant=args.variant,
+        revision=args.revision,
+        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
