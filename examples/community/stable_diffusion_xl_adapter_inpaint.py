@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
     	... 	torch_dtype=torch.float16,
     	... 	variant="fp16",
     	... 	use_safetensors=True,
-    	... 	custom_pipeline="./stable_diffusion_xl_adapter_inpaint.py",
+    	... 	custom_pipeline="stable_diffusion_xl_adapter_inpaint",
     	... 	adapter=adapter
 		... ).to("cuda")
 
