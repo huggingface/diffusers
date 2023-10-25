@@ -334,7 +334,7 @@ def _get_pipeline_class(
     config,
     load_connected_pipeline=False,
     custom_pipeline=None,
-    hub_repo_id=None,
+    repo_id=None,
     hub_revision=None,
     class_name=None,
     cache_dir=None,
@@ -346,9 +346,9 @@ def _get_pipeline_class(
             # decompose into folder & file
             file_name = path.name
             custom_pipeline = path.parent.absolute()
-        elif hub_repo_id is not None:
+        elif repo_id is not None:
             file_name = f"{custom_pipeline}.py"
-            custom_pipeline = hub_repo_id
+            custom_pipeline = repo_id
         else:
             file_name = CUSTOM_PIPELINE_FILE_NAME
 
@@ -356,7 +356,7 @@ def _get_pipeline_class(
             custom_pipeline,
             module_file=file_name,
             class_name=class_name,
-            hub_repo_id=hub_repo_id,
+            repo_id=repo_id,
             cache_dir=cache_dir,
             revision=revision if hub_revision is None else hub_revision,
         )
@@ -1747,7 +1747,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 config_dict,
                 load_connected_pipeline=load_connected_pipeline,
                 custom_pipeline=custom_pipeline,
-                hub_repo_id=pretrained_model_name if load_pipe_from_hub else None,
+                repo_id=pretrained_model_name if load_pipe_from_hub else None,
                 hub_revision=revision,
                 class_name=custom_class_name,
                 cache_dir=cache_dir,
