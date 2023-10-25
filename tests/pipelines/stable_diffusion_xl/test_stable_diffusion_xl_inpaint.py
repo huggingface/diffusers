@@ -32,7 +32,7 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, torch_device, slow
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
@@ -352,7 +352,6 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         for steps in [7, 20]:
             assert_run_mixture(steps, 0.33, EulerDiscreteScheduler)
             assert_run_mixture(steps, 0.33, HeunDiscreteScheduler)
-
 
     @slow
     def test_stable_diffusion_two_xl_mixture_of_denoiser(self):

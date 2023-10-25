@@ -32,7 +32,7 @@ from diffusers import (
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device, slow
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin
@@ -373,30 +373,32 @@ class StableDiffusionXLPipelineFastTests(
         steps = 10
         for split in [300, 700]:
             for scheduler_cls_timesteps in [
-                    (EulerDiscreteScheduler, [901, 801, 701, 601, 501, 401, 301, 201, 101, 1]),
-                    (HeunDiscreteScheduler,
-                        [
-                            901.0,
-                            801.0,
-                            801.0,
-                            701.0,
-                            701.0,
-                            601.0,
-                            601.0,
-                            501.0,
-                            501.0,
-                            401.0,
-                            401.0,
-                            301.0,
-                            301.0,
-                            201.0,
-                            201.0,
-                            101.0,
-                            101.0,
-                            1.0,
-                            1.0,
-                        ],
-                     )]:
+                (EulerDiscreteScheduler, [901, 801, 701, 601, 501, 401, 301, 201, 101, 1]),
+                (
+                    HeunDiscreteScheduler,
+                    [
+                        901.0,
+                        801.0,
+                        801.0,
+                        701.0,
+                        701.0,
+                        601.0,
+                        601.0,
+                        501.0,
+                        501.0,
+                        401.0,
+                        401.0,
+                        301.0,
+                        301.0,
+                        201.0,
+                        201.0,
+                        101.0,
+                        101.0,
+                        1.0,
+                        1.0,
+                    ],
+                ),
+            ]:
                 assert_run_mixture(steps, split, scheduler_cls_timesteps[0], scheduler_cls_timesteps[1])
 
     @slow
