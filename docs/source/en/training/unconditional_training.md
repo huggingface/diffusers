@@ -12,16 +12,21 @@ specific language governing permissions and limitations under the License.
 
 # Unconditional image generation
 
-Unconditional image generation models are not conditioned on any text or images during training. It only generates images that resemble its training data distribution.
+Unconditional image generation models are not conditioned on text or images during training. It only generates images that resemble its training data distribution.
 
-This guide will explore the [train_unconditional.py](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation) training script to help you become familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [train_unconditional.py](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) training script to help you become familiar with it and how you can adapt it for your own use-case.
 
-Before running the script, make sure you install the library's training dependencies:
+Before running the script, make sure you install the library from source:
 
 ```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install .
+```
+
+Then navigate to the example folder containing the training script and install the required dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
@@ -31,7 +36,7 @@ pip install -r requirements.txt
 
 </Tip>
 
-You'll be using 🤗 Accelerate to manage training and it is especially useful if you're training on multiple GPUs. Initialize an 🤗 Accelerate environment:
+Initialize an 🤗 Accelerate environment:
 
 ```bash
 accelerate config
@@ -55,35 +60,35 @@ Lastly, if you want to train a model on your own dataset, take a look at the [Cr
 
 <Tip>
 
-The following sections highlight parts of the training script that are important for understanding how to modify it. It doesn't discuss every detail of the script in detail, and if you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation) and let us know if you have any questions or concerns.
+The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) and let us know if you have any questions or concerns.
 
 </Tip>
 
 ## Training parameters
 
-The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L55) function. Where applicable, the training script provides default values for each parameter such as the training and evaluation batch size.
+The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L55) function. The training script provides default values for each parameter such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
 
-For example, to speedup training with mixed precision, add the `--mixed_precision` flag to the training command:
+For example, to speedup training with mixed precision using the bf16 format, add the `--mixed_precision` flag to the training command:
 
 ```bash
 accelerate launch train_unconditional.py \
   --mixed_precision="bf16"
 ```
 
-Some of the basic and important parameters to know are:
+Some basic and important parameters to specify include:
 
-- `--dataset_name`: the name of the dataset on the Hub or a a local path to the dataset to train on
+- `--dataset_name`: the name of the dataset on the Hub or a local path to the dataset to train on
 - `--output_dir`: where to save the trained model
 - `--push_to_hub`: whether to push the trained model to the Hub
 - `--checkpointing_steps`: frequency of saving a checkpoint as the model trains; this is useful if for some reason training is interrupted, you can continue training from that checkpoint by adding `--resume_from_checkpoint` to your training command
 
-For training specific hyperparameters, like learning rate and number of epochs, you can use the default values or provide your own. It's totally okay to not specify any of these parameters in your training command! Just bring your dataset, and let the training script handle everything else.
+Bring your dataset, and let the training script handle everything else!
 
 ## Training
 
-The code for preprocessing and the training loop is found in the [`main()`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L275) function. If you need to adapt the training script, this is where you'll need to make your changes.
+The code for preprocessing the dataset and the training loop is found in the [`main()`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L275) function. If you need to adapt the training script, this is where you'll need to make your changes.
 
-The `train_unconditional` script [initializes a [`UNet2DModel`]](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L356) if you don't provide your own model configuration. You can configure the UNet here if you'd like:
+The `train_unconditional` script [initializes a [`UNet2DModel`]](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L356) if you don't provide a model configuration. You can configure the UNet here if you'd like:
 
 ```py
 model = UNet2DModel(
@@ -135,7 +140,7 @@ optimizer = torch.optim.AdamW(
 )
 ```
 
-Then you have the option to [load a dataset](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L451) and specify how to [preprocess](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L455) it:
+Then it [loads a dataset](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L451) and you can specify how to [preprocess](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L455) it:
 
 ```py
 dataset = load_dataset("imagefolder", data_dir=args.train_data_dir, cache_dir=args.cache_dir, split="train")
@@ -161,6 +166,8 @@ A full training run takes 2 hours on 4xV100 GPUs.
 
 </Tip>
 
+<hfoptions id="launchtraining">
+<hfoption id-="single GPU">
 ```bash
 accelerate launch train_unconditional.py \
   --dataset_name="huggan/flowers-102-categories" \
@@ -168,9 +175,8 @@ accelerate launch train_unconditional.py \
   --mixed_precision="fp16" \
   --push_to_hub
 ```
-
-To train with more than one GPU, add the `--multi_gpu` flag to your training command:
-
+</hfoption>
+<hfoption id="multi-GPU">
 ```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
   --dataset_name="huggan/flowers-102-categories" \
@@ -178,6 +184,8 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
   --mixed_precision="fp16" \
   --push_to_hub
 ```
+</hfoption>
+</hfoptions>
 
 The training script creates and saves a checkpoint file in your repository. Now you can load and use your trained model for inference:
 
