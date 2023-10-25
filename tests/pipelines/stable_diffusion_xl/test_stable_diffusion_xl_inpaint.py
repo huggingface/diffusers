@@ -318,11 +318,14 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             expected_steps = pipe_1.scheduler.timesteps.tolist()
 
             split_ts = num_train_timesteps - int(round(num_train_timesteps * split))
-            expected_steps_1 = expected_steps[:split_ts]
-            expected_steps_2 = expected_steps[split_ts:]
 
-            expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
-            expected_steps_2 = list(filter(lambda ts: ts < split_ts, expected_steps))
+            if pipe_1.scheduler.order == 2:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
+                expected_steps_2 = expected_steps_1[-1:] + list(filter(lambda ts: ts < split_ts, expected_steps))
+                expected_steps = expected_steps_1 + expected_steps_2
+            else:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
+                expected_steps_2 = list(filter(lambda ts: ts < split_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
@@ -389,13 +392,18 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
             split_1_ts = num_train_timesteps - int(round(num_train_timesteps * split_1))
             split_2_ts = num_train_timesteps - int(round(num_train_timesteps * split_2))
-            expected_steps_1 = expected_steps[:split_1_ts]
-            expected_steps_2 = expected_steps[split_1_ts:split_2_ts]
-            expected_steps_3 = expected_steps[split_2_ts:]
 
-            expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
-            expected_steps_2 = list(filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps))
-            expected_steps_3 = list(filter(lambda ts: ts < split_2_ts, expected_steps))
+            if pipe_1.scheduler.order == 2:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
+                expected_steps_2 = expected_steps_1[-1:] + list(
+                    filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps)
+                )
+                expected_steps_3 = expected_steps_2[-1:] + list(filter(lambda ts: ts < split_2_ts, expected_steps))
+                expected_steps = expected_steps_1 + expected_steps_2 + expected_steps_3
+            else:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
+                expected_steps_2 = list(filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps))
+                expected_steps_3 = list(filter(lambda ts: ts < split_2_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
