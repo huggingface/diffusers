@@ -1,9 +1,0 @@
-diffusers==0.20.1
-accelerate==0.23.0
-transformers==4.34.0
-peft==0.5.0
-torch==2.0.1
-torchvision==0.15.2
-ftfy==6.1.1
-tensorboard==2.14.0
-Jinja2==3.1.2
