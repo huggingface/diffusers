@@ -45,6 +45,12 @@ parser.add_argument('--ddp_variance_type',type=str,default='learned_range',
                     choices=['fixed_small','fixed_log','fixed_large','fixed_large_log','learned','learned_range'],)
 parser.add_argument('--ddp_guidance_scale',type=float,default=7.5,
                     help='Unconditionnal guidance.')
+parser.add_argument('--ddp_training_beta_type',type=str,default='linear',
+                    choices=['linear','squaredcos_cap_v2'],
+                    help='Type of variance scheduling for training.')
+parser.add_argument('--ddp_validation_beta_type',type=str,default='linear',
+                    choices=['linear','squaredcos_cap_v2'],
+                    help='Type of variance for validation.')
 parser.add_argument("--gradient_accumulation_steps",type=int,default=1,
                     help="Number of updates steps to accumulate before performing a backward/update pass.")
 parser.add_argument("--lambda_vlb", type=float,default=1e-3)
@@ -104,6 +110,8 @@ def main(
         max_train_steps:int,
         ddp_variance_type:str,
         ddp_guidance_scale:float,
+        ddp_training_beta_type:str,
+        ddp_validation_beta_type:str,
         lambda_vlb:float,
         gradient_accumulation_steps:int,
         use_8bit_adam:bool,
@@ -243,7 +251,7 @@ def main(
     )
     # Create Diffusion Items
     # We use a custom DDPM Scheduler dedicated for training...
-    noise_scheduler = DDPMTrainingScheduler(variance_type=ddp_variance_type,beta_schedule='squaredcos_cap_v2')
+    noise_scheduler = DDPMTrainingScheduler(variance_type=ddp_variance_type,beta_schedule=ddp_training_beta_type)
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / gradient_accumulation_steps)
     num_train_epochs = math.ceil(max_train_steps / num_update_steps_per_epoch)
 
@@ -312,8 +320,9 @@ def main(
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (x.shape[0],), device=x.device)
                 # We create condition and replace y by ucond when necessary...
                 cond = F.one_hot(y.long(),num_classes=train_dataset.cls_count).to(x.device).float().permute(0,3,1,2)
-                ucond = torch.rand(len(y),device=x.device)<train_ucond_prob
-                cond = cond*ucond[...,None,None,None]
+                ### We add some unconditionnal training iterations.
+                ucond = torch.rand(len(y),device=x.device)<train_ucond_prob # 1 if < p_ucond
+                cond = cond*(1-ucond[...,None,None,None]) # if ucond, we multiply by 0.
                 # We sample the noise
                 x_t = noise_scheduler.add_noise(x,noise,timesteps.long())
                 if not learned_variance:
@@ -405,7 +414,7 @@ def main(
                 )
                 # For validation, we use a linear scheduler...
                 scheduler_config = copy.deepcopy(noise_scheduler.config)
-                scheduler_config['beta_schedule']='linear'
+                scheduler_config['beta_schedule']=ddp_validation_beta_type
                 val_scheduler = DDPMScheduler().from_config(scheduler_config)
                 # create pipeline
                 pipeline = SemanticOnlyDiffusionPipeline(
