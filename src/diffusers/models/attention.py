@@ -276,7 +276,7 @@ class BasicTransformerBlock(nn.Module):
 
 
 @maybe_allow_in_graph
-class TemporalPosEmbedTransformerBlock(nn.Module):
+class TemporalPositionEmbedTransformerBlock(nn.Module):
     r"""
     A Transformer block that applies a timestep positional embedding before each attention layer.
 
@@ -327,6 +327,8 @@ class TemporalPosEmbedTransformerBlock(nn.Module):
         max_seq_length=32,
     ):
         super().__init__()
+
+        self.pos_embed = get_timestep_embedding(max_seq_length, dim)[None, :]
         self.only_cross_attention = only_cross_attention
 
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
@@ -423,8 +425,10 @@ class TemporalPosEmbedTransformerBlock(nn.Module):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
+
+        hidden_states = self.pos_embed[:, :seq_length, :].to(norm_hidden_states.dtype) + norm_hidden_states
         attn_output = self.attn1(
-            norm_hidden_states,
+            hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
@@ -438,8 +442,9 @@ class TemporalPosEmbedTransformerBlock(nn.Module):
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
+            hidden_states = self.pos_embed[:, :seq_length, :].to(norm_hidden_states.dtype) + norm_hidden_states
             attn_output = self.attn2(
-                norm_hidden_states,
+                hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,

@@ -19,7 +19,7 @@ from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .attention import BasicTransformerBlock, TemporalPosEmbedTransformerBlock
+from .attention import BasicTransformerBlock, TemporalPositionEmbedTransformerBlock
 from .modeling_utils import ModelMixin
 
 
@@ -236,7 +236,7 @@ class TransformerTemporalMotionModel(ModelMixin, ConfigMixin):
         # 3. Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
             [
-                TemporalPosEmbedTransformerBlock(
+                TemporalPositionEmbedTransformerBlock(
                     inner_dim,
                     num_attention_heads,
                     attention_head_dim,
@@ -298,8 +298,10 @@ class TransformerTemporalMotionModel(ModelMixin, ConfigMixin):
 
         residual = hidden_states
 
-        hidden_states = self.norm(hidden_states)
         hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
+
+        hidden_states = self.norm(hidden_states)
         hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
 
         hidden_states = self.proj_in(hidden_states)
