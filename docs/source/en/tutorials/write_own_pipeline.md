@@ -108,11 +108,11 @@ Let's try it out!
 
 Stable Diffusion is a text-to-image *latent diffusion* model. It is called a latent diffusion model because it works with a lower-dimensional representation of the image instead of the actual pixel space, which makes it more memory efficient. The encoder compresses the image into a smaller representation, and a decoder to convert the compressed representation back into an image. For text-to-image models, you'll need a tokenizer and an encoder to generate text embeddings. From the previous example, you already know you need a UNet model and a scheduler.
 
-As you can see, this is already more complex than the DDPM pipeline which only contains a UNet model. The Stable Diffusion model has three separate pretrained models.
+As you can see, this is already more complex than the DDPM pipeline which only contains a U-Net model. The Stable Diffusion model has three separate pretrained models.
 
 <Tip>
 
-💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models work.
+💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, U-Net, and text encoder models work.
 
 </Tip>
 
@@ -153,7 +153,7 @@ To speed up inference, move the models to a GPU since, unlike the scheduler, the
 
 ### Create text embeddings
 
-The next step is to tokenize the text to generate embeddings. The text is used to condition the UNet model and steer the diffusion process towards something that resembles the input prompt. 
+The next step is to tokenize the text to generate embeddings. The text is used to condition the U-Net model and steer the diffusion process towards something that resembles the input prompt. 
 
 <Tip>
 
@@ -232,7 +232,7 @@ The last step is to create the denoising loop that'll progressively transform th
 
 1. Set the scheduler's timesteps to use during denoising.
 2. Iterate over the timesteps.
-3. At each timestep, call the UNet model to predict the noise residual and pass it to the scheduler to compute the previous noisy sample.
+3. At each timestep, call the U-Net model to predict the noise residual and pass it to the scheduler to compute the previous noisy sample.
 
 ```py
 >>> from tqdm.auto import tqdm
@@ -240,7 +240,7 @@ The last step is to create the denoising loop that'll progressively transform th
 >>> scheduler.set_timesteps(num_inference_steps)
 
 >>> for t in tqdm(scheduler.timesteps):
-...     # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
+...     # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes
 ...     latent_model_input = torch.cat([latents] * 2)
 
 ...     latent_model_input = scheduler.scale_model_input(latent_model_input, timestep=t)
@@ -284,11 +284,11 @@ Lastly, convert the image to a `PIL.Image` to see your generated image!
 
 ## Next steps
 
-From basic to complex pipelines, you've seen that all you really need to write your own diffusion system is a denoising loop. The loop should set the scheduler's timesteps, iterate over them, and alternate between calling the UNet model to predict the noise residual and passing it to the scheduler to compute the previous noisy sample. 
+From basic to complex pipelines, you've seen that all you really need to write your own diffusion system is a denoising loop. The loop should set the scheduler's timesteps, iterate over them, and alternate between calling the U-Net model to predict the noise residual and passing it to the scheduler to compute the previous noisy sample. 
 
 This is really what 🧨 Diffusers is designed for: to make it intuitive and easy to write your own diffusion system using models and schedulers.
 
 For your next steps, feel free to:
 
-* Learn how to [build and contribute a pipeline](contribute_pipeline) to 🧨 Diffusers. We can't wait and see what you'll come up with!
+* Learn how to [build and contribute a pipeline](../using-diffusers/contribute_pipeline) to 🧨 Diffusers. We can't wait and see what you'll come up with!
 * Explore [existing pipelines](../api/pipelines/overview) in the library, and see if you can deconstruct and build a pipeline from scratch using the models and schedulers separately.
