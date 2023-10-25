@@ -555,7 +555,6 @@ class StableDiffusionXLImg2ImgPipeline(
             )
 
             num_inference_steps = (timesteps < discrete_timestep_cutoff).sum().item()
-            print(num_inference_steps)
             if self.scheduler.order == 2 and num_inference_steps % 2 == 0:
                 # if the scheduler is a 2nd order scheduler we might have to do +1
                 # because `num_inference_steps` might be even given that every timestep
