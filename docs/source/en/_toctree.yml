@@ -81,8 +81,8 @@
     - local: using-diffusers/custom_pipeline_examples
       title: Community pipelines
     - local: using-diffusers/contribute_pipeline
-      title: How to contribute a community pipeline
-    title: Pipelines for Inference
+      title: Contribute a community pipeline
+    title: Specific pipeline examples
   - sections:
     - local: training/overview
       title: Overview
@@ -168,8 +168,6 @@
       title: Custom normalization layers
     - local: api/attnprocessor
       title: Attention Processor
-    - local: api/diffusion_pipeline
-      title: Diffusion Pipeline
     - local: api/logging
       title: Logging
     - local: api/configuration
@@ -254,6 +252,8 @@
       title: Kandinsky
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
+    - local: api/pipelines/latent_consistency_models
+      title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
@@ -370,6 +370,8 @@
       title: KDPM2AncestralDiscreteScheduler
     - local: api/schedulers/dpm_discrete
       title: KDPM2DiscreteScheduler
+    - local: api/schedulers/lcm
+      title: LCMScheduler
     - local: api/schedulers/lms_discrete
       title: LMSDiscreteScheduler
     - local: api/schedulers/pndm
