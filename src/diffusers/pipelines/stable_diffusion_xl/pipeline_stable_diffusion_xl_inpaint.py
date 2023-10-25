@@ -916,6 +916,7 @@ class StableDiffusionXLInpaintPipeline(
         aesthetic_score: float = 6.0,
         negative_aesthetic_score: float = 2.5,
         clip_skip: Optional[int] = None,
+        masked_content="original",  # original, blank
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -1066,6 +1067,13 @@ class StableDiffusionXLInpaintPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            masked_content(`str`, *optional*, defaults to `"original"`):
+                This option determines how the masked content on the original image would affect the generation
+                process. Choose from `"original"` or `"blank"`. If `"original"`, the entire image will be used to
+                create the initial latent, therefore the maksed content in will influence the result. If `"blank"`, the
+                masked image will be used to create initial latent, therefore the masked content will not have any
+                influence on the results. This option is only applicable when you use inpainting pipeline with
+                text-to-image Unet Model.
 
         Examples:
 
@@ -1165,10 +1173,25 @@ class StableDiffusionXLInpaintPipeline(
         else:
             masked_image = init_image * (mask < 0.5)
 
+        # 7. Prepare mask latent variables
+        mask, masked_image_latents = self.prepare_mask_latents(
+            mask,
+            masked_image,
+            batch_size * num_images_per_prompt,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            do_classifier_free_guidance,
+        )
+
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
         num_channels_unet = self.unet.config.in_channels
         return_image_latents = num_channels_unet == 4
+        if num_channels_unet == 4 and masked_content == "blank":
+            init_image = masked_image_latents.chunk(2)[0]
 
         add_noise = True if denoising_start is None else False
         latents_outputs = self.prepare_latents(
@@ -1192,19 +1215,6 @@ class StableDiffusionXLInpaintPipeline(
             latents, noise, image_latents = latents_outputs
         else:
             latents, noise = latents_outputs
-
-        # 7. Prepare mask latent variables
-        mask, masked_image_latents = self.prepare_mask_latents(
-            mask,
-            masked_image,
-            batch_size * num_images_per_prompt,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            do_classifier_free_guidance,
-        )
 
         # 8. Check that sizes of mask, masked image and latents match
         if num_channels_unet == 9:
