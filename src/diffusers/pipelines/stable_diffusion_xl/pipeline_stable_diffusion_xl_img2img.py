@@ -516,7 +516,7 @@ class StableDiffusionXLImg2ImgPipeline(
                 )
             )
 
-            num_inference_steps = len(list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps)))
+            num_inference_steps = (timesteps < discrete_timestep_cutoff).sum()
             if self.scheduler.order == 2:
                 num_inference_steps = num_inference_steps + 1
             timesteps = timesteps[-num_inference_steps:]
