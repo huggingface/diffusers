@@ -1156,7 +1156,8 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
-    # Handle instance prompt. If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images), we encode the instance prompt once to avoid
+    # Handle instance prompt. If custom instance prompts are NOT provided
+    # (i.e. the instance prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     instance_time_ids = compute_time_ids()
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
@@ -1178,7 +1179,8 @@ def main(args):
         gc.collect()
         torch.cuda.empty_cache()
 
-    # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images), pack the statically computed variables appropriately here. This is so that we don't
+    # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
+    # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
     add_time_ids = instance_time_ids
     if args.with_prior_preservation:
@@ -1258,7 +1260,7 @@ def main(args):
             path = os.path.basename(args.resume_from_checkpoint)
         else:
             # Get the mos recent checkpoint
-            dirs = os.listdir(args.model_dir_name)
+            dirs = os.listdir(args.output_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
             path = dirs[-1] if len(dirs) > 0 else None
@@ -1271,7 +1273,7 @@ def main(args):
             initial_global_step = 0
         else:
             accelerator.print(f"Resuming from checkpoint {path}")
-            accelerator.load_state(os.path.join(args.model_dir_name, path))
+            accelerator.load_state(os.path.join(args.output_dir, path))
             global_step = int(path.split("-")[1])
 
             initial_global_step = global_step
