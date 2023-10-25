@@ -26,7 +26,7 @@ The quicktour will show you how to use the [`DiffusionPipeline`] for inference, 
 
 <Tip>
 
-The quicktour is a simplified version of the introductory 🧨 Diffusers [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) to help you get started quickly. If you want to learn more about 🧨 Diffusers goal, design philosophy, and additional details about it's core API, check out the notebook!
+The quicktour is a simplified version of the introductory 🧨 Diffusers [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) to help you get started quickly. If you want to learn more about 🧨 Diffusers' goal, design philosophy, and additional details about its core API, check out the notebook!
 
 </Tip>
 
@@ -38,7 +38,7 @@ Before you begin, make sure you have all the necessary libraries installed:
 ```
 
 - [🤗 Accelerate](https://huggingface.co/docs/accelerate/index) speeds up model loading for inference and training.
-- [🤗 Transformers](https://huggingface.co/docs/transformers/index) is required to run the most popular diffusion models, such as [Stable Diffusion](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/overview).
+- [🤗 Transformers](https://huggingface.co/docs/transformers/index) is required to run the most popular diffusion models, such as [Stable Diffusion](./api/pipelines/stable_diffusion/overview).
 
 ## DiffusionPipeline
 
@@ -76,7 +76,7 @@ The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and s
 >>> pipeline
 StableDiffusionPipeline {
   "_class_name": "StableDiffusionPipeline",
-  "_diffusers_version": "0.13.1",
+  "_diffusers_version": "0.21.4",
   ...,
   "scheduler": [
     "diffusers",
@@ -173,11 +173,11 @@ The model configuration is a 🧊 frozen 🧊 dictionary, which means those para
 
 Some of the most important parameters are:
 
-* `sample_size`: the height and width dimension of the input sample.
-* `in_channels`: the number of input channels of the input sample.
-* `down_block_types` and `up_block_types`: the type of down- and upsampling blocks used to create the UNet architecture.
-* `block_out_channels`: the number of output channels of the downsampling blocks; also used in reverse order for the number of input channels of the upsampling blocks.
-* `layers_per_block`: the number of ResNet blocks present in each UNet block.
+* `sample_size`: The height and width dimension of the input sample.
+* `in_channels`: The number of input channels of the input sample.
+* `down_block_types` and `up_block_types`: The type of down- and upsampling blocks used to create the U-Net architecture.
+* `block_out_channels`: The number of output channels of the downsampling blocks; also used in reverse order for the number of input channels of the upsampling blocks.
+* `layers_per_block`: The number of ResNet blocks present in each U-Net block.
 
 To use the model for inference, create the image shape with random Gaussian noise. It should have a `batch` axis because the model can receive multiple random noises, a `channel` axis corresponding to the number of input channels, and a `sample_size` axis for the height and width of the image:
 
@@ -191,7 +191,7 @@ To use the model for inference, create the image shape with random Gaussian nois
 torch.Size([1, 3, 256, 256])
 ```
 
-For inference, pass the noisy image to the model and a `timestep`. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the `sample` method to get the model output:
+For inference, pass the noisy image and a `timestep` to the model. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the `sample` method to get the model output:
 
 ```py
 >>> with torch.no_grad():
@@ -215,18 +215,23 @@ For the quicktour, you'll instantiate the [`DDPMScheduler`] with it's [`~diffuse
 ```py
 >>> from diffusers import DDPMScheduler
 
->>> scheduler = DDPMScheduler.from_config(repo_id)
+>>> scheduler = DDPMScheduler.from_pretrained(repo_id)
 >>> scheduler
 DDPMScheduler {
   "_class_name": "DDPMScheduler",
-  "_diffusers_version": "0.13.1",
+  "_diffusers_version": "0.21.4",
   "beta_end": 0.02,
   "beta_schedule": "linear",
   "beta_start": 0.0001,
   "clip_sample": true,
   "clip_sample_range": 1.0,
+  "dynamic_thresholding_ratio": 0.995,
   "num_train_timesteps": 1000,
   "prediction_type": "epsilon",
+  "sample_max_value": 1.0,
+  "steps_offset": 0,
+  "thresholding": false,
+  "timestep_spacing": "leading",
   "trained_betas": null,
   "variance_type": "fixed_small"
 }
@@ -234,21 +239,22 @@ DDPMScheduler {
 
 <Tip>
 
-💡 Notice how the scheduler is instantiated from a configuration. Unlike a model, a scheduler does not have trainable weights and is parameter-free!
+💡 Unlike a model, a scheduler does not have trainable weights and is parameter-free!
 
 </Tip>
 
 Some of the most important parameters are:
 
-* `num_train_timesteps`: the length of the denoising process or in other words, the number of timesteps required to process random Gaussian noise into a data sample.
-* `beta_schedule`: the type of noise schedule to use for inference and training.
-* `beta_start` and `beta_end`: the start and end noise values for the noise schedule.
+* `num_train_timesteps`: The length of the denoising process or in other words, the number of timesteps required to process random Gaussian noise into a data sample.
+* `beta_schedule`: The type of noise schedule to use for inference and training.
+* `beta_start` and `beta_end`: The start and end noise values for the noise schedule.
 
 To predict a slightly less noisy image, pass the following to the scheduler's [`~diffusers.DDPMScheduler.step`] method: model output, `timestep`, and current `sample`.
 
 ```py
 >>> less_noisy_sample = scheduler.step(model_output=noisy_residual, timestep=2, sample=noisy_sample).prev_sample
 >>> less_noisy_sample.shape
+torch.Size([1, 3, 256, 256])
 ```
 
 The `less_noisy_sample` can be passed to the next `timestep` where it'll get even less noisier! Let's bring it all together now and visualize the entire denoising process. 
