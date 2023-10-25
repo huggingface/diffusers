@@ -41,7 +41,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDIMScheduler, LatentConsistencyModelPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
@@ -140,7 +140,7 @@ More information on all the CLI arguments and the environment are available on y
 def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
     logger.info("Running validation... ")
 
-    pipeline = StableDiffusionPipeline.from_pretrained(
+    pipeline = LatentConsistencyModelPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=accelerator.unwrap_model(vae),
         text_encoder=accelerator.unwrap_model(text_encoder),
@@ -194,18 +194,32 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     # ----------Model Checkpoint Loading Arguments----------
     parser.add_argument(
-        "--pretrained_model_name_or_path",
+        "--pretrained_teacher_model",
         type=str,
         default=None,
         required=True,
-        help="Path to pretrained model or model identifier from huggingface.co/models.",
+        help="Path to pretrained LDM teacher model or model identifier from huggingface.co/models."
+    )
+    parser.add_argument(
+        "--teacher_revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained LDM teacher model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--pretrained_model_name_or_path",
+        type=str,
+        default=None,
+        required=False,
+        help="Path to pretrained LCM model or model identifier from huggingface.co/models (for resuming distillation).",
     )
     parser.add_argument(
         "--revision",
         type=str,
         default=None,
         required=False,
-        help="Revision of pretrained model identifier from huggingface.co/models.",
+        help="Revision of pretrained LDM model identifier from huggingface.co/models.",
     )
     # ----------Dataset Loading Arguments----------
     parser.add_argument(
@@ -248,7 +262,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="sd-model-finetuned",
+        default="lcm-distilled",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -439,6 +453,7 @@ def parse_args():
     )
     # TODO: add noise schedule arguments
     # ----Exponential Moving Average (EMA)----
+    # TODO: get rid of/modify arguments here as necessary
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument(
         "--non_ema_revision",
@@ -587,10 +602,12 @@ def main():
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
-    # 2. Load scheduler, tokenizer and models.
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    # 2. Load scheduler, tokenizer, and LDM teacher models.
+    # TODO: do we want the noise scheduler to be from the teacher checkpoint scheduler? or is it independent of how
+    # the teacher model was trained?
+    noise_scheduler = DDIMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+        args.pretrained_teacher_model, subfolder="tokenizer", revision=args.teacher_revision
     )
 
     def deepspeed_zero_init_disabled_context_manager():
@@ -613,28 +630,45 @@ def main():
     # `from_pretrained` So CLIPTextModel and AutoencoderKL will not enjoy the parameter sharding
     # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
-        text_encoder = CLIPTextModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
-        )
+        # Always use VAE from the teacher model checkpoint.
         vae = AutoencoderKL.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+            args.pretrained_teacher_model, subfolder="vae", revision=args.teacher_revision
         )
 
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
+        # For now always use text encoder from teacher model checkpoint as well
+        # TODO: could we have separate text_encoders for teacher and student? probably doesn't make sense
+        text_encoder = CLIPTextModel.from_pretrained(
+            args.pretrained_teacher_model, subfolder="text_encoder", revision=args.teacher_revision
+        )
+
+    # TODO: is using the EMA version of the weights ok (probably yes?)
+    teacher_unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
     )
 
-    # Freeze vae and text_encoder and set unet to trainable
+    # Freeze teacher vae, text_encoder and unet
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
+    teacher_unet.requires_grad_(False)
+
+    # 3. Create online (`unet`) student U-Nets. This will be updated by the optimizer (e.g. via backpropagation.)
+    unet = UNet2DConditionModel(**teacher_unet.config)
     unet.train()
 
-    # 3. Create EMA for the unet.
-    if args.use_ema:
+    # 4. Create target (`ema_unet`) student U-Net. This will be updated via EMA updates (polyak averaging).
+    if args.pretrained_model_name_or_path is not None:
+        # Get EMA weights from a previous checkpoint, if available
+        # TODO: change/move to resume_from_checkpoint stuff?
         ema_unet = UNet2DConditionModel.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
         )
-        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+    else:
+        # Initialize from unet
+        # TODO: is this the best way to copy unet?
+        ema_unet = UNet2DConditionModel(**teacher_unet.config)
+        ema_unet.load_state_dict(unet.state_dict())
+
+    ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -654,8 +688,7 @@ def main():
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             if accelerator.is_main_process:
-                if args.use_ema:
-                    ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+                ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
                 for i, model in enumerate(models):
                     model.save_pretrained(os.path.join(output_dir, "unet"))
@@ -664,11 +697,10 @@ def main():
                     weights.pop()
 
         def load_model_hook(models, input_dir):
-            if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
-                ema_unet.load_state_dict(load_model.state_dict())
-                ema_unet.to(accelerator.device)
-                del load_model
+            load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
+            ema_unet.load_state_dict(load_model.state_dict())
+            ema_unet.to(accelerator.device)
+            del load_model
 
             for i in range(len(models)):
                 # pop models so that they are not loaded again
@@ -684,7 +716,7 @@ def main():
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
 
-    # 4. Set up gradient checkpointing.
+    # 4. Set up gradient checkpointing for the online student U-Net.
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
 
@@ -769,7 +801,7 @@ def main():
                 f"--caption_column' value '{args.caption_column}' needs to be one of: {', '.join(column_names)}"
             )
 
-    # 8. Preprocess the datasets.
+    # 8. Preprocess text and images from the dataset.
     # We need to tokenize input captions and transform the images.
     def tokenize_captions(examples, is_train=True):
         captions = []
@@ -846,8 +878,9 @@ def main():
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
-    if args.use_ema:
-        ema_unet.to(accelerator.device)
+    # TODO: also add teacher_unet here? probably not since it's not being optimized
+    # TODO: should put into prepare call above? maybe not since we don't do backprop on it
+    ema_unet.to(accelerator.device)
 
     # 12. Handle mixed precision
     # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
@@ -864,6 +897,8 @@ def main():
     # Move text_encode and vae to gpu and cast to weight_dtype
     text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
+    # TODO: also cast teacher_unet to weight_dtype?
+    teacher_unet.to(accelerator.device)
 
     # 14. Fix learning rate and num_train_epochs
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -1011,8 +1046,8 @@ def main():
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_unet.step(unet.parameters())
+                # Make EMA update to target student model parameters
+                ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
@@ -1052,6 +1087,7 @@ def main():
 
         if accelerator.is_main_process:
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
+                # TODO: always use target model for inference?
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
@@ -1074,10 +1110,11 @@ def main():
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
+        # TODO: always use target model for inference?
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
-        pipeline = StableDiffusionPipeline.from_pretrained(
+        pipeline = LatentConsistencyModelPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             text_encoder=text_encoder,
             vae=vae,
