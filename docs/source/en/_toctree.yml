@@ -382,6 +382,8 @@
       title: VQDiffusionScheduler
     title: Schedulers
   - sections:
+    - local: api/internal_classes_overview
+      title: Overview
     - local: api/attnprocessor
       title: Attention Processor
     - local: api/activations
