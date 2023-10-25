@@ -338,8 +338,6 @@ class TemporalPosEmbedTransformerBlock(nn.Module):
                 f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
             )
 
-        self.pos_embed = get_timestep_embedding(torch.arange(max_seq_length), dim)[None, :]
-
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
         if self.use_ada_layer_norm:
@@ -425,13 +423,8 @@ class TemporalPosEmbedTransformerBlock(nn.Module):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
-        hidden_states = (
-            self.pos_embed[:, :seq_length].to(norm_hidden_states.device).to(norm_hidden_states.dtype)
-            + norm_hidden_states
-        )
-
         attn_output = self.attn1(
-            hidden_states,
+            norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
@@ -445,12 +438,8 @@ class TemporalPosEmbedTransformerBlock(nn.Module):
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
-            hidden_states = (
-                self.pos_embed[:, :seq_length].to(norm_hidden_states.device).to(norm_hidden_states.dtype)
-                + norm_hidden_states
-            )
             attn_output = self.attn2(
-                hidden_states,
+                norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,

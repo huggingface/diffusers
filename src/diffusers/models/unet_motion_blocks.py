@@ -348,6 +348,11 @@ class MotionBlock(nn.Module):
             num_attention_heads=num_attention_heads,
         )
         self.use_cross_attention = cross_attention_dim is not None
+        processor_cls = MotionAttnProcessor2_0 if is_torch_version(">=", "2.0.0") else MotionAttnProcessor
+
+        for block in self.temporal_transformer.transformer_blocks:
+            block.attn1.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
+            block.attn2.set_processor(processor_cls(in_channels=in_channels, max_seq_length=max_seq_length))
 
     def forward(self, hidden_states, encoder_hidden_states=None, num_frames=1, cross_attention_kwargs=None):
         encoder_hidden_states = encoder_hidden_states if self.use_cross_attention else None
