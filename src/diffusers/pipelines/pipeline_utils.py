@@ -33,8 +33,6 @@ from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
 
-import diffusers
-
 from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
@@ -446,14 +444,15 @@ def load_sub_model(
     load_method = getattr(class_obj, load_method_name)
 
     # add kwargs to loading method
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
     loading_kwargs = {}
     if issubclass(class_obj, torch.nn.Module):
         loading_kwargs["torch_dtype"] = torch_dtype
-    if issubclass(class_obj, diffusers.OnnxRuntimeModel):
+    if issubclass(class_obj, diffusers_module.OnnxRuntimeModel):
         loading_kwargs["provider"] = provider
         loading_kwargs["sess_options"] = sess_options
 
-    is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
+    is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
 
     if is_transformers_available():
         transformers_version = version.parse(version.parse(transformers.__version__).base_version)
@@ -533,7 +532,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
-        from diffusers import pipelines
+        diffusers_module = importlib.import_module(__name__.split(".")[0])
+        pipelines = getattr(diffusers_module, "pipelines")
 
         for name, module in kwargs.items():
             # retrieve library
@@ -1657,14 +1657,24 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # retrieve all folder_names that contain relevant files
             folder_names = [k for k, v in config_dict.items() if isinstance(v, list)]
 
+            filenames = {sibling.rfilename for sibling in info.siblings}
+            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+
+            diffusers_module = importlib.import_module(__name__.split(".")[0])
+            pipelines = getattr(diffusers_module, "pipelines")
+
             # optionally create a custom component <> custom file mapping
             custom_components = {}
             for component in folder_names:
-                if config_dict[component][0] not in LOADABLE_CLASSES.keys():
-                    custom_components[component] = config_dict[component][0]
+                module_candidate = config_dict[component][0]
+                candidate_file = os.path.join(module_candidate, config_dict[component][1] + ".py")
 
-            filenames = {sibling.rfilename for sibling in info.siblings}
-            model_filenames, variant_filenames = variant_compatible_siblings(filenames, variant=variant)
+                if candidate_file in filenames:
+                    custom_components[component] = module_candidate
+                elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
+                    raise ValueError(
+                        f"{module_candidate}/{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and {module_candidate} is not a module in 'diffusers/pipelines'."
+                    )
 
             if len(variant_filenames) == 0 and variant is not None:
                 deprecation_message = (
@@ -1838,7 +1848,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             cls_name = cls.load_config(os.path.join(cached_folder, "model_index.json")).get("_class_name", None)
             cls_name = cls_name[4:] if isinstance(cls_name, str) and cls_name.startswith("Flax") else cls_name
 
-            pipeline_class = getattr(diffusers, cls_name, None)
+            diffusers_module = importlib.import_module(__name__.split(".")[0])
+            pipeline_class = getattr(diffusers_module, cls_name, None)
 
             if pipeline_class is not None and pipeline_class._load_connected_pipes:
                 modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
