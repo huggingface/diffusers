@@ -2165,7 +2165,7 @@ The model can be used with `diffusers` as follows:
 from diffusers import DiffusionPipeline
 import torch
 
-pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_txt2img")
+pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_txt2img", custom_revision="main")
 
 # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
 pipe.to(torch_device="cuda", torch_dtype=torch.float32)
