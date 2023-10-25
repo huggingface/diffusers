@@ -982,7 +982,7 @@ class StableDiffusionControlNetInpaintPipeline(
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
-        use_masked_image_as_init=True,
+        masked_content="original",  # original, blank
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1078,6 +1078,13 @@ class StableDiffusionControlNetInpaintPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            masked_content(`str`, *optional*, defaults to `"original"`):
+                This option determines how the masked content on the original image would affect the generation
+                process. Choose from `"original"` or `"blank"`. If `"original"`, the entire image will be used to
+                create the initial latent, therefore the maksed content in will influence the result. If `"blank"`, the
+                masked image will be used to create initial latent, therefore the masked content will not have any
+                influence on the results. This option is only applicable when you use inpainting pipeline with
+                text-to-image Unet Model.
 
         Examples:
 
@@ -1232,7 +1239,7 @@ class StableDiffusionControlNetInpaintPipeline(
         num_channels_latents = self.vae.config.latent_channels
         num_channels_unet = self.unet.config.in_channels
         return_image_latents = num_channels_unet == 4
-        if num_channels_unet == 4 and not use_masked_image_as_init:
+        if num_channels_unet == 4 and masked_content == "blank":
             init_image = masked_image_latents.chunk(2)[0]
 
         latents_outputs = self.prepare_latents(
