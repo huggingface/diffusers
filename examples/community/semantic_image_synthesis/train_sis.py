@@ -322,7 +322,7 @@ def main(
                 cond = F.one_hot(y.long(),num_classes=train_dataset.cls_count).to(x.device).float().permute(0,3,1,2)
                 ### We add some unconditionnal training iterations.
                 ucond = torch.rand(len(y),device=x.device)<train_ucond_prob # 1 if < p_ucond
-                cond = cond*(1-ucond[...,None,None,None]) # if ucond, we multiply by 0.
+                cond = cond*(1.0-ucond[...,None,None,None].float()) # if ucond, we multiply by 0.
                 # We sample the noise
                 x_t = noise_scheduler.add_noise(x,noise,timesteps.long())
                 if not learned_variance:
