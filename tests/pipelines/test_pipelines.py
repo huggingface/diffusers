@@ -883,7 +883,7 @@ class CustomPipelineTests(unittest.TestCase):
 
         # Check that only loading custom componets "my_unet", "my_scheduler" and explicit custom pipeline works
         pipeline = DiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-sdxl-custom-components", custom_pipeline="my_pipeline"
+            "hf-internal-testing/tiny-sdxl-custom-components", custom_pipeline="my_pipeline", trust_remote_code=True
         )
 
         assert pipeline.config.unet == ("diffusers_modules.local.my_unet_model", "MyUNetModel")
