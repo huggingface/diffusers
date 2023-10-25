@@ -49,33 +49,35 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import T2IAdapter, StableDiffusionXLAdapterPipeline, DDPMScheduler
-        >>> from diffusers.utils import load_image
+		>>> from diffusers import DiffusionPipeline, T2IAdapter
+		>>> from diffusers.utils import load_image
+		>>> from PIL import Image
 
-        >>> sketch_image = load_image("https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png").convert("L")
+		>>> adapter = T2IAdapter.from_pretrained(
+    	... 	"TencentARC/t2i-adapter-sketch-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+		... ).to("cuda")
 
-        >>> model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+		>>> pipe = DiffusionPipeline.from_pretrained(
+    	... 	"stabilityai/stable-diffusion-xl-base-1.0",
+    	... 	torch_dtype=torch.float16,
+    	... 	variant="fp16",
+    	... 	use_safetensors=True,
+    	... 	custom_pipeline="./stable_diffusion_xl_adapter_inpaint.py",
+    	... 	adapter=adapter
+		... ).to("cuda")
 
-        >>> adapter = T2IAdapter.from_pretrained(
-        ...     "Adapter/t2iadapter",
-        ...     subfolder="sketch_sdxl_1.0",
-        ...     torch_dtype=torch.float16,
-        ...     adapter_type="full_adapter_xl",
-        ... )
-        >>> scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
+		>>> image = Image.open(image_path).convert("RGB")
+		>>> mask = Image.open(mask_path).convert("RGB")
+		>>> adapter_sketch = Image.open(adapter_sketch_path).convert("RGB")
 
-        >>> pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-        ...     model_id, adapter=adapter, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
-        ... ).to("cuda")
-
-        >>> generator = torch.manual_seed(42)
-        >>> sketch_image_out = pipe(
-        ...     prompt="a photo of a dog in real world, high quality",
-        ...     negative_prompt="extra digit, fewer digits, cropped, worst quality, low quality",
-        ...     image=sketch_image,
-        ...     generator=generator,
-        ...     guidance_scale=7.5,
-        ... ).images[0]
+		>>> result_image = pipe(
+    	... 	image=image,
+    	... 	mask_image=mask,
+    	... 	adapter_image=adapter_sketch,
+    	... 	prompt="a photo of a dog in real world, high quality",
+    	... 	negative_prompt="extra digit, fewer digits, cropped, worst quality, low quality",
+		...		num_inference_steps=50
+		... ).images[0]
         ```
 """
 
@@ -601,6 +603,8 @@ class StableDiffusionXLAdapterInpaintPipeline(DiffusionPipeline, FromSingleFileM
         self,
         prompt,
         prompt_2,
+        strength,
+        num_inference_steps,
         height,
         width,
         callback_steps,
@@ -611,6 +615,15 @@ class StableDiffusionXLAdapterInpaintPipeline(DiffusionPipeline, FromSingleFileM
         pooled_prompt_embeds=None,
         negative_pooled_prompt_embeds=None,
     ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+        if num_inference_steps is None:
+            raise ValueError("`num_inference_steps` cannot be None.")
+        elif not isinstance(num_inference_steps, int) or num_inference_steps <= 0:
+            raise ValueError(
+                f"`num_inference_steps` has to be a positive integer but is {num_inference_steps} of type"
+                f" {type(num_inference_steps)}."
+            )
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -1116,6 +1129,8 @@ class StableDiffusionXLAdapterInpaintPipeline(DiffusionPipeline, FromSingleFileM
         self.check_inputs(
             prompt,
             prompt_2,
+            strength,
+            num_inference_steps,
             height,
             width,
             callback_steps,
