@@ -92,12 +92,12 @@
       title: Adapt a model to a new task
     - local: training/unconditional_training
       title: Unconditional image generation
+    - local: training/text2image
+      title: Text-to-image
     - local: training/text_inversion
       title: Textual Inversion
     - local: training/dreambooth
       title: DreamBooth
-    - local: training/text2image
-      title: Text-to-image
     - local: training/lora
       title: Low-Rank Adaptation of Large Language Models (LoRA)
     - local: training/controlnet

@@ -167,7 +167,7 @@ A full training run takes 2 hours on 4xV100 GPUs.
 </Tip>
 
 <hfoptions id="launchtraining">
-<hfoption id-="single GPU">
+<hfoption id="single GPU">
 ```bash
 accelerate launch train_unconditional.py \
   --dataset_name="huggan/flowers-102-categories" \
