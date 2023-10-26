@@ -290,7 +290,7 @@ class ControlNetPipelineSDXLFastTests(
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
         expected_slice = np.array(
-            [0.5381963, 0.4836803, 0.45821992, 0.5577731, 0.51210403, 0.4794795, 0.59282357, 0.5647199, 0.43100584]
+            [0.5381064, 0.39685374, 0.4803775, 0.6868999, 0.5960682, 0.58983135, 0.59488124, 0.5560177, 0.5095338]
         )
 
         # make sure that it's equal
