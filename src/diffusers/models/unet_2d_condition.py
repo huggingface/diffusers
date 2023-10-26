@@ -874,9 +874,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         forward_upsample_size = False
         upsample_size = None
 
-        if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
-            # Forward upsample size to force interpolation output size.
-            forward_upsample_size = True
+        for dim in sample.shape[-2:]:
+            if dim % default_overall_up_factor != 0:
+                # Forward upsample size to force interpolation output size.
+                forward_upsample_size = True
+                break
 
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension
         # expects mask of shape:
@@ -1153,7 +1155,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self)
+            unscale_lora_layers(self, lora_scale)
 
         if not return_dict:
             return (sample,)

@@ -11,18 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import get_activation
+from .activations import GEGLU, GELU, ApproximateGELU
 from .attention_processor import Attention
-from .embeddings import CombinedTimestepLabelEmbeddings
 from .lora import LoRACompatibleLinear
+from .normalization import AdaLayerNorm, AdaLayerNormZero
 
 
 @maybe_allow_in_graph
@@ -331,168 +330,3 @@ class FeedForward(nn.Module):
             else:
                 hidden_states = module(hidden_states)
         return hidden_states
-
-
-class GELU(nn.Module):
-    r"""
-    GELU activation function with tanh approximation support with `approximate="tanh"`.
-
-    Parameters:
-        dim_in (`int`): The number of channels in the input.
-        dim_out (`int`): The number of channels in the output.
-        approximate (`str`, *optional*, defaults to `"none"`): If `"tanh"`, use tanh approximation.
-    """
-
-    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none"):
-        super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
-        self.approximate = approximate
-
-    def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type != "mps":
-            return F.gelu(gate, approximate=self.approximate)
-        # mps: gelu is not implemented for float16
-        return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
-
-    def forward(self, hidden_states):
-        hidden_states = self.proj(hidden_states)
-        hidden_states = self.gelu(hidden_states)
-        return hidden_states
-
-
-class GEGLU(nn.Module):
-    r"""
-    A variant of the gated linear unit activation function from https://arxiv.org/abs/2002.05202.
-
-    Parameters:
-        dim_in (`int`): The number of channels in the input.
-        dim_out (`int`): The number of channels in the output.
-    """
-
-    def __init__(self, dim_in: int, dim_out: int):
-        super().__init__()
-        linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
-
-        self.proj = linear_cls(dim_in, dim_out * 2)
-
-    def gelu(self, gate: torch.Tensor) -> torch.Tensor:
-        if gate.device.type != "mps":
-            return F.gelu(gate)
-        # mps: gelu is not implemented for float16
-        return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
-
-    def forward(self, hidden_states, scale: float = 1.0):
-        args = () if USE_PEFT_BACKEND else (scale,)
-        hidden_states, gate = self.proj(hidden_states, *args).chunk(2, dim=-1)
-        return hidden_states * self.gelu(gate)
-
-
-class ApproximateGELU(nn.Module):
-    r"""
-    The approximate form of Gaussian Error Linear Unit (GELU). For more details, see section 2:
-    https://arxiv.org/abs/1606.08415.
-
-    Parameters:
-        dim_in (`int`): The number of channels in the input.
-        dim_out (`int`): The number of channels in the output.
-    """
-
-    def __init__(self, dim_in: int, dim_out: int):
-        super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.proj(x)
-        return x * torch.sigmoid(1.702 * x)
-
-
-class AdaLayerNorm(nn.Module):
-    r"""
-    Norm layer modified to incorporate timestep embeddings.
-
-    Parameters:
-        embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the dictionary of embeddings.
-    """
-
-    def __init__(self, embedding_dim: int, num_embeddings: int):
-        super().__init__()
-        self.emb = nn.Embedding(num_embeddings, embedding_dim)
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, embedding_dim * 2)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False)
-
-    def forward(self, x: torch.Tensor, timestep: torch.Tensor) -> torch.Tensor:
-        emb = self.linear(self.silu(self.emb(timestep)))
-        scale, shift = torch.chunk(emb, 2)
-        x = self.norm(x) * (1 + scale) + shift
-        return x
-
-
-class AdaLayerNormZero(nn.Module):
-    r"""
-    Norm layer adaptive layer norm zero (adaLN-Zero).
-
-    Parameters:
-        embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the dictionary of embeddings.
-    """
-
-    def __init__(self, embedding_dim: int, num_embeddings: int):
-        super().__init__()
-
-        self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
-
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        timestep: torch.Tensor,
-        class_labels: torch.LongTensor,
-        hidden_dtype: Optional[torch.dtype] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        emb = self.linear(self.silu(self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)))
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
-        x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
-        return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
-
-
-class AdaGroupNorm(nn.Module):
-    r"""
-    GroupNorm layer modified to incorporate timestep embeddings.
-
-    Parameters:
-        embedding_dim (`int`): The size of each embedding vector.
-        num_embeddings (`int`): The size of the dictionary of embeddings.
-        num_groups (`int`): The number of groups to separate the channels into.
-        act_fn (`str`, *optional*, defaults to `None`): The activation function to use.
-        eps (`float`, *optional*, defaults to `1e-5`): The epsilon value to use for numerical stability.
-    """
-
-    def __init__(
-        self, embedding_dim: int, out_dim: int, num_groups: int, act_fn: Optional[str] = None, eps: float = 1e-5
-    ):
-        super().__init__()
-        self.num_groups = num_groups
-        self.eps = eps
-
-        if act_fn is None:
-            self.act = None
-        else:
-            self.act = get_activation(act_fn)
-
-        self.linear = nn.Linear(embedding_dim, out_dim * 2)
-
-    def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
-        if self.act:
-            emb = self.act(emb)
-        emb = self.linear(emb)
-        emb = emb[:, :, None, None]
-        scale, shift = emb.chunk(2, dim=1)
-
-        x = F.group_norm(x, self.num_groups, eps=self.eps)
-        x = x * (1 + scale) + shift
-        return x
