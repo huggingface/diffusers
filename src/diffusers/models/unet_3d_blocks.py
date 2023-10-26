@@ -22,7 +22,7 @@ from ..utils.torch_utils import apply_freeu
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, ResnetBlock2D, TemporalConvLayer, Upsample2D
 from .transformer_2d import Transformer2DModel
-from .transformer_temporal import TransformerTemporalModel, TransformerTemporalMotionModel
+from .transformer_temporal import TransformerTemporalModel
 
 
 def get_down_block(
@@ -881,15 +881,17 @@ class DownBlockMotion(nn.Module):
                 )
             )
             motion_modules.append(
-                TransformerTemporalMotionModel(
+                TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     norm_num_groups=temporal_norm_num_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
                     attention_bias=temporal_attention_bias,
                     activation_fn=temporal_activation_fn,
+                    use_positional_embedding=True,
                     max_seq_length=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
+                    apply_framewise_group_norm=True,
                 )
             )
 
@@ -1033,15 +1035,17 @@ class CrossAttnDownBlockMotion(nn.Module):
                 )
 
             motion_modules.append(
-                TransformerTemporalMotionModel(
+                TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     norm_num_groups=temporal_norm_num_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
                     attention_bias=temporal_attention_bias,
                     activation_fn=temporal_activation_fn,
+                    use_positional_embedding=True,
                     max_seq_length=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
+                    apply_framewise_group_norm=True,
                 )
             )
 
@@ -1223,15 +1227,17 @@ class CrossAttnUpBlockMotion(nn.Module):
                     )
                 )
             motion_modules.append(
-                TransformerTemporalMotionModel(
+                TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     norm_num_groups=temporal_norm_num_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
                     attention_bias=temporal_attention_bias,
                     activation_fn=temporal_activation_fn,
+                    use_positional_embedding=True,
                     max_seq_length=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
+                    apply_framewise_group_norm=True,
                 )
             )
 
@@ -1385,15 +1391,17 @@ class UpBlockMotion(nn.Module):
             )
 
             motion_modules.append(
-                TransformerTemporalMotionModel(
+                TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
                     norm_num_groups=temporal_norm_num_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
                     attention_bias=temporal_attention_bias,
                     activation_fn=temporal_activation_fn,
+                    use_positional_embedding=True,
                     max_seq_length=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
+                    apply_framewise_group_norm=True,
                 )
             )
 
@@ -1564,15 +1572,17 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                 )
             )
             motion_modules.append(
-                TransformerTemporalMotionModel(
+                TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     attention_head_dim=in_channels // temporal_num_attention_heads,
                     in_channels=in_channels,
                     norm_num_groups=temporal_norm_num_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
                     attention_bias=temporal_attention_bias,
+                    use_positional_embedding=True,
                     activation_fn=temporal_activation_fn,
                     max_seq_length=temporal_max_seq_length,
+                    apply_framewise_group_norm=True,
                 )
             )
 

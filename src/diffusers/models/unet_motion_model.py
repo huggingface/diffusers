@@ -29,7 +29,7 @@ from .attention_processor import (
 )
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .transformer_temporal import TransformerTemporalMotionModel
+from .transformer_temporal import TransformerTemporalModel
 from .unet_2d_condition import UNet2DConditionModel
 from .unet_3d_blocks import (
     CrossAttnDownBlockMotion,
@@ -63,7 +63,7 @@ class MotionModules(nn.Module):
 
         for i in range(layers_per_block):
             self.motion_modules.append(
-                TransformerTemporalMotionModel(
+                TransformerTemporalModel(
                     in_channels=in_channels,
                     norm_num_groups=norm_num_groups,
                     cross_attention_dim=cross_attention_dim,
@@ -71,6 +71,7 @@ class MotionModules(nn.Module):
                     attention_bias=attention_bias,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=in_channels // num_attention_heads,
+                    use_positional_embedding=True,
                     max_seq_length=max_seq_length,
                 )
             )
