@@ -12,15 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
-from torch import nn
 from typing import Any, Dict, Optional, Tuple
 
-from ..utils.torch_utils import apply_freeu
+import torch
+from torch import nn
+
 from ..utils import is_torch_version
+from ..utils.torch_utils import apply_freeu
+from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import Downsample2D, ResnetBlock2D, TemporalConvLayer, Upsample2D
 from .transformer_2d import Transformer2DModel
-from .dual_transformer_2d import DualTransformer2DModel
 from .transformer_temporal import TransformerTemporalModel, TransformerTemporalMotionModel
 
 

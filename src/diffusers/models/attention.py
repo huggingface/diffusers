@@ -20,7 +20,7 @@ from torch import nn
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import get_activation
 from .attention_processor import Attention
-from .embeddings import CombinedTimestepLabelEmbeddings, get_timestep_embedding, PositionalEmbedding
+from .embeddings import CombinedTimestepLabelEmbeddings, PositionalEmbedding
 from .lora import LoRACompatibleLinear
 
 
