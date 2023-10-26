@@ -17,15 +17,15 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from packaging import version
-from sis_dataset import CELEBAHQ_DICT, SISDataset
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
+from sis_dataset import CELEBAHQ_DICT, SISDataset
 
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils.import_utils import is_bitsandbytes_available
 from src.losses.vlb_loss import VLBLoss
-from src.models import UNet2DSISModel, get_config
+from src.models import UNet2DSISModel
 from src.pipelines.semantic_only_diffusion import SemanticOnlyDiffusionPipeline
 from src.schedulers.ddpm_training import DDPMScheduler, DDPMTrainingScheduler
 
@@ -230,7 +230,7 @@ def main(
     else:
         learned_variance = False
         output_channels = input_channels
-    config = get_config(train_dataset.img_size, input_channels, output_channels, train_dataset.cls_count)
+    config = UNet2DSISModel.get_config(train_dataset.img_size, input_channels, output_channels, train_dataset.cls_count)
     unet = UNet2DSISModel(**config)
     if use_ema:
         ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DSISModel, model_config=unet.config)
