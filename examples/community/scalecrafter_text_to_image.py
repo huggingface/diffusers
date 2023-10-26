@@ -9,7 +9,7 @@ from typing import Optional
 from diffusers.image_processor import VaeImageProcessor
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
 import copy
 
@@ -127,9 +127,10 @@ class ScaleCrafterTexttoImagePipeline(StableDiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         feature_extractor: CLIPImageProcessor,
-
+        safety_checker: StableDiffusionSafetyChecker,
+        requires_safety_checker: bool = True,
     ):
-        super().__init__()
+        super().__init__(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, unet=unet, scheduler=scheduler, feature_extractor=feature_extractor, safety_checker=safety_checker, requires_safety_checker=requires_safety_checker)
 
         self.register_modules(
             vae=vae,
@@ -235,7 +236,6 @@ class ScaleCrafterTexttoImagePipeline(StableDiffusionPipeline):
         unet_inflate, unet_inflate_vanilla = None, None
 
         # We have 3 unets, the original, the inflated, and the inflated vanilla
-        inflate_tau = self.config.inflate_tau
         if transform is not None:
             unet_inflate = copy.deepcopy(self.unet)
             if inflate_settings is not None:
