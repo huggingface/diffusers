@@ -27,6 +27,7 @@ pip install .
 Then navigate to the example folder containing the training script and install the required dependencies:
 
 ```bash
+cd examples/unconditional_image_generation
 pip install -r requirements.txt
 ```
 
@@ -64,7 +65,7 @@ The following sections highlight parts of the training script that are important
 
 </Tip>
 
-## Training parameters
+## Script parameters
 
 The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L55) function. The training script provides default values for each parameter such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
 
@@ -84,11 +85,11 @@ Some basic and important parameters to specify include:
 
 Bring your dataset, and let the training script handle everything else!
 
-## Training
+## Training script
 
 The code for preprocessing the dataset and the training loop is found in the [`main()`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L275) function. If you need to adapt the training script, this is where you'll need to make your changes.
 
-The `train_unconditional` script [initializes a [`UNet2DModel`]](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L356) if you don't provide a model configuration. You can configure the UNet here if you'd like:
+The `train_unconditional` script [initializes a `UNet2DModel`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L356) if you don't provide a model configuration. You can configure the UNet here if you'd like:
 
 ```py
 model = UNet2DModel(
@@ -158,6 +159,8 @@ augmentations = transforms.Compose(
 
 Finally, the [training loop](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L540) handles everything else such as adding noise to the images, predicting the noise residual, calculating the loss, saving checkpoints at specified steps, and saving and pushing the model to the Hub.
 
+## Launch the script
+
 Once you've made all your changes or you're okay with the default configuration, you're ready to launch the training script! 🚀
 
 <Tip warning={true}>
@@ -168,6 +171,7 @@ A full training run takes 2 hours on 4xV100 GPUs.
 
 <hfoptions id="launchtraining">
 <hfoption id="single GPU">
+
 ```bash
 accelerate launch train_unconditional.py \
   --dataset_name="huggan/flowers-102-categories" \
@@ -175,8 +179,12 @@ accelerate launch train_unconditional.py \
   --mixed_precision="fp16" \
   --push_to_hub
 ```
+
 </hfoption>
 <hfoption id="multi-GPU">
+
+If you're training with more than one GPU, add the `--multi_gpu` flag to the training command:
+
 ```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
   --dataset_name="huggan/flowers-102-categories" \
@@ -184,6 +192,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
   --mixed_precision="fp16" \
   --push_to_hub
 ```
+
 </hfoption>
 </hfoptions>
 
