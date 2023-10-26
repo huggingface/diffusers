@@ -142,7 +142,8 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
             output = model(**inputs_dict)[0]
             output_loaded = model_loaded(**inputs_dict)[0]
 
-        assert np.abs(output - output_loaded).max() < 1e-4
+        max_diff = (output - output_loaded).abs().max().item()
+        self.assertLessEqual(max_diff, 1e-4, "Models give different forward passes")
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

@@ -31,21 +31,132 @@ from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unet_2d_condition import UNet2DConditionModel
 from .unet_3d_condition import UNet3DConditionOutput
-from .unet_motion_blocks import (
+from .unet_3d_blocks import (
     CrossAttnDownBlockMotion,
     CrossAttnUpBlockMotion,
     DownBlockMotion,
-    MotionAdapter,
-    MotionAttnProcessor,
-    MotionAttnProcessor2_0,
     UNetMidBlockCrossAttnMotion,
     UpBlockMotion,
     get_down_block,
     get_up_block,
 )
+from .transformer_temporal import TransformerTemporalMotionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class MotionModules(nn.Module):
+    def __init__(
+        self,
+        in_channels,
+        layers_per_block=2,
+        num_attention_heads=8,
+        attention_bias=False,
+        cross_attention_dim=None,
+        activation_fn="geglu",
+        norm_num_groups=32,
+        max_seq_length=32,
+    ):
+        super().__init__()
+        self.motion_modules = nn.ModuleList([])
+
+        for i in range(layers_per_block):
+            self.motion_modules.append(
+                TransformerTemporalMotionModel(
+                    in_channels=in_channels,
+                    norm_num_groups=norm_num_groups,
+                    cross_attention_dim=cross_attention_dim,
+                    activation_fn=activation_fn,
+                    attention_bias=attention_bias,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=in_channels // num_attention_heads,
+                    max_seq_length=max_seq_length,
+                )
+            )
+
+
+class MotionAdapter(ModelMixin, ConfigMixin):
+    @register_to_config
+    def __init__(
+        self,
+        block_out_channels=(320, 640, 1280, 1280),
+        motion_layers_per_block=2,
+        motion_mid_block_layers_per_block=1,
+        motion_num_attention_heads=8,
+        motion_attention_bias=False,
+        motion_cross_attention_dim=None,
+        motion_activation_fn="geglu",
+        motion_norm_num_groups=32,
+        motion_max_seq_length=32,
+    ):
+        """Container to store AnimateDiff Motion Modules
+
+        Args:
+            block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+            The tuple of output channels for each UNet block.
+            layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
+            num_attention_heads (`int`, *optional*):
+            The number of heads to use in each attention layer.
+            attention_bias (bool, optional, defaults to False): Whether to include bias in attention layers.
+            cross_attention_dim (int, optional, Defaults to None): Set in order to use cross attention.
+            activation_fn (str, optional, Defaults to "geglu"): Activation Function.
+            norm_num_groups (int, optional): _description_. Defaults to 32.
+            max_seq_length (int, optional): _description_. Defaults to 24.
+        """
+
+        super().__init__()
+        down_blocks = []
+        up_blocks = []
+
+        for i, channel in enumerate(block_out_channels):
+            output_channel = block_out_channels[i]
+            down_blocks.append(
+                MotionModules(
+                    in_channels=output_channel,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    activation_fn=motion_activation_fn,
+                    attention_bias=motion_attention_bias,
+                    num_attention_heads=motion_num_attention_heads,
+                    max_seq_length=motion_max_seq_length,
+                    layers_per_block=motion_layers_per_block,
+                )
+            )
+
+        self.mid_block = MotionModules(
+            in_channels=block_out_channels[-1],
+            norm_num_groups=motion_norm_num_groups,
+            cross_attention_dim=motion_cross_attention_dim,
+            activation_fn=motion_activation_fn,
+            attention_bias=motion_attention_bias,
+            num_attention_heads=motion_num_attention_heads,
+            layers_per_block=motion_mid_block_layers_per_block,
+            max_seq_length=motion_max_seq_length,
+        )
+
+        reversed_block_out_channels = list(reversed(block_out_channels))
+        output_channel = reversed_block_out_channels[0]
+        for i, channel in enumerate(reversed_block_out_channels):
+            output_channel = reversed_block_out_channels[i]
+            up_blocks.append(
+                MotionModules(
+                    in_channels=output_channel,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    activation_fn=motion_activation_fn,
+                    attention_bias=motion_attention_bias,
+                    num_attention_heads=motion_num_attention_heads,
+                    max_seq_length=motion_max_seq_length,
+                    layers_per_block=motion_layers_per_block + 1,
+                )
+            )
+
+        self.down_blocks = nn.ModuleList(down_blocks)
+        self.up_blocks = nn.ModuleList(up_blocks)
+
+    def forward(self, sample):
+        pass
 
 
 class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
@@ -175,12 +286,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 downsample_padding=downsample_padding,
                 use_linear_projection=use_linear_projection,
                 dual_cross_attention=False,
-                motion_norm_num_groups=motion_norm_num_groups,
-                motion_cross_attention_dim=motion_cross_attention_dim,
-                motion_num_attention_heads=motion_num_attention_heads,
-                motion_attention_bias=motion_attention_bias,
-                motion_activation_fn=motion_activation_fn,
-                motion_max_seq_length=motion_max_seq_length,
+                temporal_norm_num_groups=motion_norm_num_groups,
+                temporal_cross_attention_dim=motion_cross_attention_dim,
+                temporal_num_attention_heads=motion_num_attention_heads,
+                temporal_attention_bias=motion_attention_bias,
+                temporal_activation_fn=motion_activation_fn,
+                temporal_max_seq_length=motion_max_seq_length,
             )
             self.down_blocks.append(down_block)
 
@@ -195,12 +306,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             num_attention_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
             dual_cross_attention=False,
-            motion_norm_num_groups=motion_norm_num_groups,
-            motion_cross_attention_dim=motion_cross_attention_dim,
-            motion_num_attention_heads=motion_num_attention_heads,
-            motion_attention_bias=motion_attention_bias,
-            motion_activation_fn=motion_activation_fn,
-            motion_max_seq_length=motion_max_seq_length,
+            temporal_norm_num_groups=motion_norm_num_groups,
+            temporal_cross_attention_dim=motion_cross_attention_dim,
+            temporal_num_attention_heads=motion_num_attention_heads,
+            temporal_attention_bias=motion_attention_bias,
+            temporal_activation_fn=motion_activation_fn,
+            temporal_max_seq_length=motion_max_seq_length,
         )
 
         # count how many layers upsample the images
@@ -241,12 +352,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 dual_cross_attention=False,
                 resolution_idx=i,
                 use_linear_projection=use_linear_projection,
-                motion_norm_num_groups=motion_norm_num_groups,
-                motion_cross_attention_dim=motion_cross_attention_dim,
-                motion_num_attention_heads=motion_num_attention_heads,
-                motion_attention_bias=motion_attention_bias,
-                motion_activation_fn=motion_activation_fn,
-                motion_max_seq_length=motion_max_seq_length,
+                temporal_norm_num_groups=motion_norm_num_groups,
+                temporal_cross_attention_dim=motion_cross_attention_dim,
+                temporal_num_attention_heads=motion_num_attention_heads,
+                temporal_attention_bias=motion_attention_bias,
+                temporal_activation_fn=motion_activation_fn,
+                temporal_max_seq_length=motion_max_seq_length,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -530,13 +641,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             )
 
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "processor"):
-                # ignore the custom attention processors from motion modules
-                if isinstance(module.processor, MotionAttnProcessor) or isinstance(
-                    module.processor, MotionAttnProcessor2_0
-                ):
-                    return
-
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
                     module.set_processor(processor, _remove_lora=_remove_lora)
