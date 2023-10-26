@@ -5,10 +5,13 @@ import math
 from diffusers.models.lora import LoRACompatibleConv
 from torch import Tensor
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
-
+from typing import Optional
 from diffusers.image_processor import VaeImageProcessor
 from diffusers import AutoencoderKL, UNet2DConditionModel
 from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
+import copy
 
 
 def inflate_kernels(unet, inflate_conv_list, inflation_transform):
@@ -124,6 +127,7 @@ class ScaleCrafterTexttoImagePipeline(StableDiffusionPipeline):
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         feature_extractor: CLIPImageProcessor,
+
     ):
         super().__init__()
 
@@ -139,14 +143,211 @@ class ScaleCrafterTexttoImagePipeline(StableDiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
 
+    def __call__(
+            self, 
+            prompt=None,
+            height: Optional[int] = None,
+            width: Optional[int] = None,
+            num_inference_steps: int = 50,
+            guidance_scale: float = 7.5,
+            negative_prompt=None,
+            num_images_per_prompt: Optional[int] = 1,
+            eta: float = 1.0,
+            generator=None,
+            latents: Optional[torch.FloatTensor] = None,
+            prompt_embeds: Optional[torch.FloatTensor] = None,
+            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+            output_type: Optional[str] = "pil",
+            return_dict: bool = True,
+            callback=None,
+            callback_steps: int = 1,
+            cross_attention_kwargs=None,
+            guidance_rescale: float = 0.0,
+            ndcfg_tau: int = 0,
+            inflate_tau: int = 0,
+            dilate_tau: int = 0,
+            dilate_settings: dict = None,
+            inflate_settings: dict = None,
+            ndcfg_dilate_settings: dict = None,
+            transform: Optional[torch.FloatTensor] = None,
+            progressive: bool = False,
+    ):
+        # 0. Default height and width to unet
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
 
-    def __call__(self):
-          image = torch.randn(
-              (1, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
-          )
-          timestep = 1
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(
+            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+        )
 
-          model_output = self.unet(image, timestep).sample
-          scheduler_output = self.scheduler.step(model_output, timestep, image).prev_sample
+        # 2. Define call parameters
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
 
-          return scheduler_output
+        device = self._execution_device
+        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        # 3. Encode input prompt
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        )
+        prompt_embeds = self._encode_prompt(
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            lora_scale=text_encoder_lora_scale,
+        )
+
+        # 4. Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
+
+        # 5. Prepare latent variables
+        num_channels_latents = self.unet.in_channels
+        latents = self.prepare_latents(
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
+        )
+
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+
+        # 7. Denoising loop
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        unet_inflate, unet_inflate_vanilla = None, None
+
+        # We have 3 unets, the original, the inflated, and the inflated vanilla
+        inflate_tau = self.config.inflate_tau
+        if transform is not None:
+            unet_inflate = copy.deepcopy(self.unet)
+            if inflate_settings is not None:
+                inflate_kernels(unet_inflate, inflate_settings, transform)
+
+        if transform is not None and ndcfg_tau > 0:
+            unet_inflate_vanilla = copy.deepcopy(self.unet)
+            if inflate_settings is not None:
+                inflate_kernels(unet_inflate_vanilla, inflate_settings, transform)
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                # use  inflated unet initially and the normal unet after few steps
+                unet = unet_inflate if i < inflate_tau and transform is not None else self.unet
+                backup_forwards = dict()
+                for name, module in unet.named_modules():
+                    if name in dilate_settings.keys():
+                        backup_forwards[name] = module.forward
+                        dilate = dilate_settings[name]
+                        if progressive:
+                            dilate = max(math.ceil(dilate * ((dilate_tau - i) / dilate_tau)), 2)
+                        if i < inflate_tau and name in inflate_settings:
+                            dilate = dilate / 2
+                        # print(f"{name}: {dilate} {i < dilate_tau}")
+                        module.forward = ReDilateConvProcessor(
+                            module, dilate, mode='bilinear', activate=i < dilate_tau
+                        )
+
+                # predict the noise residual
+                noise_pred = unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
+
+                for name, module in unet.named_modules():
+                    if name in backup_forwards.keys():
+                        module.forward = backup_forwards[name]
+
+                if i < ndcfg_tau:
+                    unet = unet_inflate_vanilla if i < inflate_tau and transform is not None else self.unet
+                    backup_forwards = dict()
+                    for name, module in unet.named_modules():
+                        if name in ndcfg_dilate_settings.keys():
+                            backup_forwards[name] = module.forward
+                            dilate = ndcfg_dilate_settings[name]
+                            if progressive:
+                                dilate = max(math.ceil(dilate * ((ndcfg_tau - i) / ndcfg_tau)), 2)
+                            if i < inflate_tau and name in inflate_settings:
+                                dilate = dilate / 2
+                            # print(f"{name}: {dilate} {i < dilate_tau}")
+                            module.forward = ReDilateConvProcessor(
+                                module, dilate, mode='bilinear', activate=i < ndcfg_tau
+                            )
+
+                    noise_pred_vanilla = unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                    ).sample
+
+                    for name, module in unet.named_modules():
+                        if name in backup_forwards.keys():
+                            module.forward = backup_forwards[name]
+
+                # perform guidance
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    if i < ndcfg_tau:
+                        noise_pred_vanilla, _ = noise_pred_vanilla.chunk(2)
+                        noise_pred = noise_pred_vanilla + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    else:
+                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                if do_classifier_free_guidance and guidance_rescale > 0.0:
+                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, t, latents)
+
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+        else:
+            image = latents
+            has_nsfw_concept = None
+
+        if has_nsfw_concept is None:
+            do_denormalize = [True] * image.shape[0]
+        else:
+            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
+
+        if not return_dict:
+            return image, has_nsfw_concept
+
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+
