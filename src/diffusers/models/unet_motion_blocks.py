@@ -525,6 +525,7 @@ class DownBlockMotion(nn.Module):
                     attention_bias=motion_attention_bias,
                     activation_fn=motion_activation_fn,
                     max_seq_length=motion_max_seq_length,
+                    attention_head_dim=out_channels // motion_num_attention_heads,
                 )
             )
 
@@ -676,6 +677,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                     attention_bias=motion_attention_bias,
                     activation_fn=motion_activation_fn,
                     max_seq_length=motion_max_seq_length,
+                    attention_head_dim=out_channels // motion_num_attention_heads,
                 )
             )
 
@@ -865,6 +867,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                     attention_bias=motion_attention_bias,
                     activation_fn=motion_activation_fn,
                     max_seq_length=motion_max_seq_length,
+                    attention_head_dim=out_channels // motion_num_attention_heads,
                 )
             )
 
@@ -1026,6 +1029,7 @@ class UpBlockMotion(nn.Module):
                     attention_bias=motion_attention_bias,
                     activation_fn=motion_activation_fn,
                     max_seq_length=motion_max_seq_length,
+                    attention_head_dim=out_channels // motion_num_attention_heads,
                 )
             )
 
@@ -1198,6 +1202,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
             motion_modules.append(
                 TransformerTemporalMotionModel(
                     num_attention_heads=motion_num_attention_heads,
+                    attention_head_dim=in_channels // motion_num_attention_heads,
                     in_channels=in_channels,
                     norm_num_groups=motion_norm_num_groups,
                     cross_attention_dim=motion_cross_attention_dim,
