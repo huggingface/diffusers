@@ -83,7 +83,8 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \
     --mixed_precision=fp16 \
-    --seed=42 
+    --seed=42 \
+    --push_to_hub
 ```
 
 Additionally, we support performing validation inference to monitor training progress
@@ -104,7 +105,8 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --val_image_url="https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png" \
     --validation_prompt="make the mountains snowy" \
     --seed=42 \
-    --report_to=wandb 
+    --report_to=wandb \
+    --push_to_hub
  ```
 
  We recommend this type of validation as it can be useful for model debugging. Note that you need `wandb` installed to use this. You can install `wandb` by running `pip install wandb`. 
@@ -131,7 +133,8 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
  --learning_rate=5e-05 --lr_warmup_steps=0 \
  --conditioning_dropout_prob=0.05 \
  --mixed_precision=fp16 \
- --seed=42 
+ --seed=42 \
+ --push_to_hub
 ```
 
  ## Inference
@@ -190,4 +193,4 @@ If you're looking for some interesting ways to use the InstructPix2Pix training 
 
 ## Stable Diffusion XL
 
-We support fine-tuning of the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md).
+There's an equivalent `train_instruct_pix2pix_sdxl.py` script for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the docs [here](./README_sdxl.md) to learn more.

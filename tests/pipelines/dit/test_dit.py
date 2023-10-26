@@ -20,8 +20,8 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DiTPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import is_xformers_available, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import (
     CLASS_CONDITIONED_IMAGE_GENERATION_BATCH_PARAMS,
@@ -96,7 +96,7 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertLessEqual(max_diff, 1e-3)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(relax_max_difference=True, expected_max_diff=1e-3)
+        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -106,8 +106,8 @@ class DiTPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=1e-3)
 
 
+@nightly
 @require_torch_gpu
-@slow
 class DiTPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()

@@ -19,7 +19,7 @@ import torch
 
 from ...models import UNet2DModel
 from ...schedulers import PNDMScheduler
-from ...utils import randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 

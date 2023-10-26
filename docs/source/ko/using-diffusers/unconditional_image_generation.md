@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Unconditional 이미지 생성
 
-[[Colab에서 열기]]
+[[open-in-colab]]
 
 Unconditional 이미지 생성은 비교적 간단한 작업입니다. 모델이 텍스트나 이미지와 같은 추가 조건 없이 이미 학습된 학습 데이터와 유사한 이미지만 생성합니다.
 
@@ -29,25 +29,31 @@ Unconditional 이미지 생성은 비교적 간단한 작업입니다. 모델이
 
 이 가이드에서는 unconditional 이미지 생성에 ['DiffusionPipeline']과 [DDPM](https://arxiv.org/abs/2006.11239)을 사용합니다:
 
-	```python
+```python
  >>> from diffusers import DiffusionPipeline
 
  >>> generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128")
-	```
+```
+
 [diffusion 파이프라인]은 모든 모델링, 토큰화, 스케줄링 구성 요소를 다운로드하고 캐시합니다. 이 모델은 약 14억 개의 파라미터로 구성되어 있기 때문에 GPU에서 실행할 것을 강력히 권장합니다. PyTorch에서와 마찬가지로 제너레이터 객체를 GPU로 옮길 수 있습니다:
-	```python
+
+```python
  >>> generator.to("cuda")
-	```
+```
+
 이제 제너레이터를 사용하여 이미지를 생성할 수 있습니다:
-	```python
+
+```python
  >>> image = generator().images[0]
-	```
+```
+
 출력은 기본적으로 [PIL.Image](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class) 객체로 감싸집니다.
 
 다음을 호출하여 이미지를 저장할 수 있습니다:
-	```python
+
+```python
  >>> image.save("generated_image.png")
-	```
+```
 	
 아래 스페이스(데모 링크)를 이용해 보고, 추론 단계의 매개변수를 자유롭게 조절하여 이미지 품질에 어떤 영향을 미치는지 확인해 보세요!
 

@@ -10,12 +10,12 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Euler Ancestral scheduler
+# EulerAncestralDiscreteScheduler
 
-## Overview
-
-Ancestral sampling with Euler method steps. Based on the original [k-diffusion](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L72) implementation by Katherine Crowson.
-Fast scheduler which often times generates good outputs with 20-30 steps.
+A scheduler that uses ancestral sampling with Euler method steps. This is a fast scheduler which can often generate good outputs in 20-30 steps. The scheduler is based on the original [k-diffusion](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L72) implementation by [Katherine Crowson](https://github.com/crowsonkb/).
 
 ## EulerAncestralDiscreteScheduler
 [[autodoc]] EulerAncestralDiscreteScheduler
+
+## EulerAncestralDiscreteSchedulerOutput
+[[autodoc]] schedulers.scheduling_euler_ancestral_discrete.EulerAncestralDiscreteSchedulerOutput

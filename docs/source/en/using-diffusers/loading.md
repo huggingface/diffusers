@@ -39,7 +39,7 @@ The [`DiffusionPipeline`] class is the simplest and most generic way to load any
 from diffusers import DiffusionPipeline
 
 repo_id = "runwayml/stable-diffusion-v1-5"
-pipe = DiffusionPipeline.from_pretrained(repo_id)
+pipe = DiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
 ```
 
 You can also load a checkpoint with it's specific pipeline class. The example above loaded a Stable Diffusion model; to get the same result, use the [`StableDiffusionPipeline`] class:
@@ -48,7 +48,7 @@ You can also load a checkpoint with it's specific pipeline class. The example ab
 from diffusers import StableDiffusionPipeline
 
 repo_id = "runwayml/stable-diffusion-v1-5"
-pipe = StableDiffusionPipeline.from_pretrained(repo_id)
+pipe = StableDiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
 ```
 
 A checkpoint (such as [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) or [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)) may also be used for more than one task, like text-to-image or image-to-image. To differentiate what task you want to use the checkpoint for, you have to load it directly with it's corresponding task-specific pipeline class:
@@ -65,7 +65,7 @@ pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
 To load a diffusion pipeline locally, use [`git-lfs`](https://git-lfs.github.com/) to manually download the checkpoint (in this case, [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)) to your local disk. This creates a local folder, `./stable-diffusion-v1-5`, on your disk:
 
 ```bash
-git lfs install
+git-lfs install
 git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
@@ -75,7 +75,7 @@ Then pass the local path to [`~DiffusionPipeline.from_pretrained`]:
 from diffusers import DiffusionPipeline
 
 repo_id = "./stable-diffusion-v1-5"
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
 ```
 
 The [`~DiffusionPipeline.from_pretrained`] method won't download any files from the Hub when it detects a local path, but this also means it won't download and cache the latest changes to a checkpoint.
@@ -94,7 +94,7 @@ To find out which schedulers are compatible for customization, you can use the `
 from diffusers import DiffusionPipeline
 
 repo_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
 stable_diffusion.scheduler.compatibles
 ```
 
@@ -109,7 +109,7 @@ repo_id = "runwayml/stable-diffusion-v1-5"
 
 scheduler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
 
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=scheduler)
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=scheduler, use_safetensors=True)
 ```
 
 ### Safety checker
@@ -120,7 +120,7 @@ Diffusion models like Stable Diffusion can generate harmful content, which is wh
 from diffusers import DiffusionPipeline
 
 repo_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=None)
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=None, use_safetensors=True)
 ```
 
 ### Reuse components across pipelines
@@ -131,7 +131,7 @@ You can also reuse the same components in multiple pipelines to avoid loading th
 from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
 
 model_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id)
+stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 
 components = stable_diffusion_txt2img.components
 ```
@@ -148,7 +148,7 @@ You can also pass the components individually to the pipeline if you want more f
 from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
 
 model_id = "runwayml/stable-diffusion-v1-5"
-stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id)
+stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id, use_safetensors=True)
 stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(
     vae=stable_diffusion_txt2img.vae,
     text_encoder=stable_diffusion_txt2img.text_encoder,
@@ -194,10 +194,12 @@ import torch
 
 # load fp16 variant
 stable_diffusion = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+    "runwayml/stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16, use_safetensors=True
 )
 # load non_ema variant
-stable_diffusion = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", variant="non_ema")
+stable_diffusion = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", variant="non_ema", use_safetensors=True
+)
 ```
 
 To save a checkpoint stored in a different floating point type or as a non-EMA variant, use the [`DiffusionPipeline.save_pretrained`] method and specify the `variant` argument. You should try and save a variant to the same folder as the original checkpoint, so you can load both from the same folder:
@@ -215,10 +217,12 @@ If you don't save the variant to an existing folder, you must specify the `varia
 
 ```python
 # 👎 this won't work
-stable_diffusion = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", torch_dtype=torch.float16)
+stable_diffusion = DiffusionPipeline.from_pretrained(
+    "./stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+)
 # 👍 this works
 stable_diffusion = DiffusionPipeline.from_pretrained(
-    "./stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16
+    "./stable-diffusion-v1-5", variant="fp16", torch_dtype=torch.float16, use_safetensors=True
 )
 ```
 
@@ -233,7 +237,7 @@ load model variants, e.g.:
 ```python
 from diffusers import DiffusionPipeline
 
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="fp16")
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="fp16", use_safetensors=True)
 ```
 
 However, this behavior is now deprecated since the "revision" argument should (just as it's done in GitHub) better be used to load model checkpoints from a specific commit or branch in development.
@@ -259,7 +263,7 @@ Models can be loaded from a subfolder with the `subfolder` argument. For example
 from diffusers import UNet2DConditionModel
 
 repo_id = "runwayml/stable-diffusion-v1-5"
-model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet")
+model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet", use_safetensors=True)
 ```
 
 Or directly from a repository's [directory](https://huggingface.co/google/ddpm-cifar10-32/tree/main):
@@ -268,7 +272,7 @@ Or directly from a repository's [directory](https://huggingface.co/google/ddpm-c
 from diffusers import UNet2DModel
 
 repo_id = "google/ddpm-cifar10-32"
-model = UNet2DModel.from_pretrained(repo_id)
+model = UNet2DModel.from_pretrained(repo_id, use_safetensors=True)
 ```
 
 You can also load and save model variants by specifying the `variant` argument in [`ModelMixin.from_pretrained`] and [`ModelMixin.save_pretrained`]:
@@ -276,7 +280,9 @@ You can also load and save model variants by specifying the `variant` argument i
 ```python
 from diffusers import UNet2DConditionModel
 
-model = UNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non-ema")
+model = UNet2DConditionModel.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", subfolder="unet", variant="non-ema", use_safetensors=True
+)
 model.save_pretrained("./local-unet", variant="non-ema")
 ```
 
@@ -310,7 +316,7 @@ euler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
 dpm = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler")
 
 # replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler_anc`, `euler`
-pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
+pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm, use_safetensors=True)
 ```
 
 ## DiffusionPipeline explained
@@ -326,7 +332,7 @@ The pipelines underlying folder structure corresponds directly with their class 
 from diffusers import DiffusionPipeline
 
 repo_id = "runwayml/stable-diffusion-v1-5"
-pipeline = DiffusionPipeline.from_pretrained(repo_id)
+pipeline = DiffusionPipeline.from_pretrained(repo_id, use_safetensors=True)
 print(pipeline)
 ```
 

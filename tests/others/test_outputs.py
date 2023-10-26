@@ -1,3 +1,4 @@
+import pickle as pkl
 import unittest
 from dataclasses import dataclass
 from typing import List, Union
@@ -6,6 +7,7 @@ import numpy as np
 import PIL.Image
 
 from diffusers.utils.outputs import BaseOutput
+from diffusers.utils.testing_utils import require_torch
 
 
 @dataclass
@@ -58,3 +60,34 @@ class ConfigTester(unittest.TestCase):
         assert isinstance(outputs["images"][0], PIL.Image.Image)
         assert isinstance(outputs[0], list)
         assert isinstance(outputs[0][0], PIL.Image.Image)
+
+    def test_outputs_serialization(self):
+        outputs_orig = CustomOutput(images=[PIL.Image.new("RGB", (4, 4))])
+        serialized = pkl.dumps(outputs_orig)
+        outputs_copy = pkl.loads(serialized)
+
+        # Check original and copy are equal
+        assert dir(outputs_orig) == dir(outputs_copy)
+        assert dict(outputs_orig) == dict(outputs_copy)
+        assert vars(outputs_orig) == vars(outputs_copy)
+
+    @require_torch
+    def test_torch_pytree(self):
+        # ensure torch.utils._pytree treats ModelOutput subclasses as nodes (and not leaves)
+        # this is important for DistributedDataParallel gradient synchronization with static_graph=True
+        import torch
+        import torch.utils._pytree
+
+        data = np.random.rand(1, 3, 4, 4)
+        x = CustomOutput(images=data)
+        self.assertFalse(torch.utils._pytree._is_leaf(x))
+
+        expected_flat_outs = [data]
+        expected_tree_spec = torch.utils._pytree.TreeSpec(CustomOutput, ["images"], [torch.utils._pytree.LeafSpec()])
+
+        actual_flat_outs, actual_tree_spec = torch.utils._pytree.tree_flatten(x)
+        self.assertEqual(expected_flat_outs, actual_flat_outs)
+        self.assertEqual(expected_tree_spec, actual_tree_spec)
+
+        unflattened_x = torch.utils._pytree.tree_unflatten(actual_flat_outs, actual_tree_spec)
+        self.assertEqual(x, unflattened_x)

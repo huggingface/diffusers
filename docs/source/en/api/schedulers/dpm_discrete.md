@@ -10,13 +10,14 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# DPM Discrete Scheduler inspired by Karras et. al paper
+# KDPM2DiscreteScheduler
 
-## Overview
+The `KDPM2DiscreteScheduler` is inspired by the [Elucidating the Design Space of Diffusion-Based Generative Models](https://huggingface.co/papers/2206.00364) paper, and the scheduler is ported from and created by [Katherine Crowson](https://github.com/crowsonkb/).
 
-Inspired by [Karras et. al](https://arxiv.org/abs/2206.00364). Scheduler ported from @crowsonkb's https://github.com/crowsonkb/k-diffusion library:
-
-All credit for making this scheduler work goes to [Katherine Crowson](https://github.com/crowsonkb/)
+The original codebase can be found at [crowsonkb/k-diffusion](https://github.com/crowsonkb/k-diffusion).
 
 ## KDPM2DiscreteScheduler
 [[autodoc]] KDPM2DiscreteScheduler
+
+## SchedulerOutput
+[[autodoc]] schedulers.scheduling_utils.SchedulerOutput

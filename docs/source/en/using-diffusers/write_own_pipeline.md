@@ -25,7 +25,7 @@ A pipeline is a quick and easy way to run a model for inference, requiring no mo
 ```py
 >>> from diffusers import DDPMPipeline
 
->>> ddpm = DDPMPipeline.from_pretrained("google/ddpm-cat-256").to("cuda")
+>>> ddpm = DDPMPipeline.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")
 >>> image = ddpm(num_inference_steps=25).images[0]
 >>> image
 ```
@@ -46,7 +46,7 @@ To recreate the pipeline with the model and scheduler separately, let's write ou
 >>> from diffusers import DDPMScheduler, UNet2DModel
 
 >>> scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
->>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256").to("cuda")
+>>> model = UNet2DModel.from_pretrained("google/ddpm-cat-256", use_safetensors=True).to("cuda")
 ```
 
 2. Set the number of timesteps to run the denoising process for:
@@ -94,9 +94,9 @@ This is the entire denoising process, and you can use this same pattern to write
 >>> from PIL import Image
 >>> import numpy as np
 
->>> image = (input / 2 + 0.5).clamp(0, 1)
->>> image = image.cpu().permute(0, 2, 3, 1).numpy()[0]
->>> image = Image.fromarray((image * 255).round().astype("uint8"))
+>>> image = (input / 2 + 0.5).clamp(0, 1).squeeze()
+>>> image = (image.permute(1, 2, 0) * 255).round().to(torch.uint8).cpu().numpy()
+>>> image = Image.fromarray(image)
 >>> image
 ```
 
@@ -112,7 +112,7 @@ As you can see, this is already more complex than the DDPM pipeline which only c
 
 <Tip>
 
-💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models.
+💡 Read the [How does Stable Diffusion work?](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work) blog for more details about how the VAE, UNet, and text encoder models work.
 
 </Tip>
 
@@ -124,10 +124,14 @@ Now that you know what you need for the Stable Diffusion pipeline, load all thes
 >>> from transformers import CLIPTextModel, CLIPTokenizer
 >>> from diffusers import AutoencoderKL, UNet2DConditionModel, PNDMScheduler
 
->>> vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+>>> vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae", use_safetensors=True)
 >>> tokenizer = CLIPTokenizer.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="tokenizer")
->>> text_encoder = CLIPTextModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="text_encoder")
->>> unet = UNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="unet")
+>>> text_encoder = CLIPTextModel.from_pretrained(
+...     "CompVis/stable-diffusion-v1-4", subfolder="text_encoder", use_safetensors=True
+... )
+>>> unet = UNet2DConditionModel.from_pretrained(
+...     "CompVis/stable-diffusion-v1-4", subfolder="unet", use_safetensors=True
+... )
 ```
 
 Instead of the default [`PNDMScheduler`], exchange it for the [`UniPCMultistepScheduler`] to see how easy it is to plug a different scheduler in:
@@ -165,7 +169,7 @@ Feel free to choose any prompt you like if you want to generate something else!
 >>> width = 512  # default width of Stable Diffusion
 >>> num_inference_steps = 25  # Number of denoising steps
 >>> guidance_scale = 7.5  # Scale for classifier-free guidance
->>> generator = torch.manual_seed(0)  # Seed generator to create the inital latent noise
+>>> generator = torch.manual_seed(0)  # Seed generator to create the initial latent noise
 >>> batch_size = len(prompt)
 ```
 
@@ -210,7 +214,7 @@ Next, generate some initial random noise as a starting point for the diffusion p
 
 ```py
 >>> latents = torch.randn(
-...     (batch_size, unet.in_channels, height // 8, width // 8),
+...     (batch_size, unet.config.in_channels, height // 8, width // 8),
 ...     generator=generator,
 ... )
 >>> latents = latents.to(torch_device)
@@ -267,11 +271,11 @@ with torch.no_grad():
 Lastly, convert the image to a `PIL.Image` to see your generated image!
 
 ```py
->>> image = (image / 2 + 0.5).clamp(0, 1)
->>> image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
+>>> image = (image / 2 + 0.5).clamp(0, 1).squeeze()
+>>> image = (image.permute(1, 2, 0) * 255).to(torch.uint8).cpu().numpy()
 >>> images = (image * 255).round().astype("uint8")
->>> pil_images = [Image.fromarray(image) for image in images]
->>> pil_images[0]
+>>> image = Image.fromarray(image)
+>>> image
 ```
 
 <div class="flex justify-center">

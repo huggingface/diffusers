@@ -36,8 +36,8 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils import is_xformers_available, slow, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism
+from diffusers.utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, torch_device
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -359,7 +359,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(test_mean_pixel_difference=False)
+        self._test_inference_batch_single_identical()
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -369,7 +369,7 @@ class AudioLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False)
 
 
-@slow
+@nightly
 class AudioLDMPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -407,6 +407,27 @@ class AudioLDMPipelineSlowTests(unittest.TestCase):
         )
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-2
+
+
+@nightly
+class AudioLDMPipelineNightlyTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        latents = np.random.RandomState(seed).standard_normal((1, 8, 128, 16))
+        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
+        inputs = {
+            "prompt": "A hammer hitting a wooden surface",
+            "latents": latents,
+            "generator": generator,
+            "num_inference_steps": 3,
+            "guidance_scale": 2.5,
+        }
+        return inputs
 
     def test_audioldm_lms(self):
         audioldm_pipe = AudioLDMPipeline.from_pretrained("cvssp/audioldm")

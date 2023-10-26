@@ -78,7 +78,7 @@ test:
 # Run tests for examples
 
 test-examples:
-	python -m pytest -n auto --dist=loadfile -s -v ./examples/pytorch/
+	python -m pytest -n auto --dist=loadfile -s -v ./examples/
 
 
 # Release stuff

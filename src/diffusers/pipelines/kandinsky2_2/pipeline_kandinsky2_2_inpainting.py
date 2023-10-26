@@ -16,7 +16,7 @@ from copy import deepcopy
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 from packaging import version
@@ -26,12 +26,9 @@ from ... import __version__
 from ...models import UNet2DConditionModel, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
-    randn_tensor,
-    replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
@@ -253,6 +250,8 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             MoVQ Decoder to generate the image from the latents.
     """
 
+    model_cpu_offload_seq = "unet->movq"
+
     def __init__(
         self,
         unet: UNet2DConditionModel,
@@ -281,34 +280,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         latents = latents * scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.kandinsky2_2.pipeline_kandinsky2_2.KandinskyV22Pipeline.enable_model_cpu_offload
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.unet, self.movq]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         image_embeds: Union[torch.FloatTensor, List[torch.FloatTensor]],
@@ -383,7 +355,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple`
         """
         if not self._warn_has_been_called and version.parse(version.parse(__version__).base_version) < version.parse(
-            "0.22.0.dev0"
+            "0.23.0.dev0"
         ):
             logger.warn(
                 "Please note that the expected format of `mask_image` has recently been changed. "
@@ -391,7 +363,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
                 "As of diffusers==0.19.0 this behavior has been inverted. Now white pixels are repainted and black pixels are preserved. "
                 "This way, Kandinsky's masking behavior is aligned with Stable Diffusion. "
                 "THIS means that you HAVE to invert the input mask to have the same behavior as before as explained in https://github.com/huggingface/diffusers/pull/4207. "
-                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.22.0"
+                "This warning will be surpressed after the first inference call and will be removed in diffusers>0.23.0"
             )
             self._warn_has_been_called = True
 
@@ -499,15 +471,15 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
             latents = init_mask * init_latents_proper + (1 - init_mask) * latents
 
             if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                step_idx = i // getattr(self.scheduler, "order", 1)
+                callback(step_idx, t, latents)
 
         # post-processing
         latents = mask_image[:1] * image[:1] + (1 - mask_image[:1]) * latents
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")

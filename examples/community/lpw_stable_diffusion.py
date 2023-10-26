@@ -3,7 +3,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
@@ -21,8 +21,8 @@ from diffusers.utils import (
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    randn_tensor,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 
 # ------------------------------------------------------------------------------
@@ -1088,7 +1088,8 @@ class StableDiffusionLongPromptWeightingPipeline(
                     progress_bar.update()
                     if i % callback_steps == 0:
                         if callback is not None:
-                            callback(i, t, latents)
+                            step_idx = i // getattr(self.scheduler, "order", 1)
+                            callback(step_idx, t, latents)
                         if is_cancelled_callback is not None and is_cancelled_callback():
                             return None
 

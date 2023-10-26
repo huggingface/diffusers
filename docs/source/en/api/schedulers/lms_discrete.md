@@ -10,11 +10,12 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Linear multistep scheduler for discrete beta schedules
+# LMSDiscreteScheduler
 
-## Overview
-
-Original implementation can be found [here](https://arxiv.org/abs/2206.00364).
+`LMSDiscreteScheduler` is a linear multistep scheduler for discrete beta schedules. The scheduler is ported from and created by [Katherine Crowson](https://github.com/crowsonkb/), and the original implementation can be found at [crowsonkb/k-diffusion](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181).
 
 ## LMSDiscreteScheduler
 [[autodoc]] LMSDiscreteScheduler
+
+## LMSDiscreteSchedulerOutput
+[[autodoc]] schedulers.scheduling_lms_discrete.LMSDiscreteSchedulerOutput

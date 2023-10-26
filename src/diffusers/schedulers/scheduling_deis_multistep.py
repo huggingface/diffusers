@@ -22,6 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import deprecate
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
@@ -72,63 +73,51 @@ def betas_for_alpha_bar(
 
 class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
-    DEIS (https://arxiv.org/abs/2204.13902) is a fast high order solver for diffusion ODEs. We slightly modify the
-    polynomial fitting formula in log-rho space instead of the original linear t space in DEIS paper. The modification
-    enjoys closed-form coefficients for exponential multistep update instead of replying on the numerical solver. More
-    variants of DEIS can be found in https://github.com/qsh-zh/deis.
+    `DEISMultistepScheduler` is a fast high order solver for diffusion ordinary differential equations (ODEs).
 
-    Currently, we support the log-rho multistep DEIS. We recommend to use `solver_order=2 / 3` while `solver_order=1`
-    reduces to DDIM.
-
-    We also support the "dynamic thresholding" method in Imagen (https://arxiv.org/abs/2205.11487). For pixel-space
-    diffusion models, you can set `thresholding=True` to use the dynamic thresholding.
-
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
-    [`~SchedulerMixin.from_pretrained`] functions.
+    This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
+    methods the library implements for all schedulers such as loading and saving.
 
     Args:
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_start (`float`): the starting `beta` value of inference.
-        beta_end (`float`): the final `beta` value.
-        beta_schedule (`str`):
-            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+        num_train_timesteps (`int`, defaults to 1000):
+            The number of diffusion steps to train the model.
+        beta_start (`float`, defaults to 0.0001):
+            The starting `beta` value of inference.
+        beta_end (`float`, defaults to 0.02):
+            The final `beta` value.
+        beta_schedule (`str`, defaults to `"linear"`):
+            The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, optional):
-            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-        solver_order (`int`, default `2`):
-            the order of DEIS; can be `1` or `2` or `3`. We recommend to use `solver_order=2` for guided sampling, and
-            `solver_order=3` for unconditional sampling.
-        prediction_type (`str`, default `epsilon`):
-            indicates whether the model predicts the noise (epsilon), or the data / `x0`. One of `epsilon`, `sample`,
-            or `v-prediction`.
-        thresholding (`bool`, default `False`):
-            whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
-            Note that the thresholding method is unsuitable for latent-space diffusion models (such as
-            stable-diffusion).
-        dynamic_thresholding_ratio (`float`, default `0.995`):
-            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
-            (https://arxiv.org/abs/2205.11487).
-        sample_max_value (`float`, default `1.0`):
-            the threshold value for dynamic thresholding. Valid only when `thresholding=True`
-        algorithm_type (`str`, default `deis`):
-            the algorithm type for the solver. current we support multistep deis, we will add other variants of DEIS in
-            the future
-        lower_order_final (`bool`, default `True`):
-            whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. We empirically
-            find this trick can stabilize the sampling of DEIS for steps < 15, especially for steps <= 10.
+        trained_betas (`np.ndarray`, *optional*):
+            Pass an array of betas directly to the constructor to bypass `beta_start` and `beta_end`.
+        solver_order (`int`, defaults to 2):
+            The DEIS order which can be `1` or `2` or `3`. It is recommended to use `solver_order=2` for guided
+            sampling, and `solver_order=3` for unconditional sampling.
+        prediction_type (`str`, defaults to `epsilon`):
+            Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
+            `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
+            Video](https://imagen.research.google/video/paper.pdf) paper).
+        thresholding (`bool`, defaults to `False`):
+            Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
+            as Stable Diffusion.
+        dynamic_thresholding_ratio (`float`, defaults to 0.995):
+            The ratio for the dynamic thresholding method. Valid only when `thresholding=True`.
+        sample_max_value (`float`, defaults to 1.0):
+            The threshold value for dynamic thresholding. Valid only when `thresholding=True`.
+        algorithm_type (`str`, defaults to `deis`):
+            The algorithm type for the solver.
+        lower_order_final (`bool`, defaults to `True`):
+            Whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
-             This parameter controls whether to use Karras sigmas (Karras et al. (2022) scheme) for step sizes in the
-             noise schedule during the sampling process. If True, the sigmas will be determined according to a sequence
-             of noise levels {σi} as defined in Equation (5) of the paper https://arxiv.org/pdf/2206.00364.pdf.
-        timestep_spacing (`str`, default `"linspace"`):
-            The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
-            Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
-        steps_offset (`int`, default `0`):
-            an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
-            stable diffusion.
+             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
+             the sigmas are determined according to a sequence of noise levels {σi}.
+        timestep_spacing (`str`, defaults to `"linspace"`):
+            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
+            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
+        steps_offset (`int`, defaults to 0):
+            An offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
+            Diffusion.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -198,16 +187,24 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps)
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
+        self._step_index = None
+
+    @property
+    def step_index(self):
+        """
+        The index counter for current timestep. It will increae 1 after each scheduler step.
+        """
+        return self._step_index
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
-        Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
+        Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
             num_inference_steps (`int`):
-                the number of diffusion steps used when generating samples with a pre-trained model.
-            device (`str` or `torch.device`, optional):
-                the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+                The number of diffusion steps used when generating samples with a pre-trained model.
+            device (`str` or `torch.device`, *optional*):
+                The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
         if self.config.timestep_spacing == "linspace":
@@ -237,18 +234,17 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         if self.config.use_karras_sigmas:
             log_sigmas = np.log(sigmas)
+            sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
-            timesteps = np.flip(timesteps).copy().astype(np.int64)
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+        else:
+            sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
+            sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
-
-        # when num_inference_steps == num_train_timesteps, we can end up with
-        # duplicates in timesteps.
-        _, unique_indices = np.unique(timesteps, return_index=True)
-        timesteps = timesteps[np.sort(unique_indices)]
-
-        self.timesteps = torch.from_numpy(timesteps).to(device)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
 
         self.num_inference_steps = len(timesteps)
 
@@ -256,6 +252,9 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             None,
         ] * self.config.solver_order
         self.lower_order_nums = 0
+
+        # add an index counter for schedulers that allow duplicated timesteps
+        self._step_index = None
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -269,13 +268,13 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         https://arxiv.org/abs/2205.11487
         """
         dtype = sample.dtype
-        batch_size, channels, height, width = sample.shape
+        batch_size, channels, *remaining_dims = sample.shape
 
         if dtype not in (torch.float32, torch.float64):
             sample = sample.float()  # upcast for quantile calculation, and clamp not implemented for cpu half
 
         # Flatten sample for doing quantile calculation along each image
-        sample = sample.reshape(batch_size, channels * height * width)
+        sample = sample.reshape(batch_size, channels * np.prod(remaining_dims))
 
         abs_sample = sample.abs()  # "a certain percentile absolute pixel value"
 
@@ -283,37 +282,101 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         s = torch.clamp(
             s, min=1, max=self.config.sample_max_value
         )  # When clamped to min=1, equivalent to standard clipping to [-1, 1]
-
         s = s.unsqueeze(1)  # (batch_size, 1) because clamp will broadcast along dim=0
         sample = torch.clamp(sample, -s, s) / s  # "we threshold xt0 to the range [-s, s] and then divide by s"
 
-        sample = sample.reshape(batch_size, channels, height, width)
+        sample = sample.reshape(batch_size, channels, *remaining_dims)
         sample = sample.to(dtype)
 
         return sample
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
+    def _sigma_to_t(self, sigma, log_sigmas):
+        # get log sigma
+        log_sigma = np.log(sigma)
+
+        # get distribution
+        dists = log_sigma - log_sigmas[:, np.newaxis]
+
+        # get sigmas range
+        low_idx = np.cumsum((dists >= 0), axis=0).argmax(axis=0).clip(max=log_sigmas.shape[0] - 2)
+        high_idx = low_idx + 1
+
+        low = log_sigmas[low_idx]
+        high = log_sigmas[high_idx]
+
+        # interpolate sigmas
+        w = (low - log_sigma) / (low - high)
+        w = np.clip(w, 0, 1)
+
+        # transform interpolation to time range
+        t = (1 - w) * low_idx + w * high_idx
+        t = t.reshape(sigma.shape)
+        return t
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
+    def _sigma_to_alpha_sigma_t(self, sigma):
+        alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
+        sigma_t = sigma * alpha_t
+
+        return alpha_t, sigma_t
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
+    def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
+        """Constructs the noise schedule of Karras et al. (2022)."""
+
+        sigma_min: float = in_sigmas[-1].item()
+        sigma_max: float = in_sigmas[0].item()
+
+        rho = 7.0  # 7.0 is the value used in the paper
+        ramp = np.linspace(0, 1, num_inference_steps)
+        min_inv_rho = sigma_min ** (1 / rho)
+        max_inv_rho = sigma_max ** (1 / rho)
+        sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
+        return sigmas
+
     def convert_model_output(
-        self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
+        self,
+        model_output: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
-        Convert the model output to the corresponding type that the algorithm DEIS needs.
+        Convert the model output to the corresponding type the DEIS algorithm needs.
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+            model_output (`torch.FloatTensor`):
+                The direct output from the learned diffusion model.
+            timestep (`int`):
+                The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+                A current instance of a sample created by the diffusion process.
 
         Returns:
-            `torch.FloatTensor`: the converted model output.
+            `torch.FloatTensor`:
+                The converted model output.
         """
+        timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
+        if sample is None:
+            if len(args) > 1:
+                sample = args[1]
+            else:
+                raise ValueError("missing `sample` as a required keyward argument")
+        if timestep is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        sigma = self.sigmas[self.step_index]
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
         if self.config.prediction_type == "epsilon":
-            alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
             x0_pred = (sample - sigma_t * model_output) / alpha_t
         elif self.config.prediction_type == "sample":
             x0_pred = model_output
         elif self.config.prediction_type == "v_prediction":
-            alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
             x0_pred = alpha_t * sample - sigma_t * model_output
         else:
             raise ValueError(
@@ -325,7 +388,6 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             x0_pred = self._threshold_sample(x0_pred)
 
         if self.config.algorithm_type == "deis":
-            alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
             return (sample - alpha_t * x0_pred) / sigma_t
         else:
             raise NotImplementedError("only support log-rho multistep deis now")
@@ -333,26 +395,54 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     def deis_first_order_update(
         self,
         model_output: torch.FloatTensor,
-        timestep: int,
-        prev_timestep: int,
-        sample: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
         One step for the first-order DEIS (equivalent to DDIM).
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
-            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+            model_output (`torch.FloatTensor`):
+                The direct output from the learned diffusion model.
+            timestep (`int`):
+                The current discrete timestep in the diffusion chain.
+            prev_timestep (`int`):
+                The previous discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+                A current instance of a sample created by the diffusion process.
 
         Returns:
-            `torch.FloatTensor`: the sample tensor at the previous timestep.
+            `torch.FloatTensor`:
+                The sample tensor at the previous timestep.
         """
-        lambda_t, lambda_s = self.lambda_t[prev_timestep], self.lambda_t[timestep]
-        alpha_t, alpha_s = self.alpha_t[prev_timestep], self.alpha_t[timestep]
-        sigma_t, _ = self.sigma_t[prev_timestep], self.sigma_t[timestep]
+        timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
+        prev_timestep = args[1] if len(args) > 1 else kwargs.pop("prev_timestep", None)
+        if sample is None:
+            if len(args) > 2:
+                sample = args[2]
+            else:
+                raise ValueError(" missing `sample` as a required keyward argument")
+        if timestep is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        if prev_timestep is not None:
+            deprecate(
+                "prev_timestep",
+                "1.0.0",
+                "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        sigma_t, sigma_s = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
+        alpha_s, sigma_s = self._sigma_to_alpha_sigma_t(sigma_s)
+        lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
+        lambda_s = torch.log(alpha_s) - torch.log(sigma_s)
+
         h = lambda_t - lambda_s
         if self.config.algorithm_type == "deis":
             x_t = (alpha_t / alpha_s) * sample - (sigma_t * (torch.exp(h) - 1.0)) * model_output
@@ -363,28 +453,55 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     def multistep_deis_second_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
-        timestep_list: List[int],
-        prev_timestep: int,
-        sample: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
         One step for the second-order multistep DEIS.
 
         Args:
             model_output_list (`List[torch.FloatTensor]`):
-                direct outputs from learned diffusion model at current and latter timesteps.
-            timestep (`int`): current and latter discrete timestep in the diffusion chain.
-            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+                The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+                A current instance of a sample created by the diffusion process.
 
         Returns:
-            `torch.FloatTensor`: the sample tensor at the previous timestep.
+            `torch.FloatTensor`:
+                The sample tensor at the previous timestep.
         """
-        t, s0, s1 = prev_timestep, timestep_list[-1], timestep_list[-2]
+        timestep_list = args[0] if len(args) > 0 else kwargs.pop("timestep_list", None)
+        prev_timestep = args[1] if len(args) > 1 else kwargs.pop("prev_timestep", None)
+        if sample is None:
+            if len(args) > 2:
+                sample = args[2]
+            else:
+                raise ValueError(" missing `sample` as a required keyward argument")
+        if timestep_list is not None:
+            deprecate(
+                "timestep_list",
+                "1.0.0",
+                "Passing `timestep_list` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        if prev_timestep is not None:
+            deprecate(
+                "prev_timestep",
+                "1.0.0",
+                "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        sigma_t, sigma_s0, sigma_s1 = (
+            self.sigmas[self.step_index + 1],
+            self.sigmas[self.step_index],
+            self.sigmas[self.step_index - 1],
+        )
+
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
+        alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
+        alpha_s1, sigma_s1 = self._sigma_to_alpha_sigma_t(sigma_s1)
+
         m0, m1 = model_output_list[-1], model_output_list[-2]
-        alpha_t, alpha_s0, alpha_s1 = self.alpha_t[t], self.alpha_t[s0], self.alpha_t[s1]
-        sigma_t, sigma_s0, sigma_s1 = self.sigma_t[t], self.sigma_t[s0], self.sigma_t[s1]
 
         rho_t, rho_s0, rho_s1 = sigma_t / alpha_t, sigma_s0 / alpha_s0, sigma_s1 / alpha_s1
 
@@ -405,33 +522,64 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     def multistep_deis_third_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
-        timestep_list: List[int],
-        prev_timestep: int,
-        sample: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
         One step for the third-order multistep DEIS.
 
         Args:
             model_output_list (`List[torch.FloatTensor]`):
-                direct outputs from learned diffusion model at current and latter timesteps.
-            timestep (`int`): current and latter discrete timestep in the diffusion chain.
-            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+                The direct outputs from learned diffusion model at current and latter timesteps.
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
+                A current instance of a sample created by diffusion process.
 
         Returns:
-            `torch.FloatTensor`: the sample tensor at the previous timestep.
+            `torch.FloatTensor`:
+                The sample tensor at the previous timestep.
         """
-        t, s0, s1, s2 = prev_timestep, timestep_list[-1], timestep_list[-2], timestep_list[-3]
+
+        timestep_list = args[0] if len(args) > 0 else kwargs.pop("timestep_list", None)
+        prev_timestep = args[1] if len(args) > 1 else kwargs.pop("prev_timestep", None)
+        if sample is None:
+            if len(args) > 2:
+                sample = args[2]
+            else:
+                raise ValueError(" missing`sample` as a required keyward argument")
+        if timestep_list is not None:
+            deprecate(
+                "timestep_list",
+                "1.0.0",
+                "Passing `timestep_list` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        if prev_timestep is not None:
+            deprecate(
+                "prev_timestep",
+                "1.0.0",
+                "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
+        sigma_t, sigma_s0, sigma_s1, sigma_s2 = (
+            self.sigmas[self.step_index + 1],
+            self.sigmas[self.step_index],
+            self.sigmas[self.step_index - 1],
+            self.sigmas[self.step_index - 2],
+        )
+
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
+        alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
+        alpha_s1, sigma_s1 = self._sigma_to_alpha_sigma_t(sigma_s1)
+        alpha_s2, sigma_s2 = self._sigma_to_alpha_sigma_t(sigma_s2)
+
         m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
-        alpha_t, alpha_s0, alpha_s1, alpha_s2 = self.alpha_t[t], self.alpha_t[s0], self.alpha_t[s1], self.alpha_t[s2]
-        sigma_t, sigma_s0, sigma_s1, simga_s2 = self.sigma_t[t], self.sigma_t[s0], self.sigma_t[s1], self.sigma_t[s2]
+
         rho_t, rho_s0, rho_s1, rho_s2 = (
             sigma_t / alpha_t,
             sigma_s0 / alpha_s0,
             sigma_s1 / alpha_s1,
-            simga_s2 / alpha_s2,
+            sigma_s2 / alpha_s2,
         )
 
         if self.config.algorithm_type == "deis":
@@ -459,6 +607,25 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError("only support log-rho multistep deis now")
 
+    def _init_step_index(self, timestep):
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+
+        index_candidates = (self.timesteps == timestep).nonzero()
+
+        if len(index_candidates) == 0:
+            step_index = len(self.timesteps) - 1
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        elif len(index_candidates) > 1:
+            step_index = index_candidates[1].item()
+        else:
+            step_index = index_candidates[0].item()
+
+        self._step_index = step_index
+
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -467,18 +634,23 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
-        Step function propagating the sample with the multistep DEIS.
+        Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
+        the multistep DEIS.
 
         Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+            model_output (`torch.FloatTensor`):
+                The direct output from learned diffusion model.
+            timestep (`float`):
+                The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
-                current instance of sample being created by diffusion process.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+                A current instance of a sample created by the diffusion process.
+            return_dict (`bool`):
+                Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`.
 
         Returns:
-            [`~scheduling_utils.SchedulerOutput`] or `tuple`: [`~scheduling_utils.SchedulerOutput`] if `return_dict` is
-            True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
+                If return_dict is `True`, [`~schedulers.scheduling_utils.SchedulerOutput`] is returned, otherwise a
+                tuple is returned where the first element is the sample tensor.
 
         """
         if self.num_inference_steps is None:
@@ -486,41 +658,33 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero()
-        if len(step_index) == 0:
-            step_index = len(self.timesteps) - 1
-        else:
-            step_index = step_index.item()
-        prev_timestep = 0 if step_index == len(self.timesteps) - 1 else self.timesteps[step_index + 1]
+        if self.step_index is None:
+            self._init_step_index(timestep)
+
         lower_order_final = (
-            (step_index == len(self.timesteps) - 1) and self.config.lower_order_final and len(self.timesteps) < 15
+            (self.step_index == len(self.timesteps) - 1) and self.config.lower_order_final and len(self.timesteps) < 15
         )
         lower_order_second = (
-            (step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
+            (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
         )
 
-        model_output = self.convert_model_output(model_output, timestep, sample)
+        model_output = self.convert_model_output(model_output, sample=sample)
         for i in range(self.config.solver_order - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
 
         if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
-            prev_sample = self.deis_first_order_update(model_output, timestep, prev_timestep, sample)
+            prev_sample = self.deis_first_order_update(model_output, sample=sample)
         elif self.config.solver_order == 2 or self.lower_order_nums < 2 or lower_order_second:
-            timestep_list = [self.timesteps[step_index - 1], timestep]
-            prev_sample = self.multistep_deis_second_order_update(
-                self.model_outputs, timestep_list, prev_timestep, sample
-            )
+            prev_sample = self.multistep_deis_second_order_update(self.model_outputs, sample=sample)
         else:
-            timestep_list = [self.timesteps[step_index - 2], self.timesteps[step_index - 1], timestep]
-            prev_sample = self.multistep_deis_third_order_update(
-                self.model_outputs, timestep_list, prev_timestep, sample
-            )
+            prev_sample = self.multistep_deis_third_order_update(self.model_outputs, sample=sample)
 
         if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
+
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
@@ -533,35 +697,40 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`): input sample
+            sample (`torch.FloatTensor`):
+                The input sample.
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `torch.FloatTensor`:
+                A scaled input sample.
         """
         return sample
 
-    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
-        timesteps = timesteps.to(original_samples.device)
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
+            # mps does not support float64
+            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
+        else:
+            schedule_timesteps = self.timesteps.to(original_samples.device)
+            timesteps = timesteps.to(original_samples.device)
 
-        sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
-        sqrt_alpha_prod = sqrt_alpha_prod.flatten()
-        while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
-            sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
-        sqrt_one_minus_alpha_prod = (1 - alphas_cumprod[timesteps]) ** 0.5
-        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
-        while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
-            sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < len(original_samples.shape):
+            sigma = sigma.unsqueeze(-1)
 
-        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
+        noisy_samples = alpha_t * original_samples + sigma_t * noise
         return noisy_samples
 
     def __len__(self):

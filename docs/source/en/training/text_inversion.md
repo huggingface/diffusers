@@ -192,7 +192,7 @@ been added to the text encoder embedding matrix and consequently been trained.
 <Tip>
 
 💡 The community has created a large library of different textual inversion embedding vectors, called [sd-concepts-library](https://huggingface.co/sd-concepts-library).
-Instead of training textual inversion embeddings from scratch you can also see whether a fitting textual inversion embedding has already been added to the libary.
+Instead of training textual inversion embeddings from scratch you can also see whether a fitting textual inversion embedding has already been added to the library.
 
 </Tip>
 
@@ -204,7 +204,7 @@ from diffusers import StableDiffusionPipeline
 import torch
 
 model_id = "runwayml/stable-diffusion-v1-5"
-pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
 
 Next, we need to load the textual inversion embedding vector which can be done via the [`TextualInversionLoaderMixin.load_textual_inversion`]

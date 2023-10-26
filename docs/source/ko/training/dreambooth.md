@@ -15,8 +15,7 @@ specific language governing permissions and limitations under the License.
 [DreamBooth](https://arxiv.org/abs/2208.12242)는 한 주제에 대한 적은 이미지(3~5개)만으로도 stable diffusion과 같이 text-to-image 모델을 개인화할 수 있는 방법입니다. 이를 통해 모델은 다양한 장면, 포즈 및 장면(뷰)에서 피사체에 대해 맥락화(contextualized)된 이미지를 생성할 수 있습니다.
 
 ![프로젝트 블로그에서의 DreamBooth 예시](https://dreambooth.github.io/DreamBooth_files/teaser_static.jpg)
-<a href="https://dreambooth.github.io">project's blog.</a></small>
-<small><a href="https://dreambooth.github.io">프로젝트 블로그</a>에서의 Dreambooth 예시</small>
+<small>에서의 Dreambooth 예시 <a href="https://dreambooth.github.io">project's blog.</a></small>
 
 
 이 가이드는 다양한 GPU, Flax 사양에 대해 [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) 모델로 DreamBooth를 파인튜닝하는 방법을 보여줍니다. 더 깊이 파고들어 작동 방식을 확인하는 데 관심이 있는 경우, 이 가이드에 사용된 DreamBooth의 모든 학습 스크립트를 [여기](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth)에서 찾을 수 있습니다.

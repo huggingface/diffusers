@@ -24,7 +24,7 @@ Next, configure the following parameters in the [`DDIMScheduler`]:
 ```py
 >>> from diffusers import DiffusionPipeline, DDIMScheduler
 
->>> pipeline = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2")
+>>> pipeline = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", use_safetensors=True)
 # switch the scheduler in the pipeline to use the DDIMScheduler
 
 >>> pipeline.scheduler = DDIMScheduler.from_config(

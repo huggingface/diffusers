@@ -4,7 +4,7 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable
 
 import numpy as np
 import PIL
@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration, set_seed
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import create_repo, upload_folder
 from neural_compressor.utils import logger
 from packaging import version
 from PIL import Image
@@ -24,6 +24,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
+from diffusers.utils import make_image_grid
 
 
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
@@ -412,32 +413,9 @@ class TextualInversionDataset(Dataset):
         return example
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
-
-
 def freeze_params(params):
     for param in params:
         param.requires_grad = False
-
-
-def image_grid(imgs, rows, cols):
-    if not len(imgs) == rows * cols:
-        raise ValueError("The specified number of rows and columns are not correct.")
-
-    w, h = imgs[0].size
-    grid = Image.new("RGB", size=(cols * w, rows * h))
-    grid_w, grid_h = grid.size
-
-    for i, img in enumerate(imgs):
-        grid.paste(img, box=(i % cols * w, i // cols * h))
-    return grid
 
 
 def generate_images(pipeline, prompt="", guidance_scale=7.5, num_inference_steps=50, num_images_per_prompt=1, seed=42):
@@ -450,7 +428,7 @@ def generate_images(pipeline, prompt="", guidance_scale=7.5, num_inference_steps
         num_images_per_prompt=num_images_per_prompt,
     ).images
     _rows = int(math.sqrt(num_images_per_prompt))
-    grid = image_grid(images, rows=_rows, cols=num_images_per_prompt // _rows)
+    grid = make_image_grid(images, rows=_rows, cols=num_images_per_prompt // _rows)
     return grid
 
 
@@ -473,20 +451,13 @@ def main():
 
     # Handle the repository creation
     if accelerator.is_main_process:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
+        if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+
+        if args.push_to_hub:
+            repo_id = create_repo(
+                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+            ).repo_id
 
     # Load the tokenizer and add the placeholder token as a additional special token
     if args.tokenizer_name:
@@ -994,7 +965,12 @@ def main():
             )
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
     accelerator.end_training()
 
