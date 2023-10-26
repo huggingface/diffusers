@@ -253,6 +253,7 @@ class TransformerTemporalMotionModel(ModelMixin, ConfigMixin):
         )
 
         self.proj_out = nn.Linear(inner_dim, in_channels)
+        self.use_cross_attention = cross_attention_dim is not None
 
     def forward(
         self,
@@ -304,6 +305,7 @@ class TransformerTemporalMotionModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.permute(0, 3, 4, 1, 2).reshape(batch_size * height * width, num_frames, channel)
 
         hidden_states = self.proj_in(hidden_states)
+        encoder_hidden_states = encoder_hidden_states if self.use_cross_attention else None
 
         # 2. Blocks
         for block in self.transformer_blocks:

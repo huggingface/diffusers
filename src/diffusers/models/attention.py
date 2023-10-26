@@ -278,7 +278,7 @@ class BasicTransformerBlock(nn.Module):
 @maybe_allow_in_graph
 class TemporalPositionEmbedTransformerBlock(nn.Module):
     r"""
-    A Transformer block that applies a timestep positional embedding before each attention layer.
+    A Transformer block that applies a positional embedding before each attention layer.
 
     Parameters:
         dim (`int`): The number of channels in the input and output.
@@ -408,8 +408,6 @@ class TemporalPositionEmbedTransformerBlock(nn.Module):
         cross_attention_kwargs: Dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
     ) -> torch.FloatTensor:
-        _, seq_length, channels = hidden_states.shape
-
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         if self.use_ada_layer_norm:
@@ -426,10 +424,9 @@ class TemporalPositionEmbedTransformerBlock(nn.Module):
 
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
 
-        hidden_states = self.pos_embed(norm_hidden_states)
-        # hidden_states = self.pos_embed(norm_hidden_states)
+        norm_hidden_states = self.pos_embed(norm_hidden_states)
         attn_output = self.attn1(
-            hidden_states,
+            norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
@@ -443,9 +440,9 @@ class TemporalPositionEmbedTransformerBlock(nn.Module):
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
-            hidden_states = self.pos_embed(norm_hidden_states)
+            norm_hidden_states = self.pos_embed(norm_hidden_states)
             attn_output = self.attn2(
-                hidden_states,
+                norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,
                 attention_mask=encoder_attention_mask,
                 **cross_attention_kwargs,

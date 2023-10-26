@@ -257,18 +257,7 @@ class MotionAttnProcessor2_0(nn.Module):
         temb=None,
         scale=1.0,
     ):
-        """
-        pos_embed = (
-            get_timestep_embedding(torch.arange(32), hidden_states.shape[-1]).unsqueeze(0).to(hidden_states.dtype)
-        )
-        """
-        pos_embed = PositionalEmbedding(embed_dim=hidden_states.shape[-1], max_seq_length=32)
-        pos_embed.to("cuda")
-
-        # hidden_states = hidden_states + pos_embed[:, : hidden_states.shape[1]].to(hidden_states.device)
-        # hidden_states = self.pos_embed(hidden_states)
-        hidden_states = pos_embed(hidden_states)
-
+        hidden_states = self.pos_embed(hidden_states)
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -388,7 +377,7 @@ class MotionModules(nn.Module):
 
         for i in range(layers_per_block):
             self.motion_modules.append(
-                MotionBlock(
+                TransformerTemporalMotionModel(
                     in_channels=in_channels,
                     norm_num_groups=norm_num_groups,
                     cross_attention_dim=cross_attention_dim,
@@ -508,6 +497,7 @@ class DownBlockMotion(nn.Module):
     ):
         super().__init__()
         resnets = []
+        motion_modules = []
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -525,18 +515,20 @@ class DownBlockMotion(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
+            motion_modules.append(
+                TransformerTemporalMotionModel(
+                    num_attention_heads=motion_num_attention_heads,
+                    in_channels=out_channels,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    attention_bias=motion_attention_bias,
+                    activation_fn=motion_activation_fn,
+                    max_seq_length=motion_max_seq_length,
+                )
+            )
 
         self.resnets = nn.ModuleList(resnets)
-        self.motion_modules = MotionModules(
-            in_channels=out_channels,
-            norm_num_groups=motion_norm_num_groups,
-            cross_attention_dim=motion_cross_attention_dim,
-            activation_fn=motion_activation_fn,
-            attention_bias=motion_attention_bias,
-            num_attention_heads=motion_num_attention_heads,
-            max_seq_length=motion_max_seq_length,
-            layers_per_block=num_layers,
-        ).motion_modules
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
@@ -578,7 +570,7 @@ class DownBlockMotion(nn.Module):
 
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)
+                hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
 
             output_states = output_states + (hidden_states,)
 
@@ -625,6 +617,7 @@ class CrossAttnDownBlockMotion(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
+        motion_modules = []
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
@@ -672,18 +665,22 @@ class CrossAttnDownBlockMotion(nn.Module):
                         norm_num_groups=resnet_groups,
                     )
                 )
+
+            motion_modules.append(
+                TransformerTemporalMotionModel(
+                    num_attention_heads=motion_num_attention_heads,
+                    in_channels=out_channels,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    attention_bias=motion_attention_bias,
+                    activation_fn=motion_activation_fn,
+                    max_seq_length=motion_max_seq_length,
+                )
+            )
+
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-        self.motion_modules = MotionModules(
-            in_channels=out_channels,
-            norm_num_groups=motion_norm_num_groups,
-            cross_attention_dim=motion_cross_attention_dim,
-            activation_fn=motion_activation_fn,
-            attention_bias=motion_attention_bias,
-            num_attention_heads=motion_num_attention_heads,
-            max_seq_length=motion_max_seq_length,
-            layers_per_block=num_layers,
-        ).motion_modules
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
@@ -756,7 +753,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     num_frames=num_frames,
-                )
+                )[0]
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -808,6 +805,7 @@ class CrossAttnUpBlockMotion(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
+        motion_modules = []
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
@@ -857,18 +855,21 @@ class CrossAttnUpBlockMotion(nn.Module):
                         norm_num_groups=resnet_groups,
                     )
                 )
+            motion_modules.append(
+                TransformerTemporalMotionModel(
+                    num_attention_heads=motion_num_attention_heads,
+                    in_channels=out_channels,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    attention_bias=motion_attention_bias,
+                    activation_fn=motion_activation_fn,
+                    max_seq_length=motion_max_seq_length,
+                )
+            )
+
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-        self.motion_modules = MotionModules(
-            in_channels=out_channels,
-            norm_num_groups=motion_norm_num_groups,
-            cross_attention_dim=motion_cross_attention_dim,
-            activation_fn=motion_activation_fn,
-            attention_bias=motion_attention_bias,
-            num_attention_heads=motion_num_attention_heads,
-            max_seq_length=motion_max_seq_length,
-            layers_per_block=num_layers,
-        ).motion_modules
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_upsample:
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
@@ -959,7 +960,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     num_frames=num_frames,
-                )
+                )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -994,6 +995,7 @@ class UpBlockMotion(nn.Module):
     ):
         super().__init__()
         resnets = []
+        motion_modules = []
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -1014,17 +1016,20 @@ class UpBlockMotion(nn.Module):
                 )
             )
 
+            motion_modules.append(
+                TransformerTemporalMotionModel(
+                    num_attention_heads=motion_num_attention_heads,
+                    in_channels=out_channels,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    attention_bias=motion_attention_bias,
+                    activation_fn=motion_activation_fn,
+                    max_seq_length=motion_max_seq_length,
+                )
+            )
+
         self.resnets = nn.ModuleList(resnets)
-        self.motion_modules = MotionModules(
-            in_channels=out_channels,
-            norm_num_groups=motion_norm_num_groups,
-            cross_attention_dim=motion_cross_attention_dim,
-            activation_fn=motion_activation_fn,
-            attention_bias=motion_attention_bias,
-            num_attention_heads=motion_num_attention_heads,
-            max_seq_length=motion_max_seq_length,
-            layers_per_block=num_layers,
-        ).motion_modules
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_upsample:
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
@@ -1089,7 +1094,7 @@ class UpBlockMotion(nn.Module):
 
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)
+                hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1147,6 +1152,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
             )
         ]
         attentions = []
+        motion_modules = []
 
         for _ in range(num_layers):
             if not dual_cross_attention:
@@ -1188,19 +1194,21 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
+            motion_modules.append(
+                TransformerTemporalMotionModel(
+                    num_attention_heads=motion_num_attention_heads,
+                    in_channels=in_channels,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    attention_bias=motion_attention_bias,
+                    activation_fn=motion_activation_fn,
+                    max_seq_length=motion_max_seq_length,
+                )
+            )
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-        self.motion_modules = MotionModules(
-            in_channels=in_channels,
-            norm_num_groups=motion_norm_num_groups,
-            cross_attention_dim=motion_cross_attention_dim,
-            activation_fn=motion_activation_fn,
-            attention_bias=motion_attention_bias,
-            num_attention_heads=motion_num_attention_heads,
-            max_seq_length=motion_max_seq_length,
-            layers_per_block=num_layers,
-        ).motion_modules
+        self.motion_modules = nn.ModuleList(motion_modules)
 
         self.gradient_checkpointing = False
 
@@ -1265,7 +1273,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     num_frames=num_frames,
-                )
+                )[0]
                 hidden_states = resnet(hidden_states, temb, scale=lora_scale)
 
         return hidden_states
