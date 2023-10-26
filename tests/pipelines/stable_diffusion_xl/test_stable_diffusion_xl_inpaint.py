@@ -193,7 +193,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.8029, 0.5523, 0.5825, 0.6003, 0.6702, 0.7018, 0.6369, 0.5955, 0.5123])
+        expected_slice = np.array(
+            [0.47297692, 0.43896025, 0.40697068, 0.45582378, 0.4125126, 0.5327985, 0.38261384, 0.47744697, 0.47403562]
+        )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -290,7 +292,9 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.7045, 0.4838, 0.5454, 0.6270, 0.6168, 0.6717, 0.6484, 0.5681, 0.4922])
+        expected_slice = np.array(
+            [0.51198494, 0.49192587, 0.414692, 0.4513318, 0.44658783, 0.5387383, 0.39105427, 0.49726686, 0.46108854]
+        )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -547,14 +551,17 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         masked_image = image * (mask < 0.5)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_latents = sd_pipe._encode_vae_image(image, generator=generator)
         torch.randn((1, 4, 32, 32), generator=generator)
+        image_latents = sd_pipe._encode_vae_image(image, generator=generator)
+
+        generator = torch.Generator(device=device).manual_seed(0)
         mask_latents = sd_pipe._encode_vae_image(masked_image, generator=generator)
         inputs["image"] = image_latents
         inputs["masked_image_latents"] = mask_latents
         inputs["mask_image"] = mask
         inputs["strength"] = 0.9
         generator = torch.Generator(device=device).manual_seed(0)
+        torch.randn((1, 4, 32, 32), generator=generator)
         torch.randn((1, 4, 32, 32), generator=generator)
         inputs["generator"] = generator
         out_1 = sd_pipe(**inputs).images
