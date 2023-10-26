@@ -34,71 +34,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 # Resolutions 512,256,128,64,32,16,8
-def get_config(img_size: int = 512, in_channels: int = 3, out_channels: int = 3, cls_count: int = None):
-    """Generate a configuration for SIS model from image size.
 
-    https://github.com/WeilunWang/semantic-diffusion-model/blob/main/guided_diffusion/script_util.py#L156
-
-    Args:
-        img_size (int, optional): image size (should be a power of 2 from 64 to 512). Defaults to 512.
-        in_channels (int, optional): number of input channels. Defaults to 3.
-        out_channels (int, optional): number of output channels. Defaults to 3.
-        cls_count (int): number of classes
-    """
-    assert cls_count is not None, "cls_count should be an integer"
-    SIS_CONFIG_64 = {
-        "in_channels": in_channels,
-        "out_channels": out_channels,
-        "cls_count": cls_count,
-        "img_size": 64,
-        "down_block_types": ("ConvBlock", "DownAttnBlock", "DownAttnBlock", "DownAttnBlock"),
-        "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "ConvBlock"),
-        "block_out_channels": (128, 256, 384, 512),
-    }
-
-    SIS_CONFIG_128 = {
-        "in_channels": in_channels,
-        "out_channels": out_channels,
-        "cls_count": cls_count,
-        "img_size": 128,
-        "down_block_types": ("ConvBlock", "DownBlock", "DownAttnBlock", "DownAttnBlock", "DownAttnBlock"),
-        "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "UpBlock", "ConvBlock"),
-        "block_out_channels": (128, 128, 256, 384, 512),
-    }
-
-    SIS_CONFIG_256 = {
-        "in_channels": in_channels,
-        "out_channels": out_channels,
-        "cls_count": cls_count,
-        "img_size": 256,
-        "down_block_types": ("ConvBlock", "DownBlock", "DownBlock", "DownAttnBlock", "DownAttnBlock", "DownAttnBlock"),
-        "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "UpBlock", "UpBlock", "ConvBlock"),
-        "block_out_channels": (128, 128, 256, 256, 512, 512),
-    }
-
-    SIS_CONFIG_512 = {
-        "in_channels": in_channels,
-        "out_channels": out_channels,
-        "cls_count": cls_count,
-        "img_size": 512,
-        "down_block_types": (
-            "ConvBlock",
-            "DownBlock",
-            "DownBlock",
-            "DownBlock",
-            "DownAttnBlock",
-            "DownAttnBlock",
-            "DownAttnBlock",
-        ),
-        "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "UpBlock", "UpBlock", "UpBlock", "ConvBlock"),
-        "block_out_channels": (64, 128, 128, 256, 256, 512, 512),
-    }
-
-    configuration = {"64": SIS_CONFIG_64, "128": SIS_CONFIG_128, "256": SIS_CONFIG_256, "512": SIS_CONFIG_512}
-    assert (
-        str(img_size) in configuration.keys()
-    ), "img_size should be in existing configurations {configuration.keys()}"
-    return configuration[str(img_size)]
 
 
 class UNet2DSISModel(ModelMixin, ConfigMixin):
@@ -216,3 +152,69 @@ class UNet2DSISModel(ModelMixin, ConfigMixin):
         for i, layer in enumerate(self.decoder):
             y = layer(y + y_encoder[::-1][i], temb, cond)
         return UNet2DOutput(y)
+
+    def get_config(img_size: int = 512, in_channels: int = 3, out_channels: int = 3, cls_count: int = None):
+        """Generate a configuration for SIS model from image size.
+
+        https://github.com/WeilunWang/semantic-diffusion-model/blob/main/guided_diffusion/script_util.py#L156
+
+        Args:
+            img_size (int, optional): image size (should be a power of 2 from 64 to 512). Defaults to 512.
+            in_channels (int, optional): number of input channels. Defaults to 3.
+            out_channels (int, optional): number of output channels. Defaults to 3.
+            cls_count (int): number of classes
+        """
+        assert cls_count is not None, "cls_count should be an integer"
+        SIS_CONFIG_64 = {
+            "in_channels": in_channels,
+            "out_channels": out_channels,
+            "cls_count": cls_count,
+            "img_size": 64,
+            "down_block_types": ("ConvBlock", "DownAttnBlock", "DownAttnBlock", "DownAttnBlock"),
+            "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "ConvBlock"),
+            "block_out_channels": (128, 256, 384, 512),
+        }
+
+        SIS_CONFIG_128 = {
+            "in_channels": in_channels,
+            "out_channels": out_channels,
+            "cls_count": cls_count,
+            "img_size": 128,
+            "down_block_types": ("ConvBlock", "DownBlock", "DownAttnBlock", "DownAttnBlock", "DownAttnBlock"),
+            "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "UpBlock", "ConvBlock"),
+            "block_out_channels": (128, 128, 256, 384, 512),
+        }
+
+        SIS_CONFIG_256 = {
+            "in_channels": in_channels,
+            "out_channels": out_channels,
+            "cls_count": cls_count,
+            "img_size": 256,
+            "down_block_types": ("ConvBlock", "DownBlock", "DownBlock", "DownAttnBlock", "DownAttnBlock", "DownAttnBlock"),
+            "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "UpBlock", "UpBlock", "ConvBlock"),
+            "block_out_channels": (128, 128, 256, 256, 512, 512),
+        }
+
+        SIS_CONFIG_512 = {
+            "in_channels": in_channels,
+            "out_channels": out_channels,
+            "cls_count": cls_count,
+            "img_size": 512,
+            "down_block_types": (
+                "ConvBlock",
+                "DownBlock",
+                "DownBlock",
+                "DownBlock",
+                "DownAttnBlock",
+                "DownAttnBlock",
+                "DownAttnBlock",
+            ),
+            "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "UpBlock", "UpBlock", "UpBlock", "ConvBlock"),
+            "block_out_channels": (64, 128, 128, 256, 256, 512, 512),
+        }
+
+        configuration = {"64": SIS_CONFIG_64, "128": SIS_CONFIG_128, "256": SIS_CONFIG_256, "512": SIS_CONFIG_512}
+        assert (
+            str(img_size) in configuration.keys()
+        ), "img_size should be in existing configurations {configuration.keys()}"
+        return configuration[str(img_size)]
