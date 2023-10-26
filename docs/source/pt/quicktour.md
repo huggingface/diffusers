@@ -277,7 +277,7 @@ Para acelerar o processo de retirada de ruído, mova a entrada e o modelo para u
 >>> noisy_sample = noisy_sample.to("cuda")
 ```
 
-Now create a denoising loop that predicts the residual of the less noisy sample, and computes the less noisy sample with the scheduler:
+Agora, crie um loop de retirada de ruído que prediz o residual da amostra menos ruidosa, e computa a amostra menos ruidosa com o agendador:
 
 ```py
 >>> import tqdm
