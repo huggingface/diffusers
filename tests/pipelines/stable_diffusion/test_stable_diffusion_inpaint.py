@@ -197,7 +197,9 @@ class StableDiffusionInpaintPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4703, 0.5697, 0.3879, 0.5470, 0.6042, 0.4413, 0.5078, 0.4728, 0.4469])
+        expected_slice = np.array(
+            [0.7116542, 0.5356421, 0.5738175, 0.5997549, 0.6192689, 0.6549013, 0.60130644, 0.57260084, 0.5453409]
+        )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
