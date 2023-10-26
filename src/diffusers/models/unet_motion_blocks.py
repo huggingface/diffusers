@@ -384,6 +384,7 @@ class MotionModules(nn.Module):
                     activation_fn=activation_fn,
                     attention_bias=attention_bias,
                     num_attention_heads=num_attention_heads,
+                    attention_head_dim=in_channels // num_attention_heads,
                     max_seq_length=max_seq_length,
                 )
             )
