@@ -229,6 +229,7 @@ Once training is complete, you can use your newly trained model for inference li
 
 <hfoptions id="inference">
 <hfoption id="PyTorch">
+
 ```py
 from diffusers import StableDiffusionPipeline
 
@@ -237,8 +238,10 @@ pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", torch_
 image = pipeline(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
-</hfoptions>
+
+</hfoption>
 <hfoption id="Flax">
+
 ```py
 import jax
 import numpy as np
@@ -265,6 +268,7 @@ images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 image.save("yoda-pokemon.png")
 ```
+
 </hfoption>
 </hfoptions>
 
