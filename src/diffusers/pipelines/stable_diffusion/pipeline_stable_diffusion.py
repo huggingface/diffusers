@@ -651,8 +651,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
                 Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
                 using zero terminal SNR.
-            return_workflow(`bool`, *optional*, defaults to `False`):
-                Whether to return pipeline component configurations and call arguments.
+            return_workflow (`bool`, *optional*, defaults to `False`):
+                Whether to return used pipeline call arguments.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
