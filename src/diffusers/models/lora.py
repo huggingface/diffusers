@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -40,7 +40,35 @@ def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
 
 
 class LoRALinearLayer(nn.Module):
-    def __init__(self, in_features, out_features, rank=4, network_alpha=None, device=None, dtype=None):
+    r"""
+    A linear layer that is used with LoRA.
+
+    Parameters:
+        in_features (`int`):
+            Number of input features.
+        out_features (`int`):
+            Number of output features.
+        rank (`int`, `optional`, defaults to 4):
+            The rank of the LoRA layer.
+        network_alpha (`float`, `optional`, defaults to `None`):
+            The value of the network alpha used for stable learning and preventing underflow. This value has the same
+            meaning as the `--network_alpha` option in the kohya-ss trainer script. See
+            https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
+        device (`torch.device`, `optional`, defaults to `None`):
+            The device to use for the layer's weights.
+        dtype (`torch.dtype`, `optional`, defaults to `None`):
+            The dtype to use for the layer's weights.
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        rank: int = 4,
+        network_alpha: Optional[float] = None,
+        device: Optional[Union[torch.device, str]] = None,
+        dtype: Optional[torch.dtype] = None,
+    ):
         super().__init__()
 
         self.down = nn.Linear(in_features, rank, bias=False, device=device, dtype=dtype)
@@ -55,7 +83,7 @@ class LoRALinearLayer(nn.Module):
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         orig_dtype = hidden_states.dtype
         dtype = self.down.weight.dtype
 
@@ -69,8 +97,37 @@ class LoRALinearLayer(nn.Module):
 
 
 class LoRAConv2dLayer(nn.Module):
+    r"""
+    A convolutional layer that is used with LoRA.
+
+    Parameters:
+        in_features (`int`):
+            Number of input features.
+        out_features (`int`):
+            Number of output features.
+        rank (`int`, `optional`, defaults to 4):
+            The rank of the LoRA layer.
+        kernel_size (`int` or `tuple` of two `int`, `optional`, defaults to 1):
+            The kernel size of the convolution.
+        stride (`int` or `tuple` of two `int`, `optional`, defaults to 1):
+            The stride of the convolution.
+        padding (`int` or `tuple` of two `int` or `str`, `optional`, defaults to 0):
+            The padding of the convolution.
+        network_alpha (`float`, `optional`, defaults to `None`):
+            The value of the network alpha used for stable learning and preventing underflow. This value has the same
+            meaning as the `--network_alpha` option in the kohya-ss trainer script. See
+            https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
+    """
+
     def __init__(
-        self, in_features, out_features, rank=4, kernel_size=(1, 1), stride=(1, 1), padding=0, network_alpha=None
+        self,
+        in_features: int,
+        out_features: int,
+        rank: int = 4,
+        kernel_size: Union[int, Tuple[int, int]] = (1, 1),
+        stride: Union[int, Tuple[int, int]] = (1, 1),
+        padding: Union[int, Tuple[int, int], str] = 0,
+        network_alpha: Optional[float] = None,
     ):
         super().__init__()
 
@@ -87,7 +144,7 @@ class LoRAConv2dLayer(nn.Module):
         nn.init.normal_(self.down.weight, std=1 / rank)
         nn.init.zeros_(self.up.weight)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         orig_dtype = hidden_states.dtype
         dtype = self.down.weight.dtype
 
@@ -112,7 +169,7 @@ class LoRACompatibleConv(nn.Conv2d):
     def set_lora_layer(self, lora_layer: Optional[LoRAConv2dLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self, lora_scale=1.0, safe_fusing=False):
+    def _fuse_lora(self, lora_scale: float = 1.0, safe_fusing: bool = False):
         if self.lora_layer is None:
             return
 
@@ -164,7 +221,7 @@ class LoRACompatibleConv(nn.Conv2d):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, hidden_states, scale: float = 1.0):
+    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
         if self.lora_layer is None:
             # make sure to the functional Conv2D function as otherwise torch.compile's graph will break
             # see: https://github.com/huggingface/diffusers/pull/4315
@@ -190,7 +247,7 @@ class LoRACompatibleLinear(nn.Linear):
     def set_lora_layer(self, lora_layer: Optional[LoRALinearLayer]):
         self.lora_layer = lora_layer
 
-    def _fuse_lora(self, lora_scale=1.0, safe_fusing=False):
+    def _fuse_lora(self, lora_scale: float = 1.0, safe_fusing: bool = False):
         if self.lora_layer is None:
             return
 
@@ -238,7 +295,7 @@ class LoRACompatibleLinear(nn.Linear):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, hidden_states, scale: float = 1.0):
+    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
         if self.lora_layer is None:
             out = super().forward(hidden_states)
             return out

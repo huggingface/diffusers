@@ -68,7 +68,7 @@ The most popular image-to-image models are [Stable Diffusion v1.5](https://huggi
 
 ### Stable Diffusion v1.5
 
-Stable Diffusion v1.5 is a latent diffusion model intialized from an earlier checkpoint, and further finetuned for 595K steps on 512x512 images. To use this pipeline for image-to-image, you'll need to prepare an initial image to pass to the pipeline. Then you can pass a prompt and the image to the pipeline to generate a new image:
+Stable Diffusion v1.5 is a latent diffusion model initialized from an earlier checkpoint, and further finetuned for 595K steps on 512x512 images. To use this pipeline for image-to-image, you'll need to prepare an initial image to pass to the pipeline. Then you can pass a prompt and the image to the pipeline to generate a new image:
 
 ```py
 import torch
@@ -131,7 +131,7 @@ init_image = Image.open(BytesIO(response.content)).convert("RGB")
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
 # pass prompt and image to pipeline
-image = pipeline(prompt, image=init_image, strength=).images[0]
+image = pipeline(prompt, image=init_image, strength=0.5).images[0]
 image
 ```
 

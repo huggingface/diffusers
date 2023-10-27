@@ -14,19 +14,29 @@
 from typing import Any, Dict, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
+from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
-from .activations import get_activation
+from .activations import GEGLU, GELU, ApproximateGELU
 from .attention_processor import Attention
-from .embeddings import CombinedTimestepLabelEmbeddings
 from .lora import LoRACompatibleLinear
+from .normalization import AdaLayerNorm, AdaLayerNormZero
 
 
 @maybe_allow_in_graph
 class GatedSelfAttentionDense(nn.Module):
-    def __init__(self, query_dim, context_dim, n_heads, d_head):
+    r"""
+    A gated self-attention dense layer that combines visual features and object features.
+
+    Parameters:
+        query_dim (`int`): The number of channels in the query.
+        context_dim (`int`): The number of channels in the context.
+        n_heads (`int`): The number of heads to use for attention.
+        d_head (`int`): The number of channels in each head.
+    """
+
+    def __init__(self, query_dim: int, context_dim: int, n_heads: int, d_head: int):
         super().__init__()
 
         # we need a linear projection since we need cat visual feature and obj feature
@@ -43,7 +53,7 @@ class GatedSelfAttentionDense(nn.Module):
 
         self.enabled = True
 
-    def forward(self, x, objs):
+    def forward(self, x: torch.Tensor, objs: torch.Tensor) -> torch.Tensor:
         if not self.enabled:
             return x
 
@@ -67,15 +77,25 @@ class BasicTransformerBlock(nn.Module):
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
-        only_cross_attention (`bool`, *optional*):
-            Whether to use only cross-attention layers. In this case two cross attention layers are used.
-        double_self_attention (`bool`, *optional*):
-            Whether to use two self-attention layers. In this case no cross attention layers are used.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
         attention_bias (:
             obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
+        only_cross_attention (`bool`, *optional*):
+            Whether to use only cross-attention layers. In this case two cross attention layers are used.
+        double_self_attention (`bool`, *optional*):
+            Whether to use two self-attention layers. In this case no cross attention layers are used.
+        upcast_attention (`bool`, *optional*):
+            Whether to upcast the attention computation to float32. This is useful for mixed precision training.
+        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
+            Whether to use learnable elementwise affine parameters for normalization.
+        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
+            The normalization layer to use. Can be `"layer_norm"`, `"ada_norm"` or `"ada_norm_zero"`.
+        final_dropout (`bool` *optional*, defaults to False):
+            Whether to apply a final dropout after the last feed-forward layer.
+        attention_type (`str`, *optional*, defaults to `"default"`):
+            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
     """
 
     def __init__(
@@ -175,7 +195,7 @@ class BasicTransformerBlock(nn.Module):
         timestep: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
-    ):
+    ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         if self.use_ada_layer_norm:
@@ -280,6 +300,7 @@ class FeedForward(nn.Module):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
+        linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
 
         if activation_fn == "gelu":
             act_fn = GELU(dim, inner_dim)
@@ -296,148 +317,16 @@ class FeedForward(nn.Module):
         # project dropout
         self.net.append(nn.Dropout(dropout))
         # project out
-        self.net.append(LoRACompatibleLinear(inner_dim, dim_out))
+        self.net.append(linear_cls(inner_dim, dim_out))
         # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
         if final_dropout:
             self.net.append(nn.Dropout(dropout))
 
-    def forward(self, hidden_states, scale: float = 1.0):
+    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
+        compatible_cls = (GEGLU,) if USE_PEFT_BACKEND else (GEGLU, LoRACompatibleLinear)
         for module in self.net:
-            if isinstance(module, (LoRACompatibleLinear, GEGLU)):
+            if isinstance(module, compatible_cls):
                 hidden_states = module(hidden_states, scale)
             else:
                 hidden_states = module(hidden_states)
         return hidden_states
-
-
-class GELU(nn.Module):
-    r"""
-    GELU activation function with tanh approximation support with `approximate="tanh"`.
-    """
-
-    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none"):
-        super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
-        self.approximate = approximate
-
-    def gelu(self, gate):
-        if gate.device.type != "mps":
-            return F.gelu(gate, approximate=self.approximate)
-        # mps: gelu is not implemented for float16
-        return F.gelu(gate.to(dtype=torch.float32), approximate=self.approximate).to(dtype=gate.dtype)
-
-    def forward(self, hidden_states):
-        hidden_states = self.proj(hidden_states)
-        hidden_states = self.gelu(hidden_states)
-        return hidden_states
-
-
-class GEGLU(nn.Module):
-    r"""
-    A variant of the gated linear unit activation function from https://arxiv.org/abs/2002.05202.
-
-    Parameters:
-        dim_in (`int`): The number of channels in the input.
-        dim_out (`int`): The number of channels in the output.
-    """
-
-    def __init__(self, dim_in: int, dim_out: int):
-        super().__init__()
-        self.proj = LoRACompatibleLinear(dim_in, dim_out * 2)
-
-    def gelu(self, gate):
-        if gate.device.type != "mps":
-            return F.gelu(gate)
-        # mps: gelu is not implemented for float16
-        return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
-
-    def forward(self, hidden_states, scale: float = 1.0):
-        hidden_states, gate = self.proj(hidden_states, scale).chunk(2, dim=-1)
-        return hidden_states * self.gelu(gate)
-
-
-class ApproximateGELU(nn.Module):
-    """
-    The approximate form of Gaussian Error Linear Unit (GELU)
-
-    For more details, see section 2: https://arxiv.org/abs/1606.08415
-    """
-
-    def __init__(self, dim_in: int, dim_out: int):
-        super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
-
-    def forward(self, x):
-        x = self.proj(x)
-        return x * torch.sigmoid(1.702 * x)
-
-
-class AdaLayerNorm(nn.Module):
-    """
-    Norm layer modified to incorporate timestep embeddings.
-    """
-
-    def __init__(self, embedding_dim, num_embeddings):
-        super().__init__()
-        self.emb = nn.Embedding(num_embeddings, embedding_dim)
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, embedding_dim * 2)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False)
-
-    def forward(self, x, timestep):
-        emb = self.linear(self.silu(self.emb(timestep)))
-        scale, shift = torch.chunk(emb, 2)
-        x = self.norm(x) * (1 + scale) + shift
-        return x
-
-
-class AdaLayerNormZero(nn.Module):
-    """
-    Norm layer adaptive layer norm zero (adaLN-Zero).
-    """
-
-    def __init__(self, embedding_dim, num_embeddings):
-        super().__init__()
-
-        self.emb = CombinedTimestepLabelEmbeddings(num_embeddings, embedding_dim)
-
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
-        self.norm = nn.LayerNorm(embedding_dim, elementwise_affine=False, eps=1e-6)
-
-    def forward(self, x, timestep, class_labels, hidden_dtype=None):
-        emb = self.linear(self.silu(self.emb(timestep, class_labels, hidden_dtype=hidden_dtype)))
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
-        x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
-        return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
-
-
-class AdaGroupNorm(nn.Module):
-    """
-    GroupNorm layer modified to incorporate timestep embeddings.
-    """
-
-    def __init__(
-        self, embedding_dim: int, out_dim: int, num_groups: int, act_fn: Optional[str] = None, eps: float = 1e-5
-    ):
-        super().__init__()
-        self.num_groups = num_groups
-        self.eps = eps
-
-        if act_fn is None:
-            self.act = None
-        else:
-            self.act = get_activation(act_fn)
-
-        self.linear = nn.Linear(embedding_dim, out_dim * 2)
-
-    def forward(self, x, emb):
-        if self.act:
-            emb = self.act(emb)
-        emb = self.linear(emb)
-        emb = emb[:, :, None, None]
-        scale, shift = emb.chunk(2, dim=1)
-
-        x = F.group_norm(x, self.num_groups, eps=self.eps)
-        x = x * (1 + scale) + shift
-        return x

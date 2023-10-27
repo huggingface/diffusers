@@ -64,6 +64,19 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=init_imag
   </div>
 </div>
 
+## Create a mask image
+
+Throughout this guide, the mask image is provided in all of the code examples for convenience. You can inpaint on your own images, but you'll need to create a mask image for it. Use the Space below to easily create a mask image.
+
+Upload a base image to inpaint on and use the sketch tool to draw a mask. Once you're done, click **Run** to generate and download the mask image.
+
+<iframe
+	src="https://stevhliu-inpaint-mask-maker.hf.space"
+	frameborder="0"
+	width="850"
+	height="450"
+></iframe>
+
 ## Popular models
 
 [Stable Diffusion Inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting), [Stable Diffusion XL (SDXL) Inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images.
@@ -163,7 +176,7 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generat
 
 Image features - like quality and "creativity" - are dependent on pipeline parameters. Knowing what these parameters do is important for getting the results you want. Let's take a look at the most important parameters and see how changing them affects the output.
 
-## Strength
+### Strength
 
 `strength` is a measure of how much noise is added to the base image, which influences how similar the output is to the base image.
 
@@ -204,7 +217,7 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strengt
   </div>
 </div>
 
-## Guidance scale
+### Guidance scale
 
 `guidance_scale` affects how aligned the text prompt and generated image are.
 
@@ -561,7 +574,7 @@ image
 
 ## Optimize
 
-It can be difficult and slow to run diffusion models if you're resource constrained, but it dosen't have to be with a few optimization tricks. One of the biggest (and easiest) optimizations you can enable is switching to memory-efficient attention. If you're using PyTorch 2.0, [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention) is automatically enabled and you don't need to do anything else. For non-PyTorch 2.0 users, you can install and use [xFormers](../optimization/xformers)'s implementation of memory-efficient attention. Both options reduce memory usage and accelerate inference.
+It can be difficult and slow to run diffusion models if you're resource constrained, but it doesn't have to be with a few optimization tricks. One of the biggest (and easiest) optimizations you can enable is switching to memory-efficient attention. If you're using PyTorch 2.0, [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention) is automatically enabled and you don't need to do anything else. For non-PyTorch 2.0 users, you can install and use [xFormers](../optimization/xformers)'s implementation of memory-efficient attention. Both options reduce memory usage and accelerate inference.
 
 You can also offload the model to the GPU to save even more memory:
 
