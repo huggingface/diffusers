@@ -21,6 +21,7 @@ import inspect
 import json
 import os
 import re
+import sys
 from collections import OrderedDict
 from pathlib import PosixPath
 from typing import Any, Dict, Tuple, Union
@@ -31,6 +32,9 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__
+from .models import _import_structure as model_modules
+from .pipelines import _import_structure as pipeline_modules
+from .schedulers import _import_structure as scheduler_modules
 from .utils import (
     DIFFUSERS_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
@@ -45,6 +49,10 @@ from .utils import (
 logger = logging.get_logger(__name__)
 
 _re_configuration_file = re.compile(r"config\.(.*)\.json")
+
+_all_available_pipeline_component_modules = (
+    list(model_modules.values()) + list(scheduler_modules.values()) + list(pipeline_modules.values())
+)
 
 
 class FrozenDict(OrderedDict):
@@ -161,6 +169,21 @@ class ConfigMixin:
 
         self.to_json_file(output_config_file)
         logger.info(f"Configuration saved in {output_config_file}")
+
+        # Additionally, save the implementation file too. It can happen for a pipeline, for a model, and
+        # for a scheduler.
+        if self.__class__.__name__ not in _all_available_pipeline_component_modules:
+            module_to_save = self.__class__.__module__
+            absolute_module_path = sys.modules[module_to_save].__file__
+            try:
+                with open(absolute_module_path, "r") as original_file:
+                    content = original_file.read()
+                path_to_write = os.path.join(save_directory, f"{module_to_save}.py")
+                with open(path_to_write, "w") as new_file:
+                    new_file.write(content)
+                    logger.info(f"{module_to_save}.py saved in {save_directory}")
+            except Exception as e:
+                logger.error(e)
 
         if push_to_hub:
             commit_message = kwargs.pop("commit_message", None)
