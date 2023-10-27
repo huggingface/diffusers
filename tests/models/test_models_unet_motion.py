@@ -14,15 +14,14 @@
 # limitations under the License.
 
 import copy
-import gc
 import os
 import tempfile
 import unittest
 
-import torch
 import numpy as np
+import torch
 
-from diffusers import UNetMotionModel, UNet2DConditionModel, MotionAdapter
+from diffusers import MotionAdapter, UNet2DConditionModel, UNetMotionModel
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
