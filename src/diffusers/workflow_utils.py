@@ -53,8 +53,14 @@ def populate_workflow_from_pipeline(
         arg: call_arg_values[arg]
         for arg in argument_names
         if arg != "return_workflow"
-        and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, PIL.Image.Image, Callable))
+        and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, Callable))
     }
+    # Filter out more arguments as they cannot be serialized as JSON.
+    updated_call_arguments = {}
+    for k, v in call_arguments.items():
+        if isinstance(call_arguments[k], list):
+            if not isinstance(call_arguments[k][0], PIL.Image.Image):
+                updated_call_arguments.update({k: v})
 
     workflow.update(call_arguments)
 
