@@ -15,6 +15,7 @@
 
 
 import json
+import os
 import tempfile
 import unittest
 import uuid
@@ -184,7 +185,18 @@ class WorkflowPushToHubTester(unittest.TestCase):
             vocab_size=1000,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
+            vocab_path = os.path.join(tmpdir, "vocab.json")
+            with open(vocab_path, "w") as f:
+                json.dump(dummy_vocab, f)
+
+            merges = "Ġ t\nĠt h"
+            merges_path = os.path.join(tmpdir, "merges.txt")
+            with open(merges_path, "w") as f:
+                f.writelines(merges)
+            tokenizer = CLIPTokenizer(vocab_file=vocab_path, merges_file=merges_path)
 
         components = {
             "unet": unet,
