@@ -94,7 +94,7 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
         self._internal_dict.pop(__key)
         super().pop(__key)
 
-    def save_workflow(self, save_directory: Union[str, os.PathLike], push_to_hub: bool, filename: str = WORKFLOW_NAME):
+    def save_workflow(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, filename: str = WORKFLOW_NAME):
         """
         Saves a workflow to a directory.
 
