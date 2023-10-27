@@ -4,9 +4,9 @@
 
 The Kandinsky models are a series of multilingual text-to-image generation models. The Kandinsky 2.0 model uses two multilingual text encoders and concatenates those results for the UNet.
 
-[Kandinsky 2.1](../api/pipelines/kandinsky) changes the architecture to include an image prior model ([`CLIP`](https://huggingface.co/docs/transformers/model_doc/clip)) to generate a mapping between text and image embeddings. The mapping embedding provides better text-image alignment are is used with the text embeddings for training, leading to higher quality results. Finally, Kandinsky 2.1 uses a [Modulating Quantized Vectors (MoVQ)](https://huggingface.co/papers/2209.09002) decoder - adds a spatial conditional normalization layer to increase photorealism - to decode the latents into images.
+[Kandinsky 2.1](../api/pipelines/kandinsky) changes the architecture to include an image prior model ([`CLIP`](https://huggingface.co/docs/transformers/model_doc/clip)) to generate a mapping between text and image embeddings. The mapping provides better text-image alignment and it is used with the text embeddings during training, leading to higher quality results. Finally, Kandinsky 2.1 uses a [Modulating Quantized Vectors (MoVQ)](https://huggingface.co/papers/2209.09002) decoder - which adds a spatial conditional normalization layer to increase photorealism - to decode the latents into images.
 
-[Kandinsky 2.2](../api/pipelines/kandinsky_v22) improves on the previous model by replacing the image encoder of the image prior model with a larger CLIP-ViT-G model to increase quality. The image prior model was also retrained on images with different resolutions and aspect ratios to generate higher-resolution images and different image sizes.
+[Kandinsky 2.2](../api/pipelines/kandinsky_v22) improves on the previous model by replacing the image encoder of the image prior model with a larger CLIP-ViT-G model to improve quality. The image prior model was also retrained on images with different resolutions and aspect ratios to generate higher-resolution images and different image sizes.
 
 This guide will show you how to use the Kandinsky models for text-to-image, image-to-image, inpainting, interpolation, and more.
 
@@ -19,7 +19,7 @@ Before you begin, make sure you have the following libraries installed:
 
 <Tip warning={true}>
 
-Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.2 no longer accepts `prompt` as an input when decoding the latents. Instead, Kandinsky 2.2 only accepts `image_embeds` during decoding.
+Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.2 doesn't accept `prompt` as an input when decoding the latents. Instead, Kandinsky 2.2 only accepts `image_embeds` during decoding.
 
 </Tip>
 
@@ -27,12 +27,16 @@ Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.
 
 To use the Kandinsky models for any task, you always start by setting up the prior pipeline to encode the prompt and generate the image embeddings. The prior pipeline also generates `negative_image_embeds` that correspond to the negative prompt `""`. For better results, you can pass an actual `negative_prompt` to the prior pipeline, but this'll increase the effective batch size of the prior pipeline by 2x.
 
-```py
-import torch
-from diffusers import KandinskyPriorPipeline, KandinskyPipeline
 
-prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+<hfoptions id="kandinsky-text-to-image">
+<hfoption id="Kandinsky 2.1">
+
+```py
+from diffusers import KandinskyPriorPipeline, KandinskyPipeline
+import torch
+
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16).to("cuda")
+pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16).to("cuda")
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality" # optional to include a negative prompt, but results are usually better
@@ -50,21 +54,69 @@ image
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/cheeseburger.png"/>
 </div>
 
-🤗 Diffusers also provides an end-to-end API with [`KandinskyCombinedPipeline`], meaning you don't have to separately load the prior and text-to-image pipeline. The combined pipeline automatically loads both [`KandinskyPriorPipeline`] and [`KandinskyPipeline`]. You can still set different values for the prior pipeline with the `prior_guidance_scale` and `prior_num_inference_steps` parameters if you want. 
+<hfoption>
+<hfoption id="Kandinsky 2.2">
 
-Use the [`AutoPipelineForText2Image`] to automatically call the [`KandinskyCombinedPipeline`] under the hood:
+```py
+from diffusers import KandinskyV22PriorPipeline, KandinskyV22Pipeline
+import torch
+
+prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16).to("cuda")
+pipeline = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+
+prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
+negative_prompt = "low quality, bad quality" # optional to include a negative prompt, but results are usually better
+image_embeds, negative_image_embeds = prior_pipeline(prompt, guidance_scale=1.0).to_tuple()
+```
+
+Pass the `image_embeds` and `negative_image_embeds` to the [`KandinskyV22Pipeline`] to generate an image:
+
+```py
+image = pipeline(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[0]
+image
+```
+
+<div class="flex justify-center">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-text-to-image.png"/>
+</div>
+
+</hfoption>
+</hfoptions>
+
+🤗 Diffusers also provides an end-to-end API with the [`KandinskyCombinedPipeline`] and [`KandinskyV22CombinedPipeline`], meaning you don't have to separately load the prior and text-to-image pipeline. The combined pipeline automatically loads both the prior model and the decoder. You can still set different values for the prior pipeline with the `prior_guidance_scale` and `prior_num_inference_steps` parameters if you want.
+
+Use the [`AutoPipelineForText2Image`] to automatically call the combined pipelines under the hood:
+
+<hfoptions id="combined-text-to-image">
+<hfoption id="Kandinsky 2.1">
 
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
-pipe.enable_model_cpu_offload()
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16).to("cuda")
+pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality"
 
-image = pipe(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale=1.0, guidance_scale = 4.0, height=768, width=768).images[0]
+image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale=1.0, guidance_scale = 4.0, height=768, width=768).images[0]
+```
+
+</hfoption>
+<hfoption id="Kandinsky 2.2">
+
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+pipeline.enable_model_cpu_offload()
+
+prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
+negative_prompt = "low quality, bad quality"
+
+image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale=1.0, guidance_scale = 4.0, height=768, width=768).images[0]
 ```
 
 ## Image-to-image

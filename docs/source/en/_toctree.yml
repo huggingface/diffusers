@@ -42,8 +42,6 @@
   - sections:
     - local: using-diffusers/pipeline_overview
       title: Overview
-    - local: using-diffusers/kandinsky
-      title: Kandinsky
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
@@ -74,6 +72,8 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
+    - local: using-diffusers/kandinsky
+      title: Kandinsky
     - local: using-diffusers/controlnet
       title: ControlNet
     - local: using-diffusers/shap-e
