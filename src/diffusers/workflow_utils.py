@@ -17,7 +17,6 @@ import os
 from typing import Callable, Dict, List, Union
 
 import numpy as np
-import PIL
 import torch
 
 from .configuration_utils import ConfigMixin
@@ -53,25 +52,19 @@ def populate_workflow_from_pipeline(
         arg: call_arg_values[arg]
         for arg in argument_names
         if arg != "return_workflow"
+        and "image" not in arg
         and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, Callable))
     }
-    # Filter out more arguments as they cannot be serialized as JSON.
-    updated_call_arguments = {}
-    for k, v in call_arguments.items():
-        if isinstance(call_arguments[k], list):
-            if not isinstance(call_arguments[k][0], PIL.Image.Image):
-                updated_call_arguments.update({k: v})
 
-    workflow.update(updated_call_arguments)
+    workflow.update(call_arguments)
 
-    generator = workflow.pop("generator")
+    generator = workflow.pop("generator", None)
     if generator is not None:
-        try:
-            workflow.update({"generator_seed": generator.initial_seed()})
-            workflow.update({"generator_device": generator.device})
-        except Exception:
-            workflow.update({"generator_seed": None})
-            workflow.update({"generator_device": "cpu"})
+        workflow.update({"generator_seed": generator.initial_seed()})
+        workflow.update({"generator_device": generator.device})
+    else:
+        workflow.update({"generator_seed": None})
+        workflow.update({"generator_device": "cpu"})
 
     workflow["_name_or_path"] = pipeline_name_or_path
 
