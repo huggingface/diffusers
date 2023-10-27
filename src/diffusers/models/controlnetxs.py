@@ -143,7 +143,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 'mid': [(1280, 1280)],
                 'dec': [(2560, 1280), (2560, 1280), (1920, 1280), (1920, 640), (1280, 640), (960, 640), (960, 320), (640, 320), (640, 320)]
             },
-            global_pool_conditions: bool = False, # Todo Umer: Needed by SDXL pipeline, but what is this?
+            global_pool_conditions: bool = False, # Todo Umer: Needed by SDXL pipeline, but what is this?,
+            control_scale=0.95, # 1 in Heidelberg code, but 0.95 in usage script
         ):
         super().__init__()
 
@@ -154,7 +155,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.out_channels = out_channels
         self.dims = 2
         self.model_channels = model_channels
-        self.control_scale = 1.0
         self.hint_model = None
         self.no_control = False
         self.learn_embedding = learn_embedding
@@ -243,7 +243,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # info: I deleted the encoder_hid_proj as it's not given by the Heidelberg CVL weights
 
         scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
-        self.register_buffer('scale_list', torch.tensor(scale_list))
+        self.register_buffer('scale_list', torch.tensor(scale_list) * control_scale)
 
         # in the mininal implementation setting, we only need the control model up to the mid block
         # note: these can only be deleted after  has to be `gather_base_model_sizes(self.control_mode, 'control')` has been called
@@ -251,6 +251,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         del self.control_model.conv_norm_out
         del self.control_model.conv_out
 
+    DEBUG_LOG_by_Umer = False
+    DEBUG_LOG_by_Umer_file = 'debug_log.pkl'
     def forward(self, x: torch.Tensor, t: torch.Tensor, encoder_hidden_states: torch.Tensor, c: dict, hint: torch.Tensor, no_control=False, **kwargs):
         if self.base_model is None:
             raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel by `cnxs_model.base_model = the_base_model`")
@@ -275,7 +277,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if x.size(0) // 2 == hint.size(0): hint = torch.cat([hint, hint], dim=0) # for classifier free guidance
         
         timesteps=t
-        context=c.get("crossattn", None)
         y=c.get("vector", None)
 
         if no_control or self.no_control:
@@ -311,44 +312,75 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         ctrl_mid_subblocks = to_sub_blocks([self.control_model.mid_block])
         base_up_subblocks = to_sub_blocks(self.base_model.up_blocks)
 
+        # Debug Umer -- to delete later on
+        debug_log = []
+        def debug_by_umer(stage, msg, obj):
+            if not self.DEBUG_LOG_by_Umer: return
+            i = len(debug_log)
+            if isinstance(obj, torch.Tensor): obj = obj.cpu()
+            debug_log.append((i, stage, msg, obj))
+        def debug_save():
+            if not self.DEBUG_LOG_by_Umer: return
+            import pickle
+            pickle.dump(debug_log, open(self.DEBUG_LOG_by_Umer_file, "wb"))
+            raise RuntimeError("Debug Log saved successfully")
+
+        debug_by_umer('prep', 'x', x)
+        debug_by_umer('prep', 'temb', temb)
+        debug_by_umer('prep', 'context', cemb)
+        debug_by_umer('prep', 'raw hint', hint)
+        debug_by_umer('prep', 'guided_hint', guided_hint)
+
         # Cross Control
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
+        debug_by_umer('enc', 'h_base', h_base)
         h_ctrl = self.control_model.conv_in(h_ctrl)
+        debug_by_umer('enc', 'h_ctrl', h_ctrl)
         if guided_hint is not None:
             h_ctrl += guided_hint
+        debug_by_umer('enc', 'h_ctrl', h_ctrl)
         h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)
+        debug_by_umer('enc', 'h_base', h_base)
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
         # 1 - input blocks (encoder)
         for i, (m_base, m_ctrl)  in enumerate(zip(base_down_subblocks, ctrl_down_subblocks)):
-            self.debug_print(f'>>> >>> Start {i+1}')
-            self.debug_print(f'{i+1}] h_base.shape: {list(h_base.shape)}')
-            self.debug_print(f'{i+1}] h_ctrl.shape: {list(h_ctrl.shape)}')
             h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
-            self.debug_print('>>> After base->ctrl concat')
-            self.debug_print(f'{i+1}] h_ctrl.shape: {list(h_ctrl.shape)}')
-            h_base = m_base(h_base, temb, cemb, context)
-            h_ctrl = m_ctrl(h_ctrl, temb, cemb, context)
-            self.debug_print('>>> After block application')
-            self.debug_print(f'{i+1}] h_base.shape: {list(h_base.shape)}')
-            self.debug_print(f'{i+1}] h_ctrl.shape: {list(h_ctrl.shape)}')
+            debug_by_umer('enc', 'h_ctr', h_ctrl)
+            h_base = m_base(h_base, temb, cemb)
+            debug_by_umer('enc', 'h_base', h_base)
+            h_ctrl = m_ctrl(h_ctrl, temb, cemb)
+            debug_by_umer('enc', 'h_ctrl', h_ctrl)
             h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)
-            self.debug_print('>>> After ctrl->base add')
-            self.debug_print(f'{i+1}] h_base.shape: {list(h_base.shape)}')
-            self.debug_print(' - - - - - - - - - - - - - ')
+            debug_by_umer('enc', 'h_base', h_base)
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
-        # 2 - mid blocks (bottleneck)
         h_ctrl = torch.concat([h_ctrl, h_base], dim=1)
+        debug_by_umer('enc', 'h_ctrl', h_ctrl)
+        # 2 - mid blocks (bottleneck)
         for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
-            h_base = m_base(h_base, temb, cemb, context)
-            h_ctrl = m_ctrl(h_ctrl, temb, cemb, context)
+            h_base = m_base(h_base, temb, cemb)
+            h_ctrl = m_ctrl(h_ctrl, temb, cemb)
+        # Heidelberg treats the R/A/R as one block, while I treat is as 2 subblocks
+        # Let's therefore only log after the mid section
+        debug_by_umer('mid', 'h_base', h_base)
+        debug_by_umer('mid', 'h_ctrl', h_ctrl)
+    
+        h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)
+        debug_by_umer('mid', 'h_base', h_base)
+
         # 3 - output blocks (decoder)
         for m_base in base_up_subblocks:
             h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales) # add info from ctrl encoder 
+            debug_by_umer('dec', 'h_base', h_base)
             h_base = torch.cat([h_base, hs_base.pop()], dim=1) # concat info from base encoder+ctrl encoder
-            h_base = m_base(h_base, temb, cemb, context)
+            debug_by_umer('dec', 'h_base', h_base)
+            h_base = m_base(h_base, temb, cemb)
+            debug_by_umer('dec', 'h_base', h_base)
+
+        debug_save()
+
         return UNet2DConditionOutput(sample=self.base_model.conv_out(h_base))
 
     def make_zero_conv(self, in_channels, out_channels=None):
@@ -454,7 +486,7 @@ class EmbedSequential(nn.ModuleList):
         if not is_iterable(ms): ms = [ms]
         super().__init__(ms,*args,**kwargs)
     
-    def forward(self,x,temb,cemb,context):
+    def forward(self,x,temb,cemb):
         for m in self:
             if isinstance(m,ResnetBlock2D): x=m(x,temb)
             elif isinstance(m,Transformer2DModel): x=m(x,cemb).sample # Q: Include temp also?

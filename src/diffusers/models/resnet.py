@@ -683,14 +683,22 @@ class ResnetBlock2D(nn.Module):
             )
 
     def forward(self, input_tensor, temb, scale: float = 1.0):
+        UMER_DEBUG_CACHE = []
+
         hidden_states = input_tensor
+
+        UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'start'))
+        UMER_DEBUG_CACHE.append(('temb', temb, 'start'))
+        UMER_DEBUG_CACHE.append(('scale', scale, 'start'))
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm1(hidden_states, temb)
         else:
             hidden_states = self.norm1(hidden_states)
+        UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'after norm1'))
 
         hidden_states = self.nonlinearity(hidden_states)
+        UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'after silu'))
 
         if self.upsample is not None:
             # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
@@ -720,32 +728,42 @@ class ResnetBlock2D(nn.Module):
             )
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
+        UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'after conv1'))
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
                 temb = self.nonlinearity(temb)
+                UMER_DEBUG_CACHE.append(('temb', temb, 'after silu'))
             temb = (
                 self.time_emb_proj(temb, scale)[:, :, None, None]
                 if not USE_PEFT_BACKEND
                 else self.time_emb_proj(temb)[:, :, None, None]
-            )
+            )        
+            UMER_DEBUG_CACHE.append(('temb', temb, 'after linear'))
+
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
+            UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'after time add'))
+
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm2(hidden_states, temb)
         else:
             hidden_states = self.norm2(hidden_states)
+            UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'after norm2'))
 
         if temb is not None and self.time_embedding_norm == "scale_shift":
             scale, shift = torch.chunk(temb, 2, dim=1)
             hidden_states = hidden_states * (1 + scale) + shift
 
         hidden_states = self.nonlinearity(hidden_states)
+        UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'after silu'))
 
         hidden_states = self.dropout(hidden_states)
+        UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'after dropout'))
         hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
+        UMER_DEBUG_CACHE.append(('hidden_states', hidden_states, 'after conv2'))
 
         if self.conv_shortcut is not None:
             input_tensor = (
@@ -753,6 +771,16 @@ class ResnetBlock2D(nn.Module):
             )
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
+        UMER_DEBUG_CACHE.append(('hidden_states', output_tensor, 'after skip + scale'))
+
+        import pickle
+        with open('intermediate_output/local_resnet.pkl','wb') as f:
+            pickle.dump(UMER_DEBUG_CACHE, f)
+
+        msg = "End of 1st ResNet reached."
+        msg += "\nLet's analyze the intermediate steps, my man. Don't be intimidated, you can do it. Believe in the you that believes in yourself."
+        msg += "\n\nBtw, results are saved to file 'intermediate_output/local_resnet.pkl'."
+        raise ValueError(msg)
 
         return output_tensor
 

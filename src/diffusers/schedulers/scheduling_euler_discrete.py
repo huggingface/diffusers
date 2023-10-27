@@ -153,6 +153,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
+
+            print(f'beta_schedule = "scaled_linear" and beta_start={beta_start}, beta_end={beta_end}')
+
             self.betas = (
                 torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
             )
@@ -168,6 +171,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas)
+
+        print(f'At the end of __init__, the sigmas are {self.sigmas[:5]} ...')
 
         # setable values
         self.num_inference_steps = None
@@ -242,6 +247,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             # casting to int to avoid issues when num_inference_step is power of 3
             timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
             timesteps += self.config.steps_offset
+
+            print(f'timestep_spacing = "leading" and timesteps={timesteps[:5]} ...')
+
         elif self.config.timestep_spacing == "trailing":
             step_ratio = self.config.num_train_timesteps / self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
@@ -254,10 +262,13 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        print(f'sigmas before interpolation: {sigmas[:5]} ...')
+
         log_sigmas = np.log(sigmas)
 
         if self.config.interpolation_type == "linear":
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
+            print(f'sigmas after (linear) interpolation: {sigmas[:5]} ...')
         elif self.config.interpolation_type == "log_linear":
             sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp()
         else:
@@ -275,6 +286,10 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device=device)
         self._step_index = None
+
+        print(f'At end of `set_timesteps`:')
+        print(f'sigmas =  {self.sigmas[:5]} ...')
+        print(f'timesteps = {self.timesteps[:5]} ...')
 
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
