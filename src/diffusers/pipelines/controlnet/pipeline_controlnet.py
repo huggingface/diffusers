@@ -36,6 +36,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
+from ...workflow_utils import populate_workflow_from_pipeline
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -752,6 +753,7 @@ class StableDiffusionControlNetPipeline(
         guess_mode: bool = False,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
+        return_workflow: bool = False,
         clip_skip: Optional[int] = None,
     ):
         r"""
@@ -824,6 +826,8 @@ class StableDiffusionControlNetPipeline(
                 The percentage of total steps at which the ControlNet starts applying.
             control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
                 The percentage of total steps at which the ControlNet stops applying.
+            return_workflow (`bool`, *optional*, defaults to `False`):
+                Whether to return used pipeline call arguments.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
@@ -1074,7 +1078,19 @@ class StableDiffusionControlNetPipeline(
         # Offload all models
         self.maybe_free_model_hooks()
 
-        if not return_dict:
-            return (image, has_nsfw_concept)
+        workflow = None
+        if return_workflow:
+            signature = inspect.signature(self.__call__)
+            argument_names = [param.name for param in signature.parameters.values()]
+            call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
+            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self.config._name_or_path)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        if not return_dict:
+            outputs = (image, has_nsfw_concept)
+
+            if workflow is not None:
+                outputs += (workflow,)
+
+            return outputs
+
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept, workflow=workflow)
