@@ -596,7 +596,7 @@ class AdapterSDXLPipelineSlowTests(unittest.TestCase):
         assert images[0].shape == (768, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.5226907,  0.5272584,  0.52255356, 0.50762856, 0.50497484, 0.50656825, 0.5065469,  0.51809096, 0.48973307])
+        assert numpy_cosine_similarity_distance(original_image, expected_image) < 1e-4
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
 
