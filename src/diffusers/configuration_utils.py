@@ -32,9 +32,6 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__
-from .models import _import_structure as model_modules
-from .pipelines import _import_structure as pipeline_modules
-from .schedulers import _import_structure as scheduler_modules
 from .utils import (
     DIFFUSERS_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
@@ -49,10 +46,6 @@ from .utils import (
 logger = logging.get_logger(__name__)
 
 _re_configuration_file = re.compile(r"config\.(.*)\.json")
-
-_all_available_pipelines_schedulers_model_classes = sum(
-    (list(model_modules.values()) + list(scheduler_modules.values()) + list(pipeline_modules.values())), []
-)
 
 
 class FrozenDict(OrderedDict):
@@ -172,6 +165,15 @@ class ConfigMixin:
 
         # Additionally, save the implementation file too. It can happen for a pipeline, for a model, and
         # for a scheduler.
+
+        # To avoid circular import problems.
+        from .models import _import_structure as model_modules
+        from .pipelines import _import_structure as pipeline_modules
+        from .schedulers import _import_structure as scheduler_modules
+
+        _all_available_pipelines_schedulers_model_classes = sum(
+            (list(model_modules.values()) + list(scheduler_modules.values()) + list(pipeline_modules.values())), []
+        )
         if self.__class__.__name__ not in _all_available_pipelines_schedulers_model_classes:
             module_to_save = self.__class__.__module__
             absolute_module_path = sys.modules[module_to_save].__file__
@@ -591,6 +593,19 @@ class ConfigMixin:
         """
         config_dict = self._internal_dict if hasattr(self, "_internal_dict") else {}
         cls_name = self.__class__.__name__
+
+        # Additionally, save the implementation file too. It can happen for a pipeline, for a model, and
+        # for a scheduler.
+
+        # To avoid circular import problems.
+        from .models import _import_structure as model_modules
+        from .pipelines import _import_structure as pipeline_modules
+        from .schedulers import _import_structure as scheduler_modules
+
+        _all_available_pipelines_schedulers_model_classes = sum(
+            (list(model_modules.values()) + list(scheduler_modules.values()) + list(pipeline_modules.values())), []
+        )
+
         if cls_name not in _all_available_pipelines_schedulers_model_classes:
             config_dict["_class_name"] = [str(self.__class__.__module__), cls_name]
         else:
