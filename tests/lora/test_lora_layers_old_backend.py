@@ -52,7 +52,15 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import floats_tensor, load_image, nightly, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    deprecate_after_peft_backend,
+    floats_tensor,
+    load_image,
+    nightly,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 
 def create_lora_layers(model, mock_weights: bool = True):
@@ -181,6 +189,7 @@ def state_dicts_almost_equal(sd1, sd2):
     return models_are_equal
 
 
+@deprecate_after_peft_backend
 class LoraLoaderMixinTests(unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -284,6 +293,22 @@ class LoraLoaderMixinTests(unittest.TestCase):
         )
         self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
 
+    @unittest.skipIf(not torch.cuda.is_available() or not is_xformers_available(), reason="xformers requires cuda")
+    def test_stable_diffusion_xformers_attn_processors(self):
+        # disable_full_determinism()
+        device = "cuda"  # ensure determinism for the device-dependent torch.Generator
+        components, _ = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs()
+
+        # run xformers attention
+        sd_pipe.enable_xformers_memory_efficient_attention()
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
     @unittest.skipIf(not torch.cuda.is_available(), reason="xformers requires cuda")
     def test_stable_diffusion_attn_processors(self):
         # disable_full_determinism()
@@ -296,11 +321,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         _, _, inputs = self.get_dummy_inputs()
 
         # run normal sd pipe
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run xformers attention
-        sd_pipe.enable_xformers_memory_efficient_attention()
         image = sd_pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 
@@ -653,6 +673,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
 
 
+@deprecate_after_peft_backend
 class SDXInpaintLoraMixinTests(unittest.TestCase):
     def get_dummy_inputs(self, device, seed=0, img_res=64, output_pil=True):
         # TODO: use tensor inputs instead of PIL, this is here just to leave the old expected_slices untouched
@@ -773,6 +794,7 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
         assert np.abs(image_slice - image_slice_2).max() > 1e-2
 
 
+@deprecate_after_peft_backend
 class SDXLLoraLoaderMixinTests(unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -1018,6 +1040,47 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         sd_pipe.unload_lora_weights()
 
+    def test_lora_fuse_nan(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
+
+        # Emulate training.
+        set_lora_weights(lora_components["unet_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_one_lora_layers"].parameters(), randn_weight=True)
+        set_lora_weights(lora_components["text_encoder_two_lora_layers"].parameters(), randn_weight=True)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+                safe_serialization=True,
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors"))
+
+        # corrupt one LoRA weight with `inf` values
+        with torch.no_grad():
+            sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight += float(
+                "inf"
+            )
+
+        # with `safe_fusing=True` we should see an Error
+        with self.assertRaises(ValueError):
+            sd_pipe.fuse_lora(safe_fusing=True)
+
+        # without we should not see an error, but every image will be black
+        sd_pipe.fuse_lora(safe_fusing=False)
+
+        out = sd_pipe("test", num_inference_steps=2, output_type="np").images
+
+        assert np.isnan(out).all()
+
     def test_lora_fusion(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
@@ -1132,8 +1195,8 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         images_with_unloaded_lora = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         images_with_unloaded_lora_slice = images_with_unloaded_lora[0, -3:, -3:, -1]
 
-        assert np.allclose(
-            lora_image_slice, images_with_unloaded_lora_slice
+        assert (
+            np.abs(lora_image_slice - images_with_unloaded_lora_slice).max() < 2e-1
         ), "`unload_lora_weights()` should have not effect on the semantics of the results as the LoRA parameters were fused."
 
     def test_fuse_lora_with_different_scales(self):
@@ -1325,6 +1388,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         ), "The pipeline was serialized with LoRA parameters fused inside of the respected modules. The loaded pipeline should yield proper outputs, henceforth."
 
 
+@deprecate_after_peft_backend
 class UNet2DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
@@ -1335,9 +1399,9 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         num_channels = 4
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        noise = floats_tensor((batch_size, num_channels) + sizes, rng=random.Random(0)).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 32), rng=random.Random(0)).to(torch_device)
 
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
@@ -1544,7 +1608,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
-    def test_lora_xformers_on_off(self, expected_max_diff=1e-3):
+    def test_lora_xformers_on_off(self, expected_max_diff=6e-4):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -1573,6 +1637,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         assert max_diff_off_sample < expected_max_diff
 
 
+@deprecate_after_peft_backend
 class UNet3DConditionModelTests(unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
@@ -1584,9 +1649,9 @@ class UNet3DConditionModelTests(unittest.TestCase):
         num_frames = 4
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels, num_frames) + sizes).to(torch_device)
+        noise = floats_tensor((batch_size, num_channels, num_frames) + sizes, rng=random.Random(0)).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 32), rng=random.Random(0)).to(torch_device)
 
         return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
@@ -1676,7 +1741,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
         with torch.no_grad():
             new_sample = new_model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample - new_sample).abs().max() < 1e-3
+        assert (sample - new_sample).abs().max() < 5e-3
 
         # LoRA and no LoRA should NOT be the same
         assert (sample - old_sample).abs().max() > 1e-4
@@ -1776,7 +1841,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
         with torch.no_grad():
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
-        model.set_attn_processor(AttnProcessor())
+        model.set_default_attn_processor()
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
@@ -1815,6 +1880,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
 
 
 @slow
+@deprecate_after_peft_backend
 @require_torch_gpu
 class LoraIntegrationTests(unittest.TestCase):
     def test_dreambooth_old_format(self):

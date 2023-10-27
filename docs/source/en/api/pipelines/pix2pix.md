@@ -22,7 +22,7 @@ You can find additional information about InstructPix2Pix on the [project page](
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 </Tip>
 
@@ -34,13 +34,7 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 	- load_lora_weights
 	- save_lora_weights
 
-## StableDiffusionPipelineOutput
-[[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
-
 ## StableDiffusionXLInstructPix2PixPipeline
 [[autodoc]] StableDiffusionXLInstructPix2PixPipeline
 	- __call__
 	- all
-
-## StableDiffusionXLPipelineOutput
-[[autodoc]] pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput

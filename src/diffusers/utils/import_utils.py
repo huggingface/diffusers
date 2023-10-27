@@ -46,6 +46,8 @@ USE_TF = os.environ.get("USE_TF", "AUTO").upper()
 USE_TORCH = os.environ.get("USE_TORCH", "AUTO").upper()
 USE_JAX = os.environ.get("USE_FLAX", "AUTO").upper()
 USE_SAFETENSORS = os.environ.get("USE_SAFETENSORS", "AUTO").upper()
+DIFFUSERS_SLOW_IMPORT = os.environ.get("DIFFUSERS_SLOW_IMPORT", "FALSE").upper()
+DIFFUSERS_SLOW_IMPORT = DIFFUSERS_SLOW_IMPORT in ENV_VARS_TRUE_VALUES
 
 STR_OPERATION_TO_FUNC = {">": op.gt, ">=": op.ge, "==": op.eq, "!=": op.ne, "<=": op.le, "<": op.lt}
 
@@ -61,6 +63,14 @@ if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VA
 else:
     logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
+
+_torch_xla_available = importlib.util.find_spec("torch_xla") is not None
+if _torch_xla_available:
+    try:
+        _torch_xla_version = importlib_metadata.version("torch_xla")
+        logger.info(f"PyTorch XLA version {_torch_xla_version} available.")
+    except ImportError:
+        _torch_xla_available = False
 
 _jax_version = "N/A"
 _flax_version = "N/A"
@@ -267,8 +277,20 @@ except importlib_metadata.PackageNotFoundError:
     _invisible_watermark_available = False
 
 
+_peft_available = importlib.util.find_spec("peft") is not None
+try:
+    _peft_version = importlib_metadata.version("peft")
+    logger.debug(f"Successfully imported peft version {_peft_version}")
+except importlib_metadata.PackageNotFoundError:
+    _peft_available = False
+
+
 def is_torch_available():
     return _torch_available
+
+
+def is_torch_xla_available():
+    return _torch_xla_available
 
 
 def is_flax_available():
@@ -375,6 +397,10 @@ def is_torch_fp64_available(device):
 
 def is_invisible_watermark_available():
     return _invisible_watermark_available
+
+
+def is_peft_available():
+    return _peft_available
 
 
 # docstyle-ignore

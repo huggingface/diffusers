@@ -3,7 +3,7 @@ import re
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTokenizer
@@ -846,7 +846,8 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(OnnxStableDiffusionPipeline
             # call the callback, if provided
             if i % callback_steps == 0:
                 if callback is not None:
-                    callback(i, t, latents)
+                    step_idx = i // getattr(self.scheduler, "order", 1)
+                    callback(step_idx, t, latents)
                 if is_cancelled_callback is not None and is_cancelled_callback():
                     return None
 

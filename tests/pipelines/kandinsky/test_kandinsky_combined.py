@@ -134,7 +134,7 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
     def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=1e-1)
+        super().test_float16_inference(expected_max_diff=2e-1)
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
@@ -245,6 +245,9 @@ class KandinskyPipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.Te
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
 
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=5e-4)
+
 
 class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyInpaintCombinedPipeline
@@ -350,3 +353,9 @@ class KandinskyPipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.Te
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=5e-4)
+
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=5e-3)

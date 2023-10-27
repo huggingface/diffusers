@@ -15,6 +15,7 @@
 from typing import TYPE_CHECKING
 
 from ..utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -55,6 +56,7 @@ else:
     _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
     _import_structure["scheduling_karras_ve"] = ["KarrasVeScheduler"]
+    _import_structure["scheduling_lcm"] = ["LCMScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
@@ -76,6 +78,7 @@ else:
     _import_structure["scheduling_ddim_flax"] = ["FlaxDDIMScheduler"]
     _import_structure["scheduling_ddpm_flax"] = ["FlaxDDPMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_flax"] = ["FlaxDPMSolverMultistepScheduler"]
+    _import_structure["scheduling_euler_discrete_flax"] = ["FlaxEulerDiscreteScheduler"]
     _import_structure["scheduling_karras_ve_flax"] = ["FlaxKarrasVeScheduler"]
     _import_structure["scheduling_lms_discrete_flax"] = ["FlaxLMSDiscreteScheduler"]
     _import_structure["scheduling_pndm_flax"] = ["FlaxPNDMScheduler"]
@@ -110,7 +113,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["scheduling_dpmsolver_sde"] = ["DPMSolverSDEScheduler"]
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from ..utils import (
         OptionalDependencyNotAvailable,
         is_flax_available,
@@ -143,6 +146,7 @@ if TYPE_CHECKING:
         from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler
         from .scheduling_k_dpm_2_discrete import KDPM2DiscreteScheduler
         from .scheduling_karras_ve import KarrasVeScheduler
+        from .scheduling_lcm import LCMScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sde_ve import ScoreSdeVeScheduler
@@ -161,6 +165,7 @@ if TYPE_CHECKING:
         from .scheduling_ddim_flax import FlaxDDIMScheduler
         from .scheduling_ddpm_flax import FlaxDDPMScheduler
         from .scheduling_dpmsolver_multistep_flax import FlaxDPMSolverMultistepScheduler
+        from .scheduling_euler_discrete_flax import FlaxEulerDiscreteScheduler
         from .scheduling_karras_ve_flax import FlaxKarrasVeScheduler
         from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler
         from .scheduling_pndm_flax import FlaxPNDMScheduler

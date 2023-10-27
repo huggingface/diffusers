@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ..utils import (
+    DIFFUSERS_SLOW_IMPORT,
     OptionalDependencyNotAvailable,
     _LazyModule,
     get_objects_from_module,
@@ -16,7 +17,7 @@ from ..utils import (
 
 # These modules contain pipelines from multiple libraries/frameworks
 _dummy_objects = {}
-_import_structure = {"stable_diffusion": [], "latent_diffusion": [], "controlnet": []}
+_import_structure = {"stable_diffusion": [], "stable_diffusion_xl": [], "latent_diffusion": [], "controlnet": []}
 
 try:
     if not is_torch_available():
@@ -67,8 +68,10 @@ else:
         "AudioLDM2ProjectionModel",
         "AudioLDM2UNet2DConditionModel",
     ]
+    _import_structure["blip_diffusion"] = ["BlipDiffusionPipeline"]
     _import_structure["controlnet"].extend(
         [
+            "BlipDiffusionControlNetPipeline",
             "StableDiffusionControlNetImg2ImgPipeline",
             "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionControlNetPipeline",
@@ -106,6 +109,7 @@ else:
         "KandinskyV22PriorEmb2EmbPipeline",
         "KandinskyV22PriorPipeline",
     ]
+    _import_structure["latent_consistency_models"] = ["LatentConsistencyModelPipeline"]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
@@ -140,12 +144,14 @@ else:
         ]
     )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
-    _import_structure["stable_diffusion_xl"] = [
-        "StableDiffusionXLImg2ImgPipeline",
-        "StableDiffusionXLInpaintPipeline",
-        "StableDiffusionXLInstructPix2PixPipeline",
-        "StableDiffusionXLPipeline",
-    ]
+    _import_structure["stable_diffusion_xl"].extend(
+        [
+            "StableDiffusionXLImg2ImgPipeline",
+            "StableDiffusionXLInpaintPipeline",
+            "StableDiffusionXLInstructPix2PixPipeline",
+            "StableDiffusionXLPipeline",
+        ]
+    )
     _import_structure["t2i_adapter"] = ["StableDiffusionAdapterPipeline", "StableDiffusionXLAdapterPipeline"]
     _import_structure["text_to_video_synthesis"] = [
         "TextToVideoSDPipeline",
@@ -198,6 +204,7 @@ else:
             "StableDiffusionOnnxPipeline",
         ]
     )
+
 try:
     if not (is_torch_available() and is_transformers_available() and is_k_diffusion_available()):
         raise OptionalDependencyNotAvailable()
@@ -232,6 +239,11 @@ else:
             "FlaxStableDiffusionPipeline",
         ]
     )
+    _import_structure["stable_diffusion_xl"].extend(
+        [
+            "FlaxStableDiffusionXLPipeline",
+        ]
+    )
 try:
     if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
         raise OptionalDependencyNotAvailable()
@@ -242,7 +254,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["spectrogram_diffusion"] = ["MidiProcessor", "SpectrogramDiffusionPipeline"]
 
-if TYPE_CHECKING:
+if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()
@@ -281,7 +293,9 @@ if TYPE_CHECKING:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
+        from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import (
+            BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionControlNetPipeline,
@@ -318,6 +332,7 @@ if TYPE_CHECKING:
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
         )
+        from .latent_consistency_models import LatentConsistencyModelPipeline
         from .latent_diffusion import LDMTextToImagePipeline
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
@@ -432,6 +447,9 @@ if TYPE_CHECKING:
                 FlaxStableDiffusionImg2ImgPipeline,
                 FlaxStableDiffusionInpaintPipeline,
                 FlaxStableDiffusionPipeline,
+            )
+            from .stable_diffusion_xl import (
+                FlaxStableDiffusionXLPipeline,
             )
 
         try:
