@@ -81,8 +81,13 @@ With all the components, you can now initialize the custom pipeline:
 
 ```python
 pipeline = MyPipeline(
-    vae=vae, unet=unet, text_encoder=text_encoder, text_encoder_2=text_encoder_2,
-    tokenizer=tokenizer, tokenizer_2=tokenizer_2, scheduler=scheduler
+    vae=vae, 
+    unet=unet, 
+    text_encoder=text_encoder, 
+    text_encoder_2=text_encoder_2,
+    tokenizer=tokenizer, 
+    tokenizer_2=tokenizer_2, 
+    scheduler=scheduler,
 )
 ```
 
