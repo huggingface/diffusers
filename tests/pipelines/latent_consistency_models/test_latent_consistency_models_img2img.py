@@ -68,6 +68,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
+            time_cond_proj_dim=32,
         )
         scheduler = LCMScheduler(
             beta_start=0.00085,
@@ -143,7 +144,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         inputs["num_inference_steps"] = 1
         output = pipe(**inputs)
         image = output.images
-        assert image.shape == (1, 64, 64, 3)
+        assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
         expected_slice = np.array([0.1441, 0.5304, 0.5452, 0.1361, 0.4011, 0.4370, 0.5326, 0.3492, 0.3637])
@@ -160,11 +161,14 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         output = pipe(**inputs)
         image = output.images
-        assert image.shape == (1, 64, 64, 3)
+        assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
         expected_slice = np.array([0.1403, 0.5072, 0.5316, 0.1202, 0.3865, 0.4211, 0.5363, 0.3557, 0.3645])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_inference_batch_single_identical(self):
+        super().test_inference_batch_single_identical(expected_max_diff=4e-4)
 
 
 @slow
