@@ -16,6 +16,7 @@ PEFT utilities: Utilities related to peft library
 """
 import collections
 import importlib
+from typing import Optional
 
 from packaging import version
 
@@ -91,21 +92,28 @@ def scale_lora_layers(model, weight):
             module.scale_layer(weight)
 
 
-def unscale_lora_layers(model):
+def unscale_lora_layers(model, weight: Optional[float] = None):
     """
     Removes the previously passed weight given to the LoRA layers of the model.
 
     Args:
         model (`torch.nn.Module`):
             The model to scale.
-        weight (`float`):
-            The weight to be given to the LoRA layers.
+        weight (`float`, *optional*):
+            The weight to be given to the LoRA layers. If no scale is passed the scale of the lora layer will be
+            re-initialized to the correct value. If 0.0 is passed, we will re-initialize the scale with the correct
+            value.
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            module.unscale_layer()
+            if weight is not None and weight != 0:
+                module.unscale_layer(weight)
+            elif weight is not None and weight == 0:
+                for adapter_name in module.active_adapters:
+                    # if weight == 0 unscale should re-set the scale to the original value.
+                    module.set_scale(adapter_name, 1.0)
 
 
 def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True):
@@ -184,7 +192,7 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
                     module.set_adapter(adapter_name)
                 else:
                     module.active_adapter = adapter_name
-                module.scale_layer(weight)
+                module.set_scale(adapter_name, weight)
 
     # set multiple active adapters
     for module in model.modules():

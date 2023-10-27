@@ -75,27 +75,24 @@ EXAMPLE_DOC_STRING = """
         >>> mask_image = mask_image.resize((1024, 1024))
 
 
-        >>> def make_inpaint_condition(image, image_mask):
-        ...     image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
-        ...     image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
-
-        ...     assert image.shape[0:1] == image_mask.shape[0:1], "image and image_mask must have the same image size"
-        ...     image[image_mask < 0.5] = 0  # set as masked pixel
-        ...     image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
-        ...     image = torch.from_numpy(image)
+        >>> def make_canny_condition(image):
+        ...     image = np.array(image)
+        ...     image = cv2.Canny(image, 100, 200)
+        ...     image = image[:, :, None]
+        ...     image = np.concatenate([image, image, image], axis=2)
+        ...     image = Image.fromarray(image)
         ...     return image
 
 
-        >>> control_image = make_inpaint_condition(init_image, mask_image)
+        >>> control_image = make_canny_condition(init_image)
 
         >>> controlnet = ControlNetModel.from_pretrained(
-        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float32
+        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
         ... )
         >>> pipe = StableDiffusionXLControlNetInpaintPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float32
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
         ... )
 
-        >>> pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         >>> pipe.enable_model_cpu_offload()
 
         >>> # generate image
@@ -476,12 +473,12 @@ class StableDiffusionXLControlNetInpaintPipeline(
         if self.text_encoder is not None:
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder)
+                unscale_lora_layers(self.text_encoder, lora_scale)
 
         if self.text_encoder_2 is not None:
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder_2)
+                unscale_lora_layers(self.text_encoder_2, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
@@ -777,13 +774,14 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 "However, either the image or the noise timestep has not been provided."
             )
 
-        if image.shape[1] == 4:
-            image_latents = image.to(device=device, dtype=dtype)
-        elif return_image_latents or (latents is None and not is_strength_max):
+        if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
-            image_latents = self._encode_vae_image(image=image, generator=generator)
 
-        image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
+            if image.shape[1] == 4:
+                image_latents = image
+            else:
+                image_latents = self._encode_vae_image(image=image, generator=generator)
+            image_latents = image_latents.repeat(batch_size // image_latents.shape[0], 1, 1, 1)
 
         if latents is None and add_noise:
             noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -898,8 +896,20 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     - (denoising_start * self.scheduler.config.num_train_timesteps)
                 )
             )
-            timesteps = list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps))
-            return torch.tensor(timesteps), len(timesteps)
+
+            num_inference_steps = (timesteps < discrete_timestep_cutoff).sum().item()
+            if self.scheduler.order == 2 and num_inference_steps % 2 == 0:
+                # if the scheduler is a 2nd order scheduler we might have to do +1
+                # because `num_inference_steps` might be even given that every timestep
+                # (except the highest one) is duplicated. If `num_inference_steps` is even it would
+                # mean that we cut the timesteps in the middle of the denoising step
+                # (between 1st and 2nd devirative) which leads to incorrect results. By adding 1
+                # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
+                num_inference_steps = num_inference_steps + 1
+
+            # because t_n+1 >= t_n, we slice the timesteps starting from the end
+            timesteps = timesteps[-num_inference_steps:]
+            return timesteps, num_inference_steps
 
         return timesteps, num_inference_steps - t_start
 
