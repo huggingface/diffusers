@@ -108,7 +108,11 @@ You can load this pipeline from the Hub by specifying `trust_remote_code=True`:
 ```python
 from diffusers import DiffusionPipeline
 
-reloaded_pipeline = DiffusionPipeline.from_pretrained("sayakpaul/custom_pipeline_remote_code", trust_remote_code=True)
+reloaded_pipeline = DiffusionPipeline.from_pretrained(
+    "sayakpaul/custom_pipeline_remote_code", 
+    torch_dtype=torch.float16,
+    trust_remote_code=True,
+).to("cuda")
 ```
 
 And then perform inference:
