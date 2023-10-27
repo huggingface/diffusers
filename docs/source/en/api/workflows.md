@@ -207,3 +207,12 @@ image = pipe(image=canny_image).images[0]
 
 * We don't serialize any information on the LoRA checkpoints that might be loaded into a pipeline. So, workflows generated from pipelines loaded with a LoRA checkpoint should be handled with caution. As such, users should ensure that the respective LoRA checkpoint is first loaded into the pipeline before the corresponding workflow is loaded into the pipeline.
 * Instead of passing a `prompt`, users can provide `prompt_embeds` while calling a pipeline. Currently, workflows don't serialize any call arguments that are of the following types: `torch.Tensor`, `np.ndarray`, `Callable`, `PIL.Image.Image`, and `List[PIL.Image.Image]`. 
+
+## Workflow
+
+[[autodoc]] Workflow
+    - all
+
+## populate_workflow_from_pipeline
+
+[[autodoc]] workflow_utils.populate_workflow_from_pipeline

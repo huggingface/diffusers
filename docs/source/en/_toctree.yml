@@ -168,6 +168,8 @@
       title: Custom activation functions
     - local: api/normalization
       title: Custom normalization layers
+    - local: api/workflows
+      title: Shareable workflows
     - local: api/attnprocessor
       title: Attention Processor
     - local: api/logging
