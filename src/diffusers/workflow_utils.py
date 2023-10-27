@@ -95,10 +95,41 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
         super().pop(__key)
 
     def save_workflow(self, save_directory: Union[str, os.PathLike], push_to_hub: bool, filename: str = WORKFLOW_NAME):
+        """
+        Saves a workflow to a directory.
+
+        Args:
+            save_directory (`str` or `os.PathLike`):
+                Directory where the workflow JSON file will be saved (will be created if it does not exist).
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            filename (`str`, *optional*, defaults to `workflow.json`):
+                Optional filename to use to serialize the workflow JSON.
+        """
         self.config_name = filename
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub)
 
     def save_pretrained(
-        self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, filename: str = WORKFLOW_NAME
+        self,
+        save_directory: Union[str, os.PathLike],
+        push_to_hub: bool = False,
+        filename: str = WORKFLOW_NAME,
+        **kwargs,
     ):
+        """
+        Saves a workflow to a directory. This internally calls [`Workflow.save_workflow`], This method exists to have
+        feature parity with [`PushToHubMixin.push_to_hub`].
+
+        Args:
+            save_directory (`str` or `os.PathLike`):
+                Directory where the workflow JSON file will be saved (will be created if it does not exist).
+            push_to_hub (`bool`, *optional*, defaults to `False`):
+                Whether or not to push your model to the Hugging Face Hub after saving it. You can specify the
+                repository you want to push to with `repo_id` (will default to the name of `save_directory` in your
+                namespace).
+            filename (`str`, *optional*, defaults to `workflow.json`):
+                Optional filename to use to serialize the workflow JSON.
+        """
         self.save_workflow(save_directory=save_directory, push_to_hub=push_to_hub, filename=filename)
