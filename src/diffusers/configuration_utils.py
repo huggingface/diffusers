@@ -156,13 +156,7 @@ class ConfigMixin:
 
         os.makedirs(save_directory, exist_ok=True)
 
-        # If we save using the predefined names, we can load using `from_config`
-        filename = kwargs.pop("filename", None)
-        if filename is not None:
-            config_name = filename
-        else:
-            config_name = self.config_name
-        output_config_file = os.path.join(save_directory, config_name)
+        output_config_file = os.path.join(save_directory, self.config_name)
 
         self.to_json_file(output_config_file)
         logger.info(f"Configuration saved in {output_config_file}")

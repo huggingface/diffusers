@@ -72,7 +72,7 @@ def populate_workflow_from_pipeline(
 
 class Workflow(dict, ConfigMixin, PushToHubMixin):
     """Class sub-classing from native Python dict to have support for interacting with the Hub."""
-    
+
     config_name = None
 
     def __init__(self, **kwargs):
@@ -92,9 +92,11 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
         self._internal_dict.pop(__key)
         super().pop(__key)
 
-    def save_workflow(self, filename: str = "workflow.json"):
+    def save_workflow(self, save_directory: Union[str, os.PathLike], push_to_hub: bool, filename: str = WORKFLOW_NAME):
         self.config_name = filename
-        self.save_config(**kwargs)
+        self.save_config(save_directory=save_directory, push_to_hub=push_to_hub)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, filename: str = "worflow.json"):
+    def save_pretrained(
+        self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, filename: str = WORKFLOW_NAME
+    ):
         self.save_workflow(save_directory=save_directory, push_to_hub=push_to_hub, filename=filename)
