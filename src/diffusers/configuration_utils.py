@@ -50,9 +50,9 @@ logger = logging.get_logger(__name__)
 
 _re_configuration_file = re.compile(r"config\.(.*)\.json")
 
-_all_available_pipeline_component_modules = (
+_all_available_pipeline_component_modules = sum((
     list(model_modules.values()) + list(scheduler_modules.values()) + list(pipeline_modules.values())
-)
+), [])
 
 
 class FrozenDict(OrderedDict):
@@ -172,7 +172,7 @@ class ConfigMixin:
 
         # Additionally, save the implementation file too. It can happen for a pipeline, for a model, and
         # for a scheduler.
-        if self.__class__.__name__ not in _all_available_pipeline_component_modules:
+        if self.__class__.__name__ not in _all_available_pipelines_schedulers_model_classes:
             module_to_save = self.__class__.__module__
             absolute_module_path = sys.modules[module_to_save].__file__
             try:
