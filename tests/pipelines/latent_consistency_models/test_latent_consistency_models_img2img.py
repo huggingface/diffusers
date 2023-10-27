@@ -114,7 +114,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
             "feature_extractor": None,
         }
         return components
-    
+
     def get_dummy_inputs(self, device, seed=0):
         image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
         image = image / 2 + 0.5
@@ -131,7 +131,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
             "output_type": "numpy",
         }
         return inputs
-    
+
     def test_lcm_img2img_onestep(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
