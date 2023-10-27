@@ -10,6 +10,8 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
+# Working with fully custom pipelines and components
+
 Diffusers supports the use [custom pipelines](../using-diffusers/contribute_pipeline) letting the users add any additional features on top of the [`DiffusionPipeline`]. However, it can get cumbersome if you're dealing with a custom pipeline where its components (such as the UNet, VAE, scheduler) are also custom. 
 
 We allow loading of such pipelines by exposing a `trust_remote_code` argument inside [`DiffusionPipeline`]. The advantage of `trust_remote_code` lies in its flexibility. You can have different levels of customizations for a pipeline. Following are a few examples:
