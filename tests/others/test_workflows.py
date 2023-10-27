@@ -159,7 +159,7 @@ class WorkflowPushToHubTester(unittest.TestCase):
 
     def test_push_to_hub(self):
         inputs = self.get_dummy_inputs(device="cpu")
-        workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, "None")
+        workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, None)
         workflow.push_to_hub(self.repo_id, token=TOKEN)
 
         local_path = hf_hub_download(repo_id=self.repo_id, filename=WORKFLOW_NAME, token=TOKEN)
@@ -174,7 +174,7 @@ class WorkflowPushToHubTester(unittest.TestCase):
 
     def test_push_to_hub_in_organization(self):
         inputs = self.get_dummy_inputs(device="cpu")
-        workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, "None")
+        workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, None)
         workflow.push_to_hub(self.org_repo_id, token=TOKEN)
 
         local_path = hf_hub_download(repo_id=self.org_repo_id, filename=WORKFLOW_NAME, token=TOKEN)
