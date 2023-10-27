@@ -146,7 +146,6 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        # TODO: get expected slice
         expected_slice = np.array([0.1441, 0.5304, 0.5452, 0.1361, 0.4011, 0.4370, 0.5326, 0.3492, 0.3637])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -164,8 +163,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         assert image.shape == (1, 64, 64, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        # TODO: get expected slice
-        expected_slice = np.array([0.1540, 0.5205, 0.5458, 0.1200, 0.3983, 0.4350, 0.5386, 0.3522, 0.3614])
+        expected_slice = np.array([0.1403, 0.5072, 0.5316, 0.1202, 0.3865, 0.4211, 0.5363, 0.3557, 0.3645])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
 
 
