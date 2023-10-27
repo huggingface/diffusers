@@ -153,9 +153,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-
-            print(f'beta_schedule = "scaled_linear" and beta_start={beta_start}, beta_end={beta_end}')
-
             self.betas = (
                 torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
             )
@@ -248,8 +245,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
             timesteps += self.config.steps_offset
 
-            print(f'timestep_spacing = "leading" and timesteps={timesteps[:5]} ...')
-
         elif self.config.timestep_spacing == "trailing":
             step_ratio = self.config.num_train_timesteps / self.num_inference_steps
             # creates integer timesteps by multiplying by ratio
@@ -260,6 +255,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(
                 f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
             )
+
+        print(f'timestep_spacing = "leading" and timesteps={timesteps[:5]} ...')
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         print(f'sigmas before interpolation: {sigmas[:5]} ...')

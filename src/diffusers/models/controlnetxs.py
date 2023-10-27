@@ -85,6 +85,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             learn_embedding=True,
             control_model_ratio=0.1,
             base_model_channel_sizes=base_model_channel_sizes,
+            control_scale=0.95,
         )
         cnxs_model.base_model = base_model
         return cnxs_model
@@ -144,7 +145,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 'dec': [(2560, 1280), (2560, 1280), (1920, 1280), (1920, 640), (1280, 640), (960, 640), (960, 320), (640, 320), (640, 320)]
             },
             global_pool_conditions: bool = False, # Todo Umer: Needed by SDXL pipeline, but what is this?,
-            control_scale=0.95, # 1 in Heidelberg code, but 0.95 in usage script
+            control_scale=1,
         ):
         super().__init__()
 
@@ -237,6 +238,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         pass
         self.flip_sin_to_cos = True # default params
         self.freq_shift = 0
+        # !! TODO !! : learn_embedding is True, so we need our own embedding
         # Todo: Only when `learn_embedding = False` can we just use the base model's time embedding, otherwise we need to create our own 
         
         # Text embedding
@@ -283,7 +285,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             return self.base_model(x, timesteps, encoder_hidden_states, **kwargs)
 
         # time embeddings
+        print("timesteps =",timesteps)
         timesteps = timesteps[None]
+        print("timesteps =",timesteps)
         t_emb = get_timestep_embedding(
             timesteps, 
             self.model_channels,
@@ -291,8 +295,11 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.freq_shift,
         )
+        print(f't_emb.shape = {list(t_emb.shape)}')
+        print(f'learn_embedding = {self.learn_embedding}')
         if self.learn_embedding:
             temb = self.control_model.time_embedding(t_emb) * self.control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.control_scale ** 0.3)
+            print(f't_emb.shape = {list(temb.shape)}')
         else:
             temb = self.base_model.time_embedding(t_emb)
 
