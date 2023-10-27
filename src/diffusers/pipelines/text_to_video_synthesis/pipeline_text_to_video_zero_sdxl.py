@@ -375,7 +375,7 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
             x_t1:
                 Forward process applied to x_t0 from time t0 to t1.
         """
-        eps = torch.randn(x_t0.size(), generator=generator, dtype=x_t0.dtype, device=x_t0.device)
+        eps = torch.randn(x_t0.size(), generator=generator, dtype=x_t0.dtype).to(device=x_t0.device)
         alpha_vec = torch.prod(self.scheduler.alphas[t0:t1])
         x_t1 = torch.sqrt(alpha_vec) * x_t0 + torch.sqrt(1 - alpha_vec) * eps
         return x_t1
@@ -708,7 +708,7 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
             generator,
             latents,
         )
-
+        
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 

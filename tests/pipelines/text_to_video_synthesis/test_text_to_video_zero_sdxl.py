@@ -13,7 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import io
+import re
+import inspect
 import unittest
+import tempfile
+import contextlib
 
 import numpy as np
 import torch
@@ -21,6 +26,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
+from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -29,12 +35,20 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
+def to_np(tensor):
+    if isinstance(tensor, torch.Tensor):
+        tensor = tensor.detach().cpu().numpy()
+
+    return tensor
+
+
 class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = TextToVideoZeroSDXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    generator_device = "cpu"
 
     def get_dummy_components(self, seed=0):
         torch.manual_seed(seed)
@@ -145,19 +159,15 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(self.generator_device)
         result = pipe(**inputs).images
 
         first_frame_slice = result[0, -3:, -3:, -1]
         last_frame_slice = result[-1, -3:, -3:, 0]
 
-        if torch_device == "cuda":
-            expected_slice1 = np.array([0.66, 0.77, 0.49, 0.63, 0.77, 0.60, 0.64, 0.46, 0.45])
-            expected_slice2 = np.array([0.50, 0.48, 0.53, 0.44, 0.38, 0.47, 0.46, 0.46, 0.48])
-        else:
-            expected_slice1 = np.array([0.48, 0.58, 0.53, 0.59, 0.51, 0.43, 0.60, 0.65, 0.52])
-            expected_slice2 = np.array([0.66, 0.49, 0.40, 0.69, 0.47, 0.51, 0.73, 0.65, 0.52])
-
+        expected_slice1 = np.array([0.48, 0.58, 0.53, 0.59, 0.50, 0.44, 0.60, 0.65, 0.52])
+        expected_slice2 = np.array([0.66, 0.49, 0.40, 0.70, 0.47, 0.51, 0.73, 0.65, 0.52])
+        
         assert np.abs(first_frame_slice.flatten() - expected_slice1).max() < 1e-2
         assert np.abs(last_frame_slice.flatten() - expected_slice2).max() < 1e-2
 
@@ -167,17 +177,70 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_attention_slicing_forward_pass(self):
         pass
 
-    @unittest.skip(
-        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
-    )
-    def test_dict_tuple_outputs_equivalent(self):
-        pass
+    def test_cfg(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
 
-    @unittest.skip(
-        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
-    )
-    def test_float16_inference(self):
-        pass
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(self.generator_device)
+
+        inputs["guidance_scale"] = 1.0
+        out_no_cfg = pipe(**inputs)[0]
+
+        inputs["guidance_scale"] = 7.5
+        out_cfg = pipe(**inputs)[0]
+
+        assert out_cfg.shape == out_no_cfg.shape
+
+    def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        output = pipe(**self.get_dummy_inputs(self.generator_device))[0]
+        output_tuple = pipe(**self.get_dummy_inputs(self.generator_device), return_dict=False)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
+        self.assertLess(max_diff, expected_max_difference)
+
+    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    def test_float16_inference(self, expected_max_diff=5e-2):
+        components = self.get_dummy_components()
+        for name, module in components.items():
+            if hasattr(module, "half"):
+                components[name] = module.to(torch_device).half()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        components = self.get_dummy_components()
+        pipe_fp16 = self.pipeline_class(**components)
+        pipe_fp16.to(torch_device, torch.float16)
+        pipe_fp16.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(self.generator_device)
+        # # Reset generator in case it is used inside dummy inputs
+        if "generator" in inputs:
+            inputs["generator"] = self.get_generator(self.generator_device)
+
+        output = pipe(**inputs)[0]
+
+        fp16_inputs = self.get_dummy_inputs(self.generator_device)
+        # Reset generator in case it is used inside dummy inputs
+        if "generator" in fp16_inputs:
+            fp16_inputs["generator"] = self.get_generator(self.generator_device)
+
+        output_fp16 = pipe_fp16(**fp16_inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
+        self.assertLess(max_diff, expected_max_diff, "The outputs of the fp16 and fp32 pipelines are too different.")
 
     @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
     def test_inference_batch_consistent(self):
@@ -189,19 +252,85 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_inference_batch_single_identical(self):
         pass
 
-    @unittest.skip(
-        reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
     )
-    def test_model_cpu_offload_forward_pass(self):
-        pass
+    def test_model_cpu_offload_forward_pass(self, expected_max_diff=2e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(self.generator_device)
+        output_without_offload = pipe(**inputs)[0]
+
+        pipe.enable_model_cpu_offload()
+        inputs = self.get_dummy_inputs(self.generator_device)
+        output_with_offload = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
+        self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
 
     @unittest.skip(reason="`num_images_per_prompt` argument is not supported for this pipeline.")
     def test_pipeline_call_signature(self):
         pass
 
-    @unittest.skip(reason="`num_images_per_prompt` argument is not supported for this pipeline.")
-    def test_save_load_float16(self):
-        pass
+    def test_progress_bar(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+
+        inputs = self.get_dummy_inputs(self.generator_device)
+        with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
+            _ = pipe(**inputs)
+            stderr = stderr.getvalue()
+            # we can't calculate the number of progress steps beforehand e.g. for strength-dependent img2img,
+            # so we just match "5" in "#####| 1/5 [00:01<00:00]"
+            max_steps = re.search("/(.*?) ", stderr).group(1)
+            self.assertTrue(max_steps is not None and len(max_steps) > 0)
+            self.assertTrue(
+                f"{max_steps}/{max_steps}" in stderr, "Progress bar should be enabled and stopped at the max step"
+            )
+
+        pipe.set_progress_bar_config(disable=True)
+        with io.StringIO() as stderr, contextlib.redirect_stderr(stderr):
+            _ = pipe(**inputs)
+            self.assertTrue(stderr.getvalue() == "", "Progress bar should be disabled")
+
+    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
+    def test_save_load_float16(self, expected_max_diff=1e-2):
+        components = self.get_dummy_components()
+        for name, module in components.items():
+            if hasattr(module, "half"):
+                components[name] = module.to(torch_device).half()
+
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(self.generator_device)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir, torch_dtype=torch.float16)
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for name, component in pipe_loaded.components.items():
+            if hasattr(component, "dtype"):
+                self.assertTrue(
+                    component.dtype == torch.float16,
+                    f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
+                )
+
+        inputs = self.get_dummy_inputs(self.generator_device)
+        output_loaded = pipe_loaded(**inputs)[0]
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(
+            max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
+        )
 
     @unittest.skip(
         reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
@@ -221,6 +350,26 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_sequential_cpu_offload_forward_pass(self):
         pass
 
+    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    def test_to_device(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.to("cpu")
+        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
+        self.assertTrue(all(device == "cpu" for device in model_devices))
+
+        output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0] # generator set to cpu
+        self.assertTrue(np.isnan(output_cpu).sum() == 0)
+
+        pipe.to("cuda")
+        model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
+        self.assertTrue(all(device == "cuda" for device in model_devices))
+
+        output_cuda = pipe(**self.get_dummy_inputs("cpu"))[0] # generator set to cpu
+        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+
     @unittest.skip(
         reason="Cannot call `set_default_attn_processor` as this pipeline uses a specific attention processor."
     )
@@ -237,7 +386,7 @@ class TextToVideoZeroSDXLPipelineSlowTests(unittest.TestCase):
             model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
         ).to("cuda")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        generator = torch.Generator(device="cuda").manual_seed(0)
+        generator = torch.Generator(device="cpu").manual_seed(0)
 
         prompt = "A panda dancing in Antarctica"
         result = pipe(prompt=prompt, generator=generator).images
@@ -245,8 +394,8 @@ class TextToVideoZeroSDXLPipelineSlowTests(unittest.TestCase):
         first_frame_slice = result[0, -3:, -3:, -1]
         last_frame_slice = result[-1, -3:, -3:, 0]
 
-        expected_slice1 = np.array([0.12, 0.11, 0.11, 0.11, 0.11, 0.11, 0.10, 0.12, 0.12])
-        expected_slice2 = np.array([0.53, 0.53, 0.53, 0.53, 0.54, 0.54, 0.53, 0.55, 0.55])
+        expected_slice1 = np.array([0.57, 0.57, 0.57, 0.57, 0.57, 0.56, 0.55, 0.56, 0.56])
+        expected_slice2 = np.array([0.54, 0.53, 0.53, 0.53, 0.53, 0.52, 0.53, 0.53, 0.53])
 
         assert np.abs(first_frame_slice.flatten() - expected_slice1).max() < 1e-2
         assert np.abs(last_frame_slice.flatten() - expected_slice2).max() < 1e-2
