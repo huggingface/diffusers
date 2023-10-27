@@ -50,9 +50,9 @@ logger = logging.get_logger(__name__)
 
 _re_configuration_file = re.compile(r"config\.(.*)\.json")
 
-_all_available_pipeline_component_modules = sum((
-    list(model_modules.values()) + list(scheduler_modules.values()) + list(pipeline_modules.values())
-), [])
+_all_available_pipelines_schedulers_model_classes = sum(
+    (list(model_modules.values()) + list(scheduler_modules.values()) + list(pipeline_modules.values())), []
+)
 
 
 class FrozenDict(OrderedDict):
@@ -591,7 +591,7 @@ class ConfigMixin:
         """
         config_dict = self._internal_dict if hasattr(self, "_internal_dict") else {}
         cls_name = self.__class__.__name__
-        if cls_name not in _all_available_pipeline_component_modules:
+        if cls_name not in _all_available_pipelines_schedulers_model_classes:
             config_dict["_class_name"] = [str(self.__class__.__module__), cls_name]
         else:
             config_dict["_class_name"] = cls_name
