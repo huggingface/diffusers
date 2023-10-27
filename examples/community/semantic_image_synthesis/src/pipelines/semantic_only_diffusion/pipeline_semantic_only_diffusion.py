@@ -15,12 +15,13 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from diffusers.schedulers import DDPMScheduler
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...models.unet_2d_sis import UNet2DSISModel
+from ...models import UNet2DSISModel,AutoencoderKL
 
 
 class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
@@ -38,10 +39,14 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
     """
     unet: UNet2DSISModel
     scheduler: DDPMScheduler
+    vae:AutoencoderKL = None
 
-    def __init__(self, unet: UNet2DSISModel, scheduler: DDPMScheduler):
+    def __init__(self, unet: UNet2DSISModel, scheduler: DDPMScheduler,vae: AutoencoderKL=None):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
+        if vae is not None:
+            # Case of a Latent Diffusion Model
+            self.register_modules(vae=vae)
 
     @torch.no_grad()
     def __call__(
@@ -82,8 +87,18 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
         img_depth = self.unet.config.in_channels
         shape = (batch_size, img_depth, img_size, img_size)
 
-        model = self.unet
+        if self.vae is not None:
+            # In case we have a VAE, we are in LDM case...
+            latent_size = int(self.vae.config.scaling_factor*img_size)
+            latent_depth = self.vae.config.latent_channels
+            shape = (batch_size,latent_depth,latent_size,latent_size)
 
+        # We reshape the segmentation map to match the diffusion size.
+        while len(segmap.shape)<4:
+            segmap = segmap.unsqueeze(0)
+        segmap = nn.UpsamplingNearest2d(size=shape[-2:])(segmap)
+        model = self.unet
+        
         sample = randn_tensor(shape, generator=generator, device=generator.device) * self.scheduler.init_noise_sigma
         sample = sample.to(self.device)
         self.scheduler.set_timesteps(num_inference_steps)
@@ -100,7 +115,9 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
             noise_pred = noise_pred_ucond + guidance_scale * (noise_pred_cond - noise_pred_ucond)
             # We finally use this noise to sample
             sample = self.scheduler.step(noise_pred, t, sample, generator=generator).prev_sample
-
+        if self.vae is not None:
+            # If we are in the case of a LDM
+            sample = self.vae.decode(sample)
         # We finally convert it to an image...
         sample = 0.5 * (sample + 1).squeeze()
         sample = sample.permute(1, 2, 0).cpu().numpy()

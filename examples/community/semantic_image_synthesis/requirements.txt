@@ -1,0 +1,1 @@
+lpips==0.1.4 # Necessary for VAE training.
