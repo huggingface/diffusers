@@ -81,6 +81,8 @@ tokenizer_2 = CLIPTokenizer.from_pretrained(pretrained_id, subfolder="tokenizer_
 vae = AutoencoderKL.from_pretrained(pretrained_id, subfolder="vae")
 ```
 
+`MyUNetModel`, `MyScheduler`, and `MyPipeline` use blocks that are already supported by Diffusers. If you are using any custom blocks make sure to put them in the module files themselves. 
+
 ## Pipeline initialization and serialization
 
 With all the components, you can now initialize the custom pipeline:
