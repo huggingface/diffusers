@@ -62,7 +62,7 @@ def populate_workflow_from_pipeline(
             if not isinstance(call_arguments[k][0], PIL.Image.Image):
                 updated_call_arguments.update({k: v})
 
-    workflow.update(call_arguments)
+    workflow.update(updated_call_arguments)
 
     generator = workflow.pop("generator")
     if generator is not None:
