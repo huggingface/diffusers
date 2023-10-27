@@ -22,6 +22,7 @@ import uuid
 import numpy as np
 import torch
 from huggingface_hub import delete_repo, hf_hub_download
+from test_utils import TOKEN, is_staging_test
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -32,8 +33,6 @@ from diffusers import (
 )
 from diffusers.utils.constants import WORKFLOW_NAME
 from diffusers.utils.testing_utils import torch_device
-
-from .test_utils import TOKEN, is_staging_test
 
 
 class WorkflowFastTests(unittest.TestCase):
