@@ -58,7 +58,7 @@ def populate_workflow_from_pipeline(
 
     workflow.update(call_arguments)
 
-    generator = workflow.pop("generator", None)
+    generator = workflow.pop("generator")
     if generator is not None:
         workflow.update({"generator_seed": generator.initial_seed()})
         workflow.update({"generator_device": generator.device})
