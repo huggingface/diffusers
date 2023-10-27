@@ -311,10 +311,11 @@ def parse_args():
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument("--optimizer_algorithm", type=str, default=None, help="The optimizer algorithm used in training process" )
+    # parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
+    # parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    # parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
+    # parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
     parser.add_argument(
@@ -719,13 +720,31 @@ def main():
         )
 
     # Initialize the optimizer
-    optimizer = torch.optim.AdamW(
-        text_encoder.get_input_embeddings().parameters(),  # only optimize the embeddings
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+    if args.optimizer_algorithm == "AdamW":
+        optimizer = torch.optim.AdamW(
+            text_encoder.get_input_embeddings().parameters(),  # only optimize the embeddings
+            lr=args.learning_rate,
+            betas=(0.9, 0.999),
+            weight_decay=0.01,
+            eps=1e-08,
+        )
+    if args.optimizer_algorithm == "Adam":
+        optimizer = torch.optim.Adam(
+            text_encoder.get_input_embeddings().parameters(),  # only optimize the embeddings
+            lr=args.learning_rate,
+            betas=(0.9, 0.999),
+            weight_decay=0,
+            eps=1e-08,
+        )
+    if args.optimizer_algorithm == "RMSprop":
+        optimizer = torch.optim.RMSprop(
+            text_encoder.get_input_embeddings().parameters(),  # only optimize the embeddings
+            lr=args.learning_rate,
+            alpha=0.99,
+            momentum=0,
+            weight_decay=0,
+            eps=1e-08,
+        )
 
     # Dataset and DataLoaders creation:
     train_dataset = TextualInversionDataset(
