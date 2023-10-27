@@ -2113,9 +2113,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             workflow = workflow_id_or_path
 
         # Handle generator.
-        seed = workflow.pop("seed", None)
+        seed = workflow.pop("generator_seed", None)
+        device = workflow.pop("generator_device", "cpu")
         if seed is not None:
-            generator = torch.manual_seed(seed)
+            generator = torch.Generator(device=device).manual_seed(seed)
         else:
             generator = None
         workflow.update({"generator": generator})

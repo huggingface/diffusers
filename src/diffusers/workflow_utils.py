@@ -61,9 +61,11 @@ def populate_workflow_from_pipeline(
     generator = workflow.pop("generator")
     if generator is not None:
         try:
-            workflow.update({"seed": generator.initial_seed()})
+            workflow.update({"generator_seed": generator.initial_seed()})
+            workflow.update({"generator_device": generator.device})
         except Exception:
-            workflow.update({"seed": None})
+            workflow.update({"generator_seed": None})
+            workflow.update({"generator_device": "cpu"})
 
     workflow["_name_or_path"] = pipeline_name_or_path
 
