@@ -611,6 +611,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableUnCLIPPipeline,
             TextToVideoSDPipeline,
             TextToVideoZeroPipeline,
+            TextToVideoZeroSDXLPipeline,
             UnCLIPImageVariationPipeline,
             UnCLIPPipeline,
             UniDiffuserModel,

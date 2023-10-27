@@ -141,7 +141,7 @@ class CrossFrameAttnProcessor2_0:
 
         # Cross Frame Attention
         if not is_cross_attention:
-            video_length = max(1, key.size()[0] // self.batch_size)
+            video_length = key.size()[0] // self.batch_size
             first_frame_index = [0] * video_length
 
             # rearrange keys to have batch and frames in the 1st and 2nd dims respectively
@@ -375,7 +375,7 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
             x_t1:
                 Forward process applied to x_t0 from time t0 to t1.
         """
-        eps = torch.randn(x_t0.size(), generator=generator, dtype=x_t0.dtype).to(device=x_t0.device)
+        eps = torch.randn(x_t0.size(), generator=generator, dtype=x_t0.dtype, device=x_t0.device)
         alpha_vec = torch.prod(self.scheduler.alphas[t0:t1])
         x_t1 = torch.sqrt(alpha_vec) * x_t0 + torch.sqrt(1 - alpha_vec) * eps
         return x_t1
