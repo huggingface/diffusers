@@ -28,7 +28,7 @@ from diffusers.models.attention_processor import CustomDiffusionAttnProcessor
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    accelerator_empty_cache,
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_hf_numpy,
@@ -621,7 +621,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        accelerator_empty_cache()
+        backend_empty_cache()
 
     def get_latents(self, seed=0, shape=(4, 4, 64, 64), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32

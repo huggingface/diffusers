@@ -19,7 +19,7 @@ import torch
 
 from diffusers import VQModel
 from diffusers.utils.testing_utils import (
-    accelerator_manual_seed,
+    backend_manual_seed,
     enable_full_determinism,
     floats_tensor, 
     torch_device,
@@ -85,7 +85,7 @@ class VQModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         model.to(torch_device).eval()
 
         torch.manual_seed(0)
-        accelerator_manual_seed(torch_device, 0)
+        backend_manual_seed(torch_device, 0)
 
         image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         image = image.to(torch_device)

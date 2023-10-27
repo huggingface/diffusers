@@ -34,7 +34,7 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
-    accelerator_empty_cache,
+    backend_empty_cache,
     enable_full_determinism,
     load_numpy,
     nightly,
@@ -303,7 +303,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        accelerator_empty_cache()
+        backend_empty_cache()
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         _generator_device = 'cpu' if not generator_device.startswith('cuda') else 'cuda'
@@ -523,7 +523,7 @@ class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        accelerator_empty_cache()
+        backend_empty_cache()
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         _generator_device = 'cpu' if not generator_device.startswith('cuda') else 'cuda'

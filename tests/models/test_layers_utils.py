@@ -26,7 +26,7 @@ from diffusers.models.lora import LoRACompatibleLinear
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.models.transformer_2d import Transformer2DModel
 from diffusers.utils.testing_utils import (
-     accelerator_manual_seed, 
+     backend_manual_seed, 
      require_torch_accelerator_with_fp64, 
      torch_device,
 )
@@ -320,7 +320,7 @@ class ResnetBlock2DTests(unittest.TestCase):
 class Transformer2DModelTests(unittest.TestCase):
     def test_spatial_transformer_default(self):
         torch.manual_seed(0)
-        accelerator_manual_seed(torch_device, 0)
+        backend_manual_seed(torch_device, 0)
 
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         spatial_transformer_block = Transformer2DModel(
@@ -343,7 +343,7 @@ class Transformer2DModelTests(unittest.TestCase):
 
     def test_spatial_transformer_cross_attention_dim(self):
         torch.manual_seed(0)
-        accelerator_manual_seed(torch_device, 0)
+        backend_manual_seed(torch_device, 0)
 
         sample = torch.randn(1, 64, 64, 64).to(torch_device)
         spatial_transformer_block = Transformer2DModel(
@@ -366,7 +366,7 @@ class Transformer2DModelTests(unittest.TestCase):
 
     def test_spatial_transformer_timestep(self):
         torch.manual_seed(0)
-        accelerator_manual_seed(torch_device, 0)
+        backend_manual_seed(torch_device, 0)
 
         num_embeds_ada_norm = 5
 
@@ -403,7 +403,7 @@ class Transformer2DModelTests(unittest.TestCase):
 
     def test_spatial_transformer_dropout(self):
         torch.manual_seed(0)
-        accelerator_manual_seed(torch_device, 0)
+        backend_manual_seed(torch_device, 0)
 
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         spatial_transformer_block = (
@@ -431,7 +431,7 @@ class Transformer2DModelTests(unittest.TestCase):
     @require_torch_accelerator_with_fp64
     def test_spatial_transformer_discrete(self):
         torch.manual_seed(0)
-        accelerator_manual_seed(torch_device, 0)
+        backend_manual_seed(torch_device, 0)
 
         num_embed = 5
 

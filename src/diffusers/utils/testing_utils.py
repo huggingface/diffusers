@@ -227,7 +227,7 @@ def require_torch_accelerator_with_fp64(test_case):
 
 def require_torch_accelerator_with_training(test_case):
     """Decorator marking a test that requires an accelerator with support for training."""
-    return unittest.skipUnless(is_torch_available() and accelerator_supports_training(torch_device), "test requires accelerator with training support")(test_case)
+    return unittest.skipUnless(is_torch_available() and backend_supports_training(torch_device), "test requires accelerator with training support")(test_case)
 
 
 def skip_mps(test_case):
@@ -731,12 +731,12 @@ def disable_full_determinism():
 # Guard these lookups for when Torch is not used - alternative accelerator support is for PyTorch
 if is_torch_available():
     # Behaviour flags
-    ACCELERATOR_SUPPORTS_TRAINING = {"cuda": True, "cpu": True, "mps": False, "default": True}
+    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "cpu": True, "mps": False, "default": True}
 
     # Function definitions
-    ACCELERATOR_EMPTY_CACHE = {"cuda": torch.cuda.empty_cache, "cpu": None, "mps": None, "default": None}
-    ACCELERATOR_DEVICE_COUNT = {"cuda": torch.cuda.device_count, "cpu": lambda: 0, "mps": lambda: 0, "default": 0}
-    ACCELERATOR_MANUAL_SEED = {"cuda": torch.cuda.manual_seed, "cpu": torch.manual_seed, "default": torch.manual_seed}
+    BACKEND_EMPTY_CACHE = {"cuda": torch.cuda.empty_cache, "cpu": None, "mps": None, "default": None}
+    BACKEND_DEVICE_COUNT = {"cuda": torch.cuda.device_count, "cpu": lambda: 0, "mps": lambda: 0, "default": 0}
+    BACKEND_MANUAL_SEED = {"cuda": torch.cuda.manual_seed, "cpu": torch.manual_seed, "default": torch.manual_seed}
 
 
 # This dispatches a defined function according to the accelerator from the function definitions.
@@ -754,28 +754,28 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
     return fn(*args, **kwargs)
 
 # These are callables which automatically dispatch the function specific to the accelerator
-def accelerator_manual_seed(device: str, seed: int):
-    return _device_agnostic_dispatch(device, ACCELERATOR_MANUAL_SEED, seed)
+def backend_manual_seed(device: str, seed: int):
+    return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
 
 
-def accelerator_empty_cache(device: str):
-    return _device_agnostic_dispatch(device, ACCELERATOR_EMPTY_CACHE)
+def backend_empty_cache(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
 
 
-def accelerator_device_count(device: str):
-    return _device_agnostic_dispatch(device, ACCELERATOR_DEVICE_COUNT)
+def backend_device_count(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
 
 
 # These are callables which return boolean behaviour flags and can be used to specify some
 # device agnostic alternative where the feature is unsupported.
-def accelerator_supports_training(device: str):
+def backend_supports_training(device: str):
     if not is_torch_available():
         return False
     
-    if device not in ACCELERATOR_SUPPORTS_TRAINING:
+    if device not in BACKEND_SUPPORTS_TRAINING:
         device = "default"
 
-    return ACCELERATOR_SUPPORTS_TRAINING[device]
+    return BACKEND_SUPPORTS_TRAINING[device]
 
 # Guard for when Torch is not available
 if is_torch_available():
@@ -816,8 +816,8 @@ if is_torch_available():
 
         torch_device = device_name
 
-        # Add one entry here for each `ACCELERATOR_*` dictionary.
-        update_mapping_from_spec(ACCELERATOR_MANUAL_SEED, "MANUAL_SEED_FN")
-        update_mapping_from_spec(ACCELERATOR_EMPTY_CACHE, "EMPTY_CACHE_FN")
-        update_mapping_from_spec(ACCELERATOR_DEVICE_COUNT, "DEVICE_COUNT_FN")
-        update_mapping_from_spec(ACCELERATOR_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")
+        # Add one entry here for each `BACKEND_*` dictionary.
+        update_mapping_from_spec(BACKEND_MANUAL_SEED, "MANUAL_SEED_FN")
+        update_mapping_from_spec(BACKEND_EMPTY_CACHE, "EMPTY_CACHE_FN")
+        update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
+        update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")

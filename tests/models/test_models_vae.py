@@ -22,7 +22,7 @@ from parameterized import parameterized
 from diffusers import AsymmetricAutoencoderKL, AutoencoderKL, AutoencoderTiny
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    accelerator_empty_cache,
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_hf_numpy,
@@ -362,7 +362,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        accelerator_empty_cache()
+        backend_empty_cache()
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
@@ -595,7 +595,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        accelerator_empty_cache()
+        backend_empty_cache()
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32

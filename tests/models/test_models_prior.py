@@ -22,7 +22,7 @@ from parameterized import parameterized
 
 from diffusers import PriorTransformer
 from diffusers.utils.testing_utils import (
-    accelerator_empty_cache,
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     slow,
@@ -164,7 +164,7 @@ class PriorTransformerIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        accelerator_empty_cache()
+        backend_empty_cache()
 
     @parameterized.expand(
         [
