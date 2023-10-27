@@ -54,7 +54,7 @@ As you can notice, by specifying `return_workflow=True` in the pipeline call, yo
  '_name_or_path': 'runwayml/stable-diffusion-v1-5'}
 ```
 
-`workflow` is a [`Workflow`] object. It provides the values of all the arguments present in the `__call__()` of a pipeline.
+`workflow` is a [`workflow_utils.Workflow`] object. It provides the values of all the arguments present in the `__call__()` of a pipeline.
 
 Once you have generated a workflow object, you can serialize it like so:
 
@@ -68,7 +68,7 @@ By default, your workflows will be saved with the following name: `diffusion_wor
 outputs.workflow.save_workflow("my-simple-workflow-sd", filename="my_workflow.json")
 ```
 
-By specifying `push_to_hub=True` in [`Workflow.save_workflow`], you can directly push the workflow object to the Hub. 
+By specifying `push_to_hub=True` in [`workflow_utils.Workflow.save_workflow`], you can directly push the workflow object to the Hub. 
 
 ## Loading a workflow
 
@@ -210,9 +210,9 @@ image = pipe(image=canny_image).images[0]
 
 ## Workflow
 
-[[autodoc]] Workflow
+[[autodoc]] workfllow_utils.Workflow
     - all
 
-## populate_workflow_from_pipeline
+## workfllow_utils.populate_workflow_from_pipeline
 
 [[autodoc]] workflow_utils.populate_workflow_from_pipeline
