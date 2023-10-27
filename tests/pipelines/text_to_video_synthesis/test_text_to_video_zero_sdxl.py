@@ -13,20 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
+import inspect
 import io
 import re
-import inspect
-import unittest
 import tempfile
-import contextlib
+import unittest
 
 import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import AutoencoderKL, DDIMScheduler, TextToVideoZeroSDXLPipeline, UNet2DConditionModel
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -167,7 +167,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         expected_slice1 = np.array([0.48, 0.58, 0.53, 0.59, 0.50, 0.44, 0.60, 0.65, 0.52])
         expected_slice2 = np.array([0.66, 0.49, 0.40, 0.70, 0.47, 0.51, 0.73, 0.65, 0.52])
-        
+
         assert np.abs(first_frame_slice.flatten() - expected_slice1).max() < 1e-2
         assert np.abs(last_frame_slice.flatten() - expected_slice2).max() < 1e-2
 
@@ -360,14 +360,14 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
         self.assertTrue(all(device == "cpu" for device in model_devices))
 
-        output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0] # generator set to cpu
+        output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]  # generator set to cpu
         self.assertTrue(np.isnan(output_cpu).sum() == 0)
 
         pipe.to("cuda")
         model_devices = [component.device.type for component in components.values() if hasattr(component, "device")]
         self.assertTrue(all(device == "cuda" for device in model_devices))
 
-        output_cuda = pipe(**self.get_dummy_inputs("cpu"))[0] # generator set to cpu
+        output_cuda = pipe(**self.get_dummy_inputs("cpu"))[0]  # generator set to cpu
         self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
 
     @unittest.skip(
