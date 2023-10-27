@@ -47,7 +47,6 @@ Now pass all the prompts and embeddings to the [`KandinskyPipeline`] to generate
 
 ```py
 image = pipeline(prompt, image_embeds=image_embeds, negative_prompt=negative_prompt, negative_image_embeds=negative_image_embeds, height=768, width=768).images[0]
-image
 ```
 
 <div class="flex justify-center">
@@ -73,7 +72,6 @@ Pass the `image_embeds` and `negative_image_embeds` to the [`KandinskyV22Pipelin
 
 ```py
 image = pipeline(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[0]
-image
 ```
 
 <div class="flex justify-center">
@@ -123,6 +121,9 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_
 
 For image-to-image, pass the initial image and text prompt to condition the image with to the pipeline. Start by loading the prior pipeline:
 
+<hfoptions id="kandinsky-image-to-image">
+<hfoption id="Kandinsky 2.1">
+
 ```py
 import torch
 from diffusers import KandinskyImg2ImgPipeline, KandinskyPriorPipeline
@@ -130,6 +131,20 @@ from diffusers import KandinskyImg2ImgPipeline, KandinskyPriorPipeline
 prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 pipeline = KandinskyImg2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
+
+</hfoption>
+<hfoption id="Kandinsky 2.2">
+
+```py
+import torch
+from diffusers import KandinskyV22Img2ImgPipeline, KandinskyPriorPipeline
+
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyV22Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+```
+
+</hfoption>
+</hfoptions>
 
 Download an image to condition on:
 
@@ -155,23 +170,42 @@ Generate the `image_embeds` and `negative_image_embeds` with the prior pipeline:
 prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
-image_embeds, negative_image_embeds = pipe_prior(prompt, negative_prompt).to_tuple()
+image_embeds, negative_image_embeds = prior_pipeline(prompt, negative_prompt).to_tuple()
 ```
 
-Now pass the original image, and all the prompts and embeddings to the [`KandinskyImg2ImgPipeline`] to generate an image:
+Now pass the original image, and all the prompts and embeddings to the pipeline to generate an image:
+
+<hfoptions id="image-to-image">
+<hfoption id="Kandinsky 2.1">
 
 ```py
 image = pipeline(prompt, negative_prompt=negative_prompt, image=original_image, image_embeds=image_emebds, negative_image_embeds=negative_image_embeds, height=768, width=768, strength=0.3).images[0]
-image
 ```
 
 <div class="flex justify-center">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/img2img_fantasyland.png"/>
 </div>
 
-You can also use the end-to-end [`KandinskyImg2ImgCombinedPipeline`] to avoid separately loading and calling the prior and image-to-image pipeline. The combined pipeline automatically loads both [`KandinskyPriorPipeline`] and [`KandinskyImg2ImgPipeline`].
+</hfoption>
+<hfoption id="Kandinsky 2.2">
 
-Use the [`AutoPipelineForImage2Image`] to automatically call the [`KandinskyImg2ImgCombinedPipeline`] under the hood:
+```py
+image = pipeline(image=original_image, image_embeds=image_emebds, negative_image_embeds=negative_image_embeds, height=768, width=768, strength=0.3).images[0]
+```
+
+<div class="flex justify-center">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-image-to-image.png"/>
+</div>
+
+</hfoption>
+</hfoptions>
+
+🤗 Diffusers also provides an end-to-end API with the [`KandinskyImg2ImgCombinedPipeline`] and [`KandinskyV22Img2ImgCombinedPipeline`], meaning you don't have to separately load the prior and image-to-image pipeline. The combined pipeline automatically loads both the prior model and the decoder. You can still set different values for the prior pipeline with the `prior_guidance_scale` and `prior_num_inference_steps` parameters if you want.
+
+Use the [`AutoPipelineForImage2Image`] to automatically call the combined pipelines under the hood:
+
+<hfoptions id="combined-image-to-image">
+<hfoption id="Kandinsky 2.1">
 
 ```py
 from diffusers import AutoPipelineForImage2Image
@@ -181,8 +215,8 @@ from io import BytesIO
 from PIL import Image
 import os
 
-pipe = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-pipe.enable_model_cpu_offload()
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
@@ -193,8 +227,37 @@ response = requests.get(url)
 original_image = Image.open(BytesIO(response.content)).convert("RGB")
 original_image.thumbnail((768, 768))
 
-image = pipe(prompt=prompt, image=original_image, strength=0.3).images[0]
+image = pipeline(prompt=prompt, image=original_image, strength=0.3).images[0]
 ```
+
+</hfoption>
+<hfoption id="Kandinsky 2.2">
+
+```py
+from diffusers import AutoPipelineForImage2Image
+import torch
+import requests
+from io import BytesIO
+from PIL import Image
+import os
+
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+pipeline.enable_model_cpu_offload()
+
+prompt = "A fantasy landscape, Cinematic lighting"
+negative_prompt = "low quality, bad quality"
+
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+ 
+response = requests.get(url)
+original_image = Image.open(BytesIO(response.content)).convert("RGB")
+original_image.thumbnail((768, 768))
+
+image = pipeline(prompt=prompt, image=original_image, strength=0.3).images[0]
+```
+
+</hfoption>
+</hfoptions>
 
 ## Inpainting
 
