@@ -156,6 +156,7 @@ class ConfigMixin:
 
         os.makedirs(save_directory, exist_ok=True)
 
+        # If we save using the predefined names, we can load using `from_config`
         output_config_file = os.path.join(save_directory, self.config_name)
 
         self.to_json_file(output_config_file)
