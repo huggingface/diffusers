@@ -226,7 +226,7 @@ class WorkflowPushToHubTester(unittest.TestCase):
     def test_push_to_hub(self):
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
-        inputs = self.get_dummy_inputs()
+        inputs = self.get_dummy_inputs(device="cpu")
         workflow = pipeline(**inputs, return_workflow=True).workflow
         workflow.push_to_hub(self.repo_id, token=TOKEN)
 
