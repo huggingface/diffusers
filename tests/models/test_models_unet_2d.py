@@ -22,12 +22,11 @@ import torch
 from diffusers import UNet2DModel
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
     require_torch_accelerator,
-    enable_full_determinism, 
-    floats_tensor, 
-    require_torch_gpu,
-    slow, 
-    torch_all_close, 
+    slow,
+    torch_all_close,
     torch_device,
 )
 

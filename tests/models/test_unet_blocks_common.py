@@ -12,19 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import unittest
 from typing import Tuple
 
 import torch
 
 from diffusers.utils.testing_utils import (
-    floats_tensor, 
-    torch_all_close, 
-    torch_device,
+    floats_tensor,
     require_torch,
     require_torch_accelerator_with_training,
+    torch_all_close,
+    torch_device,
 )
 from diffusers.utils.torch_utils import randn_tensor
+
 
 @require_torch
 class UNetBlockTesterMixin:

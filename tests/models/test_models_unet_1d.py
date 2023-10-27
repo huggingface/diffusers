@@ -20,8 +20,8 @@ import torch
 from diffusers import UNet1DModel
 from diffusers.utils.testing_utils import (
     backend_manual_seed,
-    floats_tensor, 
-    slow, 
+    floats_tensor,
+    slow,
     torch_device,
 )
 
@@ -109,7 +109,7 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         model = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32", subfolder="unet")
         torch.manual_seed(0)
         backend_manual_seed(torch_device, 0)
-        
+
         num_features = model.config.in_channels
         seq_len = 16
         noise = torch.randn((1, seq_len, num_features)).permute(
@@ -249,7 +249,7 @@ class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         backend_manual_seed(torch_device, 0)
-        
+
         num_features = value_function.config.in_channels
         seq_len = 14
         noise = torch.randn((1, seq_len, num_features)).permute(

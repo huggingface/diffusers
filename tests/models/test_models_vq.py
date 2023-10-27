@@ -21,7 +21,7 @@ from diffusers import VQModel
 from diffusers.utils.testing_utils import (
     backend_manual_seed,
     enable_full_determinism,
-    floats_tensor, 
+    floats_tensor,
     torch_device,
 )
 

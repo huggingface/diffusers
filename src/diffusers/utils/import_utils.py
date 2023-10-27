@@ -346,6 +346,7 @@ def is_bs4_available():
 def is_torchsde_available():
     return _torchsde_available
 
+
 def is_torch_fp16_available(device):
     if not is_torch_available():
         return False
@@ -355,7 +356,7 @@ def is_torch_fp16_available(device):
     try:
         x = torch.zeros((2, 2), dtype=torch.float16).to(device)
         _ = x @ x
-    except Exception as _:
+    except Exception:
         return False
 
 
@@ -368,8 +369,9 @@ def is_torch_fp64_available(device):
     try:
         x = torch.zeros((2, 2), dtype=torch.float64).to(device)
         _ = x @ x
-    except Exception as _:
+    except Exception:
         return False
+
 
 def is_invisible_watermark_available():
     return _invisible_watermark_available

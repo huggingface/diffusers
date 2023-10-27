@@ -41,8 +41,8 @@ from diffusers.utils.testing_utils import (
     numpy_cosine_similarity_distance,
     require_torch_accelerator,
     require_torch_gpu,
-    slow,
     skip_mps,
+    slow,
     torch_device,
 )
 
@@ -124,7 +124,7 @@ class StableDiffusion2PipelineFastTests(
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        generator_device = 'cpu' if not device.startswith('cuda') else 'cuda'
+        generator_device = "cpu" if not device.startswith("cuda") else "cuda"
         if not str(device).startswith("mps"):
             generator = torch.Generator(device=generator_device).manual_seed(seed)
         else:
@@ -306,7 +306,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         backend_empty_cache()
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        _generator_device = 'cpu' if not generator_device.startswith('cuda') else 'cuda'
+        _generator_device = "cpu" if not generator_device.startswith("cuda") else "cuda"
         if not str(device).startswith("mps"):
             generator = torch.Generator(device=_generator_device).manual_seed(seed)
         else:
@@ -526,7 +526,7 @@ class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
         backend_empty_cache()
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        _generator_device = 'cpu' if not generator_device.startswith('cuda') else 'cuda'
+        _generator_device = "cpu" if not generator_device.startswith("cuda") else "cuda"
         if not str(device).startswith("mps"):
             generator = torch.Generator(device=_generator_device).manual_seed(seed)
         else:

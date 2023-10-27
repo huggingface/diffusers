@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Callable
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -56,7 +56,7 @@ if is_torch_available():
                 f"Failed to import `DIFFUSERS_TEST_BACKEND` '{backend}'! This should be the name of an installed module \
                     to enable a specified backend.):\n{e}"
             ) from e
-        
+
     if "DIFFUSERS_TEST_DEVICE" in os.environ:
         torch_device = os.environ["DIFFUSERS_TEST_DEVICE"]
         try:
@@ -208,6 +208,7 @@ def require_torch_gpu(test_case):
         test_case
     )
 
+
 # These decorators are for accelerator-specific behaviours that are not GPU-specific
 def require_torch_accelerator(test_case):
     """Decorator marking a test that requires an accelerator backend and PyTorch."""
@@ -215,19 +216,27 @@ def require_torch_accelerator(test_case):
         test_case
     )
 
+
 def require_torch_accelerator_with_fp16(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP16 data type."""
-    return unittest.skipUnless(is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(test_case)
+    return unittest.skipUnless(is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(
+        test_case
+    )
 
 
 def require_torch_accelerator_with_fp64(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP64 data type."""
-    return unittest.skipUnless(is_torch_fp64_available(torch_device), "test requires accelerator with fp64 support")(test_case)
+    return unittest.skipUnless(is_torch_fp64_available(torch_device), "test requires accelerator with fp64 support")(
+        test_case
+    )
 
 
 def require_torch_accelerator_with_training(test_case):
     """Decorator marking a test that requires an accelerator with support for training."""
-    return unittest.skipUnless(is_torch_available() and backend_supports_training(torch_device), "test requires accelerator with training support")(test_case)
+    return unittest.skipUnless(
+        is_torch_available() and backend_supports_training(torch_device),
+        "test requires accelerator with training support",
+    )(test_case)
 
 
 def skip_mps(test_case):
@@ -726,6 +735,7 @@ def disable_full_determinism():
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ""
     torch.use_deterministic_algorithms(False)
 
+
 # Utils for custom and alternative accelerator devices
 
 # Guard these lookups for when Torch is not used - alternative accelerator support is for PyTorch
@@ -753,6 +763,7 @@ def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], 
 
     return fn(*args, **kwargs)
 
+
 # These are callables which automatically dispatch the function specific to the accelerator
 def backend_manual_seed(device: str, seed: int):
     return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
@@ -771,11 +782,12 @@ def backend_device_count(device: str):
 def backend_supports_training(device: str):
     if not is_torch_available():
         return False
-    
+
     if device not in BACKEND_SUPPORTS_TRAINING:
         device = "default"
 
     return BACKEND_SUPPORTS_TRAINING[device]
+
 
 # Guard for when Torch is not available
 if is_torch_available():
@@ -791,7 +803,7 @@ if is_torch_available():
                 raise AttributeError(
                     f"`{attribute_name}` not found in '{device_spec_path}' and no default fallback function found."
                 ) from e
-            
+
     if "DIFFUSERS_TEST_DEVICE_SPEC" in os.environ:
         device_spec_path = os.environ["DIFFUSERS_TEST_DEVICE_SPEC"]
         if not Path(device_spec_path).is_file():

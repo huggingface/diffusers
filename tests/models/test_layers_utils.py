@@ -26,11 +26,10 @@ from diffusers.models.lora import LoRACompatibleLinear
 from diffusers.models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from diffusers.models.transformer_2d import Transformer2DModel
 from diffusers.utils.testing_utils import (
-     backend_manual_seed, 
-     require_torch_accelerator_with_fp64, 
-     torch_device,
+    backend_manual_seed,
+    require_torch_accelerator_with_fp64,
+    torch_device,
 )
-
 
 
 class EmbeddingsTests(unittest.TestCase):
