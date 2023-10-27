@@ -17,6 +17,8 @@
     title: AutoPipeline
   - local: tutorials/basic_training
     title: Train a diffusion model
+  - local: tutorials/using_peft_for_inference
+    title: Inference with PEFT
   title: Tutorials
 - sections:
   - sections:
@@ -32,6 +34,8 @@
       title: Load safetensors
     - local: using-diffusers/other-formats
       title: Load different Stable Diffusion formats
+    - local: using-diffusers/loading_adapters
+      title: Load adapters
     - local: using-diffusers/push_to_hub
       title: Push files to the Hub
     title: Loading & Hub
@@ -58,6 +62,8 @@
       title: Control image brightness
     - local: using-diffusers/weighted_prompts
       title: Prompt weighting
+    - local: using-diffusers/freeu
+      title: Improve generation quality with FreeU
     title: Techniques
   - sections:
     - local: using-diffusers/pipeline_overview
@@ -77,8 +83,8 @@
     - local: using-diffusers/custom_pipeline_examples
       title: Community pipelines
     - local: using-diffusers/contribute_pipeline
-      title: How to contribute a community pipeline
-    title: Pipelines for Inference
+      title: Contribute a community pipeline
+    title: Specific pipeline examples
   - sections:
     - local: training/overview
       title: Overview
@@ -104,6 +110,8 @@
       title: Custom Diffusion
     - local: training/t2i_adapters
       title: T2I-Adapters
+    - local: training/ddpo
+      title: Reinforcement learning training with DDPO
     title: Training
   - sections:
     - local: using-diffusers/other-modalities
@@ -156,10 +164,12 @@
   title: Conceptual Guides
 - sections:
   - sections:
+    - local: api/activations
+      title: Custom activation functions
+    - local: api/normalization
+      title: Custom normalization layers
     - local: api/attnprocessor
       title: Attention Processor
-    - local: api/diffusion_pipeline
-      title: Diffusion Pipeline
     - local: api/logging
       title: Logging
     - local: api/configuration
@@ -244,6 +254,8 @@
       title: Kandinsky
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
+    - local: api/pipelines/latent_consistency_models
+      title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
@@ -360,6 +372,8 @@
       title: KDPM2AncestralDiscreteScheduler
     - local: api/schedulers/dpm_discrete
       title: KDPM2DiscreteScheduler
+    - local: api/schedulers/lcm
+      title: LCMScheduler
     - local: api/schedulers/lms_discrete
       title: LMSDiscreteScheduler
     - local: api/schedulers/pndm

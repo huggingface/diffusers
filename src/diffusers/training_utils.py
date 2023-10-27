@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, Optional, Union
 import numpy as np
 import torch
 
+from .models import UNet2DConditionModel
 from .utils import deprecate, is_transformers_available
 
 
@@ -50,6 +51,25 @@ def compute_snr(noise_scheduler, timesteps):
     # Compute SNR.
     snr = (alpha / sigma) ** 2
     return snr
+
+
+def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
+    r"""
+    Returns:
+        A state dict containing just the LoRA parameters.
+    """
+    lora_state_dict = {}
+
+    for name, module in unet.named_modules():
+        if hasattr(module, "set_lora_layer"):
+            lora_layer = getattr(module, "lora_layer")
+            if lora_layer is not None:
+                current_lora_layer_sd = lora_layer.state_dict()
+                for lora_layer_matrix_name, lora_param in current_lora_layer_sd.items():
+                    # The matrix name can either be "down" or "up".
+                    lora_state_dict[f"unet.{name}.lora.{lora_layer_matrix_name}"] = lora_param
+
+    return lora_state_dict
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14

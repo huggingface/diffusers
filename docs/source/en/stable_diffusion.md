@@ -192,7 +192,7 @@ As the field grows, there are more and more high-quality checkpoints finetuned t
 
 ### Better pipeline components
 
-You can also try replacing the current pipeline components with a newer version. Let's try loading the latest [autodecoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae) from Stability AI into the pipeline, and generate some images:
+You can also try replacing the current pipeline components with a newer version. Let's try loading the latest [autoencoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae) from Stability AI into the pipeline, and generate some images:
 
 ```python
 from diffusers import AutoencoderKL

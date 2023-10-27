@@ -351,9 +351,9 @@ prompt = "aerial view, a futuristic research complex in a bright foggy jungle, h
 negative_prompt = 'low quality, bad quality, sketches'
 
 images = pipe(
-    prompt, 
-    negative_prompt=negative_prompt, 
-    image=image, 
+    prompt,
+    negative_prompt=negative_prompt,
+    image=canny_image,
     controlnet_conditioning_scale=0.5,
 ).images[0]
 images
@@ -421,7 +421,7 @@ Prepare the canny image conditioning:
 ```py
 from diffusers.utils import load_image
 from PIL import Image
-import numpy as np 
+import numpy as np
 import cv2
 
 canny_image = load_image(
@@ -434,7 +434,7 @@ high_threshold = 200
 
 canny_image = cv2.Canny(canny_image, low_threshold, high_threshold)
 
-# zero out middle columns of image where pose will be overlayed
+# zero out middle columns of image where pose will be overlaid
 zero_start = canny_image.shape[1] // 4
 zero_end = zero_start + canny_image.shape[1] // 2
 canny_image[:, zero_start:zero_end] = 0

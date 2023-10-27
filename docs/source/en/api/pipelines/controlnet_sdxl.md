@@ -32,7 +32,7 @@ If you don't see a checkpoint you're interested in, you can train your own SDXL 
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 </Tip>
 
@@ -41,6 +41,15 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 	- all
 	- __call__
 
+## StableDiffusionXLControlNetImg2ImgPipeline
+[[autodoc]] StableDiffusionXLControlNetImg2ImgPipeline
+	- all
+	- __call__
+
+## StableDiffusionXLControlNetInpaintPipeline
+[[autodoc]] StableDiffusionXLControlNetInpaintPipeline
+	- all
+	- __call__
 ## StableDiffusionPipelineOutput
 
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
