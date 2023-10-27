@@ -12,6 +12,33 @@ from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import rescale_noise_cfg
 import copy
+import os 
+import requests
+import yaml
+
+
+def read_dilate_settings(path):
+    print(f"Reading dilation settings")
+    dilate_settings = dict()
+    url = os.path.join("https://huggingface.co/datasets/ayushtues/scalecrafter/resolve/main/", path)
+    response = requests.get(url, allow_redirects=True)
+    content = response.content.decode("utf-8")
+    content = content.strip()
+    content = content.split('\n')
+    for raw_line in content:
+        name, dilate = raw_line.split(':')
+        dilate_settings[name] = float(dilate)
+    return dilate_settings
+
+
+def read_module_list(path):
+    url = os.path.join("https://huggingface.co/datasets/ayushtues/scalecrafter/resolve/main/", path)
+    response = requests.get(url, allow_redirects=True)
+    content = response.content.decode("utf-8")
+    content = content.strip()
+    content = content.split('\n')
+    module_list = [name.strip() for name in content]
+    return module_list
 
 
 def inflate_kernels(unet, inflate_conv_list, inflation_transform):
@@ -164,18 +191,29 @@ class ScaleCrafterTexttoImagePipeline(StableDiffusionPipeline):
             callback_steps: int = 1,
             cross_attention_kwargs=None,
             guidance_rescale: float = 0.0,
-            ndcfg_tau: int = 0,
-            inflate_tau: int = 0,
-            dilate_tau: int = 0,
-            dilate_settings: dict = None,
-            inflate_settings: dict = None,
-            ndcfg_dilate_settings: dict = None,
-            transform: Optional[torch.FloatTensor] = None,
-            progressive: bool = False,
+            config_path: str = "sd1.5_1024x1024.yaml",
     ):
+        url = os.path.join("https://huggingface.co/datasets/ayushtues/scalecrafter/resolve/main/configs/", config_path)
+        response = requests.get(url, allow_redirects=True)
+        content = response.content.decode("utf-8")
+        config = yaml.safe_load(content)
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * self.vae_scale_factor
-        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        height = config['latent_height'] or self.unet.config.sample_size * self.vae_scale_factor
+        width = config['latent_width'] or self.unet.config.sample_size * self.vae_scale_factor
+        inflate_tau = config['inflate_tau']
+        ndcfg_tau = config['ndcfg_tau']
+        dilate_tau = config['dilate_tau']
+        progressive = config['progressive']
+
+        dilate_settings = read_dilate_settings(config['dilate_settings']) \
+            if config['dilate_settings'] is not None else dict()
+        ndcfg_dilate_settings = read_dilate_settings(config['ndcfg_dilate_settings']) \
+            if config['ndcfg_dilate_settings'] is not None else dict()
+        inflate_settings = read_module_list(config['inflate_settings']) \
+            if config['inflate_settings'] is not None else list()
+
+        transform = None
+
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
