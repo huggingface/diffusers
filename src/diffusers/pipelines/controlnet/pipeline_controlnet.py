@@ -1083,7 +1083,8 @@ class StableDiffusionControlNetPipeline(
             signature = inspect.signature(self.__call__)
             argument_names = [param.name for param in signature.parameters.values()]
             call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
-            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self.config._name_or_path)
+            pipeline_config_name_or_path = self.config._name_or_path if hasattr(self.config, "_name_or_path") else None
+            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, pipeline_config_name_or_path)
 
         if not return_dict:
             outputs = (image, has_nsfw_concept)
