@@ -22,7 +22,7 @@ import uuid
 import numpy as np
 import torch
 from huggingface_hub import delete_repo, hf_hub_download
-from test_utils import TOKEN, is_staging_test
+from test_utils import TOKEN, USER, is_staging_test
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -162,7 +162,7 @@ class WorkflowPushToHubTester(unittest.TestCase):
         workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, None)
         workflow.push_to_hub(self.repo_id, token=TOKEN)
 
-        local_path = hf_hub_download(repo_id=self.repo_id, filename=WORKFLOW_NAME, token=TOKEN)
+        local_path = hf_hub_download(repo_id=f"{USER}/{self.repo_id}", filename=WORKFLOW_NAME, token=TOKEN)
         with open(local_path) as f:
             locally_loaded_workflow = json.load(f)
 
