@@ -25,6 +25,12 @@ With `trust_remote_code=True`, you can achieve perform of the above!
 
 This tutorial covers how to author your pipeline repository so that it becomes compatible with `trust_remote_code`. You'll use a custom UNet, a custom scheduler, and a custom pipeline for this purpose. 
 
+<Tip warning={true}>
+
+You should use `trust_remote_code=True` _only_ when you fully trust the code and have verified its usage.
+
+</Tip>
+
 ## Pipeline components
 
 In the interest of brevity, you'll use the custom UNet, scheduler, and pipeline classes that we've already authored:
