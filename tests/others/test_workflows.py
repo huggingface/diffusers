@@ -33,7 +33,7 @@ from diffusers import (
 from diffusers.utils.constants import WORKFLOW_NAME
 from diffusers.utils.testing_utils import torch_device
 
-from ..others.test_utils import TOKEN, is_staging_test
+from .test_utils import TOKEN, is_staging_test
 
 
 class WorkflowFastTests(unittest.TestCase):
