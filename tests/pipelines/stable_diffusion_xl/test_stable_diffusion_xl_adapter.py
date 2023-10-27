@@ -576,18 +576,19 @@ class AdapterSDXLPipelineSlowTests(unittest.TestCase):
 
     def test_canny(self):
         adapter = T2IAdapter.from_pretrained(
-            "TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, varient="fp16"
-            )
+            "TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16
+        ).to("cpu")
         pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",adapter=adapter
+        'stabilityai/stable-diffusion-xl-base-1.0', adapter=adapter, torch_dtype=torch.float16, variant="fp16", 
         )
+        pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
         pipe.enable_sequential_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "toy"
         image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/t2i_adapter/toy_canny.png"
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
         )
 
         images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
@@ -595,30 +596,25 @@ class AdapterSDXLPipelineSlowTests(unittest.TestCase):
         assert images[0].shape == (768, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.4185, 0.4127, 0.4089, 0.4046, 0.4115, 0.4096, 0.4081, 0.4112, 0.3913])#TODO : Get real values
+        expected_image = np.array([0.5226907,  0.5272584,  0.52255356, 0.50762856, 0.50497484, 0.50656825, 0.5065469,  0.51809096, 0.48973307])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
 
     def test_canny_lora(self):
-        # load adapter
         adapter = T2IAdapter.from_pretrained(
-            "TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, varient="fp16"
-        )
-
-        # load euler_a scheduler
-        model_id = 'stabilityai/stable-diffusion-xl-base-1.0'
-        euler_a = EulerAncestralDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
-        vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+            "TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16
+        ).to("cpu")
         pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-            model_id, vae=vae, adapter=adapter, scheduler=euler_a,
+        'stabilityai/stable-diffusion-xl-base-1.0', adapter=adapter, torch_dtype=torch.float16, variant="fp16", 
         )
         pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
         pipe.enable_sequential_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "toy"
         image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/blob/main/t2i_adapter/toy_canny.png"
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
         )
 
         images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
@@ -626,5 +622,6 @@ class AdapterSDXLPipelineSlowTests(unittest.TestCase):
         assert images[0].shape == (768, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.4574, 0.4461, 0.4435, 0.4462, 0.4396, 0.439, 0.4474, 0.4486, 0.4333])#TODO : Get real values
+        expected_image = np.array([0.50346327, 0.50708383, 0.50719553, 0.5135172,  0.5155377,  0.5066059, 0.49680984, 0.5005894,  0.48509413])
         assert np.allclose(original_image, expected_image, atol=1e-04)
+
