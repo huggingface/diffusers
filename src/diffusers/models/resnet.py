@@ -22,9 +22,9 @@ import torch.nn.functional as F
 
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
-from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
+from .normalization import AdaGroupNorm
 
 
 class Upsample1D(nn.Module):

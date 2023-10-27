@@ -450,12 +450,12 @@ class StableDiffusionXLAdapterPipeline(
         if self.text_encoder is not None:
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder)
+                unscale_lora_layers(self.text_encoder, lora_scale)
 
         if self.text_encoder_2 is not None:
             if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
                 # Retrieve the original scale by scaling back the LoRA layers
-                unscale_lora_layers(self.text_encoder_2)
+                unscale_lora_layers(self.text_encoder_2, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
@@ -622,8 +622,8 @@ class StableDiffusionXLAdapterPipeline(
             elif isinstance(image, torch.Tensor):
                 height = image.shape[-2]
 
-            # round down to nearest multiple of `self.adapter.total_downscale_factor`
-            height = (height // self.adapter.total_downscale_factor) * self.adapter.total_downscale_factor
+            # round down to nearest multiple of `self.adapter.downscale_factor`
+            height = (height // self.adapter.downscale_factor) * self.adapter.downscale_factor
 
         if width is None:
             if isinstance(image, PIL.Image.Image):
@@ -631,8 +631,8 @@ class StableDiffusionXLAdapterPipeline(
             elif isinstance(image, torch.Tensor):
                 width = image.shape[-1]
 
-            # round down to nearest multiple of `self.adapter.total_downscale_factor`
-            width = (width // self.adapter.total_downscale_factor) * self.adapter.total_downscale_factor
+            # round down to nearest multiple of `self.adapter.downscale_factor`
+            width = (width // self.adapter.downscale_factor) * self.adapter.downscale_factor
 
         return height, width
 
