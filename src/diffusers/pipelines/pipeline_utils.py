@@ -1669,7 +1669,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             for component in folder_names:
                 module_candidate = config_dict[component][0]
 
-                if module_candidate is None:
+                if module_candidate is None or not isinstance(module_candidate, str):
                     continue
                 elif isinstance(module_candidate, str):
                     candidate_file = os.path.join(component, module_candidate + ".py")
@@ -1680,8 +1680,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                         raise ValueError(
                             f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
                         )
-                else:
-                    custom_components[component] = config_dict[component]
 
             if len(variant_filenames) == 0 and variant is not None:
                 deprecation_message = (
