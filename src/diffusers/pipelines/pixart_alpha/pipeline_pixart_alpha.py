@@ -16,13 +16,12 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...loaders import LoraLoaderMixin
 from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverSDEScheduler
 from ...utils import (
@@ -54,7 +53,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
+class PixArtAlphaPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using PixArt-Alpha.
 
@@ -512,7 +511,7 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         clean_caption: bool = True,
-    ):
+    ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
 
@@ -578,11 +577,9 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.IFPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.IFPipelineOutput`] if `return_dict` is True, otherwise a `tuple. When
-            returning a tuple, the first element is a list with the generated images, and the second element is a list
-            of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work" (nsfw)
-            or watermarked content, according to the `safety_checker`.
+            [`~pipelines.ImagePipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
+                returned where the first element is a list with the generated images
         """
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
