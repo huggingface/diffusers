@@ -2,13 +2,14 @@ import html
 import inspect
 import re
 import urllib.parse as ul
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
+from ...image_processor import VaeImageProcessor
 from ...loaders import LoraLoaderMixin
-from ...models import Transformer2DModel, AutoencoderKL
+from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverSDEScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -20,6 +21,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -33,7 +35,7 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        
+
         ```
 """
 
@@ -62,19 +64,16 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
     ):
         super().__init__()
 
-        self.register_modules(
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
-            unet=transformer,
-            scheduler=scheduler
-        )
+        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder, unet=transformer, scheduler=scheduler)
+
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def remove_all_hooks(self):
         if is_accelerate_available():
             from accelerate.hooks import remove_hook_from_module
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
-        
+
         for model in [self.text_encoder, self.transformer]:
             if model is not None:
                 remove_hook_from_module(model, recurse=True)
@@ -83,7 +82,7 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.text_encoder_offload_hook = None
         self.final_offload_hook = None
 
-    @torch.no_grad()
+    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -255,6 +254,7 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -297,20 +297,7 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_intermediate_images(self, batch_size, num_channels, height, width, dtype, device, generator):
-        shape = (batch_size, num_channels, height, width)
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-            )
-
-        intermediate_images = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-
-        # scale the initial noise by the standard deviation required by the scheduler
-        intermediate_images = intermediate_images * self.scheduler.init_noise_sigma
-        return intermediate_images
-
+    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
         if clean_caption and not is_bs4_available():
             logger.warn(BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`"))
@@ -335,6 +322,7 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return [process(t) for t in text]
 
+    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if._clean_caption
     def _clean_caption(self, caption):
         caption = str(caption)
         caption = ul.unquote_plus(caption)
@@ -449,6 +437,24 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return caption.strip()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
+        return latents
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -463,6 +469,7 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
         width: Optional[int] = None,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -470,7 +477,6 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         clean_caption: bool = True,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -507,6 +513,10 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -529,10 +539,6 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
 
         Examples:
 
@@ -547,8 +553,8 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
-        height = height or self.unet.config.sample_size
-        width = width or self.unet.config.sample_size
+        height = height or self.transformer.config.sample_size
+        width = width or self.transformer.config.sample_size
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -588,16 +594,19 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
             self.scheduler.set_timesteps(num_inference_steps, device=device)
             timesteps = self.scheduler.timesteps
 
-        # 5. Prepare intermediate images
-        intermediate_images = self.prepare_intermediate_images(
+        # 5. Prepare latents.
+        latent_channels = self.transformer.config.in_channels
+        latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
-            self.unet.config.in_channels,
+            latent_channels,
             height,
             width,
             prompt_embeds.dtype,
             device,
             generator,
+            latents,
         )
+        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -610,66 +619,63 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                model_input = (
-                    torch.cat([intermediate_images] * 2) if do_classifier_free_guidance else intermediate_images
-                )
-                model_input = self.scheduler.scale_model_input(model_input, t)
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # predict the noise residual
-                noise_pred = self.transformer(
-                    model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                timesteps = t
+                if not torch.is_tensor(timesteps):
+                    # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+                    # This would be a good case for the `match` statement (Python 3.10+)
+                    is_mps = latent_model_input.device.type == "mps"
+                    if isinstance(timesteps, float):
+                        dtype = torch.float32 if is_mps else torch.float64
+                    else:
+                        dtype = torch.int32 if is_mps else torch.int64
+                    timesteps = torch.tensor([timesteps], dtype=dtype, device=latent_model_input.device)
+                elif len(timesteps.shape) == 0:
+                    timesteps = timesteps[None].to(latent_model_input.device)
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                timesteps = timesteps.expand(latent_model_input.shape[0])
+                # predict noise model_output
+                # noise_pred = self.transformer(
+                #     latent_model_input, timestep=timesteps, class_labels=class_labels_input
+                # ).sample
+                # TODO: major modifications here.
+                noise_pred = self.transformer(latent_model_input, timesteps=timesteps)[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred_uncond, _ = noise_pred_uncond.split(model_input.shape[1], dim=1)
-                    noise_pred_text, predicted_variance = noise_pred_text.split(model_input.shape[1], dim=1)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-                    noise_pred = torch.cat([noise_pred, predicted_variance], dim=1)
 
-                if self.scheduler.config.variance_type not in ["learned", "learned_range"]:
-                    noise_pred, _ = noise_pred.split(model_input.shape[1], dim=1)
+                # learned sigma
+                if self.transformer.config.out_channels // 2 == latent_channels:
+                    noise_pred, _ = torch.split(noise_pred, latent_channels, dim=1)
+                else:
+                    noise_pred = noise_pred
 
                 # compute the previous noisy sample x_t -> x_t-1
-                intermediate_images = self.scheduler.step(
-                    noise_pred, t, intermediate_images, **extra_step_kwargs, return_dict=False
-                )[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        callback(i, t, intermediate_images)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
-        image = intermediate_images
-
-        if output_type == "pil":
-            # 8. Post-processing
-            image = (image / 2 + 0.5).clamp(0, 1)
-            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-
-            # 9. Convert to PIL
-            image = self.numpy_to_pil(image)
-
-        
-        elif output_type == "pt":
-            if hasattr(self, "transformer_offload_hook") and self.transformer_offload_hook is not None:
-                self.transformer_offload_hook.offload()
+        if not output_type == "latent":
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
-            # 8. Post-processing
-            image = (image / 2 + 0.5).clamp(0, 1)
-            image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+            image = latents
 
+        if not output_type == "latent":
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image, )
+            return (image,)
 
         return ImagePipelineOutput(images=image)
