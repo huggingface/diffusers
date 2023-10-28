@@ -38,6 +38,8 @@
       title: Load adapters
     - local: using-diffusers/push_to_hub
       title: Push files to the Hub
+    - local: using-diffusers/workflows
+      title: Load a workflow
     title: Loading & Hub
   - sections:
     - local: using-diffusers/unconditional_image_generation
@@ -164,26 +166,14 @@
   title: Conceptual Guides
 - sections:
   - sections:
-    - local: api/activations
-      title: Custom activation functions
-    - local: api/normalization
-      title: Custom normalization layers
-    - local: api/workflows
-      title: Shareable workflows
-    - local: api/attnprocessor
-      title: Attention Processor
-    - local: api/logging
-      title: Logging
     - local: api/configuration
       title: Configuration
-    - local: api/outputs
-      title: Outputs
     - local: api/loaders
       title: Loaders
-    - local: api/utilities
-      title: Utilities
-    - local: api/image_processor
-      title: VAE Image Processor
+    - local: api/logging
+      title: Logging
+    - local: api/outputs
+      title: Outputs
     title: Main Classes
   - sections:
     - local: api/models/overview
@@ -391,4 +381,18 @@
     - local: api/schedulers/vq_diffusion
       title: VQDiffusionScheduler
     title: Schedulers
+  - sections:
+    - local: api/internal_classes_overview
+      title: Overview
+    - local: api/attnprocessor
+      title: Attention Processor
+    - local: api/activations
+      title: Custom activation functions
+    - local: api/normalization
+      title: Custom normalization layers
+    - local: api/utilities
+      title: Utilities
+    - local: api/image_processor
+      title: VAE Image Processor
+    title: Internal classes   
   title: API
