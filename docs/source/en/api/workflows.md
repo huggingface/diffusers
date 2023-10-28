@@ -86,11 +86,13 @@ pipeline.load_workflow("sayakpaul/my-simple-workflow-sd")
 ```
 
 Once the pipeline is loaded with the desired workflow, it's ready to be called:
+
 <Tip>
 
 You could also pass `prompt_embeds` instead of a `prompt`.
 
 </Tip>
+
 ```python
 image = pipeline().images[0]
 ```
@@ -101,7 +103,23 @@ You can also override the pipeline call arguments. For example, to add a `negati
 image = pipeline(negative_prompt="bad quality").images[0]
 ```
 
-Loading from a specific workflow is possible by specifying the `filename` argument inside the [`DiffusionPipeline.load_workflow`] method.
+Loading from a workflow is possible by specifying the `filename` argument inside the [`DiffusionPipeline.load_workflow`] method.
+
+A workflow doesn't necessarily have to be used with the same pipeline that generated it. You can use it with a different pipeline too:
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+).to("cuda")
+
+pipeline.load_workflow("sayakpaul/my-simple-workflow-sd")
+image = pipeline().images[0]
+```
+
+However, make sure to thoroughly inspect the values you are calling the pipeline with, in this case.
 
 ## Unsupported serialization types
 
