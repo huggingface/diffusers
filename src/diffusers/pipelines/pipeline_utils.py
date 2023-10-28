@@ -1671,7 +1671,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
                 if module_candidate is None or not isinstance(module_candidate, str):
                     continue
-                elif isinstance(module_candidate, str):
+                else:
                     candidate_file = os.path.join(component, module_candidate + ".py")
 
                     if candidate_file in filenames:
