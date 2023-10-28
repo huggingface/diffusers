@@ -1,3 +1,17 @@
+# Copyright 2023 PixArt-Alpha Authors and The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import html
 import inspect
 import re
@@ -41,6 +55,27 @@ EXAMPLE_DOC_STRING = """
 
 
 class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
+    r"""
+    Pipeline for text-to-image generation using PixArt-Alpha.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`T5EncoderModel`]):
+            Frozen text-encoder. PixArt-Alpha uses
+            [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
+            [flan-t5-xxl](https://huggingface.co/google/flan-t5-xxl) variant.
+        tokenizer (`T5Tokenizer`):
+            Tokenizer of class
+            [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
+        transformer ([`Transformer2DModel`]):
+            A text conditioned `Transformer2DModel` to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
+    """
     tokenizer: T5Tokenizer
     text_encoder: T5EncoderModel
 
@@ -137,8 +172,8 @@ class PixArtAlphaPipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # while T5 can handle much longer input sequences than 77, the text encoder was trained with a max length of 77 for IF
-        max_length = 77
+        # See Section 3.1. of the paper.
+        max_length = 120
 
         if prompt_embeds is None:
             prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
