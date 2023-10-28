@@ -14,11 +14,11 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-Workflows are experimental at the moment 🧪 Its APIs can change in future.
+🧪 Workflow is experimental and its APIs can change in the future.
 
 </Tip>
 
-Workflows provide a simple mechanism to share your pipeline call arguments with others. It makes reproducibility of results easier. This doc shows you how you can leverage workflows for different use cases. 
+Workflows provide a simple mechanism to share your pipeline call arguments, making it easier to reproduce results. 
 
 ## Serializing a workflow
 
@@ -33,7 +33,7 @@ outputs = pipeline("A painting of a horse", num_inference_steps=15, return_workf
 workflow = outputs.workflow
 ```
 
-As you can notice, by specifying `return_workflow=True` in the pipeline call, you can obtain a workflow that looks like so:
+If you look at this specific workflow, you'll see values like the number of inference steps, guidance scale, and height and width:
 
 ```bash
 {'prompt': 'A painting of a horse',
@@ -54,25 +54,25 @@ As you can notice, by specifying `return_workflow=True` in the pipeline call, yo
  '_name_or_path': 'runwayml/stable-diffusion-v1-5'}
 ```
 
-`workflow` is a [`Workflow`] object. It provides the values of all the arguments present in the `__call__()` of a pipeline.
+A [`Workflow`] object provides all the argument values in the `__call__()` of a pipeline. Add `return_workflow=True` to return a `Workflow` object:
 
-Once you have generated a workflow object, you can serialize it like so:
+Once you have generated a workflow object, you can serialize it with [`~Workflow.save_workflow`]:
 
 ```python
 outputs.workflow.save_workflow("my-simple-workflow-sd")
 ```
 
-By default, your workflows will be saved with the following name: `diffusion_workflow.json`. But you can customize it by specifying the `filename` argument:
+By default, your workflows are saved as `diffusion_workflow.json`, but you can give them a specific name with the `filename` argument:
 
 ```python
 outputs.workflow.save_workflow("my-simple-workflow-sd", filename="my_workflow.json")
 ```
 
-By specifying `push_to_hub=True` in [`Workflow.save_workflow`], you can directly push the workflow object to the Hub. 
+You can also set `push_to_hub=True` in [`~Workflow.save_workflow`] to directly push the workflow object to the Hub. 
 
 ## Loading a workflow
 
-You can load a workflow in a pipeline like so:
+You can load a workflow in a pipeline with [`~DiffusionPipeline.load_workflow`]:
 
 ```python
 from diffusers import DiffusionPipeline
@@ -86,12 +86,16 @@ pipeline.load_workflow("sayakpaul/my-simple-workflow-sd")
 ```
 
 Once the pipeline is loaded with the desired workflow, it's ready to be called:
+<Tip>
 
+You could also pass `prompt_embeds` instead of a `prompt`.
+
+</Tip>
 ```python
 image = pipeline().images[0]
 ```
 
-You can also override the pipeline call arguments. In the above example, you didn't specify any `negative_prompt`. You can easily it like so:
+You can also override the pipeline call arguments. For example, to add a `negative_prompt`:
 
 ```python
 image = pipeline(negative_prompt="bad quality").images[0]
@@ -99,11 +103,11 @@ image = pipeline(negative_prompt="bad quality").images[0]
 
 Loading from a specific workflow is possible by specifying the `filename` argument inside the [`DiffusionPipeline.load_workflow`] method.
 
-## Some common gotchas
+## Unsupported serialization types
 
-Image-to-image pipelines like [`StableDiffusionControlNetPipeline`] accept one or more images in their calls. Currently, workflows don't support the serialization of call arguments that are of type `PIL.Image.Image` or `List[PIL.Image.Image]`. To make those pipelines work with workflows, you will have to manually pass the images. 
+Image-to-image pipelines like [`StableDiffusionControlNetPipeline`] accept one or more images in their `call` method. Currently, workflows don't support serializing `call` arguments that are of type `PIL.Image.Image` or `List[PIL.Image.Image]`. To make those pipelines work with workflows, you need to pass the images manually. 
 
-Let's say you have generated a workflow with the following:
+Let's say you generated the workflow below:
 
 ```python
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
@@ -145,7 +149,7 @@ outputs = pipe(
 workflow = outputs.workflow
 ```
 
-`workflow` here looks like so:
+If you look at the workflow, you'll see the image that was passed to the pipeline isn't included:
 
 ```bash
 {'prompt': 'futuristic-looking office',
@@ -172,7 +176,7 @@ workflow = outputs.workflow
 
 As you can notice, the `image` passed to the `pipeline` isn't a part of `workflow`.
 
-Let's serialize it:
+Let's serialize it and reload the pipeline:
 
 ```python
 workflow.save_workflow("my-simple-workflow-sd", filename="controlnet_simple.json", push_to_hub=True)
@@ -191,22 +195,22 @@ pipe.enable_model_cpu_offload()
 pipe.load_workflow("sayakpaul/my-simple-workflow-sd", filename="controlnet_simple.json")
 ```
 
-If you try to do `image = pipe().images[0]`, it will lead the following error:
+If you try to generate an image now, it'll return the following error:
 
 ```bash
 TypeError: image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is <class 'NoneType'>
 ```
 
-To resolve the error, you can just pass the conditioning image `canny_image`:
+To resolve the error, manually pass the conditioning image `canny_image`:
 
 ```python
 image = pipe(image=canny_image).images[0]
 ```
 
-## Known limitations
+Other unsupported serialization types include:
 
-* We don't serialize any information on the LoRA checkpoints that might be loaded into a pipeline. So, workflows generated from pipelines loaded with a LoRA checkpoint should be handled with caution. As such, users should ensure that the respective LoRA checkpoint is first loaded into the pipeline before the corresponding workflow is loaded into the pipeline.
-* Instead of passing a `prompt`, users can provide `prompt_embeds` while calling a pipeline. Currently, workflows don't serialize any call arguments that are of the following types: `torch.Tensor`, `np.ndarray`, `Callable`, `PIL.Image.Image`, and `List[PIL.Image.Image]`. 
+* LoRA checkpoints: any information from LoRA checkpoints that might be loaded into a pipeline isn't serialized. Workflows generated from pipelines loaded with a LoRA checkpoint should be handled cautiously! You should ensure the LoRA checkpoint is loaded into the pipeline first before loading the corresponding workflow.
+* Call arguments including the following types: `torch.Tensor`, `np.ndarray`, `Callable`, `PIL.Image.Image`, and `List[PIL.Image.Image]`. 
 
 ## Workflow
 
