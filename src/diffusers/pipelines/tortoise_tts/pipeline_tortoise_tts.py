@@ -90,9 +90,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             vocoder=vocoder,
         )
 
-        # Autoregressive model
         self.text_encoder = audio_candidate_model.conditioning_encoder.text_token_embedding
-
+        self.decoder_final_norm = audio_candidate_model.speech_decoder_model.final_norm
         self.autoregressive_hidden_dim = audio_candidate_model.config.decoder_config.n_embd
         self.diffusion_input_dim = unet.config.in_latent_channels
 
@@ -141,153 +140,88 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt with num_images_per_prompt->num_waveforms_per_prompt
-    def _encode_prompt(
-        self,
-        prompt,
-        device,
-        num_waveforms_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        lora_scale: Optional[float] = None,
-        **kwargs,
-    ):
-        deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
-        deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
-
-        prompt_embeds_tuple = self.encode_prompt(
-            prompt=prompt,
-            device=device,
-            num_waveforms_per_prompt=num_waveforms_per_prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
-            negative_prompt=negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=lora_scale,
-            **kwargs,
-        )
-
-        # concatenate for backwards comp
-        prompt_embeds = torch.cat([prompt_embeds_tuple[1], prompt_embeds_tuple[0]])
-
-        return prompt_embeds
-
     def encode_prompt(
         self,
         prompt,
         device,
-        num_waveforms_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        lora_scale: Optional[float] = None,
-        clip_skip: Optional[int] = None,
     ):
         r"""
-        Encodes the prompt into text encoder hidden states.
+        Encodes the prompt into text tokens.
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                prompt to be encoded
+                prompt to be encoded.
             device: (`torch.device`):
-                torch device
-            num_waveforms_per_prompt (`int`):
-                number of spectrogframs that should be generated per prompt
+                torch device.
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
-            lora_scale (`float`, *optional*):
-                A LoRA scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
+                The prompt or prompts not to guide the image generation.Ignored when not using guidance
+                (i.e., ignored if `guidance_scale` is less than `1`).
         """
-        # set lora scale so that monkey patched LoRA
-        # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
-            self._lora_scale = lora_scale
-
-            # dynamically adjust the LoRA scale
-            adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
 
-        if prompt_embeds is None:
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            ).to(self.text_encoder.device)
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        ).to(device)
 
-            text_input_ids = text_inputs.input_ids
-            prompt_embeds = self.text_encoder(text_input_ids)
+        # text_input_ids = text_inputs.input_ids
+        # prompt_embeds = self.text_encoder(text_input_ids)
+        #
+        # if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+        #     prompt_attention_mask = text_inputs.attention_mask
+        # else:
+        #     prompt_attention_mask = None
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = text_inputs.attention_mask
-            else:
-                attention_mask = None
-
-        bs_embed, seq_len, _ = prompt_embeds.shape
+        # bs_embed, seq_len, _ = prompt_embeds.shape
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            if negative_prompt is None and negative_prompt_embeds is None:
-                raise ValueError(f"You are trying to do classifier free guidance but you havent provided either `negative_prompt`"
-                                 f"or `negative_prompt_embeds`. Please provide one of them.")
-            elif negative_prompt is not None and negative_prompt_embeds is not None:
-                raise ValueError(f"Found both `negative_prompt` and `negative_prompt_embeds`. Please provide one of them.")
-            elif negative_prompt is not None:
+            if negative_prompt is None:
+                logger.warning(f"You are trying to do classifier free guidance but you havent provided `negative_prompt`.")
+            else:
                 negative_text_inputs = self.tokenizer(
                     negative_prompt,
                     padding="max_length",
                     max_length=self.tokenizer.model_max_length,
                     truncation=True,
                     return_tensors="pt",
-                ).to(self.text_encoder.device)
+                ).to(device)
 
-                negative_text_input_ids = negative_text_inputs.input_ids
-                negative_prompt_embeds = self.text_encoder(negative_text_input_ids)
+                # negative_text_input_ids = negative_text_inputs.input_ids
+                # negative_prompt_embeds = self.text_encoder(negative_text_input_ids)
 
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                negative_attention_mask = negative_text_inputs.attention_mask
-            else:
-                negative_attention_mask = None
+            # if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            #     negative_attention_mask = negative_text_inputs.attention_mask
+            # else:
+            #     negative_attention_mask = None
 
             # check shapes of prompt and negative prompt embeds
             # if length of prompt embeds is 1 and negative_prompt_embeds is N or vice versa then we repeat
             # otherwise if length of prompt embeds is N and negative_prompt_embeds is M or vice versa then we return error.
-            if prompt_embeds.shape[0]==1 and negative_prompt_embeds.shape[0]!=1:
-                prompt_embeds = prompt_embeds.repeat(negative_prompt_embeds.shape[0], 1, 1)
-            elif prompt_embeds.shape[0]!=1 and negative_prompt_embeds.shape[0]==1:
-                negative_prompt_embeds = negative_prompt_embeds.repeat(prompt_embeds.shape[0], 1, 1)
+            if text_inputs.input_ids.shape[0]==1 and negative_text_inputs.input_ids.shape[0]!=1:
+                text_inputs.input_ids = text_inputs.input_ids.repeat(negative_text_inputs.input_ids.shape[0], 1)
+                text_inputs.attention_mask = text_inputs.attention_mask.repeat(negative_text_inputs.input_ids.shape[0], 1)
+            elif text_inputs.input_ids.shape[0]!=1 and negative_text_inputs.input_ids.shape[0]==1:
+                negative_text_inputs.input_ids = negative_text_inputs.input_ids.repeat(text_inputs.input_ids.shape[0], 1)
+                negative_text_inputs.attention_mask = negative_text_inputs.attention_mask.repeat(text_inputs.input_ids.shape[0], 1)
             elif prompt_embeds.shape[0]!=1 and negative_prompt_embeds.shape[0]!=1:
                 raise ValueError(f"Found {prompt_embeds.shape[0]} number of prompts and {negative_prompt_embeds.shape[0]} "
                                  f"number of negative prompts. There must be same number of prompts and negative prompts,"
                                  f"otherwise length of one of them must be 1.")
 
-            return prompt_embeds, negative_prompt_embeds
+            return text_inputs, negative_text_inputs
 
-        return prompt_embeds, None
+        return text_inputs, None
 
     def prepare_audio_waveforms(
         self,
@@ -471,6 +405,31 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    def calculate_decoder_logits(self, decoder_hidden_states, batch_size, device):
+        """
+        The hidden states that we get are from the decoder layers of the decoder model.
+        This method applies norm on those tensors returning us latents which are then used by the diffuser model.
+
+        Args:
+            decoder_hidden_states (`list` of `torch.FloatTensor`):
+                Hidden states of the decoder model
+        """
+
+        decoder_hidden_states_dtype = decoder_hidden_states[0][0].dtype
+        latents = torch.empty([batch_size, len(decoder_hidden_states), decoder_hidden_states[0][0].shape[-1]], dtype=decoder_hidden_states_dtype, device=device)
+
+        for i in range(len(decoder_hidden_states)):
+            latents[:, i, :] = decoder_hidden_states[i][-1][:, -1, :]
+
+        latents_dtype = latents.dtype
+        if latents_dtype == torch.float16:
+            latents = latents.to(float32)
+
+        latents = self.decoder_final_norm(latents)
+        latents = latents.to(latents_dtype)
+
+        return latents
+
     def check_inputs(
         self,
         prompt,
@@ -537,8 +496,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         audio_ar_latents: Optional[torch.FloatTensor] = None,
         audio_diff_latents: Optional[torch.FloatTensor] = None,
         vocoder_latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
@@ -549,7 +506,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the audio generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the audio generation.
                 instead.
             audio (`List[Tuple[torch.FloatTensor, int]]`, *optional*):
                 A list of audio samples, which are expected to consist of tuples where the first element is the audio
@@ -571,9 +528,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 to be in [0, 1]; values closer to 0 will be close to the mean prediction of the denoising model and
                 will sound bland and smeared.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the audio generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                The prompt or prompts not to guide the audio generation.
             num_waveforms_per_prompt (`int`, *optional*, defaults to 1):
                 The number of waveforms to generate per prompt. This is the also the number of top clips selected
                 after reranking the autoregressive samples with the CLVP discriminator, and corresponds to the `k`
@@ -617,13 +572,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             vocoder_latents (`torch.FloatTensor`, *optional*):
                 Pre-generated vocoder latents, sampled from a Gaussian distribution, which are used as inputs to the
                 UnivNet vocoder for generation.
-            prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
-                provided, text embeddings will be generated from `prompt` input argument.
-            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -655,8 +603,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             prompt,
             callback_steps,
             negative_prompt,
-            prompt_embeds,
-            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
@@ -664,8 +610,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
 
         output_seq_length = audio_length_in_s * self.sampling_rate
 
@@ -675,7 +619,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        has_negative_prompts = negative_prompt is not None or negative_prompt_embeds is not None
+        has_negative_prompts = negative_prompt is not None
 
         # 3. Prepare audio spectrogram features
         audio_features = self.prepare_audio_spectrograms(
@@ -685,14 +629,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         )
 
         # 4. Encode input prompt
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_inputs, negative_prompt_inputs = self.encode_prompt(
             prompt,
             device,
-            num_waveforms_per_prompt,
             do_classifier_free_guidance,
             negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
         )
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -700,21 +641,32 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # NOTE: if no negative prompts it's not necessary to get negative speech candidates because we want to use
         # unconditional_embedding in this case
         if do_classifier_free_guidance and has_negative_prompts:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            prompt_input_ids = torch.cat([negative_prompt_inputs.input_ids, prompt_inputs.input_ids], dim=0)
+            prompt_attention_mask = torch.cat([negative_prompt_inputs.attention_mask, prompt_inputs.attention_mask], dim=0)
+        else:
+            prompt_input_ids = prompt_inputs.input_ids
+            prompt_attention_mask = prompt_inputs.attention_mask
 
-        # 5. Generate candidates and similarity scores using the autoregressive model + CLVP
+        # # 5. Generate candidates and similarity scores using the decoder(autoregressive) model + CLVP
+        # text_encoder_input_ids = tokenizer(prompt,
+        #                                    padding="max_length",
+        #                                    return_tensors="pt",
+        #                                    add_special_tokens=False,
+        #                                    ).input_ids.to(device)
+
         audio_candidates_and_scores = self.audio_candidate_model.generate(
-            input_ids_with_special_tokens=prompt_embeds,  # TODO: fix
+            input_ids=prompt_input_ids, # these input_ids are for the text encoder.
+            attention_mask=prompt_attention_mask,
             input_features=audio_features,
-            attention_mask_with_special_tokens=None,  # TODO: fix
-            generation_config=autoregressive_generation_config,
-            **autoregressive_generation_kwargs,
+            # conditioning_encoder_inputs_embeds=prompt_embeds, # these embeds are for the clvp conditioning encoder.
+            output_hidden_states=True, # because we want to resuse the logits of the decoder(autoregressive) model
         )
+
         audio_candidates = audio_candidates_and_scores.speech_ids
         similarity_scores = audio_candidates_and_scores.logits_per_text
-        autoregressive_hidden_states = audio_candidates_and_scores.decoder_hidden_states
-        # Get last hidden states of the full generated sequences
-        autoregressive_latents = autoregressive_hidden_states[-1][-1]
+
+        # get decoder logits
+        autoregressive_latents = self.calculate_decoder_logits(audio_candidates_and_scores.decoder_hidden_states)
 
         if do_classifier_free_guidance and has_negative_prompts:
             neg_audio_candidates, audio_candidates = audio_candidates.chunk(2)
