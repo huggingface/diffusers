@@ -330,6 +330,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self,
         audio,
         autoregressive_latents,
+        attention_mask,
         dtype,
         device,
         generator,
@@ -664,8 +665,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         audio_candidates = audio_candidates_and_scores.speech_ids
         similarity_scores = audio_candidates_and_scores.logits_per_text
-
-        # get decoder logits
         autoregressive_latents = self.calculate_decoder_logits(audio_candidates_and_scores.decoder_hidden_states)
 
         if do_classifier_free_guidance and has_negative_prompts:
@@ -678,20 +677,32 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         top_k_audio_candidates = audio_candidates[top_k_indices]
         top_k_autoregressive_latents = autoregressive_latents[top_k_indices]
 
+        # prepare attention_mask from audio_candidates to be used in diffusion model
+        diffusion_attention_mask = torch.ones_like(top_k_audio_candidates)
+        diffusion_attention_mask = torch.masked_fill(diffusion_attention_mask,
+                                                     (top_k_audio_candidates == self.calm_token_id).bool(), 0)
+
+
         if do_classifier_free_guidance and has_negative_prompts:
             neg_top_k_indices = torch.topk(neg_similarity_scores, k=1).indices
             neg_top_k_audio_candidates = neg_audio_candidates[neg_top_k_indices]
             neg_top_k_autoregressive_latents = neg_autoregressive_latents[neg_top_k_indices]
 
-        # 7. Trim audio candidates
-        top_k_autoregressive_latents = self.trim_autoregressive_latents(
-            top_k_audio_candidates, top_k_autoregressive_latents
-        )
+        # prepare negative attention_mask from audio_candidates to be used in diffusion model
+        diffusion_neg_attention_mask = torch.ones_like(neg_top_k_audio_candidates)
+        diffusion_neg_attention_mask = torch.masked_fill(diffusion_neg_attention_mask,
+                                                     (neg_top_k_audio_candidates == self.calm_token_id).bool(), 0)
 
-        if do_classifier_free_guidance and has_negative_prompts:
-            neg_top_k_autoregressive_latents = self.trim_autoregressive_latents(
-                neg_top_k_audio_candidates, neg_top_k_autoregressive_latents
-            )
+
+        # # 7. Trim audio candidates
+        # top_k_autoregressive_latents = self.trim_autoregressive_latents(
+        #     top_k_audio_candidates, top_k_autoregressive_latents
+        # )
+        #
+        # if do_classifier_free_guidance and has_negative_prompts:
+        #     neg_top_k_autoregressive_latents = self.trim_autoregressive_latents(
+        #         neg_top_k_audio_candidates, neg_top_k_autoregressive_latents
+        #     )
 
         # 8. Prepare timesteps for diffusion scheduler
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -723,6 +734,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
             audio,
             top_k_autoregressive_latents,
+            diffusion_attention_mask,
             prompt_embeds.dtype,
             device,
             generator,
