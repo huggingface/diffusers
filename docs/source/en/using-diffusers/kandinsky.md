@@ -261,59 +261,6 @@ image = pipeline(prompt=prompt, image=original_image, strength=0.3).images[0]
 
 ## Inpainting
 
-For inpainting, you'll need the original image, a mask of the area to replace in the original image, and a text prompt of what to inpaint. Load the prior pipeline:
-
-```py
-from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline
-from diffusers.utils import load_image
-import torch
-import numpy as np
-
-prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-pipeline = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
-```
-
-Load an initial image and create a mask:
-
-```py
-init_image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinsky/cat.png")
-mask = np.zeros((768, 768), dtype=np.float32)
-# mask area above cat's head
-mask[:250, 250:-250] = 1
-```
-
-Generate the embeddings with the prior pipeline:
-
-```py
-prompt = "a hat"
-prior_output = pipe_prior(prompt)
-```
-
-Now pass the initial image, mask, and prompt and embeddings to the [`KandinskyInpaintPipeline`] to generate an image:
-
-```py
-image = pipeline(prompt, image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
-image
-```
-
-<div class="flex justify-center">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/inpaint_cat_hat.png"/>
-</div>
-
-You can also use the end-to-end [`KandinskyInpaintCombinedPipeline`] to call the [`KandinskyPriorPipeline`] and [`KandinskyInpaintPipeline`] under the hood. Use the [`AutoPipelineForInpainting`] to automatically call the [`KandinskyInpaintCombinedPipeline`]:
-
-```py
-import torch
-from diffusers import AutoPipelineForInpainting
-
-pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16)
-pipe.enable_model_cpu_offload()
-
-prompt = "a hat"
-
-image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
-```
-
 <Tip warning={true}>
 
 ⚠️ The Kandinsky models uses ⬜️ **white pixels** to represent the masked area now instead of black pixels. If you are using [`KandinskyInpaintPipeline`] in production, you need to change the mask to use white pixels:
@@ -328,6 +275,115 @@ mask = 1 - mask
 ```
 
 </Tip>
+
+For inpainting, you'll need the original image, a mask of the area to replace in the original image, and a text prompt of what to inpaint. Load the prior pipeline:
+
+<hfoptions id="kandinsky-inpaint">
+<hfoption id="Kandinsky 2.1">
+
+```py
+from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline
+from diffusers.utils import load_image
+import torch
+import numpy as np
+
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+```
+
+</hfoption>
+<hfoption id="Kandinsky 2.2">
+
+```py
+from diffusers import KandinskyV22InpaintPipeline, KandinskyPriorPipeline
+from diffusers.utils import load_image
+import torch
+import numpy as np
+
+prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyV22InpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+```
+
+</hfoption>
+</hfoptions>
+
+Load an initial image and create a mask:
+
+```py
+init_image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
+mask = np.zeros((768, 768), dtype=np.float32)
+# mask area above cat's head
+mask[:250, 250:-250] = 1
+```
+
+Generate the embeddings with the prior pipeline:
+
+```py
+prompt = "a hat"
+prior_output = prior_pipeline(prompt)
+```
+
+Now pass the initial image, mask, and prompt and embeddings to the pipeline to generate an image:
+
+<hfoptions id="kandinsky-image-to-image-generate">
+<hfoption id="Kandinsky 2.1">
+
+```py
+image = pipeline(prompt, image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
+```
+
+<div class="flex justify-center">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/inpaint_cat_hat.png"/>
+</div>
+
+</hfoption>
+<hfoption id="Kandinsky 2.2">
+
+```py
+image = pipeline(image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
+```
+
+<div class="flex justify-center">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-inpaint.png"/>
+</div>
+
+</hfoption>
+</hfoptions>
+
+You can also use the end-to-end [`KandinskyInpaintCombinedPipeline`] and [`KandinskyV22InpaintCombinedPipeline`] to call the prior and decoder pipelines together under the hood. Use the [`AutoPipelineForInpainting`] for this:
+
+<hfoptions id="kandinsky-inpaint-combined">
+<hfoption id="Kandinsky 2.1">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+
+pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+
+prompt = "a hat"
+
+image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
+```
+
+</hfoption>
+<hfoption id="Kandinsky 2.2">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+
+pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16)
+pipe.enable_model_cpu_offload()
+
+prompt = "a hat"
+
+image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
+```
+
+</hfoption>
+</hfoptions>
 
 ## Interpolation
 
