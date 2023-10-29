@@ -148,6 +148,38 @@ image = pipeline().images[0]
 
 However, make sure to thoroughly inspect the values you are calling the pipeline with, in this case.
 
+Loading from a local workflow is also possible:
+
+```
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+).to("cuda")
+
+pipeline.load_workflow("path_to_local_dir")
+image = pipeline().images[0]
+```
+
+Alternatively, if you want to manually load a workflow file and populate the pipeline arguments, you can do so:
+
+```python
+from diffusers import DiffusionPipeline
+import json
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+).to("cuda")
+
+with open("path_to_workflow_file.json") as f:
+    call_args = json.load(f)
+    final_call_args = ... # filter the call arguments
+
+image = pipeline(**final_call_args).images[0]
+```
+
 ## Unsupported serialization types
 
 Image-to-image pipelines like [`StableDiffusionControlNetPipeline`] accept one or more images in their `call` method. Currently, workflows don't support serializing `call` arguments that are of type `PIL.Image.Image` or `List[PIL.Image.Image]`. To make those pipelines work with workflows, you need to pass the images manually. 
