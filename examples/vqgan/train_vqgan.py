@@ -32,7 +32,6 @@ from accelerate.logging import get_logger
 from accelerate.utils import DistributedType, ProjectConfiguration, set_seed
 from datasets import load_dataset
 from discriminator import PaellaDiscriminator
-from einops import rearrange, repeat
 from huggingface_hub import create_repo
 from PIL import Image
 from timm.data import resolve_data_config
@@ -115,7 +114,7 @@ def get_perceptual_loss(pixel_values, fmap, timm_model, timm_model_resolution, t
 
     if pixel_values.shape[1] == 1:
         # handle grayscale for timm_model
-        img_timm_model_input, fmap_timm_model_input = (repeat(t, "b 1 ... -> b c ...", c=3) for t in (img_timm_model_input, fmap_timm_model_input))
+        img_timm_model_input, fmap_timm_model_input = (t.repeat(1, 3, 1, 1) for t in (img_timm_model_input, fmap_timm_model_input))
 
     img_timm_model_feats = timm_model(img_timm_model_input)
     recon_timm_model_feats = timm_model(fmap_timm_model_input)
@@ -144,8 +143,8 @@ def gradient_penalty(images, output, weight=10):
         retain_graph=True,
         only_inputs=True,
     )[0]
-
-    gradients = rearrange(gradients, "b ... -> b (...)")
+    bsz = gradients.shape[0]
+    gradients = torch.reshape(gradients, (bsz, -1))
     return weight * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
 
 
@@ -267,20 +266,6 @@ def parse_args():
         type=str,
         default="vgg19",
         help="Timm model used to get the lpips loss",
-    )
-    parser.add_argument(
-        "--pretrained_model_name_or_path",
-        type=str,
-        default=None,
-        required=True,
-        help="Path to pretrained model or model identifier from huggingface.co/models.",
-    )
-    parser.add_argument(
-        "--pretrained_model_name_or_path",
-        type=str,
-        default=None,
-        required=True,
-        help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
