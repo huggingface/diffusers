@@ -682,6 +682,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             argument_names = [param.name for param in signature.parameters.values()]
             call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
             if generator_initially_none:
+                print(f"Updating generator with: {generator.initial_seed()}")
                 call_arg_values.update({"generator": generator})
             workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self)
 
