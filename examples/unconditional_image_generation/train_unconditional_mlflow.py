@@ -185,12 +185,13 @@ def parse_args():
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.95, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument(
-        "--adam_weight_decay", type=float, default=1e-6, help="Weight decay magnitude for the Adam optimizer."
-    )
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer.")
+    parser.add_argument("--optimizer_algorithm", type=str, default=None, help="The optimizer algorithm used in training process" )
+    # parser.add_argument("--adam_beta1", type=float, default=0.95, help="The beta1 parameter for the Adam optimizer.")
+    # parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    # parser.add_argument(
+    #     "--adam_weight_decay", type=float, default=1e-6, help="Weight decay magnitude for the Adam optimizer."
+    # )
+    # parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer.")
     parser.add_argument(
         "--use_ema",
         action="store_true",
@@ -464,13 +465,31 @@ def main(args):
         noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
 
     # Initialize the optimizer
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
+    if args.optimizer_algorithm == "AdamW":
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=args.learning_rate,
+            betas=(0.9, 0.999),
+            weight_decay=0.01,
+            eps=1e-08,
+        )
+    if args.optimizer_algorithm == "Adam":
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=args.learning_rate,
+            betas=(0.9, 0.999),
+            weight_decay=0,
+            eps=1e-08,
+        ) 
+    if args.optimizer_algorithm == "RMSprop":
+        optimizer = torch.optim.RMSprop(
+            model.parameters(),
+            lr=args.learning_rate,
+            alpha=0.99,
+            momentum=0,
+            weight_decay=0,
+            eps=1e-08,
+        )
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).

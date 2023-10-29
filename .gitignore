@@ -185,3 +185,6 @@ text-inversion-model/
 text-to-image-model/
 unconditional-image-generation-model/
 outputs/
+env.yaml
+requirements.txt
+
