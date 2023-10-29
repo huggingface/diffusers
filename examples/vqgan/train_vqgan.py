@@ -239,7 +239,7 @@ def parse_args():
         type=int,
         default=100,
         help=(
-            "Run validation every X steps. Validation consists of running the images in"
+            "Run validation every X steps. Validation consists of running reconstruction on images in"
             " `args.validation_images` and logging the reconstructed images."
         ),
     )
@@ -590,7 +590,6 @@ def main():
 
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        tracker_config.pop("validation_prompts")
         accelerator.init_trackers(args.tracker_project_name, tracker_config)
 
     # If passed along, set the training seed now.
