@@ -271,8 +271,13 @@ def parse_args():
         "--pretrained_model_name_or_path",
         type=str,
         default=None,
-        required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--model_config_name_or_path",
+        type=str,
+        default=None,
+        help="The config of the UNet model to train, leave as None to use standard DDPM configuration.",
     )
     parser.add_argument(
         "--revision",
@@ -608,7 +613,44 @@ def main():
     logger.info("Loading models and optimizer")
 
     vq_class = get_vq_model_class()
-    model = VQModel.from_pretrained(args.pretrained_model_name_or_path)
+    if args.model_config_name_or_path is None and args.pretrained_model_name_or_path is None:
+        # Taken from config of movq at kandinsky-community/kandinsky-2-2-decoder
+        model = VQModel(
+            act_fn="silu",
+            block_out_channels=[
+                128,
+                256,
+                256,
+                512
+            ],
+            down_block_types=[
+                "DownEncoderBlock2D",
+                "DownEncoderBlock2D",
+                "DownEncoderBlock2D",
+                "AttnDownEncoderBlock2D"
+            ],
+            in_channels=3,
+            latent_channels=4,
+            layers_per_block=2,
+            norm_num_groups=32,
+            norm_type="spatial",
+            num_vq_embeddings=16384,
+            out_channels=3,
+            sample_size=32,
+            scaling_factor=0.18215,
+            up_block_types=[
+                "AttnUpDecoderBlock2D",
+                "UpDecoderBlock2D",
+                "UpDecoderBlock2D",
+                "UpDecoderBlock2D"
+            ],
+            vq_embed_dim=4
+        )
+    elif args.pretrained_model_name_or_path is None:
+        model = VQModel.from_pretrained(args.pretrained_model_name_or_path)
+    else:
+        config = VQModel.load_config(args.model_config_name_or_path)
+        model = VQModel.from_config(config)
     if args.use_ema:
         ema_model = EMAModel(model.parameters(), model_cls=vq_class, model_config=model.config)
     discriminator_class = get_discriminator_class()
