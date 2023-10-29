@@ -15,12 +15,12 @@
 
 
 import json
+import os
 import tempfile
 import unittest
 import uuid
 
 import numpy as np
-import os
 import torch
 from huggingface_hub import delete_repo, hf_hub_download
 from test_utils import TOKEN, USER, is_staging_test
@@ -228,7 +228,7 @@ class WorkflowPushToHubTester(unittest.TestCase):
         inputs = self.get_dummy_inputs(device="cpu")
         components = self.get_dummy_components()
         pipeline = StableDiffusionPipeline(**components)
-        
+
         workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, pipeline)
         workflow.push_to_hub(self.repo_id, token=TOKEN)
 
@@ -246,7 +246,7 @@ class WorkflowPushToHubTester(unittest.TestCase):
         inputs = self.get_dummy_inputs(device="cpu")
         components = self.get_dummy_components()
         pipeline = StableDiffusionPipeline(**components)
-        
+
         workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, pipeline)
         workflow.push_to_hub(self.org_repo_id, token=TOKEN)
 
