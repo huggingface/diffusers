@@ -843,8 +843,8 @@ class StableDiffusionControlNetPipeline(
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
-        # We do this first to capture the "True" call values. If we do this at a later point in time,
-        # we cannot ensure that the call values weren't changed during the process.
+        # We do this first to capture the "true" call values. If we do this at a later point in time,
+        # we cannot ensure that the true call values weren't changed during the process.
         # We update the `generator` later, though as we define a new generator in case it was passed as `None`.
         if generator is None:
             generator_initially_none = True
