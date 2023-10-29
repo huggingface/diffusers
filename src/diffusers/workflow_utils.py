@@ -59,8 +59,18 @@ def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: 
 
     # Handle generator device and seed.
     generator = workflow["generator"]
-    workflow.update({"generator_seed": generator.initial_seed()})
-    workflow.update({"generator_device": str(generator.device)})
+    if isinstance(generator, list):
+        for g in generator:
+            if "generator_seed" not in workflow:
+                workflow.update({"generator_seed": [g.initial_seed()]})
+                workflow.update({"generator_device": [str(g.device)]})
+            else:
+                workflow["generator_seed"].append(g.initial_seed())
+                workflow["generator_device"].append(g.device)
+    else:
+        workflow.update({"generator_seed": generator.initial_seed()})
+        workflow.update({"generator_device": str(generator.device)})
+
     workflow.pop("generator")
 
     # Handle pipeline-level things.
