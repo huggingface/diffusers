@@ -64,9 +64,10 @@ def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: 
     workflow.pop("generator")
 
     # Handle pipeline-level things.
-    pipeline_config_name_or_path = (
-        pipeline_obj.config._name_or_path if hasattr(pipeline_obj.config, "_name_or_path") else None
-    )
+    if hasattr(pipeline_obj, "config") and hasattr(pipeline_obj.config, "_name_or_path"):
+        pipeline_config_name_or_path = pipeline_obj.config._name_or_path
+    else:
+        pipeline_config_name_or_path = None
     workflow["_name_or_path"] = pipeline_config_name_or_path
     workflow["scheduler_config"] = pipeline_obj.scheduler.config
 
