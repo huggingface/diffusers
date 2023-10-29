@@ -160,7 +160,6 @@ Alternatively, if you want to manually load a workflow file and populate the pip
 
 ```python
 from diffusers import DiffusionPipeline
-from diffusers.workflow_utils import _NON_CALL_ARGUMENTS
 import json
 import torch
 
@@ -169,10 +168,10 @@ pipeline = DiffusionPipeline.from_pretrained(
 ).to("cuda")
 
 with open("path_to_workflow_file.json") as f:
-    call_args = json.load(f)
+    workflow = json.load(f)
 
-call_args = {k: v for k, v in call_args.items() if k not in _NON_CALL_ARGUMENTS}
-images = pipeline(**call_args).images[0]
+pipeline.load_workflow(workflow)
+images = pipeline().images[0]
 ```
 
 ## Unsupported serialization types
