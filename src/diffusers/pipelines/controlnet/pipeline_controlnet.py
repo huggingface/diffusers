@@ -846,6 +846,10 @@ class StableDiffusionControlNetPipeline(
         # We do this first to capture the "True" call values. If we do this at a later point in time,
         # we cannot ensure that the call values weren't changed during the process.
         # We update the `generator` later, though as we define a new generator in case it was passed as `None`.
+        if generator is None:
+            seed = random.randint(0, MAX_SEED)
+            generator = torch.manual_seed(seed)
+
         workflow = None
         if return_workflow:
             signature = inspect.signature(self.__call__)
@@ -966,10 +970,6 @@ class StableDiffusionControlNetPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        if generator is None:
-            seed = random.randint(0, MAX_SEED)
-            generator = torch.manual_seed(seed)
-            workflow.update({"generator": generator})
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
