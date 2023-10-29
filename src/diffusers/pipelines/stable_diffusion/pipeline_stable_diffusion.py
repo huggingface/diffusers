@@ -668,6 +668,16 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
+        # We do this first to capture the "True" call values. If we do this at a later point in time,
+        # we cannot ensure that the call values weren't changed during the process.
+        # We update the `generator` later, though as we define a new generator in case it was passed as `None`.
+        workflow = None
+        if return_workflow:
+            signature = inspect.signature(self.__call__)
+            argument_names = [param.name for param in signature.parameters.values()]
+            call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
+            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self)
+
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -720,6 +730,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         if generator is None:
             seed = random.randint(0, MAX_SEED)
             generator = torch.manual_seed(seed)
+            workflow.update({"generator": generator})
+
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -787,14 +799,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         # Offload all models
         self.maybe_free_model_hooks()
-
-        workflow = None
-        if return_workflow:
-            signature = inspect.signature(self.__call__)
-            argument_names = [param.name for param in signature.parameters.values()]
-            call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
-            pipeline_config_name_or_path = self.config._name_or_path if hasattr(self.config, "_name_or_path") else None
-            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, pipeline_config_name_or_path)
 
         if not return_dict:
             outputs = (image, has_nsfw_concept)

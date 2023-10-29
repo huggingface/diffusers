@@ -20,6 +20,7 @@ import numpy as np
 import torch
 
 from .configuration_utils import ConfigMixin
+from .pipelines import DiffusionPipeline
 from .utils import PushToHubMixin, logging
 from .utils.constants import WORKFLOW_NAME
 
@@ -31,7 +32,7 @@ _ALLOWED_PATTERNS = r"^[\w\s.,!?@#$%^&*()_+-=<>[\]{}|\\;:'\"/]*$"
 
 
 def populate_workflow_from_pipeline(
-    argument_names: List[str], call_arg_values: Dict, pipeline_name_or_path: str
+    argument_names: List[str], call_arg_values: Dict, pipeline: DiffusionPipeline
 ) -> Dict:
     r"""Populates the call arguments and (optional) LoRA information in a dictionary.
 
@@ -39,7 +40,7 @@ def populate_workflow_from_pipeline(
         argument_names (`List[str]`): List of function arguments.
         call_arg_values (`Dict`):
             Dictionary containing the arguments and their values from the current execution frame.
-        pipeline_name_or_path (`str`): Name or the local path to the pipeline that was used to generate the workflow.
+        pipeline_name_or_path (`DiffusionPipeline`): The pipeline object.
 
     Returns:
         `Dict`: A dictionary containing the details of the pipeline call arguments and (optionally) LoRA checkpoint
@@ -59,6 +60,7 @@ def populate_workflow_from_pipeline(
     }
     workflow.update(call_arguments)
 
+    # Handle generator device and seed.
     generator = workflow.pop("generator")
     if generator is not None:
         workflow.update({"generator_seed": generator.initial_seed()})
@@ -67,7 +69,10 @@ def populate_workflow_from_pipeline(
         workflow.update({"generator_seed": None})
         workflow.update({"generator_device": "cpu"})
 
-    workflow["_name_or_path"] = pipeline_name_or_path
+    # Handle pipeline-level things.
+    pipeline_config_name_or_path = pipeline.config._name_or_path if hasattr(pipeline.config, "_name_or_path") else None
+    workflow["_name_or_path"] = pipeline_config_name_or_path
+    workflow["scheduler_config"] = pipeline.scheduler.config
 
     return workflow
 

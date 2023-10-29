@@ -2080,7 +2080,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             module.set_attention_slice(slice_size)
 
-    def load_workflow(self, workflow_id_or_path: Union[str, dict], filename: Optional[str] = None):
+    def load_workflow(
+        self, workflow_id_or_path: Union[str, dict], filename: Optional[str] = None, load_scheduler: bool = False
+    ):
         r"""Loads a workflow from the Hub or from a local path. Also patches the pipeline call arguments with values from the
         workflow.
 
@@ -2097,6 +2099,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             filename (`str`, *optional*):
                 Optional name of the workflow file to load. Especially useful when working with multiple workflow
                 files.
+
+            load_scheduler (`bool`):
+                If set to True, extracts the scheduler config from the loaded workflow and sets scheduler in the
+                pipeline accordingly.
         """
         filename = filename or WORKFLOW_NAME
 
@@ -2115,10 +2121,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Handle generator.
         seed = workflow.pop("generator_seed", None)
         device = workflow.pop("generator_device", "cpu")
-        if seed is not None:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        else:
-            generator = None
+        generator = torch.Generator(device=device).manual_seed(seed)
         workflow.update({"generator": generator})
 
         # Handle non-call arguments.
@@ -2129,3 +2132,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Handle the call here.
         partial_call = partial(self.__call__, **final_call_args)
         setattr(self.__class__, "__call__", partial_call)
+
+        if load_scheduler:
+            scheduler_cls_name = workflow["scheduler_config"]["_class_name"]
+            scheduler_cls = getattr(importlib.import_module("diffusers"), scheduler_cls_name)
+            scheduler = scheduler_cls.from_config(workflow["scheduler_config"])
+            setattr(self.scheduler, "scheduler", scheduler)
