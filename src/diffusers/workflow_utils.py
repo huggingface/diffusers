@@ -20,7 +20,6 @@ import numpy as np
 import torch
 
 from .configuration_utils import ConfigMixin
-from .pipelines import DiffusionPipeline
 from .utils import PushToHubMixin, logging
 from .utils.constants import WORKFLOW_NAME
 
@@ -31,16 +30,14 @@ _NON_CALL_ARGUMENTS = ["lora", "is_torch_tensor_present", "_name_or_path", "_cla
 _ALLOWED_PATTERNS = r"^[\w\s.,!?@#$%^&*()_+-=<>[\]{}|\\;:'\"/]*$"
 
 
-def populate_workflow_from_pipeline(
-    argument_names: List[str], call_arg_values: Dict, pipeline: DiffusionPipeline
-) -> Dict:
+def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: Dict, pipeline_obj) -> Dict:
     r"""Populates the call arguments and (optional) LoRA information in a dictionary.
 
     Args:
         argument_names (`List[str]`): List of function arguments.
         call_arg_values (`Dict`):
             Dictionary containing the arguments and their values from the current execution frame.
-        pipeline_name_or_path (`DiffusionPipeline`): The pipeline object.
+        pipeline_obj (`DiffusionPipeline`): The pipeline object.
 
     Returns:
         `Dict`: A dictionary containing the details of the pipeline call arguments and (optionally) LoRA checkpoint
@@ -70,9 +67,11 @@ def populate_workflow_from_pipeline(
         workflow.update({"generator_device": "cpu"})
 
     # Handle pipeline-level things.
-    pipeline_config_name_or_path = pipeline.config._name_or_path if hasattr(pipeline.config, "_name_or_path") else None
+    pipeline_config_name_or_path = (
+        pipeline_obj.config._name_or_path if hasattr(pipeline_obj.config, "_name_or_path") else None
+    )
     workflow["_name_or_path"] = pipeline_config_name_or_path
-    workflow["scheduler_config"] = pipeline.scheduler.config
+    workflow["scheduler_config"] = pipeline_obj.scheduler.config
 
     return workflow
 
