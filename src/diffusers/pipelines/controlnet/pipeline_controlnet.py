@@ -14,6 +14,7 @@
 
 
 import inspect
+import random
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -35,6 +36,7 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
+from ...utils.constants import MAX_SEED
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 from ...workflow_utils import populate_workflow_from_pipeline
 from ..pipeline_utils import DiffusionPipeline
@@ -954,6 +956,9 @@ class StableDiffusionControlNetPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
+        if generator is None:
+            seed = random.randint(0, MAX_SEED)
+            generator = torch.manual_seed(seed)
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,

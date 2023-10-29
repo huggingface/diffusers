@@ -45,6 +45,8 @@ def populate_workflow_from_pipeline(
         `Dict`: A dictionary containing the details of the pipeline call arguments and (optionally) LoRA checkpoint
         details.
     """
+    # A `Workflow` object is an extended Python dictionary. So, all regular dictionary methods
+    # apply to it.
     workflow = Workflow()
 
     # Populate call arguments.
@@ -55,7 +57,6 @@ def populate_workflow_from_pipeline(
         and "image" not in arg
         and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, Callable))
     }
-
     workflow.update(call_arguments)
 
     generator = workflow.pop("generator")

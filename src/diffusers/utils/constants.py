@@ -14,6 +14,7 @@
 import importlib
 import os
 
+import numpy as np
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
 from packaging import version
 
@@ -37,6 +38,7 @@ DIFFUSERS_CACHE = default_cache_path
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(hf_cache_home, "modules"))
 DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
+MAX_SEED = np.iinfo(np.int32).max
 
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
 # PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
