@@ -847,6 +847,7 @@ class StableDiffusionControlNetPipeline(
         # we cannot ensure that the call values weren't changed during the process.
         # We update the `generator` later, though as we define a new generator in case it was passed as `None`.
         if generator is None:
+            generator_initially_none = True
             seed = random.randint(0, MAX_SEED)
             generator = torch.manual_seed(seed)
 
@@ -855,6 +856,8 @@ class StableDiffusionControlNetPipeline(
             signature = inspect.signature(self.__call__)
             argument_names = [param.name for param in signature.parameters.values()]
             call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
+            if generator_initially_none:
+                call_arg_values.update({"generator": generator})
             workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self)
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
