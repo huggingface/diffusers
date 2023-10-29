@@ -26,7 +26,7 @@ from .utils.constants import WORKFLOW_NAME
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-_NON_CALL_ARGUMENTS = ["_name_or_path", "scheduler_config"]
+_NON_CALL_ARGUMENTS = {"_name_or_path", "scheduler_config", "_class_name", "_diffusers_version"}
 _ALLOWED_PATTERNS = r"^[\w\s.,!?@#$%^&*()_+-=<>[\]{}|\\;:'\"/]*$"
 
 
