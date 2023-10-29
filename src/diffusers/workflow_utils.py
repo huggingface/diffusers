@@ -26,7 +26,7 @@ from .utils.constants import WORKFLOW_NAME
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-_NON_CALL_ARGUMENTS = ["lora", "is_torch_tensor_present", "_name_or_path", "_class_name", "_diffusers_version"]
+_NON_CALL_ARGUMENTS = ["_name_or_path", "scheduler_config"]
 _ALLOWED_PATTERNS = r"^[\w\s.,!?@#$%^&*()_+-=<>[\]{}|\\;:'\"/]*$"
 
 

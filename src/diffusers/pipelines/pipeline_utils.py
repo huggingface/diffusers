@@ -2129,12 +2129,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # the workflow object should it be reused.
         final_call_args = {k: v for k, v in workflow.items() if k not in _NON_CALL_ARGUMENTS}
 
-        # Handle the call here.
-        partial_call = partial(self.__call__, **final_call_args)
-        setattr(self.__class__, "__call__", partial_call)
-
         if load_scheduler:
             scheduler_cls_name = workflow["scheduler_config"]["_class_name"]
             scheduler_cls = getattr(importlib.import_module("diffusers"), scheduler_cls_name)
             scheduler = scheduler_cls.from_config(workflow["scheduler_config"])
             setattr(self.scheduler, "scheduler", scheduler)
+
+        # Handle the call here.
+        partial_call = partial(self.__call__, **final_call_args)
+        setattr(self.__class__, "__call__", partial_call)
