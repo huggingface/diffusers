@@ -368,7 +368,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 diffusion_audio_emb = self.diffusion_random_latent_converter(latents).latents
 
         diffusion_cond_emb = self.diffusion_conditioning_encoder.diffusion_cond_embedding(
-            diffusion_audio_emb, autoregressive_latents, unconditional, batch_size, target_size
+            diffusion_audio_emb, autoregressive_latents, attention_mask, unconditional, batch_size, target_size
         )
 
         return diffusion_cond_emb
@@ -704,6 +704,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         #         neg_top_k_audio_candidates, neg_top_k_autoregressive_latents
         #     )
 
+
+
         # 8. Prepare timesteps for diffusion scheduler
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
@@ -749,6 +751,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
                     audio,
                     neg_top_k_autoregressive_latents,
+                    diffusion_neg_attention_mask,
                     prompt_embeds.dtype,
                     device,
                     generator,
@@ -761,6 +764,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 # Fall back to self.diffusion_conditioning_encoder.unconditional_embedding
                 # NOTE: this does not depend on either conditional audio nor autoregressive latents
                 neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
+                    None,
                     None,
                     None,
                     prompt_embeds.dtype,

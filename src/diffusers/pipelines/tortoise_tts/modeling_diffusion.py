@@ -122,6 +122,8 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
 
         # Define the latent conditioner, which maps diffusion audio embeddings and autoregressive latents to the final
         # diffusion conditioning embedding.
+        self.latent_conditioner_conv = nn.Conv1d(latent_in_channels, hidden_channels, 3, padding=1)
+
         latent_attentions = [
             TortoiseTTSSelfAttention(
                 hidden_channels,
@@ -130,11 +132,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
             )
             for _ in range(latent_attention_layers)
         ]
-
-        self.latent_conditioner = nn.Sequential(
-            nn.Conv1d(latent_in_channels, hidden_channels, 3, padding=1),
-            *latent_attentions
-        )
+        self.latent_conditioner_attn_blocks = nn.ModuleList(latent_attentions)
 
         # The unconditional embedding used for Tortoise TTS spectrogram diffusion classifier-free guidance.
         self.unconditional_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
@@ -188,6 +186,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         self,
         audio_embedding,
         autoregressive_latents,
+        attention_mask,
         unconditional: bool = False,
         batch_size: int = 1,
         target_size: Optional[int] = None,
@@ -198,7 +197,18 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
                 cond_embedding = cond_embedding.repeat(batch_size, 1, target_size)
         else:
             cond_scale, cond_shift = torch.chunk(audio_embedding, 2, dim=1)
-            cond_embedding = self.latent_conditioner(autoregressive_latents)
+
+            # apply the conv layer first and carefully handle the attention mask
+            if attention_mask is not None:
+                autoregressive_latents = torch.masked_fill(autoregressive_latents, attention_mask, 0.0)
+            cond_embedding = self.latent_conditioner_conv(autoregressive_latents)
+
+            # then apply the attention layers.
+            # Note that because the previous conv layer had kernel_size=3 and padding=1, we don't need to change the
+            # attention_mask to make sure the shapes match.
+            for attn_block in self.latent_conditioner_attn_blocks:
+                cond_embedding = attn_block(cond_embedding, attention_mask)
+
             cond_embedding = (1 + cond_scale.unsqueeze(-1)) * cond_embedding + cond_shift.unsqueeze(-1)
             if target_size is not None:
                 cond_embedding = F.interpolate(cond_embedding, size=target_size, mode="nearest")
@@ -208,6 +218,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         self,
         audio,
         autoregressive_latents,
+        attention_mask = None,
         latent_averaging_mode: int = 0,
         chunk_size: Optional[int] = None,
         unconditional: bool = False,
@@ -217,7 +228,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
     ):
         diffusion_audio_embedding = self.diffusion_cond_audio_embedding(audio, latent_averaging_mode, chunk_size)
         diffusion_embedding = self.diffusion_cond_embedding(
-            diffusion_audio_embedding, autoregressive_latents, unconditional, batch_size, target_size
+            diffusion_audio_embedding, autoregressive_latents, attention_mask, unconditional, batch_size, target_size
         )
 
         if not return_dict:
