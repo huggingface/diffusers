@@ -224,6 +224,13 @@ class WorkflowPushToHubTester(unittest.TestCase):
         }
         return inputs
 
+    def compare_workflow_values(self, repo_id: str, actual_workflow: dict):
+        local_path = hf_hub_download(repo_id=repo_id, filename=WORKFLOW_NAME, token=TOKEN)
+        with open(local_path) as f:
+            locally_loaded_workflow = json.load(f)
+        for k in actual_workflow:
+            assert actual_workflow[k] == locally_loaded_workflow[k]
+
     def test_push_to_hub(self):
         inputs = self.get_dummy_inputs(device="cpu")
         components = self.get_dummy_components()
@@ -231,13 +238,7 @@ class WorkflowPushToHubTester(unittest.TestCase):
 
         workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, pipeline)
         workflow.push_to_hub(self.repo_id, token=TOKEN)
-
-        local_path = hf_hub_download(repo_id=f"{USER}/{self.repo_id}", filename=WORKFLOW_NAME, token=TOKEN)
-        with open(local_path) as f:
-            locally_loaded_workflow = json.load(f)
-
-        for k in workflow:
-            assert workflow[k] == locally_loaded_workflow[k]
+        self.compare_workflow_values(repo_id=f"{USER}/{self.repo_id}", actual_workflow=workflow)
 
         # Reset repo
         delete_repo(token=TOKEN, repo_id=self.repo_id)
@@ -249,13 +250,7 @@ class WorkflowPushToHubTester(unittest.TestCase):
 
         workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, pipeline)
         workflow.push_to_hub(self.org_repo_id, token=TOKEN)
-
-        local_path = hf_hub_download(repo_id=self.org_repo_id, filename=WORKFLOW_NAME, token=TOKEN)
-        with open(local_path) as f:
-            locally_loaded_workflow = json.load(f)
-
-        for k in workflow:
-            assert workflow[k] == locally_loaded_workflow[k]
+        self.compare_workflow_values(repo_id=self.org_repo_id, actual_workflow=workflow)
 
         # Reset repo
         delete_repo(token=TOKEN, repo_id=self.org_repo_id)
