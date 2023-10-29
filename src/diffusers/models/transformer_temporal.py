@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import torch
 from torch import nn
@@ -48,11 +48,15 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
-            This is fixed during training since it is used to learn a number of position embeddings.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
         attention_bias (`bool`, *optional*):
             Configure if the `TransformerBlock` attention should contain a bias parameter.
+        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
+            This is fixed during training since it is used to learn a number of position embeddings.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`):
+            Activation function to use in feed-forward. See `diffusers.models.activations.get_activation` for supported
+            activation functions.
+        norm_elementwise_affine (`bool`, *optional*):
+            Configure if the `TransformerBlock` should use learnable elementwise affine parameters for normalization.
         double_self_attention (`bool`, *optional*):
             Configure if each `TransformerBlock` should contain two self-attention layers.
     """
@@ -106,14 +110,14 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        hidden_states,
-        encoder_hidden_states=None,
-        timestep=None,
-        class_labels=None,
-        num_frames=1,
-        cross_attention_kwargs=None,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.LongTensor] = None,
+        timestep: Optional[torch.LongTensor] = None,
+        class_labels: torch.LongTensor = None,
+        num_frames: int = 1,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ):
+    ) -> TransformerTemporalModelOutput:
         """
         The [`TransformerTemporal`] forward method.
 
@@ -123,7 +127,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
-            timestep ( `torch.long`, *optional*):
+            timestep ( `torch.LongTensor`, *optional*):
                 Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
             class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
                 Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
