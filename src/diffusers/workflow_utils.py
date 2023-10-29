@@ -60,7 +60,7 @@ def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: 
     print(f"workflow: {workflow}")
 
     # Handle generator device and seed. 
-    print(workflow["generator"])
+    print(workflow["generator"], workflow["generator"] is None, workflow["generator"].initial_seed())
     generator = workflow.pop("generator")
     print(f"From workflow_utils: {generator.initial_seed()}")
     if generator is not None:
