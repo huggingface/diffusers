@@ -106,12 +106,6 @@ pipeline.load_workflow("sayakpaul/my-simple-workflow-sd")
 
 Once the pipeline is loaded with the desired workflow, it's ready to be called:
 
-<Tip>
-
-You could also pass `prompt_embeds` instead of a `prompt`.
-
-</Tip>
-
 ```python
 image = pipeline().images[0]
 ```
