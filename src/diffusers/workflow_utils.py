@@ -56,6 +56,7 @@ def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: 
         and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, Callable))
     }
     workflow.update(call_arguments)
+    print(call_arguments)
 
     # Handle generator device and seed. 
     generator = workflow.pop("generator")
