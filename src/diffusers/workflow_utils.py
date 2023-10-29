@@ -57,7 +57,7 @@ def populate_workflow_from_pipeline(argument_names: List[str], call_arg_values: 
     }
     workflow.update(call_arguments)
 
-    # Handle generator device and seed. 
+    # Handle generator device and seed.
     generator = workflow["generator"]
     workflow.update({"generator_seed": generator.initial_seed()})
     workflow.update({"generator_device": generator.device})

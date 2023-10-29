@@ -18,7 +18,7 @@ specific language governing permissions and limitations under the License.
 
 </Tip>
 
-Workflows provide a simple mechanism to share your pipeline call arguments, making it easier to reproduce results. 
+Workflows provide a simple mechanism to share your pipeline call arguments and scheduler configuration, making it easier to reproduce results. 
 
 ## Serializing a workflow
 
@@ -26,24 +26,27 @@ Workflows provide a simple mechanism to share your pipeline call arguments, maki
 from diffusers import DiffusionPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None)
-pipeline.to("cuda")
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
+).to("cuda")
 
 outputs = pipeline("A painting of a horse", num_inference_steps=15, return_workflow=True)
 workflow = outputs.workflow
 ```
 
-If you look at this specific workflow, you'll see values like the number of inference steps, guidance scale, and height and width:
+If you look at this specific workflow, you'll see values like the number of inference steps, guidance scale, and height and width as well as the scheduler details:
 
 ```bash
 {'prompt': 'A painting of a horse',
- 'height': 512,
- 'width': 512,
+ 'height': None,
+ 'width': None,
  'num_inference_steps': 15,
  'guidance_scale': 7.5,
  'negative_prompt': None,
- 'num_images_per_prompt': 1,
  'eta': 0.0,
+ 'latents': None,
+ 'prompt_embeds': None,
+ 'negative_prompt_embeds': None,
  'output_type': 'pil',
  'return_dict': True,
  'callback': None,
@@ -51,7 +54,23 @@ If you look at this specific workflow, you'll see values like the number of infe
  'cross_attention_kwargs': None,
  'guidance_rescale': 0.0,
  'clip_skip': None,
- '_name_or_path': 'runwayml/stable-diffusion-v1-5'}
+ 'generator_seed': 331018828,
+ 'generator_device': device(type='cpu'),
+ '_name_or_path': 'runwayml/stable-diffusion-v1-5',
+ 'scheduler_config': FrozenDict([('num_train_timesteps', 1000),
+             ('beta_start', 0.00085),
+             ('beta_end', 0.012),
+             ('beta_schedule', 'scaled_linear'),
+             ('trained_betas', None),
+             ('skip_prk_steps', True),
+             ('set_alpha_to_one', False),
+             ('prediction_type', 'epsilon'),
+             ('timestep_spacing', 'leading'),
+             ('steps_offset', 1),
+             ('_use_default_values', ['prediction_type', 'timestep_spacing']),
+             ('_class_name', 'PNDMScheduler'),
+             ('_diffusers_version', '0.6.0'),
+             ('clip_sample', False)])}
 ```
 
 A [`Workflow`] object provides all the argument values in the `__call__()` of a pipeline. Add `return_workflow=True` to return a `Workflow` object:
@@ -96,6 +115,14 @@ You could also pass `prompt_embeds` instead of a `prompt`.
 ```python
 image = pipeline().images[0]
 ```
+
+By default, while loading a workflow, we don't modify the scheduler of the underlying pipeline from the workflow. But you can change this behaviour by doing:
+
+```
+pipeline.load_workflow("sayakpaul/my-simple-workflow-sd", load_scheduler=True)
+```
+
+This is particularly useful if you had changed the scheduler after loading a pipeline.
 
 You can also override the pipeline call arguments. For example, to add a `negative_prompt`:
 
@@ -189,7 +216,21 @@ If you look at the workflow, you'll see the image that was passed to the pipelin
  'clip_skip': None,
  'generator_seed': None,
  'generator_device': 'cpu',
- '_name_or_path': 'runwayml/stable-diffusion-v1-5'}
+ '_name_or_path': 'runwayml/stable-diffusion-v1-5',
+  'scheduler_config': FrozenDict([('num_train_timesteps', 1000),
+             ('beta_start', 0.00085),
+             ('beta_end', 0.012),
+             ('beta_schedule', 'scaled_linear'),
+             ('trained_betas', None),
+             ('skip_prk_steps', True),
+             ('set_alpha_to_one', False),
+             ('prediction_type', 'epsilon'),
+             ('timestep_spacing', 'leading'),
+             ('steps_offset', 1),
+             ('_use_default_values', ['prediction_type', 'timestep_spacing']),
+             ('_class_name', 'PNDMScheduler'),
+             ('_diffusers_version', '0.6.0'),
+             ('clip_sample', False)])}
 ```
 
 As you can notice, the `image` passed to the `pipeline` isn't a part of `workflow`.
