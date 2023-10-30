@@ -27,7 +27,6 @@ Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.
 
 To use the Kandinsky models for any task, you always start by setting up the prior pipeline to encode the prompt and generate the image embeddings. The prior pipeline also generates `negative_image_embeds` that correspond to the negative prompt `""`. For better results, you can pass an actual `negative_prompt` to the prior pipeline, but this'll increase the effective batch size of the prior pipeline by 2x.
 
-
 <hfoptions id="kandinsky-text-to-image">
 <hfoption id="Kandinsky 2.1">
 
@@ -53,7 +52,7 @@ image = pipeline(prompt, image_embeds=image_embeds, negative_prompt=negative_pro
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/cheeseburger.png"/>
 </div>
 
-<hfoption>
+</hfoption>
 <hfoption id="Kandinsky 2.2">
 
 ```py
@@ -116,6 +115,9 @@ negative_prompt = "low quality, bad quality"
 
 image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale=1.0, guidance_scale = 4.0, height=768, width=768).images[0]
 ```
+
+</hfoption>
+</hfoptions>
 
 ## Image-to-image
 
@@ -295,12 +297,12 @@ pipeline = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandins
 <hfoption id="Kandinsky 2.2">
 
 ```py
-from diffusers import KandinskyV22InpaintPipeline, KandinskyPriorPipeline
+from diffusers import KandinskyV22InpaintPipeline, KandinskyV22PriorPipeline
 from diffusers.utils import load_image
 import torch
 import numpy as np
 
-prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 pipeline = KandinskyV22InpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
 
@@ -344,7 +346,7 @@ image = pipeline(image=init_image, mask_image=mask, **prior_output, height=768, 
 ```
 
 <div class="flex justify-center">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-inpaint.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinskyv22-inpaint.png"/>
 </div>
 
 </hfoption>
