@@ -121,7 +121,7 @@ class BasicTransformerBlock(nn.Module):
         self.only_cross_attention = only_cross_attention
 
         self.use_ada_layer_norm_zero = (
-            num_embeds_ada_norm is not None and caption_channels in None
+            num_embeds_ada_norm is not None and caption_channels is None
         ) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
 
