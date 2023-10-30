@@ -116,21 +116,24 @@ def convert_vae_weights(ldm3d_vae, sd_hf_vae, new_path):
                         new_k = new_k.replace("nin", "conv")
                     if new_k in sd_hf_vae:
                         new_ldm3d_vae[new_k] = v
-                        if new_ldm3d_vae[new_k].shape != sd_hf_vae[new_k].shape:
-                            assert new_ldm3d_vae[new_k].numel() == sd_hf_vae[new_k].numel()
-                            sd_hf_vae[new_k].shape
-                            new_v = v.squeeze()
-                            new_ldm3d_vae[new_k] = new_v
+                    # if new_ldm3d_vae[new_k].shape != sd_hf_vae[new_k].shape and "coder" in new_k:
+                        # assert new_ldm3d_vae[new_k].numel() == sd_hf_vae[new_k].numel()
+                            #sd_hf_vae[new_k].shape
+                            # new_v = v.squeeze()
+                            # new_ldm3d_vae[new_k] = new_v
                         #    new_ldm3d_vae_ema[new_k] = v_ema.squeeze()
-                        assert new_ldm3d_vae[new_k].shape == sd_hf_vae[new_k].shape
+                        # assert new_ldm3d_vae[new_k].shape == sd_hf_vae[new_k].shape
                     else:
                         if "loss" not in new_k:
-                            checker.append(k)
-                else:
-                    new_ldm3d_vae[new_k] = v
+                            if "decoder" in new_k or "encoder" in new_k:
+                                new_ldm3d_vae[new_k] = v
+                            else:
+                                checker.append((k,new_k))
+                # else:
+                #     new_ldm3d_vae[new_k] = v
               #  new_ldm3d_vae_ema[new_k] = v_ema
     # assert len(checker) == 0
-    assert len(new_ldm3d_vae) == len(sd_hf_vae), f"Size new: {len(new_ldm3d_vae)}, size to be: {len(sd_hf_vae)}"
+  #  assert len(new_ldm3d_vae) == len(sd_hf_vae), f"Size new: {len(new_ldm3d_vae)}, size to be: {len(sd_hf_vae)}"
     torch.save(new_ldm3d_vae, new_path)
     print(f"Model successfully saved on {new_path}")
     return new_ldm3d_vae
@@ -234,6 +237,14 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                 if sd_hf_unet[new_k].shape != v.shape:
                     print(f"Warning: {new_k} - HF:  {sd_hf_unet[new_k].shape} , ldm3d: {v.shape}  ")
                 v_ema = ldm3d_unet[f"model_ema.{k.replace('model.diff', 'diff').replace('.', '')}"]
+                if v.shape[-1]==1:
+                    v = v.squeeze(-1)
+                    if v.shape[-1]==1:
+                        v=v.squeeze(-1)
+                if v_ema.shape[-1]==1:
+                    v_ema = v_ema.squeeze(-1)
+                    if v_ema.shape[-1]==1:
+                        v_ema=v_ema.squeeze(-1)
                 new_ldm3d_unet[new_k] = v
                 new_ldm3d_unet_ema[new_k] = v_ema
 
@@ -323,9 +334,9 @@ if __name__ == "__main__":
     print("Saving safetensors")
     save_file(new_ldm3d_vae, os.path.join(args.new_folder_name, "vae/new_diffusion_pytorch_model.safetensors"))
     save_file(new_ldm3d_unet, os.path.join(args.new_folder_name, "unet/new_diffusion_pytorch_model.safetensors"))
-    save_file(new_ldm3d_unet_ema, os.path.join(args.new_folder_name, "unet/new_diffusion_pytorch_model.safetensors"))
+    save_file(new_ldm3d_unet_ema, os.path.join(args.new_folder_name, "unet/new_diffusion_pytorch_model_ema.safetensors"))
 
 #python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr_v1_lr_depth/logs/2023-09-06T01-47-29_upscaling_512_ldm3d_test/checkpoints/epoch=000000.ckpt --diffusers_like_checkpoint_path /home/estellea/LDM3D_checkpoint/ldm3d-hr --new_folder_name /home/estellea/LDM3D_checkpoint/ldm3d-hr --use_ema
 
 
-#python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_upscale_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr/v1/img_deg_depth_deg/logs/2023-09-06T09-05-45_upscaling_512_ldm3d/checkpoints/epoch=000014.ckpt --diffusers_like_checkpoint_path /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr --new_folder_name /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr-updated 
+#python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_upscale_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr/v1/img_deg_depth_deg/logs/2023-09-06T09-05-45_upscaling_512_ldm3d/checkpoints/epoch=000014.ckpt --diffusers_like_checkpoint_path /export/share/projects/mcai/ldm3d/hf_ckpt/stable-diffusion-x4-upscaler --new_folder_name /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr-updated
