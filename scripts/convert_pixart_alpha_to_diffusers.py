@@ -117,7 +117,7 @@ def main(args):
     # To be configured.
     scheduler = DPMSolverSDEScheduler()
 
-    vae = AutoencoderKL.from_pretrained(ckpt_id, sunfolder="sd-vae-ft-ema")
+    vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="sd-vae-ft-ema")
 
     tokenizer = T5Tokenizer.from_pretrained(ckpt_id, subfolder="t5-v1_1-xxl")
     text_encoder = T5EncoderModel.from_pretrained(ckpt_id, subfolder="t5-v1_1-xxl")
