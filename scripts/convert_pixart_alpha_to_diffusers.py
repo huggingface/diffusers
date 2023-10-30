@@ -110,11 +110,13 @@ def main(args):
     state_dict.pop("t_block.1.weight")
     state_dict.pop("t_block.1.bias")
 
-    state_dict["proj_out_2.weight"] = state_dict["final_layer.linear.weight"]
+    state_dict["proj_out.weight"] = state_dict["final_layer.linear.weight"]
     state_dict["proj_out_2.bias"] = state_dict["final_layer.linear.bias"]
+    state_dict["scale_shift_table"] = state_dict["final_layer.scale_shift_table"]
 
     state_dict.pop("final_layer.linear.weight")
     state_dict.pop("final_layer.linear.bias")
+    state_dict.pop("final_layer.scale_shift_table")
 
     # DiT XL/2
     transformer = Transformer2DModel(
@@ -130,6 +132,7 @@ def main(args):
         num_embeds_ada_norm=1000,
         norm_type="ada_norm_single",
         norm_elementwise_affine=False,
+        output_type="pixart_dit",
     )
     # transformer.load_state_dict(state_dict, strict=True)
     missing, unexpected = transformer.load_state_dict(state_dict, strict=False)

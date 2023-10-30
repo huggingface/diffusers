@@ -93,7 +93,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         attention_type: str = "default",
-        # caption_channels: int = None,
+        output_type: str = "vanilla_dit",
         interpolation_scale: int = 1,
     ):
         super().__init__()
@@ -210,14 +210,14 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
         elif self.is_input_patches:
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+            if output_type == "vanilla_dit":
+                self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
+                self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+            elif output_type == "pixart_dit":
+                self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
+                self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
-        # 5. Define size embedders.
-        # TODO: Need to be conditioned at init (maybe add a config var: `has_micro_conditioning`?).
         self.interpolation_scale = interpolation_scale
-        # self.resolution_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
-        # self.aspect_ratio_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
 
         self.gradient_checkpointing = False
 
@@ -383,12 +383,19 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             output = F.log_softmax(logits.double(), dim=1).float()
         elif self.is_input_patches:
             # TODO: cleanup!
-            conditioning = self.transformer_blocks[0].norm1.emb(
-                timestep, class_labels, hidden_dtype=hidden_states.dtype
-            )
-            shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
-            hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
-            hidden_states = self.proj_out_2(hidden_states)
+            if self.config.output_type == "vanilla_dit":
+                conditioning = self.transformer_blocks[0].norm1.emb(
+                    timestep, class_labels, hidden_dtype=hidden_states.dtype
+                )
+                shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
+                hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
+                hidden_states = self.proj_out_2(hidden_states)
+            elif self.config.output_type == "pixart_dit":
+                shift, scale = (self.scale_shift_table[None] + timestep[:, None]).chunk(2, dim=1)
+                hidden_states = self.norm_out(hidden_states)
+                # Modulation
+                hidden_states = hidden_states * (1 + scale) + shift
+                hidden_states = self.proj_out(hidden_states)
 
             # unpatchify
             height = width = int(hidden_states.shape[1] ** 0.5)
