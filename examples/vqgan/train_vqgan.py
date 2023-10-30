@@ -823,22 +823,17 @@ def main():
     model, discriminator, optimizer, discr_optimizer, lr_scheduler, discr_lr_scheduler = accelerator.prepare(
         model, discriminator, optimizer, discr_optimizer, lr_scheduler, discr_lr_scheduler
     )
-
-    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(train_dataloader.num_batches / args.gradient_accumulation_steps)
-    # Afterwards we recalculate our number of training epochs.
-    # Note: We are not doing epoch based training here, but just using this for book keeping and being able to
-    # reuse the same training loop with other datasets/loaders.
-    num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
-
     # Train!
     logger.info("***** Running training *****")
-    logger.info(f"  Num training steps = {args.max_train_steps}")
-    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
-    logger.info(f"  Instantaneous batch size per device = { args.train_batch_size}")
+    logger.info(f"  Num examples = {len(train_dataset)}")
+    logger.info(f"  Num Epochs = {args.num_train_epochs}")
+    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+    logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
     first_epoch = 0
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
 
     # Potentially load in the weights and states from a previous save
     resume_from_checkpoint = args.resume_from_checkpoint
@@ -866,12 +861,10 @@ def main():
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     end = time.time()
-
     # As stated above, we are not doing epoch based training here, but just using this for book keeping and being able to
     # reuse the same training loop with other datasets/loaders.
     avg_gen_loss, avg_discr_loss = None, None
-    print("gradient accumulation steps", args.gradient_accumulation_steps)
-    for epoch in range(first_epoch, num_train_epochs):
+    for epoch in range(first_epoch, args.num_train_epochs):
         model.train()
         for i, batch in tqdm(enumerate(train_dataloader)):
             pixel_values = batch["pixel_values"]
