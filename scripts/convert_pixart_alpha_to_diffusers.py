@@ -51,7 +51,7 @@ def main(args):
         state_dict[f"transformer_blocks.{depth}.norm1.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict[
             "csize_embedder.mlp.0.weight"
         ]
-        state_dict[f"transformer_blocks.{depth}.norm1.emb.aspect_ratio_embedder..mlp.0.bias"] = state_dict[
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.aspect_ratio_embedder.mlp.0.bias"] = state_dict[
             "csize_embedder.mlp.0.bias"
         ]
         state_dict[f"transformer_blocks.{depth}.norm1.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict[
