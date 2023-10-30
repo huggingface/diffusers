@@ -371,7 +371,6 @@ def main(
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, )
                 logs = {
                     "step_loss": total_loss.detach().item(),
                     "lr": lr_scheduler.get_last_lr()[0],
@@ -379,9 +378,9 @@ def main(
                     "lpips": lpips_loss.detach().item(),
                     "kl": kl_loss.detach().item(),
                 }
-                accelerator.log(logs)
+                accelerator.log(logs,step=global_step)
                 progress_bar.set_postfix(**logs)
-                train_loss = 0.0
+                total_loss = 0.0
                 mse_loss = 0.0
                 kl_loss = 0.0
                 lpips_loss = 0.0
