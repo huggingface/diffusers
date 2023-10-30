@@ -115,13 +115,12 @@ class BasicTransformerBlock(nn.Module):
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
         attention_type: str = "default",
-        caption_channels: int = None,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
 
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
-        self.use_ada_layer_norm_single = (caption_channels is not None) and norm_type == "ada_norm_single"
+        self.use_ada_layer_norm_single = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_single"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
 
         if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
