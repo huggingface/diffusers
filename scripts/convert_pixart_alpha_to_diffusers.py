@@ -127,6 +127,7 @@ def main(args):
         patch_size=2,
         attention_bias=True,
         num_attention_heads=16,
+        cross_attention_dim=1152,
         activation_fn="gelu-approximate",
         num_embeds_ada_norm=1000,
         norm_type="ada_norm_single",
