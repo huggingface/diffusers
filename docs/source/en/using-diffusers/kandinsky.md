@@ -389,6 +389,9 @@ image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
 
 Interpolation allows you to explore the latent space between the image and text embeddings which is a cool way to see some of the prior model's intermediate outputs. Load the prior pipeline and two images you'd like to interpolate:
 
+<hfoptions id="interpolate">
+<hfoption id="Kandinsky 2.1">
+
 ```py
 from diffusers import KandinskyPriorPipeline, KandinskyPipeline
 from diffusers.utils import load_image
@@ -399,6 +402,23 @@ prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kan
 img_1 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
 img_2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/starry_night.jpeg")
 ```
+
+</hfoption>
+<hfoption id="Kandinsky 2.2">
+
+```py
+from diffusers import KandinskyV22PriorPipeline, KandinskyV22Pipeline
+from diffusers.utils import load_image
+import PIL
+import torch
+
+prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+img_1 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
+img_2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/starry_night.jpeg")
+```
+
+</hfoption>
+</hfoptions>
 
 <div class="flex gap-4">
   <div>
@@ -418,22 +438,47 @@ images_texts = ["a cat", img1, img2]
 weights = [0.3, 0.3, 0.4]
 ```
 
-Call the [`~KandinskyPriorPipeline.interpolate`] function to generate the embeddings, and then pass them to the [`KandinskyPipeline`] to generate the image:
+Call the `interpolate` function to generate the embeddings, and then pass them to the pipeline to generate the image:
+
+<hfoptions id="interpolate-generate">
+<hfoption id="Kandinsky 2.1">
 
 ```py
 # prompt can be left empty
 prompt = ""
-prior_out = pipe_prior.interpolate(images_texts, weights)
+prior_out = prior_pipeline.interpolate(images_texts, weights)
 
-pipe = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = KandinskyPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 
-image = pipe(prompt, **prior_out, height=768, width=768).images[0]
+image = pipeline(prompt, **prior_out, height=768, width=768).images[0]
 image
 ```
 
 <div class="flex justify-center">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-docs/starry_cat.png"/>
 </div>
+
+</hfoption>
+</hfoption id="Kandinsky 2.2">
+
+```py
+# prompt can be left empty
+prompt = ""
+prior_out = prior_pipeline.interpolate(images_texts, weights)
+
+pipeline = KandinskyV22Pipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+
+image = pipeline(prompt, **prior_out, height=768, width=768).images[0]
+image
+```
+
+<div class="flex justify-center">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinskyv22-interpolate.png"/>
+</div>
+```
+
+</hfoption>
+</hfoptions>
 
 ## ControlNet
 
