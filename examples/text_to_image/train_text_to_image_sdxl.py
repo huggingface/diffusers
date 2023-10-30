@@ -506,7 +506,7 @@ def get_noise_like(x, args):
         noise = pyramid_noise_like(x, discount=discount, random_multiplier=True)
 
         return noise
-    elif noise_type = "offset":
+    elif noise_type == "offset":
         noise = torch.randn_like(model_input)
         if args.noise_offset:
             # https://www.crosslabs.org//blog/diffusion-with-offset-noise
