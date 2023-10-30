@@ -157,11 +157,14 @@ class BasicTransformerBlock(nn.Module):
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
             # the second cross attention block.
-            self.norm2 = (
-                AdaLayerNorm(dim, num_embeds_ada_norm)
-                if self.use_ada_layer_norm
-                else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
-            )
+            if self.caption_channels is None:
+                self.norm2 = (
+                    AdaLayerNorm(dim, num_embeds_ada_norm)
+                    if self.use_ada_layer_norm
+                    else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+                )
+            else:
+                self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
             self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim if not double_self_attention else None,
@@ -176,7 +179,8 @@ class BasicTransformerBlock(nn.Module):
             self.attn2 = None
 
         # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+        if caption_channels is None:
+            self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
 
         # 4. Fuser
@@ -222,8 +226,9 @@ class BasicTransformerBlock(nn.Module):
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
-            hidden_states = self.norm1(hidden_states)
-            hidden_states = hidden_states * (1 + scale_msa) + shift_msa
+            norm_hidden_states = self.norm1(hidden_states)
+            # Modulate
+            norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
@@ -238,20 +243,22 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
-        if self.use_ada_layer_norm_zero:
+        if self.use_ada_layer_norm_zero or self.caption_channels is not None:
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
 
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
             hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
-        # 2.5 ends
 
         # 3. Cross-Attention
         if self.attn2 is not None:
-            norm_hidden_states = (
-                self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
-            )
+            if self.use_ada_layer_norm:
+                norm_hidden_states = self.norm2(hidden_states, timestep)
+            elif self.caption_channels is None:
+                norm_hidden_states = self.norm2(hidden_states)
+            else:
+                norm_hidden_states = hidden_states
 
             attn_output = self.attn2(
                 norm_hidden_states,
@@ -262,10 +269,15 @@ class BasicTransformerBlock(nn.Module):
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward
-        norm_hidden_states = self.norm3(hidden_states)
+        if self.caption_channels is None:
+            norm_hidden_states = self.norm3(hidden_states)
 
         if self.use_ada_layer_norm_zero:
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+
+        if self.caption_channels:
+            norm_hidden_states = self.norm2(hidden_states)
+            norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
@@ -285,7 +297,7 @@ class BasicTransformerBlock(nn.Module):
         else:
             ff_output = self.ff(norm_hidden_states, scale=lora_scale)
 
-        if self.use_ada_layer_norm_zero:
+        if self.use_ada_layer_norm_zero or self.caption_channels is not None:
             ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
