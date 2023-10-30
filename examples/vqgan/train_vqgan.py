@@ -674,7 +674,7 @@ def main():
         assert isinstance(
             timm_centercrop_transform, transforms.CenterCrop
         ), f"Timm model {timm_model} is currently incompatible with this script. Try vgg19."
-        timm_centercrop_transform.size[0]
+        timm_model_resolution = timm_centercrop_transform.size[0]
         # Gets final normalization
         timm_model_normalization = timm_transform.transforms[-1]
         assert isinstance(
@@ -833,7 +833,16 @@ def main():
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     global_step = 0
     first_epoch = 0
+    # Scheduler and math around the number of training steps.
+    overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    if args.max_train_steps is None:
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+        overrode_max_train_steps = True
+    if overrode_max_train_steps:
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+    # Afterwards we recalculate our number of training epochs
+    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
     # Potentially load in the weights and states from a previous save
     resume_from_checkpoint = args.resume_from_checkpoint
@@ -892,7 +901,7 @@ def main():
                     else:
                         loss = F.l1_loss(pixel_values, fmap)
                     # perceptual loss. The high level feature mean squared error loss
-                    perceptual_loss = get_perceptual_loss(pixel_values, fmap, timm_model)
+                    perceptual_loss = get_perceptual_loss(pixel_values, fmap, timm_model, timm_model_resolution=timm_model_resolution, timm_model_normalization=timm_model_normalization)
                     # generator loss
                     gen_loss = -discriminator(fmap).mean()
                     last_dec_layer = accelerator.unwrap_model(model).decoder.conv_out.weight
