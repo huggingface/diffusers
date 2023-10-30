@@ -75,6 +75,8 @@ def main(args):
 
     for depth in range(28):
         # Transformer blocks.
+        state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = state_dict[f"blocks.{depth}.scale_shift_table"]
+
         q, k, v = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.weight"], 3, dim=0)
         q_bias, k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.bias"], 3, dim=0)
 
@@ -104,6 +106,7 @@ def main(args):
         state_dict.pop(f"blocks.{depth}.mlp.fc1.bias")
         state_dict.pop(f"blocks.{depth}.mlp.fc2.weight")
         state_dict.pop(f"blocks.{depth}.mlp.fc2.bias")
+        state_dict.pop(f"blocks.{depth}.scale_shift_table")
 
     # Final block.
     state_dict["proj_out.weight"] = state_dict["final_layer.linear.weight"]

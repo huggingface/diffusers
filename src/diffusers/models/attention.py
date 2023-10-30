@@ -119,6 +119,7 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
+        self.caption_channels = caption_channels
 
         self.use_ada_layer_norm_zero = (
             num_embeds_ada_norm is not None and caption_channels is None
@@ -137,6 +138,8 @@ class BasicTransformerBlock(nn.Module):
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
+        elif caption_channels:
+            self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.attn1 = Attention(
@@ -180,6 +183,10 @@ class BasicTransformerBlock(nn.Module):
         if attention_type == "gated" or attention_type == "gated-text-image":
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
+        # 5. Scale-shift for PixArt-Alpha.
+        if caption_channels is not None:
+            self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
+
         # let chunk size default to None
         self._chunk_size = None
         self._chunk_dim = 0
@@ -201,14 +208,22 @@ class BasicTransformerBlock(nn.Module):
     ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
+        batch_size = hidden_states.shape[0]
+
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
         elif self.use_ada_layer_norm_zero:
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
                 hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
             )
-        else:
+        elif self.caption_channels is None:
             norm_hidden_states = self.norm1(hidden_states)
+        else:
+            shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
+                self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
+            ).chunk(6, dim=1)
+            hidden_states = self.norm1(hidden_states)
+            hidden_states = hidden_states * (1 + scale_msa) + shift_msa
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
