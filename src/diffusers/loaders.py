@@ -3171,7 +3171,7 @@ class FromOriginalControlnetMixin:
         )
 
         if torch_dtype is not None:
-            controlnet.to(torch_dtype=torch_dtype)
+            controlnet.to(dtype=torch_dtype)
 
         return controlnet
 
