@@ -93,7 +93,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         attention_type: str = "default",
-        caption_channels: int = None,
+        # caption_channels: int = None,
         interpolation_scale: int = 1,
     ):
         super().__init__()
@@ -192,7 +192,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
                     attention_type=attention_type,
-                    caption_channels=caption_channels,
                 )
                 for d in range(num_layers)
             ]
