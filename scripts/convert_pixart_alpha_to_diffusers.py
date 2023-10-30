@@ -165,18 +165,11 @@ def main(args):
         output_type="pixart_dit",
         caption_channels=4096,
     )
-    # transformer.load_state_dict(state_dict, strict=True)
-    missing, unexpected = transformer.load_state_dict(state_dict, strict=False)
+    transformer.load_state_dict(state_dict, strict=True)
+    num_model_params = sum(p.numel() for p in transformer.parameters())
+    print(f"Total number of transformer parameters: {num_model_params}")
 
-    # log information on the stuff that are yet to be implemented.
-    print(f"Missing keys:\n {missing}")
-    print(f"Unexpected keys:\n {unexpected}")
-
-    for k in unexpected:
-        if "blocks.0" in k and "cross_attn" in k:
-            print(k, state_dict[k].shape)
-
-    # To be configured.
+    # TODO: To be configured?
     scheduler = DPMSolverMultistepScheduler()
 
     vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="sd-vae-ft-ema")
