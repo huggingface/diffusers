@@ -34,9 +34,6 @@ def main(args):
         state_dict[f"transformer_blocks.{depth}.norm1.emb.timestep_embedder.linear_2.bias"] = state_dict[
             "t_embedder.mlp.2.bias"
         ]
-        # state_dict[f"transformer_blocks.{depth}.norm1.emb.class_embedder.embedding_table.weight"] = state_dict[
-        #     "y_embedder.embedding_table.weight"
-        # ]
 
         # state_dict[f"transformer_blocks.{depth}.norm1.linear.weight"] = state_dict[
         #     f"blocks.{depth}.adaLN_modulation.1.weight"
@@ -80,7 +77,6 @@ def main(args):
     state_dict.pop("t_embedder.mlp.0.bias")
     state_dict.pop("t_embedder.mlp.2.weight")
     state_dict.pop("t_embedder.mlp.2.bias")
-    # state_dict.pop("y_embedder.embedding_table.weight")
 
     # state_dict["proj_out_1.weight"] = state_dict["final_layer.adaLN_modulation.1.weight"]
     # state_dict["proj_out_1.bias"] = state_dict["final_layer.adaLN_modulation.1.bias"]
