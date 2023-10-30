@@ -4,7 +4,7 @@ description: Sets up miniconda in your ${RUNNER_TEMP} environment and gives you 
 
 inputs:
   python-version:
-    description: If set to any value, dont use sudo to clean the workspace
+    description: If set to any value, don't use sudo to clean the workspace
     required: false
     type: string
     default: "3.9"
