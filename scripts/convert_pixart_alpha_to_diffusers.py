@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -11,7 +12,9 @@ pretrained_models = {512: "", 1024: "PixArt-XL-2-1024x1024.pth"}
 
 
 def main(args):
-    state_dict = torch.load(pretrained_models[args.image_size], map_location=lambda storage, loc: storage)
+    ckpt = pretrained_models[args.image_size]
+    final_path = os.path.join("/home/sayak/PixArt-alpha/scripts", "pretrained_models", ckpt)
+    state_dict = torch.load(final_path, map_location=lambda storage, loc: storage)
 
     state_dict["pos_embed.proj.weight"] = state_dict["x_embedder.proj.weight"]
     state_dict["pos_embed.proj.bias"] = state_dict["x_embedder.proj.bias"]
