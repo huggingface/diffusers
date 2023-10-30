@@ -81,18 +81,21 @@ def main(args):
         q_bias, k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.bias"], 3, dim=0)
 
         # Attention is all you need 🤘
+
+        # Self attention.
         state_dict[f"transformer_blocks.{depth}.attn1.to_q.weight"] = q
         state_dict[f"transformer_blocks.{depth}.attn1.to_q.bias"] = q_bias
         state_dict[f"transformer_blocks.{depth}.attn1.to_k.weight"] = k
         state_dict[f"transformer_blocks.{depth}.attn1.to_k.bias"] = k_bias
         state_dict[f"transformer_blocks.{depth}.attn1.to_v.weight"] = v
         state_dict[f"transformer_blocks.{depth}.attn1.to_v.bias"] = v_bias
-
+        # Projection.
         state_dict[f"transformer_blocks.{depth}.attn1.to_out.0.weight"] = state_dict[
             f"blocks.{depth}.attn.proj.weight"
         ]
         state_dict[f"transformer_blocks.{depth}.attn1.to_out.0.bias"] = state_dict[f"blocks.{depth}.attn.proj.bias"]
 
+        # Feed-forward.
         state_dict[f"transformer_blocks.{depth}.ff.net.0.proj.weight"] = state_dict[f"blocks.{depth}.mlp.fc1.weight"]
         state_dict[f"transformer_blocks.{depth}.ff.net.0.proj.bias"] = state_dict[f"blocks.{depth}.mlp.fc1.bias"]
         state_dict[f"transformer_blocks.{depth}.ff.net.2.weight"] = state_dict[f"blocks.{depth}.mlp.fc2.weight"]
@@ -107,6 +110,33 @@ def main(args):
         state_dict.pop(f"blocks.{depth}.mlp.fc2.weight")
         state_dict.pop(f"blocks.{depth}.mlp.fc2.bias")
         state_dict.pop(f"blocks.{depth}.scale_shift_table")
+
+        # Cross-attention.
+        q = state_dict[f"blocks.{depth}.cross_attn.q_linear.weight"]
+        q_bias = state_dict[f"blocks.{depth}.cross_attn.q_linear.bias"]
+        k, v = torch.chunk(state_dict[f"blocks.{depth}.cross_attn.kv_linear.weight"], 2, dim=0)
+
+        k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.cross_attn.kv_linear.bias"], 2, dim=0)
+        state_dict[f"transformer_blocks.{depth}.attn2.to_q.weight"] = q
+        state_dict[f"transformer_blocks.{depth}.attn2.to_q.bias"] = q_bias
+        state_dict[f"transformer_blocks.{depth}.attn2.to_k.weight"] = k
+        state_dict[f"transformer_blocks.{depth}.attn2.to_k.bias"] = k_bias
+        state_dict[f"transformer_blocks.{depth}.attn2.to_v.weight"] = v
+        state_dict[f"transformer_blocks.{depth}.attn2.to_v.bias"] = v_bias
+
+        state_dict[f"transformer_blocks.{depth}.attn2.to_out.0.weight"] = state_dict[
+            f"blocks.{depth}.cross_attn.proj.weight"
+        ]
+        state_dict[f"transformer_blocks.{depth}.attn2.to_out.0.bias"] = state_dict[
+            f"blocks.{depth}.cross_attn.proj.bias"
+        ]
+
+        state_dict.pop(f"blocks.{depth}.cross_attn.q_linear.weight")
+        state_dict.pop(f"blocks.{depth}.cross_attn.q_linear.bias")
+        state_dict.pop(f"blocks.{depth}.cross_attn.kv_linear.weight")
+        state_dict.pop(f"blocks.{depth}.cross_attn.kv_linear.bias")
+        state_dict.pop(f"blocks.{depth}.cross_attn.proj.weight")
+        state_dict.pop(f"blocks.{depth}.cross_attn.proj.bias")
 
     # Final block.
     state_dict["proj_out.weight"] = state_dict["final_layer.linear.weight"]

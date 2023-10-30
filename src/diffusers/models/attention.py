@@ -258,6 +258,8 @@ class BasicTransformerBlock(nn.Module):
             elif self.caption_channels is None:
                 norm_hidden_states = self.norm2(hidden_states)
             else:
+                # For PixArt norm2 isn't applied here:
+                # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L70C1-L76C103
                 norm_hidden_states = hidden_states
 
             attn_output = self.attn2(
@@ -275,7 +277,7 @@ class BasicTransformerBlock(nn.Module):
         if self.use_ada_layer_norm_zero:
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
-        if self.caption_channels:
+        if self.caption_channels is not None:
             norm_hidden_states = self.norm2(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
