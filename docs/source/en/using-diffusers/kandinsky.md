@@ -459,7 +459,7 @@ image
 </div>
 
 </hfoption>
-</hfoption id="Kandinsky 2.2">
+<hfoption id="Kandinsky 2.2">
 
 ```py
 # prompt can be left empty
