@@ -141,7 +141,7 @@ class CrossFrameAttnProcessor2_0:
 
         # Cross Frame Attention
         if not is_cross_attention:
-            video_length = key.size()[0] // self.batch_size
+            video_length = max(1, key.size()[0] // self.batch_size)
             first_frame_index = [0] * video_length
 
             # rearrange keys to have batch and frames in the 1st and 2nd dims respectively
