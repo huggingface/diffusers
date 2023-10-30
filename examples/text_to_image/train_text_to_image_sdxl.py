@@ -519,12 +519,8 @@ def get_noise_like(x, args):
 # From J. Whitaker Multi Resolution Noise
 #
 # https://wandb.ai/johnowhitaker/multires_noise/reports/Multi-Resolution-Noise-for-Diffusion-Model-Training--VmlldzozNjYyOTU2
-#
-# With a slight modification for defaulting to deterministic freq scaling ratios(r)
-# this better suites the use case where we want to generate these later at
-# inference time.
 def pyramid_noise_like(x, discount=0.9, random_multiplier=True):
-  b, c, w, h = x.shape # EDIT: w and h get over-written, rename for a different variant!
+  b, c, w, h = x.shape
   u = nn.Upsample(size=(w, h), mode='bilinear')
   noise = torch.randn_like(x)
   for i in range(16):
