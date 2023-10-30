@@ -21,15 +21,24 @@ def main(args):
     state_dict.pop("x_embedder.proj.weight")
     state_dict.pop("x_embedder.proj.bias")
 
-    state_dict["aspect_ratio_embedder.proj.weight"] = state_dict["ar_embedder.mlp.0.weight"]
-    state_dict["aspect_ratio_embedder.proj.bias"] = state_dict["ar_embedder.mlp.0.bias"]
-    state_dict["aspect_ratio_embedder.proj.weight"] = state_dict["ar_embedder.mlp.2.weight"]
-    state_dict["aspect_ratio_embedder.proj.bias"] = state_dict["ar_embedder.mlp.2.bias"]
+    state_dict["aspect_ratio_embedder.mlp.0.weight"] = state_dict["ar_embedder.mlp.0.weight"]
+    state_dict["aspect_ratio_embedder.mlp.0.bias"] = state_dict["ar_embedder.mlp.0.bias"]
+    state_dict["aspect_ratio_embedder.mlp.2.weight"] = state_dict["ar_embedder.mlp.2.weight"]
+    state_dict["aspect_ratio_embedder.mlp.2.bias"] = state_dict["ar_embedder.mlp.2.bias"]
+    state_dict.pop("ar_embedder.mlp.0.weight")
+    state_dict.pop("ar_embedder.mlp.0.bias")
+    state_dict.pop("ar_embedder.mlp.2.weight")
+    state_dict.pop("ar_embedder.mlp.2.bias")
 
-    state_dict["resolution_embedder.proj.weight"] = state_dict["csize_embedder.mlp.0.weight"]
-    state_dict["resolution_embedder.proj.bias"] = state_dict["csize_embedder.mlp.0.bias"]
-    state_dict["resolution_embedder.proj.weight"] = state_dict["csize_embedder.mlp.2.weight"]
-    state_dict["resolution_embedder.proj.bias"] = state_dict["csize_embedder.mlp.2.bias"]
+    state_dict["resolution_embedder.mlp.0.weight"] = state_dict["csize_embedder.mlp.0.weight"]
+    state_dict["resolution_embedder.mlp.0.bias"] = state_dict["csize_embedder.mlp.0.bias"]
+    state_dict["resolution_embedder.mlp.2.weight"] = state_dict["csize_embedder.mlp.2.weight"]
+    state_dict["resolution_embedder.mlp.2.bias"] = state_dict["csize_embedder.mlp.2.bias"]
+    state_dict.pop("csize_embedder.mlp.0.weight")
+    state_dict.pop("csize_embedder.mlp.0.bias")
+    state_dict.pop("csize_embedder.mlp.2.weight")
+    state_dict.pop("csize_embedder.mlp.2.bias")
+
 
     for depth in range(28):
         state_dict[f"transformer_blocks.{depth}.norm1.emb.timestep_embedder.linear_1.weight"] = state_dict[
