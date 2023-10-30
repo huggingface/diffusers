@@ -141,6 +141,10 @@ def main(args):
     print(f"Missing keys:\n {missing}")
     print(f"Unexpected keys:\n {unexpected}")
 
+    for k in unexpected:
+        if "blocks.0" in k and "cross_attn" in k:
+            print(k, state_dict[k].shape)
+
     # To be configured.
     scheduler = DPMSolverMultistepScheduler()
 
