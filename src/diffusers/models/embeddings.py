@@ -656,3 +656,35 @@ class PositionNet(nn.Module):
             objs = torch.cat([objs_text, objs_image], dim=1)
 
         return objs
+
+class SizeEmbedder(nn.Module):
+    """
+    Embeds scalar timesteps into vector representations.
+
+    As done in PixArt-Alpha.
+    See: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L138
+    """
+    def __init__(self, hidden_size, frequency_embedding_size=256):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
+            nn.SiLU(),
+            nn.Linear(hidden_size, hidden_size, bias=True),
+        )
+        self.frequency_embedding_size = frequency_embedding_size
+        self.outdim = hidden_size
+
+    def forward(self, size: torch.Tensor, batch_size: int):
+        if size.ndim == 1:
+            size = size[:, None]
+        
+        if size.shape[0] != batch_size:
+            size = size.repeat(batch_size//size.shape[0], 1)
+            assert size.shape[0] == batch_size
+        current_batch_size, dims = size.shape[0], size.shape[1]
+        size = size.reshape(-1)
+        
+        size_freq = get_timestep_embedding(size, self.frequency_embedding_size, flip_sin_to_cos=True)
+        size_emb = self.mlp(size_freq)
+        size_emb = size_emb.reshape(current_batch_size * dims, self.outdim)
+        return size_emb

@@ -22,7 +22,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate
 from .attention import BasicTransformerBlock
-from .embeddings import PatchEmbed
+from .embeddings import PatchEmbed, SizeEmbedder
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 
@@ -210,6 +210,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
             self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
             self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+
+        # 5. Define size embedders.
+        # TODO: Need to be conditioned at init.
+        self.resolution_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
+        self.aspect_ratio_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
 
         self.gradient_checkpointing = False
 
