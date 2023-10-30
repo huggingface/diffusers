@@ -75,13 +75,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
-    tokenizer: T5Tokenizer
-    text_encoder: T5EncoderModel
-
-    vae: AutoencoderKL
-    transformer: Transformer2DModel
-    scheduler: DPMSolverSDEScheduler
-
     bad_punct_regex = re.compile(
         r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
     )  # noqa
