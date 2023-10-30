@@ -494,6 +494,7 @@ def parse_args(input_args=None):
 # Function for generating training noise, defaults to:
 # * "white" = high freq white noise(very stable, does not capture low freq well)
 # * "pyramid" = stable at the right values, covers a range of frequencies
+# * "offset" = adds low frequency noise to the base noise
 #
 # Sample noise that we'll add to the latents
 def get_noise_like(x, args):
