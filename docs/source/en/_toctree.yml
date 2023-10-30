@@ -11,7 +11,7 @@
 - sections:
   - local: tutorials/tutorial_overview
     title: Overview
-  - local: tutorials/write_own_pipeline
+  - local: using-diffusers/write_own_pipeline
     title: Understanding pipelines, models and schedulers
   - local: tutorials/autopipeline
     title: AutoPipeline
