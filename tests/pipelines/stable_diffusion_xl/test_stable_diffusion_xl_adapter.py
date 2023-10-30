@@ -35,8 +35,9 @@ from diffusers import (
 )
 from diffusers.utils import logging
 from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
-from diffusers.utils import load_image, randn_tensor, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow
+from diffusers.utils import load_image
+from diffusers.utils.torch_utils import randn_tensor
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import (
     PipelineTesterMixin,
