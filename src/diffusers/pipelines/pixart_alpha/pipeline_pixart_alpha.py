@@ -113,6 +113,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self.text_encoder_offload_hook = None
         self.final_offload_hook = None
 
+    # TODO:
+    # Align so that can use:
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
         self,
@@ -195,16 +197,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
             attention_mask = text_inputs.attention_mask.to(device)
 
-            prompt_embeds = self.text_encoder(
-                text_input_ids.to(device),
-                attention_mask=attention_mask,
-            )
+            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
             prompt_embeds = prompt_embeds[0]
 
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
-        elif self.unet is not None:
-            dtype = self.unet.dtype
+        elif self.transformer is not None:
+            dtype = self.transformer.dtype
         else:
             dtype = None
 
