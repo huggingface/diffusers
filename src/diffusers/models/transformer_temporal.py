@@ -162,7 +162,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         residual = hidden_states
 
         # Apply group norm over batch_frames
-        if not self.apply_framewise_group_norm:
+        if self.apply_framewise_group_norm:
             hidden_states = self.norm(hidden_states)
             hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
             hidden_states = hidden_states.permute(0, 3, 4, 1, 2).reshape(

@@ -205,6 +205,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         motion_attention_bias: bool = False,
         motion_activation_fn: str = "geglu",
         motion_max_seq_length: Optional[int] = 32,
+        motion_apply_framewise_groupnorm: bool = True,
     ):
         super().__init__()
 
