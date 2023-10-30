@@ -87,15 +87,10 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
         img_depth = self.unet.config.in_channels
         shape = (batch_size, img_depth, img_size, img_size)
 
-        if self.vae is not None:
-            # In case we have a VAE, we are in LDM case...
-            latent_size = int(self.vae.config.scaling_factor*img_size)
-            latent_depth = self.vae.config.latent_channels
-            shape = (batch_size,latent_depth,latent_size,latent_size)
 
         # We reshape the segmentation map to match the diffusion size.
         while len(segmap.shape)<4:
-            segmap = segmap.unsqueeze(0)
+            segmap = segmap.unsqueeze(1)
         segmap = nn.UpsamplingNearest2d(size=shape[-2:])(segmap)
         model = self.unet
         
@@ -117,7 +112,7 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
             sample = self.scheduler.step(noise_pred, t, sample, generator=generator).prev_sample
         if self.vae is not None:
             # If we are in the case of a LDM
-            sample = self.vae.decode(sample)
+            sample = self.vae.decode(sample).sample
         # We finally convert it to an image...
         sample = 0.5 * (sample + 1).squeeze()
         sample = sample.permute(1, 2, 0).cpu().numpy()

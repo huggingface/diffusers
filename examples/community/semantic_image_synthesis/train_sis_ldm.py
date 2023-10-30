@@ -11,6 +11,7 @@ from typing import List
 import accelerate
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from accelerate import Accelerator
@@ -25,7 +26,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils.import_utils import is_bitsandbytes_available
 from src.losses.vlb_loss import VLBLoss
-from src.models import UNet2DSISModel
+from src.models import UNet2DSISModel,AutoencoderSIS,AutoencoderKL
 from src.pipelines.semantic_only_diffusion import SemanticOnlyDiffusionPipeline
 from src.schedulers.ddpm_training import DDPMScheduler, DDPMTrainingScheduler
 
@@ -40,7 +41,8 @@ logger = get_logger(__name__)
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_img_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/img/")
 parser.add_argument("--dataset_ann_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/mask/")
-parser.add_argument("--dataset_img_size", type=int, default=128)
+parser.add_argument("--dataset_img_size", type=int, default=256)
+parser.add_argument("--vae_name_or_path", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/models/vae/256px_64px/sample/checkpoint-100000/vae")
 parser.add_argument("--output_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/ddm")
 parser.add_argument("--train_batch_size", type=int, default=2)
 parser.add_argument("--train_ucond_prob", type=float, default=0.1)
@@ -141,6 +143,7 @@ def main(
     dataset_img_dir: str,
     dataset_ann_dir: str,
     dataset_img_size: int,
+    vae_name_or_path:str,
     output_dir: str,
     train_batch_size: int,
     train_ucond_prob: float,
@@ -223,14 +226,17 @@ def main(
 
     # We create the model
     # If the variance is learned, we'll use a model that output a 2xInput_Channel tensor.
-    input_channels = 3
+
+    vae = AutoencoderSIS.from_pretrained(vae_name_or_path)
+    vae:AutoencoderSIS
+    input_channels = vae.config.latent_channels
     if "learned" in ddp_variance_type:
         learned_variance = True
         output_channels = 2 * input_channels
     else:
         learned_variance = False
         output_channels = input_channels
-    config = UNet2DSISModel.get_config(train_dataset.img_size, input_channels, output_channels, train_dataset.cls_count)
+    config = UNet2DSISModel.get_config(train_dataset.img_size//vae.config.compression, input_channels, output_channels, train_dataset.cls_count)
     unet = UNet2DSISModel(**config)
     if use_ema:
         ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DSISModel, model_config=unet.config)
@@ -297,15 +303,16 @@ def main(
     global_step = 0
     first_epoch = 0
     # We prepare all of our items with Accelerate
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    unet, vae, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, vae, optimizer, train_dataloader, lr_scheduler
     )
     if use_ema:
         ema_unet.to(accelerator.device)
-
+    # Remove grad from VAE.
+    vae.requires_grad_(False)
     # Potentially load in the weights and states from a previous save
     if resume_from_checkpoint:
-        if resume_from_checkpoint != "latest":
+        if resume_from_checkpoint.upper() != "LATEST":
             path = os.path.basename(resume_from_checkpoint)
         else:
             # Get the most recent checkpoint
@@ -339,7 +346,7 @@ def main(
         disable=not accelerator.is_local_main_process,
     )
     if accelerator.is_main_process:
-        accelerator.init_trackers("train-sis-CelebA")
+        accelerator.init_trackers("train-LDM-CelebA")
     # We create the training loop
     for epoch in range(first_epoch, num_train_epochs):
         # Training Loop
@@ -349,22 +356,27 @@ def main(
         vlb_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet),accelerator.autocast():
-                x, y, id = batch
                 loss_total_batch = 0.0
+                x, y, id = batch
+                b,c,h,w = x.shape
+                # We encode the image to the latent space.
+                with torch.no_grad():
+                    x_enc = vae.forward(x,encode=True).latent_dist.mode()
                 # We create a noise like X
-                noise = torch.randn_like(x)
+                noise = torch.randn_like(x_enc)
                 timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (x.shape[0],), device=x.device
+                    0, noise_scheduler.config.num_train_timesteps, (x_enc.shape[0],), device=x_enc.device
                 )
                 # We create condition and replace y by ucond when necessary...
+                segmap = nn.UpsamplingNearest2d(size=x_enc.shape[-2:])(y.unsqueeze(1)).squeeze(1)
                 cond = (
-                    F.one_hot(y.long(), num_classes=train_dataset.cls_count).to(x.device).float().permute(0, 3, 1, 2)
+                    F.one_hot(segmap.long(), num_classes=train_dataset.cls_count).to(x_enc.device).float().permute(0, 3, 1, 2)
                 )
                 ### We add some unconditionnal training iterations.
-                ucond = torch.rand(len(y), device=x.device) < train_ucond_prob  # 1 if < p_ucond
+                ucond = torch.rand(b, device=x_enc.device) < train_ucond_prob  # 1 if < p_ucond
                 cond = cond * (1.0 - ucond[..., None, None, None].float())  # if ucond, we multiply by 0.
                 # We sample the noise
-                x_t = noise_scheduler.add_noise(x, noise, timesteps.long())
+                x_t = noise_scheduler.add_noise(x_enc, noise, timesteps.long())
                 if not learned_variance:
                     model_pred = unet.forward(x_t, timesteps, cond).sample
                 else:
@@ -374,12 +386,12 @@ def main(
                     # Get predicted variance with DDPM Scheduler
                     model_pred, _, logvar_pred = noise_scheduler._get_p_mean_variance(model_output, timesteps)
                     # Get q variance with DDPM Scheduler
-                    q_mean, _, q_logvar = noise_scheduler._get_q_mean_variance(timesteps, x, x_t)
+                    q_mean, _, q_logvar = noise_scheduler._get_q_mean_variance(timesteps, x_enc, x_t)
                     # We compute the VLB Loss
-                    vlb_loss_batch = lambda_vlb * VLBLoss().forward(
-                        model_pred, logvar_pred, q_mean, q_logvar, x, timesteps
+                    # We compute L0 in the latent space
+                    vlb_loss_batch = lambda_vlb * VLBLoss(False).forward(
+                        model_pred, logvar_pred, q_mean, q_logvar, x_enc, timesteps
                     )
-
                     loss_total_batch += vlb_loss_batch
                     vlb_loss += (
                         accelerator.gather(vlb_loss_batch.repeat(train_batch_size)).mean()
@@ -464,7 +476,10 @@ def main(
                 scheduler_config["beta_schedule"] = ddp_validation_beta_type
                 val_scheduler = DDPMScheduler().from_config(scheduler_config)
                 # create pipeline
-                pipeline = SemanticOnlyDiffusionPipeline(unet=accelerator.unwrap_model(unet), scheduler=val_scheduler)
+                pipeline = SemanticOnlyDiffusionPipeline(
+                    unet=accelerator.unwrap_model(unet), 
+                    scheduler=val_scheduler,
+                    vae=accelerator.unwrap_model(vae))
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
 
@@ -496,11 +511,10 @@ def main(
                         )
                 del pipeline
                 torch.cuda.empty_cache()
-        accelerator.wait_for_everyone()
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet).to(torch.float32)
+        unet = unet.to(torch.float32)
         unet: UNet2DSISModel
         unet.save_pretrained(project_dir)
         noise_scheduler.save_pretrained(project_dir)

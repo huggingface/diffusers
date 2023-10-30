@@ -31,21 +31,24 @@ import lpips
 if is_wandb_available():
     import wandb
 
+def parse_bool(str:str):
+    return str.upper()=="TRUE"
+
 logger = get_logger(__name__, log_level="INFO")
-
-
-
 parser = argparse.ArgumentParser(description="VAE training script.")
 # Data Management
 parser.add_argument("--dataset_img_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/img/")
 parser.add_argument("--dataset_ann_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/mask/")
 parser.add_argument("--dataset_img_size", type=int, default=128)
+parser.add_argument("--vae_spacial_compression", type=int, default=4,
+                    help="Should be a power of 2")
 parser.add_argument("--output_dir",type=str,default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/vae",
     help="The output directory where the model predictions and checkpoints will be written.",
 )
 # Training Management
 parser.add_argument("--train_batch_size", type=int, default=2)
 parser.add_argument("--max_train_steps", type=int, default=10)
+parser.add_argument("--vae_train_sampling", type=parse_bool, default="True")
 parser.add_argument(
     "--gradient_accumulation_steps",
     type=int,
@@ -136,9 +139,11 @@ def main(
         dataset_img_dir:str,
         dataset_ann_dir:str,
         dataset_img_size:str,
+        vae_spacial_compression:int,
         output_dir:str,
         train_batch_size:int,
         max_train_steps:int,
+        vae_train_sampling:bool,
         gradient_accumulation_steps:int,
         gradient_checkpointing:int,
         learning_rate:float,
@@ -213,12 +218,34 @@ def main(
     input_channels = 3
     config = AutoencoderSIS.get_config(
         sample_size = dataset_img_size,
-        latent_size = 64,
-        in_channels=input_channels,
-        out_channels=input_channels)
+        compression = vae_spacial_compression,
+        in_channels = input_channels,
+        out_channels = input_channels)
     vae = AutoencoderSIS(**config)
     vae:AutoencoderSIS
     vae.requires_grad_(True)
+
+    # In order to save model correctly...
+    def save_model_hook(models: List[AutoencoderSIS], weights, output_dir):
+        if accelerator.is_main_process:
+            for i, model in enumerate(models):
+                model.save_pretrained(os.path.join(output_dir, "vae"))
+                # make sure to pop weight so that corresponding model is not saved again
+                weights.pop()
+    def load_model_hook(models: List[AutoencoderSIS], input_dir):
+
+        for i in range(len(models)):
+            # pop models so that they are not loaded again
+            model = models.pop()
+            # load diffusers style into model
+            load_model = AutoencoderSIS.from_pretrained(input_dir, subfolder="vae")
+            model.register_to_config(**load_model.config)
+
+            model.load_state_dict(load_model.state_dict())
+            del load_model
+
+    accelerator.register_save_state_pre_hook(save_model_hook)
+    accelerator.register_load_state_pre_hook(load_model_hook)
 
     if gradient_checkpointing:
         vae.enable_gradient_checkpointing()
@@ -297,32 +324,43 @@ def main(
     progress_bar.set_description("Steps")
 
     lpips_loss_fn = lpips.LPIPS(net="alex").to(accelerator.device)
-
+    
+    total_loss = 0.0
+    kl_loss = 0.0
+    lpips_loss = 0.0
+    mse_loss = 0.0
     for epoch in range(first_epoch, num_train_epochs):
         vae.train()
-        train_loss = 0.0
+
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(vae):
+                total_loss_batch = 0.0
                 x, _, _ = batch
                 # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/autoencoder_kl.py
                 # We use a "trick" in order to use DDP that needs a forward method.
                 posterior = vae.forward(x,encode=True).latent_dist
-                z = posterior.mode()
+                # We sample during training instead of mode..
+                if vae_train_sampling:
+                    z = posterior.sample()
+                else:
+                    z = posterior.mode()
                 pred = vae.forward(z,decode=True).sample
 
-                kl_loss = posterior.kl().mean()
-                mse_loss = F.mse_loss(pred, x, reduction="mean")
-                lpips_loss = lpips_loss_fn(pred, x).mean()
+                kl_loss_batch = posterior.kl().mean()
+                mse_loss_batch = F.mse_loss(pred, x, reduction="mean")
+                lpips_loss_batch = lpips_loss_fn(pred, x).mean()
 
-                loss = (
-                    mse_loss + lambda_lpips * lpips_loss + lambda_kl * kl_loss
+                total_loss_batch = (
+                    mse_loss_batch + lambda_lpips * lpips_loss_batch + lambda_kl * kl_loss_batch
                 )
 
                 # Gather the losses across all processes for logging (if we use distributed training).
-                avg_loss = accelerator.gather(loss.repeat(train_batch_size)).mean()
-                train_loss += avg_loss.item() / gradient_accumulation_steps
+                total_loss += accelerator.gather(total_loss_batch.repeat(train_batch_size)).mean()/gradient_accumulation_steps
+                kl_loss +=accelerator.gather(kl_loss_batch.repeat(train_batch_size)).mean()/gradient_accumulation_steps
+                lpips_loss += accelerator.gather(lpips_loss_batch.repeat(train_batch_size)).mean()/gradient_accumulation_steps
+                mse_loss +=accelerator.gather(mse_loss_batch.repeat(train_batch_size)).mean()/gradient_accumulation_steps
 
-                accelerator.backward(loss)
+                accelerator.backward(total_loss_batch)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(vae.parameters(), optim_max_grad_norm)
                 optimizer.step()
@@ -333,9 +371,20 @@ def main(
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                accelerator.log({"train_loss": train_loss}, )
+                logs = {
+                    "step_loss": total_loss.detach().item(),
+                    "lr": lr_scheduler.get_last_lr()[0],
+                    "mse": mse_loss.detach().item(),
+                    "lpips": lpips_loss.detach().item(),
+                    "kl": kl_loss.detach().item(),
+                }
+                accelerator.log(logs)
+                progress_bar.set_postfix(**logs)
                 train_loss = 0.0
-
+                mse_loss = 0.0
+                kl_loss = 0.0
+                lpips_loss = 0.0
                 if global_step % checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         if checkpointing_total_limit is not None:
@@ -363,21 +412,14 @@ def main(
             if global_step >= max_train_steps:
                 break
         
-            logs = {
-                "step_loss": loss.detach().item(),
-                "lr": lr_scheduler.get_last_lr()[0],
-                "mse": mse_loss.detach().item(),
-                "lpips": lpips_loss.detach().item(),
-                "kl": kl_loss.detach().item(),
-            }
-            accelerator.log(logs)
-            progress_bar.set_postfix(**logs)
+            
 
         if accelerator.is_main_process:
             if epoch % val_every_nepochs == 0:
                 with torch.no_grad():
                     logger.info("Running validation... ")
                     vae_model = accelerator.unwrap_model(vae)
+                    vae_model.eval()
                     images = []
                     image_ids = []
                     for _, batch in enumerate(val_dataloader):
@@ -412,7 +454,7 @@ def main(
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         vae = accelerator.unwrap_model(vae)
-        vae.save_pretrained(output_dir)
+        vae.save_pretrained(os.path.join(output_dir,'vae'))
 
     accelerator.end_training()
 

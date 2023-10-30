@@ -3,7 +3,7 @@ import torch
 import math
 
 class AutoencoderSIS(AutoencoderKL):
-    
+
     def forward(self,x:torch.Tensor,encode:bool=False,decode:bool=False):
         if encode:
             return self.encode(x)
