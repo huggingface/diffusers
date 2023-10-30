@@ -1145,6 +1145,7 @@ def download_from_original_stable_diffusion_ckpt(
     stable_unclip_prior: Optional[str] = None,
     clip_stats_path: Optional[str] = None,
     controlnet: Optional[bool] = None,
+    adapter: Optional[bool] = None,
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
@@ -1720,6 +1721,18 @@ def download_from_original_stable_diffusion_ckpt(
                     tokenizer_2=tokenizer_2,
                     unet=unet,
                     controlnet=controlnet,
+                    scheduler=scheduler,
+                    force_zeros_for_empty_prompt=True,
+                )
+            elif adapter:
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=text_encoder_2,
+                    tokenizer_2=tokenizer_2,
+                    unet=unet,
+                    adapter=adapter,
                     scheduler=scheduler,
                     force_zeros_for_empty_prompt=True,
                 )
