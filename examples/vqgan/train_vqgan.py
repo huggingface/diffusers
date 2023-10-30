@@ -142,29 +142,27 @@ def gradient_penalty(images, output, weight=10):
 @torch.no_grad()
 def log_validation(model, args, validation_transform, accelerator, global_step):
     logger.info("Generating images...")
-    original_images = []
-    for image_path in args.validation_images:
-        image = PIL.Image.open(image_path)
-        if not image.mode == "RGB":
-            image = image.convert("RGB")
-        image = validation_transform(image)
-        original_images.append(image[None])
-    original_images = torch.cat(original_images, dim=0)
-    # Generate images
-    model.eval()
     dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         dtype = torch.bfloat16
-
-    with torch.autocast("cuda", dtype=dtype, enabled=accelerator.mixed_precision != "no"):
-        _, enc_token_ids = accelerator.unwrap_model(model).encode(original_images)
-    # In the beginning of training, the model is not fully trained and the generated token ids can be out of range
-    # so we clamp them to the correct range.
-    enc_token_ids = torch.clamp(enc_token_ids, max=accelerator.unwrap_model(model).config.num_embeddings - 1)
-    images = accelerator.unwrap_model(model).decode_code(enc_token_ids)
+    original_images = []
+    for image_path in args.validation_images:
+        image = PIL.Image.open(image_path)
+        if not image.mode == "RGB":
+            image = image.convert("RGB")
+        image = validation_transform(image).to(accelerator.device, dtype=dtype)
+        original_images.append(image[None])
+    # Generate images
+    model.eval()
+    images = []
+    for original_image in original_images:
+        image = accelerator.unwrap_model(model)(original_image).sample
+        images.append(image)
     model.train()
+    original_images = torch.cat(original_images, dim=0)
+    images = torch.cat(images, dim=0)
 
     # Convert to PIL images
     images = torch.clamp(images, 0.0, 1.0)
@@ -178,7 +176,7 @@ def log_validation(model, args, validation_transform, accelerator, global_step):
 
     # Log images
     wandb_images = [wandb.Image(image, caption="Original, Generated") for image in pil_images]
-    wandb.log({"vae_images": wandb_images}, step=global_step)
+    accelerator.log({"vae_images": wandb_images}, step=global_step)
 
 
 def save_checkpoint(model, discriminator, args, accelerator, global_step):
@@ -975,15 +973,6 @@ def main():
                     if avg_gen_loss is not None:
                         logs["step_gen_loss"] = avg_gen_loss.item()
                     accelerator.log(logs, step=global_step)
-                    logger.info(
-                        f"Data (t): {data_time_m.val:0.4f}, {samples_per_second_per_gpu:0.2f}/s/gpu "
-                        f"Batch (t): {batch_time_m.val:0.4f} "
-                        f"LR: {lr_scheduler.get_last_lr()[0]:0.6f} "
-                        f"Step: {global_step} "
-                        f"Discriminator Loss: {avg_discr_loss.item():0.4f} "
-                    )
-                    if avg_gen_loss is not None:
-                        logger.info(f"Generator Loss: {avg_gen_loss.item():0.4f} ")
 
                     # resetting batch / data time meters per log window
                     batch_time_m.reset()

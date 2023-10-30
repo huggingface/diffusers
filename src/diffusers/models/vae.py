@@ -36,7 +36,7 @@ class DecoderOutput(BaseOutput):
     """
 
     sample: torch.FloatTensor
-    commit_loss: torch.FloatTensor
+    commit_loss:  Optional[torch.FloatTensor] = None
 
 
 class Encoder(nn.Module):
