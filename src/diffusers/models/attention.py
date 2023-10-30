@@ -21,7 +21,7 @@ from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU
 from .attention_processor import Attention
 from .lora import LoRACompatibleLinear
-from .normalization import AdaLayerNorm, AdaLayerNormSingle, AdaLayerNormZero
+from .normalization import AdaLayerNorm, AdaLayerNormZero
 
 
 @maybe_allow_in_graph
@@ -115,12 +115,14 @@ class BasicTransformerBlock(nn.Module):
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
         attention_type: str = "default",
+        caption_channels: int = None,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
 
-        self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
-        self.use_ada_layer_norm_single = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_single"
+        self.use_ada_layer_norm_zero = (
+            num_embeds_ada_norm is not None and caption_channels in None
+        ) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
 
         if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
@@ -135,8 +137,6 @@ class BasicTransformerBlock(nn.Module):
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
-        elif self.use_ada_layer_norm_single:
-            self.norm1 = AdaLayerNormSingle(dim, size_emb_dim=(attention_head_dim * num_attention_heads) // 3)
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.attn1 = Attention(

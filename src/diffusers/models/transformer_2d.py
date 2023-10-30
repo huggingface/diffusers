@@ -25,6 +25,7 @@ from .attention import BasicTransformerBlock
 from .embeddings import CaptionProjection, PatchEmbed
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .modeling_utils import ModelMixin
+from .normalization import AdaLayerNormSingle
 
 
 @dataclass
@@ -193,6 +194,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
                     attention_type=attention_type,
+                    caption_channels=caption_channels,
                 )
                 for d in range(num_layers)
             ]
@@ -218,9 +220,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
                 self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
-        # 5. Optional caption embedding for PixArt-Alpha style models.
+        # 5. PixArt-Alpha blocks.
         # TODO: Use `caption_projection` in the call.
         if caption_channels is not None:
+            self.adaln_single = AdaLayerNormSingle(inner_dim, size_emb_dim=inner_dim // 3)
             self.caption_projection = CaptionProjection(
                 in_features=caption_channels, hidden_size=inner_dim, class_dropout_prob=dropout
             )
@@ -334,6 +337,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
             hidden_states = self.pos_embed(hidden_states)
+            if self.config.caption_channels is not None:
+                if added_cond_kwargs is None:
+                    raise ValueError("`added_cond_kwargs` cannot be None when using `caption_channels`.")
+                timestep = self.adaln_single(timestep, added_cond_kwargs, hidden_states.dtype)
 
         # 2. Blocks
         for block in self.transformer_blocks:
