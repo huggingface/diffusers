@@ -22,7 +22,7 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, Transformer2DModel
+from ...models import Transformer2DModel
 from ...schedulers import DPMSolverSDEScheduler
 from ...utils import (
     BACKENDS_MAPPING,
