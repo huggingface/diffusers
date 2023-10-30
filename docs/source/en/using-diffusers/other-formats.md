@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Stable Diffusion models are available in different formats depending on the framework they're trained and saved with, and where you download them from. Converting these formats for use in 🤗 Diffusers allows you to use all the features supported by the library, such as [using different schedulers](schedulers) for inference, [building your custom pipeline](write_own_pipeline), and a variety of techniques and methods for [optimizing inference speed](./optimization/opt_overview).
+Stable Diffusion models are available in different formats depending on the framework they're trained and saved with, and where you download them from. Converting these formats for use in 🤗 Diffusers allows you to use all the features supported by the library, such as [using different schedulers](schedulers) for inference, [building your custom pipeline](write_own_pipeline), and a variety of techniques and methods for [optimizing inference speed](../optimization/opt_overview).
 
 <Tip>
 
@@ -64,9 +64,9 @@ git checkout pr/13
 
 3. There are several input arguments to configure in the conversion script, but the most important ones are:
 
-    - `checkpoint_path`: the path to the `.ckpt` file to convert.
-    - `original_config_file`: a YAML file defining the configuration of the original architecture. If you can't find this file, try searching for the YAML file in the GitHub repository where you found the `.ckpt` file.
-    - `dump_path`: the path to the converted model.
+    - `checkpoint_path`: The path to the `.ckpt` file to convert.
+    - `original_config_file`: A YAML file defining the configuration of the original architecture. If you can't find this file, try searching for the YAML file in the GitHub repository where you found the `.ckpt` file.
+    - `dump_path`: The path to the converted model.
 
         For example, you can take the `cldm_v15.yaml` file from the [ControlNet](https://github.com/lllyasviel/ControlNet/tree/main/models) repository because the TemporalNet model is a Stable Diffusion v1.5 and ControlNet model.
 
@@ -94,6 +94,13 @@ git push origin pr/13:refs/pr/13
 optimization techniques](https://huggingface.co/docs/diffusers/optimization/fp16).
 
 The [Convert KerasCV](https://huggingface.co/spaces/sayakpaul/convert-kerascv-sd-diffusers) Space converts `.pb` or `.h5` files to PyTorch, and then wraps them in a [`StableDiffusionPipeline`] so it is ready for inference. The converted checkpoint is stored in a repository on the Hugging Face Hub.
+<!--Convert KerasCV:
+runtime error
+failed to create containerd task: failed to create shim task: context deadline exceeded: unknown
+
+Container logs:
+
+Failed to retrieve error logs: Failed to load logs: Not Found. Logs are persisted for 30 days after the Space stops running.-->
 
 For this example, let's convert the [`sayakpaul/textual-inversion-kerasio`](https://huggingface.co/sayakpaul/textual-inversion-kerasio/tree/main) checkpoint which was trained with Textual Inversion. It uses the special token `<my-funny-cat>` to personalize images with cats.
 
@@ -101,7 +108,7 @@ The Convert KerasCV Space allows you to input the following:
 
 * Your Hugging Face token.
 * Paths to download the UNet and text encoder weights from. Depending on how the model was trained, you don't necessarily need to provide the paths to both the UNet and text encoder. For example, Textual Inversion only requires the embeddings from the text encoder and a text-to-image model only requires the UNet weights.
-* Placeholder token is only applicable for textual inversion models.
+* Placeholder token is only applicable for Textual Inversion models.
 * The `output_repo_prefix` is the name of the repository where the converted model is stored.
 
 Click the **Submit** button to automatically convert the KerasCV checkpoint! Once the checkpoint is successfully converted, you'll see a link to the new repository containing the converted checkpoint. Follow the link to the new repository, and you'll see the Convert KerasCV Space generated a model card with an inference widget to try out the converted model.
@@ -144,6 +151,8 @@ pipeline = DiffusionPipeline.from_pretrained(
 ).to("cuda")
 pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
 ```
+<!--Repository Not Found for url: https://huggingface.co/api/models/andite/anything-v4.0.
+Please make sure you specified the correct `repo_id` and `repo_type`.-->
 
 Download a LoRA checkpoint from Civitai; this example uses the [Howls Moving Castle,Interior/Scenery LoRA (Ghibli Stlye)](https://civitai.com/models/14605?modelVersionId=19998) checkpoint, but feel free to try out any LoRA checkpoint!
 

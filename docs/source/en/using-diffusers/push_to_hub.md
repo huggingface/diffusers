@@ -1,12 +1,26 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Push files to the Hub
 
 [[open-in-colab]]
+<!--Notebook links don't work.
+-->
 
 🤗 Diffusers provides a [`~diffusers.utils.PushToHubMixin`] for uploading your model, scheduler, or pipeline to the Hub. It is an easy way to store your files on the Hub, and also allows you to share your work with others. Under the hood, the [`~diffusers.utils.PushToHubMixin`]:
 
-1. creates a repository on the Hub
-2. saves your model, scheduler, or pipeline files so they can be reloaded later
-3. uploads folder containing these files to the Hub
+1. creates a repository on the Hub;
+2. saves your model, scheduler, or pipeline files so they can be reloaded later;
+3. uploads folder containing these files to the Hub.
 
 This guide will show you how to use the [`~diffusers.utils.PushToHubMixin`] to upload your files to the Hub.
 
@@ -20,7 +34,7 @@ notebook_login()
 
 ## Models
 
-To push a model to the Hub, call [`~diffusers.utils.PushToHubMixin.push_to_hub`] and specfiy the repository id of the model to be stored on the Hub:
+To push a model to the Hub, call [`~diffusers.utils.PushToHubMixin.push_to_hub`] and specify the repository id of the model to be stored on the Hub:
 
 ```py
 from diffusers import ControlNetModel
@@ -159,13 +173,13 @@ pipeline = StableDiffusionPipeline.from_pretrained("your-namespace/my-pipeline")
 Set `private=True` in the [`~diffusers.utils.PushToHubMixin.push_to_hub`] function to keep your model, scheduler, or pipeline files private:
 
 ```py
-controlnet.push_to_hub("my-controlnet-model", private=True)
+controlnet.push_to_hub("my-controlnet-model-private", private=True)
 ```
 
-Private repositories are only visible to you, and other users won't be able to clone the repository and your repository won't appear in search results. Even if a user has the URL to your private repository, they'll receive a `404 - Repo not found error.`
+Private repositories are only visible to you, and other users won't be able to clone the repository and your repository won't appear in search results. Even if a user has the URL to your private repository, they'll receive a `404 - Sorry, we can't find the page you are looking for.`
 
-To load a model, scheduler, or pipeline from a private or gated repositories, set `use_auth_token=True`:
+To load a model, scheduler, or pipeline from private or gated repositories, set `use_auth_token=True`:
 
 ```py
-model = ControlNet.from_pretrained("your-namespace/my-controlnet-model", use_auth_token=True)
+model = ControlNetModel.from_pretrained("your-namespace/my-controlnet-model-private", use_auth_token=True)
 ```

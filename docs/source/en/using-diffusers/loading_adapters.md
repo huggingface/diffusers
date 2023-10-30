@@ -13,14 +13,20 @@ specific language governing permissions and limitations under the License.
 # Load adapters
 
 [[open-in-colab]]
+<!--Notebook links don't work.
+-->
 
 There are several [training](../training/overview) techniques for personalizing diffusion models to generate images of a specific subject or images in certain styles. Each of these training methods produce a different type of adapter. Some of the adapters generate an entirely new model, while other adapters only modify a smaller set of embeddings or weights. This means the loading process for each adapter is also different.
 
-This guide will show you how to load DreamBooth, textual inversion, and LoRA weights.
+This guide will show you how to load DreamBooth, Textual Inversion, and LoRA weights.
 
 <Tip>
 
-Feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer), [LoRA the Explorer](multimodalart/LoraTheExplorer), and the [Diffusers Models Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) for checkpoints and embeddings to use.
+Feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer), [LoRA the Explorer](https://huggingface.co/spaces/multimodalart/LoraTheExplorer), and the [Diffusers Models Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) for checkpoints and embeddings to use.
+
+<!--Stable Diffusion Conceptualizer:
+runtime error
+-->
 
 </Tip>
 
@@ -37,17 +43,18 @@ import torch
 pipeline = AutoPipelineForText2Image.from_pretrained("sd-dreambooth-library/herge-style", torch_dtype=torch.float16).to("cuda")
 prompt = "A cute herge_style brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 image = pipeline(prompt).images[0]
+image
 ```
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_dreambooth.png" />
 </div>
 
-## Textual inversion
+## Textual Inversion
 
-[Textual inversion](https://textual-inversion.github.io/) is very similar to DreamBooth and it can also personalize a diffusion model to generate certain concepts (styles, objects) from just a few images. This method works by training and finding new embeddings that represent the images you provide with a special word in the prompt. As a result, the diffusion model weights stays the same and the training process produces a relatively tiny (a few KBs) file.
+[Textual Inversion](https://textual-inversion.github.io/) is very similar to DreamBooth and it can also personalize a diffusion model to generate certain concepts (styles, objects) from just a few images. This method works by training and finding new embeddings that represent the images you provide with a special word in the prompt. As a result, the diffusion model weights stay the same and the training process produces a relatively tiny (a few KBs) file.
 
-Because textual inversion creates embeddings, it cannot be used on its own like DreamBooth and requires another model.
+Because Textual Inversion creates embeddings, it cannot be used on its own like DreamBooth and requires another model.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -62,16 +69,17 @@ Now you can load the textual inversion embeddings with the [`~loaders.TextualInv
 pipeline.load_textual_inversion("sd-concepts-library/gta5-artwork")
 prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration, <gta5-artwork> style"
 image = pipeline(prompt).images[0]
+image
 ```
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_txt_embed.png" />
 </div>
 
-Textual inversion can also be trained on undesirable things to create *negative embeddings* to discourage a model from generating images with those undesirable things like blurry images or extra fingers on a hand. This can be a easy way to quickly improve your prompt. You'll also load the embeddings with [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`], but this time, you'll need two more parameters:
+Textual Inversion can also be trained on undesirable things to create *negative embeddings* to discourage a model from generating images with those undesirable things like blurry images or extra fingers on a hand. This can be a easy way to quickly improve your prompt. You'll also load the embeddings with [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`], but this time, you'll need two more parameters:
 
-- `weight_name`: specifies the weight file to load if the file was saved in the 🤗 Diffusers format with a specific name or if the file is stored in the A1111 format
-- `token`: specifies the special word to use in the prompt to trigger the embeddings
+- `weight_name`: Specifies the weight file to load if the file was saved in the 🤗 Diffusers format with a specific name or if the file is stored in the A1111 format.
+- `token`: Specifies the special word to use in the prompt to trigger the embeddings.
 
 Let's load the [sayakpaul/EasyNegative-test](https://huggingface.co/sayakpaul/EasyNegative-test) embeddings:
 
@@ -88,6 +96,7 @@ prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, mast
 negative_prompt = "EasyNegative"
 
 image = pipeline(prompt, negative_prompt=negative_prompt, num_inference_steps=50).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -119,6 +128,7 @@ Then use the [`~loaders.LoraLoaderMixin.load_lora_weights`] method to load the [
 pipeline.load_lora_weights("ostris/super-cereal-sdxl-lora", weight_name="cereal_box_sdxl_v1.safetensors")
 prompt = "bears, pizza bites"
 image = pipeline(prompt).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -127,8 +137,8 @@ image = pipeline(prompt).images[0]
 
 The [`~loaders.LoraLoaderMixin.load_lora_weights`] method loads LoRA weights into both the UNet and text encoder. It is the preferred way for loading LoRAs because it can handle cases where:
 
-- the LoRA weights don't have separate identifiers for the UNet and text encoder
-- the LoRA weights have separate identifiers for the UNet and text encoder
+- The LoRA weights don't have separate identifiers for the UNet and text encoder.
+- The LoRA weights have separate identifiers for the UNet and text encoder.
 
 But if you only need to load LoRA weights into the UNet, then you can use the [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`] method. Let's load the [jbilcke-hf/sdxl-cinematic-1](https://huggingface.co/jbilcke-hf/sdxl-cinematic-1) LoRA:
 
@@ -142,6 +152,7 @@ pipeline.unet.load_attn_procs("jbilcke-hf/sdxl-cinematic-1", weight_name="pytorc
 # use cnmt in the prompt to trigger the LoRA
 prompt = "A cute cnmt eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 image = pipeline(prompt).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -202,6 +213,8 @@ Then fuse this pipeline with the next set of LoRA weights:
 pipeline.load_lora_weights("ostris/super-cereal-sdxl-lora")
 pipeline.fuse_lora(lora_scale=0.7)
 ```
+<!--The current API is supported for operating with a single LoRA file. You are trying to load and fuse more than one LoRA which is not well-supported.
+-->
 
 <Tip warning={true}>
 
@@ -214,13 +227,14 @@ Now you can generate an image that uses the weights from both LoRAs:
 ```py
 prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 image = pipeline(prompt).images[0]
+image
 ```
 
 ### 🤗 PEFT
 
 <Tip>
 
-Read the [Inference with 🤗 PEFT](../tutorials/using_peft_for_inference) tutorial to learn more its integration with 🤗 Diffusers and how you can easily work with and juggle multiple adapters.
+Read the [Inference with 🤗 PEFT](../tutorials/using_peft_for_inference) tutorial to learn more about its integration with 🤗 Diffusers and how you can easily work with and juggle multiple adapters. Additionally, install 🤗 Diffusers and 🤗 PEFT from source to run the example in this section.
 
 </Tip>
 
@@ -246,6 +260,7 @@ Then generate an image:
 ```py
 prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
 image = pipeline(prompt, num_inference_steps=30, cross_attention_kwargs={"scale": 1.0}).images[0]
+image
 ```
 
 ### Kohya and TheLastBen
@@ -254,7 +269,7 @@ Other popular LoRA trainers from the community include those by [Kohya](https://
 
 Let's download the [Blueprintify SD XL 1.0](https://civitai.com/models/150986/blueprintify-sd-xl-10) checkpoint from [Civitai](https://civitai.com/):
 
-```py
+```sh
 !wget https://civitai.com/api/download/models/168776 -O blueprintify-sd-xl-10.safetensors
 ```
 
@@ -264,7 +279,7 @@ Load the LoRA checkpoint with the [`~loaders.LoraLoaderMixin.load_lora_weights`]
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0").to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights("path/to/weights", weight_name="blueprintify-sd-xl-10.safetensors")
 ```
 
@@ -274,6 +289,7 @@ Generate an image:
 # use bl3uprint in the prompt to trigger the LoRA
 prompt = "bl3uprint, a highly detailed blueprint of the eiffel tower, explaining how to build all parts, many txt, blueprint grid backdrop"
 image = pipeline(prompt).images[0]
+image
 ```
 
 <Tip warning={true}>
@@ -297,4 +313,5 @@ pipeline.load_lora_weights("TheLastBen/William_Eggleston_Style_SDXL", weight_nam
 # use by william eggleston in the prompt to trigger the LoRA
 prompt = "a house by william eggleston, sunrays, beautiful, sunlight, sunrays, beautiful"
 image = pipeline(prompt=prompt).images[0]
+image
 ```
