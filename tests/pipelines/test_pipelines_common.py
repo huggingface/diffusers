@@ -744,11 +744,9 @@ class PipelineTesterMixin:
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
         self.assertTrue(
             all(
-                [
-                    v.device == "cpu"
-                    for k, v in pipe.components.values()
-                    if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
-                ]
+                v.device == "cpu"
+                for k, v in pipe.components.values()
+                if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
             ),
             "CPU offloading should leave all pipeline components on the CPU after inference",
         )
