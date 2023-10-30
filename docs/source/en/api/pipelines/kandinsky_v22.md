@@ -237,7 +237,7 @@ to speed-up the optimization. This can be done by simply running:
 from diffusers import DiffusionPipeline
 import torch
 
-t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
 t2i_pipe.enable_xformers_memory_efficient_attention()
 ```
 
