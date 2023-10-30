@@ -117,6 +117,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final (`bool`, defaults to `True`):
             Whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. This can
             stabilize the sampling of DPMSolver for steps < 15, especially for steps <= 10.
+        euler_at_final (`bool`, defaults to `False`):
+            Whether to use Euler's method in the final step. It is a trade-off between numerical stability and detail
+            richness. This can stabilize the sampling of the SDE variant of DPMSolver for small number of inference
+            steps, but sometimes may result in blurring.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
@@ -154,6 +158,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         algorithm_type: str = "dpmsolver++",
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
+        euler_at_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
