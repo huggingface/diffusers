@@ -22,7 +22,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate
 from .attention import BasicTransformerBlock
-from .embeddings import PatchEmbed
+from .embeddings import CaptionProjection, PatchEmbed
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 
@@ -93,6 +93,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         attention_type: str = "default",
+        caption_channels: int = None,
         output_type: str = "vanilla_dit",
         interpolation_scale: int = 1,
     ):
@@ -217,6 +218,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
                 self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
+        # 5. Optional caption embedding for PixArt-Alpha style models.
+        # TODO: Use `caption_projection` in the call.
+        if caption_channels is not None:
+            self.caption_projection = CaptionProjection(
+                in_features=caption_channels, hidden_size=inner_dim, class_dropout_prob=dropout
+            )
+
         self.interpolation_scale = interpolation_scale
 
         self.gradient_checkpointing = False
@@ -297,10 +305,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
-        # 0. Micro-conditioning.
-        # if added_cond_kwargs is not None:
-        #     self.resolution_embedder(added_cond_kwargs["resolution"])
-        #     self.aspect_ratio_embedder(added_cond_kwargs["aspect_ratio"])
+        # TODO: Use added_cond_kwargs in the call to the transformer blocks.
 
         # 1. Input
         if self.is_input_continuous:

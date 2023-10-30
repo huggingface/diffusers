@@ -739,9 +739,9 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
         return conditioning
 
 
-class CaptionEmbedder(nn.Module):
+class CaptionProjection(nn.Module):
     """
-    Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
+    Projects caption embeddings. Also handles dropout for classifier-free guidance.
 
     Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
     """
@@ -761,9 +761,9 @@ class CaptionEmbedder(nn.Module):
         Drops labels to enable classifier-free guidance.
         """
         if force_drop_ids is None:
-            drop_ids = torch.rand(caption.shape[0]).cuda() < self.class_dropout_prob
+            drop_ids = torch.rand(caption.shape[0], device=caption.device) < self.class_dropout_prob
         else:
-            drop_ids = force_drop_ids == 1
+            drop_ids = torch.tensor(force_drop_ids == 1)
         caption = torch.where(drop_ids[:, None, None, None], self.y_embedding, caption)
         return caption
 

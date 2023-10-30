@@ -21,6 +21,20 @@ def main(args):
     state_dict.pop("x_embedder.proj.weight")
     state_dict.pop("x_embedder.proj.bias")
 
+    # Caption projection.
+    "y_embedder.y_embedding", "y_embedder.y_proj.fc1.weight", "y_embedder.y_proj.fc1.bias", "y_embedder.y_proj.fc2.weight", "y_embedder.y_proj.fc2.bias"
+    state_dict["caption_projection.y_embedding"] = state_dict["y_embedder.y_embedding"]
+    state_dict["caption_projection.y_proj.fc1.weight"] = state_dict["y_embedder.y_proj.fc1.weight"]
+    state_dict["caption_projection.y_proj.fc1.bias"] = state_dict["y_embedder.y_proj.fc1.bias"]
+    state_dict["caption_projection.y_proj.fc2.weight"] = state_dict["y_embedder.y_proj.fc2.weight"]
+    state_dict["caption_projection.y_proj.fc2.bias"] = state_dict["y_embedder.y_proj.fc2.bias"]
+
+    state_dict.pop("y_embedder.y_embedding")
+    state_dict.pop("y_embedder.y_proj.fc1.weight")
+    state_dict.pop("y_embedder.y_proj.fc1.bias")
+    state_dict.pop("y_embedder.y_proj.fc2.weight")
+    state_dict.pop("y_embedder.y_proj.fc2.bias")
+
     for depth in range(28):
         state_dict[f"transformer_blocks.{depth}.norm1.emb.timestep_embedder.linear_1.weight"] = state_dict[
             "t_embedder.mlp.0.weight"
@@ -110,6 +124,7 @@ def main(args):
     state_dict.pop("t_block.1.weight")
     state_dict.pop("t_block.1.bias")
 
+    # Final block.
     state_dict["proj_out.weight"] = state_dict["final_layer.linear.weight"]
     state_dict["proj_out.bias"] = state_dict["final_layer.linear.bias"]
     state_dict["scale_shift_table"] = state_dict["final_layer.scale_shift_table"]
@@ -133,6 +148,7 @@ def main(args):
         norm_type="ada_norm_single",
         norm_elementwise_affine=False,
         output_type="pixart_dit",
+        caption_channels=4096,
     )
     # transformer.load_state_dict(state_dict, strict=True)
     missing, unexpected = transformer.load_state_dict(state_dict, strict=False)
