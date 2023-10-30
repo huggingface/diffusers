@@ -22,7 +22,7 @@ import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...models import Transformer2DModel
+from ...models import Transformer2DModel, AutoencoderKL
 from ...schedulers import DPMSolverSDEScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -86,12 +86,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self,
         tokenizer: T5Tokenizer,
         text_encoder: T5EncoderModel,
+        vae: AutoencoderKL,
         transformer: Transformer2DModel,
         scheduler: DPMSolverSDEScheduler,
     ):
         super().__init__()
 
-        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder, unet=transformer, scheduler=scheduler)
+        self.register_modules(tokenizer=tokenizer, text_encoder=text_encoder, vae=vae, transformer=transformer, scheduler=scheduler)
 
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
