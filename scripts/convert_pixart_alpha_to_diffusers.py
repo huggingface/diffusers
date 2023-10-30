@@ -21,24 +21,6 @@ def main(args):
     state_dict.pop("x_embedder.proj.weight")
     state_dict.pop("x_embedder.proj.bias")
 
-    state_dict["aspect_ratio_embedder.mlp.0.weight"] = state_dict["ar_embedder.mlp.0.weight"]
-    state_dict["aspect_ratio_embedder.mlp.0.bias"] = state_dict["ar_embedder.mlp.0.bias"]
-    state_dict["aspect_ratio_embedder.mlp.2.weight"] = state_dict["ar_embedder.mlp.2.weight"]
-    state_dict["aspect_ratio_embedder.mlp.2.bias"] = state_dict["ar_embedder.mlp.2.bias"]
-    state_dict.pop("ar_embedder.mlp.0.weight")
-    state_dict.pop("ar_embedder.mlp.0.bias")
-    state_dict.pop("ar_embedder.mlp.2.weight")
-    state_dict.pop("ar_embedder.mlp.2.bias")
-
-    state_dict["resolution_embedder.mlp.0.weight"] = state_dict["csize_embedder.mlp.0.weight"]
-    state_dict["resolution_embedder.mlp.0.bias"] = state_dict["csize_embedder.mlp.0.bias"]
-    state_dict["resolution_embedder.mlp.2.weight"] = state_dict["csize_embedder.mlp.2.weight"]
-    state_dict["resolution_embedder.mlp.2.bias"] = state_dict["csize_embedder.mlp.2.bias"]
-    state_dict.pop("csize_embedder.mlp.0.weight")
-    state_dict.pop("csize_embedder.mlp.0.bias")
-    state_dict.pop("csize_embedder.mlp.2.weight")
-    state_dict.pop("csize_embedder.mlp.2.bias")
-
     for depth in range(28):
         state_dict[f"transformer_blocks.{depth}.norm1.emb.timestep_embedder.linear_1.weight"] = state_dict[
             "t_embedder.mlp.0.weight"
@@ -52,6 +34,34 @@ def main(args):
         state_dict[f"transformer_blocks.{depth}.norm1.emb.timestep_embedder.linear_2.bias"] = state_dict[
             "t_embedder.mlp.2.bias"
         ]
+        # Resolution.
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.resolution_embedder.mlp.0.weight"] = state_dict[
+            "csize_embedder.mlp.0.weight"
+        ]
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.resolution_embedder.mlp.0.bias"] = state_dict[
+            "csize_embedder.mlp.0.bias"
+        ]
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.resolution_embedder.mlp.2.weight"] = state_dict[
+            "csize_embedder.mlp.2.weight"
+        ]
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.resolution_embedder.mlp.2.bias"] = state_dict[
+            "csize_embedder.mlp.2.bias"
+        ]
+        # Aspect ratio.
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict[
+            "csize_embedder.mlp.0.weight"
+        ]
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.aspect_ratio_embedder..mlp.0.bias"] = state_dict[
+            "csize_embedder.mlp.0.bias"
+        ]
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict[
+            "csize_embedder.mlp.2.weight"
+        ]
+        state_dict[f"transformer_blocks.{depth}.norm1.emb.aspect_ratio_embedder.mlp.2.bias"] = state_dict[
+            "csize_embedder.mlp.2.bias"
+        ]
+        state_dict[f"transformer_blocks.{depth}.norm1.linear.weight"] = state_dict["t_block.1.weight"]
+        state_dict[f"transformer_blocks.{depth}.norm1.linear.bias"] = state_dict["t_block.1.bias"]
 
         q, k, v = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.weight"], 3, dim=0)
         q_bias, k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.bias"], 3, dim=0)
@@ -87,6 +97,19 @@ def main(args):
     state_dict.pop("t_embedder.mlp.2.weight")
     state_dict.pop("t_embedder.mlp.2.bias")
 
+    state_dict.pop("csize_embedder.mlp.0.weight")
+    state_dict.pop("csize_embedder.mlp.0.bias")
+    state_dict.pop("csize_embedder.mlp.2.weight")
+    state_dict.pop("csize_embedder.mlp.2.bias")
+
+    state_dict.pop("ar_embedder.mlp.0.weight")
+    state_dict.pop("ar_embedder.mlp.0.bias")
+    state_dict.pop("ar_embedder.mlp.2.weight")
+    state_dict.pop("ar_embedder.mlp.2.bias")
+
+    state_dict.pop("t_block.1.weight")
+    state_dict.pop("t_block.1.bias")
+
     state_dict["proj_out_2.weight"] = state_dict["final_layer.linear.weight"]
     state_dict["proj_out_2.bias"] = state_dict["final_layer.linear.bias"]
 
@@ -105,7 +128,7 @@ def main(args):
         num_attention_heads=16,
         activation_fn="gelu-approximate",
         num_embeds_ada_norm=1000,
-        norm_type="ada_norm_zero",
+        norm_type="ada_norm_single",
         norm_elementwise_affine=False,
     )
     # transformer.load_state_dict(state_dict, strict=True)

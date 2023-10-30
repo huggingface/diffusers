@@ -683,8 +683,7 @@ class SizeEmbedder(nn.Module):
     """
     Embeds scalar timesteps into vector representations.
 
-    As done in PixArt-Alpha. See:
-    https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L138
+    Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py.
     """
 
     def __init__(self, hidden_size, frequency_embedding_size=256):
@@ -711,3 +710,68 @@ class SizeEmbedder(nn.Module):
         size_emb = self.mlp(size_freq)
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
         return size_emb
+
+
+class CombinedTimestepSizeEmbeddings(nn.Module):
+    """
+    For PixArt-Alpha.
+
+    Reference:
+    https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L164C9-L168C29
+    """
+
+    def __init__(self, embedding_dim, size_emb_dim):
+        super().__init__()
+
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=1)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+        self.resolution_embedder = SizeEmbedder(size_emb_dim)
+        self.aspect_ratio_embedder = SizeEmbedder(size_emb_dim)
+
+    def forward(self, timestep, resolution, aspect_ratio, hidden_dtype):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
+
+        resolution = self.resolution_embedder(resolution)
+        aspect_ratio = self.aspect_ratio_embedder(aspect_ratio)
+        conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
+
+        return conditioning
+
+
+class CaptionEmbedder(nn.Module):
+    """
+    Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
+
+    Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
+    """
+
+    def __init__(self, in_features, hidden_size, class_dropout_prob, num_tokens=120):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(in_features=in_features, out_features=hidden_size, bias=True),
+            nn.GELU(approximate="tanh"),
+            nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True),
+        )
+        self.register_buffer("y_embedding", nn.Parameter(torch.randn(num_tokens, in_features) / in_features**0.5))
+        self.class_dropout_prob = class_dropout_prob
+
+    def token_drop(self, caption, force_drop_ids=None):
+        """
+        Drops labels to enable classifier-free guidance.
+        """
+        if force_drop_ids is None:
+            drop_ids = torch.rand(caption.shape[0]).cuda() < self.class_dropout_prob
+        else:
+            drop_ids = force_drop_ids == 1
+        caption = torch.where(drop_ids[:, None, None, None], self.y_embedding, caption)
+        return caption
+
+    def forward(self, caption, force_drop_ids=None):
+        if self.training:
+            assert caption.shape[2:] == self.y_embedding.shape
+        use_dropout = self.class_dropout_prob > 0
+        if (self.training and use_dropout) or (force_drop_ids is not None):
+            caption = self.token_drop(caption, force_drop_ids)
+        caption = self.mlp(caption)
+        return caption

@@ -22,7 +22,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate
 from .attention import BasicTransformerBlock
-from .embeddings import PatchEmbed, SizeEmbedder
+from .embeddings import PatchEmbed
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 
@@ -93,6 +93,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         attention_type: str = "default",
+        caption_channels: int = None,
         interpolation_scale: int = 1,
     ):
         super().__init__()
@@ -191,6 +192,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
                     attention_type=attention_type,
+                    caption_channels=caption_channels,
                 )
                 for d in range(num_layers)
             ]
@@ -215,8 +217,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # 5. Define size embedders.
         # TODO: Need to be conditioned at init (maybe add a config var: `has_micro_conditioning`?).
         self.interpolation_scale = interpolation_scale
-        self.resolution_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
-        self.aspect_ratio_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
+        # self.resolution_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
+        # self.aspect_ratio_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
 
         self.gradient_checkpointing = False
 
@@ -297,9 +299,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         # 0. Micro-conditioning.
-        if added_cond_kwargs is not None:
-            self.resolution_embedder(added_cond_kwargs["resolution"])
-            self.aspect_ratio_embedder(added_cond_kwargs["aspect_ratio"])
+        # if added_cond_kwargs is not None:
+        #     self.resolution_embedder(added_cond_kwargs["resolution"])
+        #     self.aspect_ratio_embedder(added_cond_kwargs["aspect_ratio"])
 
         # 1. Input
         if self.is_input_continuous:
