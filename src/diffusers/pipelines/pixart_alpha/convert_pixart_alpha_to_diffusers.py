@@ -5,7 +5,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from diffusers import AutoencoderKL, DPMSolverSDEScheduler, Transformer2DModel
 
-from .pipeline_pixart_alpha import PixArtAlphaPipeline
+from pipeline_pixart_alpha import PixArtAlphaPipeline
 
 
 ckpt_id = "PixArt-alpha/PixArt-alpha"
