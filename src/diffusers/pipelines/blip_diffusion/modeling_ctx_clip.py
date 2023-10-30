@@ -19,11 +19,12 @@ from torch import nn
 from transformers import CLIPPreTrainedModel
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.clip.configuration_clip import CLIPTextConfig
-from transformers.models.clip.modeling_clip import (
-    CLIPEncoder,
-    _expand_mask,
-)
+from transformers.models.clip.modeling_clip import CLIPEncoder
 
+try:
+    from transformers.models.clip.modeling_clip import _expand_mask
+except ImportError:
+    from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask as _expand_mask
 
 # This is a modified version of the CLIPTextModel from transformers.models.clip.modeling_clip
 # Which allows for an extra input of "context embeddings", which are the query embeddings used in Qformer
