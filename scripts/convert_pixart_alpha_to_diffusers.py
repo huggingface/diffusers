@@ -111,7 +111,7 @@ def main(args):
     state_dict.pop("t_block.1.bias")
 
     state_dict["proj_out.weight"] = state_dict["final_layer.linear.weight"]
-    state_dict["proj_out_2.bias"] = state_dict["final_layer.linear.bias"]
+    state_dict["proj_out.bias"] = state_dict["final_layer.linear.bias"]
     state_dict["scale_shift_table"] = state_dict["final_layer.scale_shift_table"]
 
     state_dict.pop("final_layer.linear.weight")
