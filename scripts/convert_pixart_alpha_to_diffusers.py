@@ -4,7 +4,7 @@ import os
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
-from diffusers import AutoencoderKL, DPMSolverSDEScheduler, PixArtAlphaPipeline, Transformer2DModel
+from diffusers import AutoencoderKL, DPMSolverMultistepScheduler, PixArtAlphaPipeline, Transformer2DModel
 
 
 ckpt_id = "PixArt-alpha/PixArt-alpha"
@@ -115,7 +115,7 @@ def main(args):
     print(f"Unexpected keys:\n {unexpected}")
 
     # To be configured.
-    scheduler = DPMSolverSDEScheduler()
+    scheduler = DPMSolverMultistepScheduler()
 
     vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="sd-vae-ft-ema")
 
