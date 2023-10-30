@@ -66,17 +66,22 @@ def get_timestep_embedding(
     return emb
 
 
-def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
+def get_2d_sincos_pos_embed(
+    embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
+):
     """
     grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
     [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
-    grid_h = np.arange(grid_size, dtype=np.float32)
-    grid_w = np.arange(grid_size, dtype=np.float32)
+    if isinstance(grid_size, int):
+        grid_size = (grid_size, grid_size)
+
+    grid_h = np.arange(grid_size[0], dtype=np.float32) / (grid_size[0] / base_size) / interpolation_scale
+    grid_w = np.arange(grid_size[1], dtype=np.float32) / (grid_size[1] / base_size) / interpolation_scale
     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
     grid = np.stack(grid, axis=0)
 
-    grid = grid.reshape([2, 1, grid_size, grid_size])
+    grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
     pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
     if cls_token and extra_tokens > 0:
         pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
@@ -129,6 +134,7 @@ class PatchEmbed(nn.Module):
         layer_norm=False,
         flatten=True,
         bias=True,
+        interpolation_scale=1,
     ):
         super().__init__()
 
@@ -144,16 +150,31 @@ class PatchEmbed(nn.Module):
         else:
             self.norm = None
 
-        pos_embed = get_2d_sincos_pos_embed(embed_dim, int(num_patches**0.5))
+        self.patch_size = patch_size
+        self.base_size = height // patch_size
+        self.interpolation_scale = interpolation_scale
+        pos_embed = get_2d_sincos_pos_embed(
+            embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
+        )
         self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
 
     def forward(self, latent):
+        self.height, self.width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
+
         latent = self.proj(latent)
         if self.flatten:
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
         if self.layer_norm:
             latent = self.norm(latent)
-        return latent + self.pos_embed
+
+        # Prepare positional embeddings
+        pos_embed = get_2d_sincos_pos_embed(
+            embed_dim=self.pos_embed.shape[-1],
+            grid_size=(self.height, self.width),
+            base_size=self.base_size,
+            interpolation_scale=self.interpolation_scale,
+        )
+        return latent + pos_embed
 
 
 class TimestepEmbedding(nn.Module):
@@ -657,13 +678,15 @@ class PositionNet(nn.Module):
 
         return objs
 
+
 class SizeEmbedder(nn.Module):
     """
     Embeds scalar timesteps into vector representations.
 
-    As done in PixArt-Alpha.
-    See: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L138
+    As done in PixArt-Alpha. See:
+    https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L138
     """
+
     def __init__(self, hidden_size, frequency_embedding_size=256):
         super().__init__()
         self.mlp = nn.Sequential(
@@ -677,13 +700,13 @@ class SizeEmbedder(nn.Module):
     def forward(self, size: torch.Tensor, batch_size: int):
         if size.ndim == 1:
             size = size[:, None]
-        
+
         if size.shape[0] != batch_size:
-            size = size.repeat(batch_size//size.shape[0], 1)
+            size = size.repeat(batch_size // size.shape[0], 1)
             assert size.shape[0] == batch_size
         current_batch_size, dims = size.shape[0], size.shape[1]
         size = size.reshape(-1)
-        
+
         size_freq = get_timestep_embedding(size, self.frequency_embedding_size, flip_sin_to_cos=True)
         size_emb = self.mlp(size_freq)
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)

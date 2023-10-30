@@ -93,6 +93,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
         attention_type: str = "default",
+        interpolation_scale: int = 1,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -212,7 +213,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
         # 5. Define size embedders.
-        # TODO: Need to be conditioned at init.
+        # TODO: Need to be conditioned at init (maybe add a config var: `has_micro_conditioning`?).
+        self.interpolation_scale = interpolation_scale
         self.resolution_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
         self.aspect_ratio_embedder = SizeEmbedder(hidden_size=(attention_head_dim * num_attention_heads) // 3)
 
@@ -223,6 +225,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         timestep: Optional[torch.LongTensor] = None,
+        added_cond_kwargs: Dict[str, torch.Tensor] = None,
         class_labels: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -292,6 +295,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+
+        # 0. Micro-conditioning.
+        if added_cond_kwargs is not None:
+            self.resolution_embedder(added_cond_kwargs["resolution"])
+            self.aspect_ratio_embedder(added_cond_kwargs["aspect_ratio"])
 
         # 1. Input
         if self.is_input_continuous:

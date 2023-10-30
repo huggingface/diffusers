@@ -39,7 +39,6 @@ def main(args):
     state_dict.pop("csize_embedder.mlp.2.weight")
     state_dict.pop("csize_embedder.mlp.2.bias")
 
-
     for depth in range(28):
         state_dict[f"transformer_blocks.{depth}.norm1.emb.timestep_embedder.linear_1.weight"] = state_dict[
             "t_embedder.mlp.0.weight"
@@ -53,7 +52,6 @@ def main(args):
         state_dict[f"transformer_blocks.{depth}.norm1.emb.timestep_embedder.linear_2.bias"] = state_dict[
             "t_embedder.mlp.2.bias"
         ]
-
 
         q, k, v = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.weight"], 3, dim=0)
         q_bias, k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.bias"], 3, dim=0)
