@@ -453,7 +453,25 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
-    parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
+    parser.add_argument(
+        "--noise_type",
+        type=str,
+        default="white",
+        help=(
+            "Noise type options:",
+            "white",
+            "pyramid",
+            "offset",
+        ),
+    )
+    parser.add_argument(
+        "--pyramid_noise_discount",
+        type=float,
+        default=0.8,
+        help=(
+            "Pyramid noise discount parameter"
+        )
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -472,6 +490,52 @@ def parse_args(input_args=None):
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
     return args
+
+# Function for generating training noise, defaults to:
+# * "white" = high freq white noise(very stable, does not capture low freq well)
+# * "pyramid" = stable at the right values, covers a range of frequencies
+#
+# Sample noise that we'll add to the latents
+def get_noise_like(x, args):
+    noise_type = args.noise_type
+
+    if noise_type == "white":
+        return torch.randn_like(x)
+    elif noise_type == "pyramid":
+        discount = args.pyramid_noise_discount
+        noise = pyramid_noise_like(x, discount=discount, random_multiplier=True)
+
+        return noise
+    elif noise_type = "offset":
+        noise = torch.randn_like(model_input)
+        if args.noise_offset:
+            # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+            noise += args.noise_offset * torch.randn(
+                (model_input.shape[0], model_input.shape[1], 1, 1), device=model_input.device
+            )
+
+        return  noise
+
+# From J. Whitaker Multi Resolution Noise
+#
+# https://wandb.ai/johnowhitaker/multires_noise/reports/Multi-Resolution-Noise-for-Diffusion-Model-Training--VmlldzozNjYyOTU2
+#
+# With a slight modification for defaulting to deterministic freq scaling ratios(r)
+# this better suites the use case where we want to generate these later at
+# inference time.
+def pyramid_noise_like(x, discount=0.9, random_multiplier=True):
+  b, c, w, h = x.shape # EDIT: w and h get over-written, rename for a different variant!
+  u = nn.Upsample(size=(w, h), mode='bilinear')
+  noise = torch.randn_like(x)
+  for i in range(16):
+    if random_multiplier:
+        r = random.random()*2+2 # Rather than always going 2x
+    else:
+        r = 2
+    w, h = max(1, int(w/(r**i))), max(1, int(h/(r**i)))
+    noise += u(torch.randn(b, c, w, h).to(x)) * discount**i
+    if w==1 or h==1: break # Lowest resolution is 1x1
+  return noise/noise.std() # Scaled back to roughly unit variance
 
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
@@ -995,12 +1059,7 @@ def main(args):
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
                 model_input = batch["model_input"].to(accelerator.device)
-                noise = torch.randn_like(model_input)
-                if args.noise_offset:
-                    # https://www.crosslabs.org//blog/diffusion-with-offset-noise
-                    noise += args.noise_offset * torch.randn(
-                        (model_input.shape[0], model_input.shape[1], 1, 1), device=model_input.device
-                    )
+                noise = get_noise_like(model_input, args)
 
                 bsz = model_input.shape[0]
                 if args.timestep_bias_strategy == "none":
