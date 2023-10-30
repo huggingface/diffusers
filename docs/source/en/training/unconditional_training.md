@@ -81,7 +81,7 @@ Some basic and important parameters to specify include:
 - `--dataset_name`: the name of the dataset on the Hub or a local path to the dataset to train on
 - `--output_dir`: where to save the trained model
 - `--push_to_hub`: whether to push the trained model to the Hub
-- `--checkpointing_steps`: frequency of saving a checkpoint as the model trains; this is useful if for some reason training is interrupted, you can continue training from that checkpoint by adding `--resume_from_checkpoint` to your training command
+- `--checkpointing_steps`: frequency of saving a checkpoint as the model trains; this is useful if training is interrupted, you can continue training from that checkpoint by adding `--resume_from_checkpoint` to your training command
 
 Bring your dataset, and let the training script handle everything else!
 
