@@ -237,7 +237,7 @@ to speed-up the optimization. This can be done by simply running:
 from diffusers import DiffusionPipeline
 import torch
 
-t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
+t2i_pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
 t2i_pipe.enable_xformers_memory_efficient_attention()
 ```
 
@@ -263,7 +263,7 @@ t2i_pipe.unet.set_attn_processor(AttnAddedKVProcessor())
 ```
 
 With PyTorch >= 2.0, you can also use Kandinsky with `torch.compile` which depending 
-on your hardware can signficantly speed-up your inference time once the model is compiled.
+on your hardware can significantly speed-up your inference time once the model is compiled.
 To use Kandinsksy with `torch.compile`, you can do:
 
 ```py

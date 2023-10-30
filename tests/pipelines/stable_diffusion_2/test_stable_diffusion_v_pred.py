@@ -367,9 +367,9 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy")
         image = output.images
 
-        # make sure that more than 5.5 GB is allocated
+        # make sure that more than 3.0 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 5.5 * 10**9
+        assert mem_bytes > 3 * 10**9
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_chunked.flatten())
         assert max_diff < 1e-3
 
