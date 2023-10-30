@@ -31,7 +31,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedType, ProjectConfiguration, set_seed
 from datasets import load_dataset
-from discriminator import PaellaDiscriminator
+from discriminator import Discriminator
 from huggingface_hub import create_repo
 from PIL import Image
 from timm.data import resolve_data_config
@@ -56,15 +56,6 @@ logger = get_logger(__name__, log_level="INFO")
 DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
-
-
-def get_vq_model_class():
-    return VQModel
-
-
-def get_discriminator_class():
-    return PaellaDiscriminator
-
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -152,7 +143,7 @@ def gradient_penalty(images, output, weight=10):
 def log_validation(model, args, validation_transform, accelerator, global_step):
     logger.info("Generating images...")
     original_images = []
-    for image_path in args.validation_images.split("|"):
+    for image_path in args.validation_images:
         image = PIL.Image.open(image_path)
         if not image.mode == "RGB":
             image = image.convert("RGB")
@@ -277,7 +268,13 @@ def parse_args():
         "--model_config_name_or_path",
         type=str,
         default=None,
-        help="The config of the UNet model to train, leave as None to use standard DDPM configuration.",
+        help="The config of the Vq model to train, leave as None to use standard DDPM configuration.",
+    )
+    parser.add_argument(
+        "--discriminator_config_name_or_path",
+        type=str,
+        default=None,
+        help="The config of the discriminator model to train, leave as None to use standard DDPM configuration.",
     )
     parser.add_argument(
         "--revision",
@@ -325,7 +322,7 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--validation_image",
+        "--validation_images",
         type=str,
         default=None,
         nargs="+",
@@ -334,7 +331,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="sd-model-finetuned",
+        default="vqgan-output",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -590,6 +587,7 @@ def main():
 
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
+        tracker_config.pop("validation_images")
         accelerator.init_trackers(args.tracker_project_name, tracker_config)
 
     # If passed along, set the training seed now.
@@ -611,7 +609,6 @@ def main():
     #########################
     logger.info("Loading models and optimizer")
 
-    vq_class = get_vq_model_class()
     if args.model_config_name_or_path is None and args.pretrained_model_name_or_path is None:
         # Taken from config of movq at kandinsky-community/kandinsky-2-2-decoder
         model = VQModel(
@@ -651,10 +648,13 @@ def main():
         config = VQModel.load_config(args.model_config_name_or_path)
         model = VQModel.from_config(config)
     if args.use_ema:
-        ema_model = EMAModel(model.parameters(), model_cls=vq_class, model_config=model.config)
-    discriminator_class = get_discriminator_class()
-    discriminator = discriminator_class()
-    # TODO: Add timm_model_backend to config.training. Set default to vgg16
+        ema_model = EMAModel(model.parameters(), model_cls=VQModel, model_config=model.config)
+    if args.discriminator_config_name_or_path is None:
+        discriminator = Discriminator()
+    else:
+        config = Discriminator.load_config(args.discriminator_config_name_or_path)
+        discriminator = Discriminator.from_config(config)
+
     idx = _map_layer_to_idx(args.timm_model_backend, args.timm_model_layers.split("|"), args.timm_model_offset)
 
     timm_model = timm.create_model(

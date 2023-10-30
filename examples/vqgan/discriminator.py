@@ -3,19 +3,24 @@ Ported from Paella
 """
 import torch
 from torch import nn
+from diffusers.models.modeling_utils import ModelMixin
+from diffusers.configuration_utils import ConfigMixin, register_to_config
 
-
-class PaellaDiscriminator(nn.Module):
-    def __init__(self, config):
-        channels = config.discriminator.channels
-        cond_channels = config.discriminator.cond_channels
-        hidden_channels = config.discriminator.hidden_channels
-        depth = config.discriminator.depth
+# Discriminator model ported from Paella https://github.com/dome272/Paella/blob/main/src_distributed/vqgan.py
+class Discriminator(ModelMixin, ConfigMixin):
+    @register_to_config
+    def __init__(
+            self,
+            in_channels=3,
+            cond_channels=0,
+            hidden_channels=512,
+            depth=6
+        ):
         super().__init__()
         d = max(depth - 3, 3)
         layers = [
             nn.utils.spectral_norm(
-                nn.Conv2d(channels, hidden_channels // (2**d), kernel_size=3, stride=2, padding=1)
+                nn.Conv2d(in_channels, hidden_channels // (2**d), kernel_size=3, stride=2, padding=1)
             ),
             nn.LeakyReLU(0.2),
         ]
