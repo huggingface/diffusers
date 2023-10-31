@@ -80,7 +80,6 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         double_self_attention: bool = True,
         use_positional_embedding: bool = False,
         max_seq_length: int = 32,
-        apply_framewise_group_norm: bool = False,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -88,7 +87,6 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         inner_dim = num_attention_heads * attention_head_dim
 
         self.use_cross_attention = cross_attention_dim is not None
-        self.apply_framewise_group_norm = apply_framewise_group_norm
         self.in_channels = in_channels
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
@@ -161,9 +159,11 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         residual = hidden_states
 
-        hidden_states = self.norm(hidden_states)
         hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
-        hidden_states = hidden_states.permute(0, 3, 4, 1, 2).reshape(batch_size * height * width, num_frames, channel)
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
+
+        hidden_states = self.norm(hidden_states)
+        hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
 
         hidden_states = self.proj_in(hidden_states)
         encoder_hidden_states = encoder_hidden_states if self.use_cross_attention else None
