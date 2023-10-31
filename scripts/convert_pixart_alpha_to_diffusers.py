@@ -9,6 +9,8 @@ from diffusers import AutoencoderKL, DPMSolverMultistepScheduler, PixArtAlphaPip
 
 ckpt_id = "PixArt-alpha/PixArt-alpha"
 pretrained_models = {512: "", 1024: "PixArt-XL-2-1024x1024.pth"}
+# https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/scripts/inference.py#L125
+interpolation_scale = {512: 1, 1024: 2}
 
 
 def main(args):
@@ -164,6 +166,7 @@ def main(args):
         norm_elementwise_affine=False,
         output_type="pixart_dit",
         caption_channels=4096,
+        interpolation_scale=interpolation_scale[args.image_size],
     )
     transformer.load_state_dict(state_dict, strict=True)
     num_model_params = sum(p.numel() for p in transformer.parameters())
