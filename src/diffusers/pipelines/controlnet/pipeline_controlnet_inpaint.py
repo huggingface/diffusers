@@ -982,7 +982,7 @@ class StableDiffusionControlNetInpaintPipeline(
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
-        masked_content="original",  # original, blank, fill
+        masked_content: str = "original",  # original, blank, fill
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1241,7 +1241,7 @@ class StableDiffusionControlNetInpaintPipeline(
         num_channels_latents = self.vae.config.latent_channels
         num_channels_unet = self.unet.config.in_channels
         return_image_latents = num_channels_unet == 4
-        
+
         if num_channels_unet == 4 and masked_content == "blank":
             init_image = masked_image_latents.chunk(2)[0]
 
