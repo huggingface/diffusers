@@ -1202,7 +1202,7 @@ class AttnProcessor2_0:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         args = () if USE_PEFT_BACKEND else (scale,)
-        if encoder_hidden_states is not None:
+        if encoder_hidden_states is None:
             print(f"From self-attention: {attn.to_q.weight.shape}")
         query = attn.to_q(hidden_states, *args)
 
