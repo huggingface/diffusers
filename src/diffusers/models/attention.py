@@ -235,6 +235,7 @@ class BasicTransformerBlock(nn.Module):
             # Modulate
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
             norm_hidden_states = norm_hidden_states.squeeze(1)
+            print(f"norm_hidden_states: {norm_hidden_states[0, :5, 3:5]}")
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
