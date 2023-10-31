@@ -188,9 +188,9 @@ def parse_args():
     parser.add_argument("--optimizer_algorithm", type=str, default=None, help="The optimizer algorithm used in training process" )
     # parser.add_argument("--adam_beta1", type=float, default=0.95, help="The beta1 parameter for the Adam optimizer.")
     # parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    # parser.add_argument(
-    #     "--adam_weight_decay", type=float, default=1e-6, help="Weight decay magnitude for the Adam optimizer."
-    # )
+    parser.add_argument(
+        "--weight_decay", type=float, default=1e-6,required=True, help="Weight decay magnitude for the Adam optimizer."
+    )
     # parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer.")
     parser.add_argument(
         "--use_ema",
@@ -470,7 +470,7 @@ def main(args):
             model.parameters(),
             lr=args.learning_rate,
             betas=(0.9, 0.999),
-            weight_decay=0.01,
+            weight_decay=args.weight_decay,
             eps=1e-08,
         )
     if args.optimizer_algorithm == "Adam":
@@ -478,7 +478,7 @@ def main(args):
             model.parameters(),
             lr=args.learning_rate,
             betas=(0.9, 0.999),
-            weight_decay=0,
+            weight_decay=args.weight_decay,
             eps=1e-08,
         ) 
     if args.optimizer_algorithm == "RMSprop":
@@ -487,7 +487,7 @@ def main(args):
             lr=args.learning_rate,
             alpha=0.99,
             momentum=0,
-            weight_decay=0,
+            weight_decay=args.weight_decay,
             eps=1e-08,
         )
 
