@@ -18,7 +18,7 @@ from typing import List, Optional, Union
 import numpy as np
 import PIL.Image
 import torch
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
 
 from .configuration_utils import ConfigMixin, register_to_config
 from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
@@ -156,6 +156,26 @@ class VaeImageProcessor(ConfigMixin):
         image = image.convert("L")
 
         return image
+
+    @staticmethod
+    def fill_mask(image: PIL.Image.Image, mask: PIL.Image.Image) -> PIL.Image.Image:
+        """
+        fills masked regions with colors from image using blur. Not extremely effective.
+        """
+
+        image_mod = Image.new("RGBA", (image.width, image.height))
+
+        image_masked = Image.new("RGBa", (image.width, image.height))
+        image_masked.paste(image.convert("RGBA").convert("RGBa"), mask=ImageOps.invert(mask.convert("L")))
+
+        image_masked = image_masked.convert("RGBa")
+
+        for radius, repeats in [(256, 1), (64, 1), (16, 2), (4, 4), (2, 2), (0, 1)]:
+            blurred = image_masked.filter(ImageFilter.GaussianBlur(radius)).convert("RGBA")
+            for _ in range(repeats):
+                image_mod.alpha_composite(blurred)
+
+        return image_mod.convert("RGB")
 
     def get_default_height_width(
         self,

@@ -982,7 +982,7 @@ class StableDiffusionControlNetInpaintPipeline(
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
-        masked_content="original",  # original, blank
+        masked_content="original",  # original, blank, fill
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1204,6 +1204,8 @@ class StableDiffusionControlNetInpaintPipeline(
             assert False
 
         # 4. Preprocess mask and image - resizes image and mask w.r.t height and width
+        if masked_content == "fill":
+            image = self.image_processor.fill_mask(image, mask_image)
         init_image = self.image_processor.preprocess(image, height=height, width=width)
         init_image = init_image.to(dtype=torch.float32)
 
