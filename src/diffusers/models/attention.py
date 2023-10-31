@@ -229,6 +229,7 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = self.norm1(hidden_states)
             # Modulate
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
+            norm_hidden_states = norm_hidden_states.squeeze(1)
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
@@ -237,9 +238,6 @@ class BasicTransformerBlock(nn.Module):
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
         gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
 
-        if hidden_states.ndim == 4:
-            hidden_states = hidden_states.squeeze(1)
-        print(f"hidden_states before self.attn1: {hidden_states.shape}")
         attn_output = self.attn1(
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
@@ -250,7 +248,6 @@ class BasicTransformerBlock(nn.Module):
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
         hidden_states = hidden_states.squeeze(1)
-        print(f"hidden_states after self.attn1: {hidden_states.shape}")
 
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
@@ -308,7 +305,6 @@ class BasicTransformerBlock(nn.Module):
             ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
-        print(f"At the end transformer block hidden_states: {hidden_states.shape}")
 
         return hidden_states
 

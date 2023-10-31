@@ -116,7 +116,7 @@ def main(args):
         q_bias = state_dict[f"blocks.{depth}.cross_attn.q_linear.bias"]
         k, v = torch.chunk(state_dict[f"blocks.{depth}.cross_attn.kv_linear.weight"], 2, dim=0)
         k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.cross_attn.kv_linear.bias"], 2, dim=0)
-        
+
         state_dict[f"transformer_blocks.{depth}.attn2.to_q.weight"] = q
         state_dict[f"transformer_blocks.{depth}.attn2.to_q.bias"] = q_bias
         state_dict[f"transformer_blocks.{depth}.attn2.to_k.weight"] = k

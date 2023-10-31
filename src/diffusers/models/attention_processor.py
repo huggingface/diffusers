@@ -1176,8 +1176,10 @@ class AttnProcessor2_0:
         scale: float = 1.0,
     ) -> torch.FloatTensor:
         if encoder_hidden_states is not None:
-            print(f"From cross attention hidden_states, encoder_hidden_states: {hidden_states.shape}, {encoder_hidden_states.shape}")
-        
+            print(
+                f"From cross attention hidden_states, encoder_hidden_states: {hidden_states.shape}, {encoder_hidden_states.shape}"
+            )
+
         if encoder_hidden_states is None:
             print(f"From self attention: hidden states starting with {hidden_states.shape}")
         residual = hidden_states
