@@ -343,15 +343,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 timestep, embedded_timestep = self.adaln_single(
                     timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
                 )
-                print(f"Final time embedding: {timestep[0, :3]} {timestep.dtype}")
 
         # 2. Blocks
         if self.caption_projection is not None:
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
-            print(f"Projected captions: {encoder_hidden_states[0, :3, :3, -1]}")
             encoder_hidden_states = encoder_hidden_states.squeeze(1).view(1, -1, hidden_states.shape[-1])
 
-        for block in self.transformer_blocks:
+        for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     block,
@@ -374,6 +372,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
                 )
+                print(f"{i}: {hidden_states[0, :3, :3, -1]}")
 
         # 3. Output
         if self.is_input_continuous:
