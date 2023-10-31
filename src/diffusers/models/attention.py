@@ -231,7 +231,7 @@ class BasicTransformerBlock(nn.Module):
             print(f"before layer norm: {hidden_states[0, :5, -2]}")
             norm_hidden_states = self.norm1(hidden_states)
             print(f"norm_hidden_states: {norm_hidden_states[0, :5, -1]}")
-            print(f"norm_hidden_states: {norm_hidden_states[0, :5, -1]}")
+            print(f"norm_hidden_states: {norm_hidden_states[0, :5, -2]}")
             # Modulate
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
             norm_hidden_states = norm_hidden_states.squeeze(1)
