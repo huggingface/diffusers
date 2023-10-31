@@ -151,7 +151,9 @@ class PatchEmbed(nn.Module):
             self.norm = None
 
         self.patch_size = patch_size
-        self.height, self.width = height, width
+        # See:
+        # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L161
+        self.height, self.width = height // patch_size, width // patch_size
         self.base_size = height // patch_size
         self.interpolation_scale = interpolation_scale
         pos_embed = get_2d_sincos_pos_embed(
@@ -172,7 +174,6 @@ class PatchEmbed(nn.Module):
 
         # Interpolate positional embeddings if needed.
         # (For PixArt-Alpha: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L162C151-L162C160)
-        print(self.height, self.width, height, width)
         if self.height != height or self.width != width:
             pos_embed = (
                 torch.from_numpy(
