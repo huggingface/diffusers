@@ -240,11 +240,9 @@ class BasicTransformerBlock(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
         print(f"hidden_states before self.attn1: {hidden_states.shape}")
-        flag = encoder_hidden_states if self.only_cross_attention else None
-        print(f"Am I passing encoder_hidden_states for self attention?: {flag}")
         attn_output = self.attn1(
             norm_hidden_states,
-            encoder_hidden_states=flag,
+            encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
