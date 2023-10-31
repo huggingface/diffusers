@@ -1241,6 +1241,7 @@ class StableDiffusionControlNetInpaintPipeline(
         num_channels_latents = self.vae.config.latent_channels
         num_channels_unet = self.unet.config.in_channels
         return_image_latents = num_channels_unet == 4
+        
         if num_channels_unet == 4 and masked_content == "blank":
             init_image = masked_image_latents.chunk(2)[0]
 
