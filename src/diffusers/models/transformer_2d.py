@@ -363,7 +363,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     use_reentrant=False,
                 )
             else:
-                if i==0: print(f"{i}: {hidden_states[0, :3, -1]}")
+                print(f"{i}: {hidden_states[0, :3, -1]}")
                 hidden_states = block(
                     hidden_states,
                     attention_mask=attention_mask,
