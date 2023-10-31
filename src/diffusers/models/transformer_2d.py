@@ -340,7 +340,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 if added_cond_kwargs is None:
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
                 added_cond_kwargs = {"resolution": 1.0, "aspect_ratio": 2.0}
-                timestep = self.adaln_single(timestep, added_cond_kwargs, hidden_states.dtype)
+                batch_size = hidden_states.shape[0]
+                timestep = self.adaln_single(
+                    timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
+                )
 
         # 2. Blocks
         if self.caption_projection is not None:

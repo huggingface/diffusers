@@ -99,10 +99,13 @@ class AdaLayerNormSingle(nn.Module):
         self,
         timestep: torch.Tensor,
         added_cond_kwargs: Dict[str, torch.Tensor] = None,
+        batch_size: int = None,
         hidden_dtype: Optional[torch.dtype] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # No modulation happening here.
-        return self.linear(self.silu(self.emb(timestep, **added_cond_kwargs, hidden_dtype=hidden_dtype)))
+        return self.linear(
+            self.silu(self.emb(timestep, **added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_dtype))
+        )
 
 
 class AdaGroupNorm(nn.Module):
