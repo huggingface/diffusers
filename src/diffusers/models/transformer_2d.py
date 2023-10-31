@@ -174,6 +174,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 patch_size=patch_size,
                 in_channels=in_channels,
                 embed_dim=inner_dim,
+                interpolation_scale=interpolation_scale
             )
 
         # 3. Define transformers blocks
