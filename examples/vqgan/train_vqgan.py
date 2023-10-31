@@ -981,7 +981,6 @@ def main():
                 # Save model checkpoint
                 if global_step % args.checkpointing_steps == 0:
                     save_checkpoint(model, discriminator, args, accelerator, global_step)
-
                 # Generate images
                 if global_step % args.validation_steps == 0:
                     log_validation(model, args, validation_transform, accelerator, global_step)
