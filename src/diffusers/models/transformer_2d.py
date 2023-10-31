@@ -221,7 +221,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
         # 5. PixArt-Alpha blocks.
-        # TODO: Use `caption_projection` in the call.
+        self.caption_projection = None
+        self.adaln_single = None
         if caption_channels is not None:
             self.adaln_single = AdaLayerNormSingle(inner_dim)
             self.caption_projection = CaptionProjection(
@@ -335,13 +336,16 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
             hidden_states = self.pos_embed(hidden_states)
-            if self.config.caption_channels is not None:
+            if self.adaln_single is not None:
                 if added_cond_kwargs is None:
-                    raise ValueError("`added_cond_kwargs` cannot be None when using `caption_channels`.")
+                    raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
                 added_cond_kwargs = {"resolution": 1.0, "aspect_ratio": 2.0}
                 timestep = self.adaln_single(timestep, added_cond_kwargs, hidden_states.dtype)
 
         # 2. Blocks
+        if self.caption_projection is not None:
+            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
+            encoder_hidden_states = encoder_hidden_states.squeeze(1).view(1, -1, hidden_states.shape[-1])
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
