@@ -720,7 +720,6 @@ class SizeEmbedder(nn.Module):
         size_freq = get_timestep_embedding(size, self.frequency_embedding_size, downscale_freq_shift=0, flip_sin_to_cos=True)
         
         size_emb = self.mlp(size_freq)
-        print(f"size_emb: {size_emb[0, :3]}")
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
         return size_emb
 
@@ -743,15 +742,11 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
 
     def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
-        print(f"Freq timesteps_proj: {timesteps_proj[0, :3]} {timesteps_proj.dtype}")
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
-        print(f"Final time embedding: {timesteps_emb[0, :3]} {timesteps_emb.dtype}")
 
         resolution = self.resolution_embedder(resolution, batch_size=batch_size)
         aspect_ratio = self.aspect_ratio_embedder(aspect_ratio, batch_size=batch_size)
-        print(f"Aspect, resolution: {aspect_ratio[0, :3]} {resolution[0, :3]}")
         conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
-        print(f"Final time embedding: {conditioning[0, :3]} {conditioning.dtype}")
 
         return conditioning
 
