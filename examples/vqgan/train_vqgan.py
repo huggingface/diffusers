@@ -57,6 +57,7 @@ DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
 
+
 class AverageMeter(object):
     """Computes and stores the average and current value"""
 
@@ -105,7 +106,9 @@ def get_perceptual_loss(pixel_values, fmap, timm_model, timm_model_resolution, t
 
     if pixel_values.shape[1] == 1:
         # handle grayscale for timm_model
-        img_timm_model_input, fmap_timm_model_input = (t.repeat(1, 3, 1, 1) for t in (img_timm_model_input, fmap_timm_model_input))
+        img_timm_model_input, fmap_timm_model_input = (
+            t.repeat(1, 3, 1, 1) for t in (img_timm_model_input, fmap_timm_model_input)
+        )
 
     img_timm_model_feats = timm_model(img_timm_model_input)
     recon_timm_model_feats = timm_model(fmap_timm_model_input)
@@ -630,12 +633,8 @@ def main():
             out_channels=3,
             sample_size=32,
             scaling_factor=0.18215,
-            up_block_types=[
-                "UpDecoderBlock2D",
-                "UpDecoderBlock2D",
-                "UpDecoderBlock2D"
-            ],
-            vq_embed_dim=4
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D", "UpDecoderBlock2D"],
+            vq_embed_dim=4,
         )
     elif args.pretrained_model_name_or_path is None:
         model = VQModel.from_pretrained(args.pretrained_model_name_or_path)
@@ -896,7 +895,13 @@ def main():
                     else:
                         loss = F.l1_loss(pixel_values, fmap)
                     # perceptual loss. The high level feature mean squared error loss
-                    perceptual_loss = get_perceptual_loss(pixel_values, fmap, timm_model, timm_model_resolution=timm_model_resolution, timm_model_normalization=timm_model_normalization)
+                    perceptual_loss = get_perceptual_loss(
+                        pixel_values,
+                        fmap,
+                        timm_model,
+                        timm_model_resolution=timm_model_resolution,
+                        timm_model_normalization=timm_model_normalization,
+                    )
                     # generator loss
                     gen_loss = -discriminator(fmap).mean()
                     last_dec_layer = accelerator.unwrap_model(model).decoder.conv_out.weight

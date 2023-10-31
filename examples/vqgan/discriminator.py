@@ -3,19 +3,15 @@ Ported from Paella
 """
 import torch
 from torch import nn
-from diffusers.models.modeling_utils import ModelMixin
+
 from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.models.modeling_utils import ModelMixin
+
 
 # Discriminator model ported from Paella https://github.com/dome272/Paella/blob/main/src_distributed/vqgan.py
 class Discriminator(ModelMixin, ConfigMixin):
     @register_to_config
-    def __init__(
-            self,
-            in_channels=3,
-            cond_channels=0,
-            hidden_channels=512,
-            depth=6
-        ):
+    def __init__(self, in_channels=3, cond_channels=0, hidden_channels=512, depth=6):
         super().__init__()
         d = max(depth - 3, 3)
         layers = [
