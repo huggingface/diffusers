@@ -344,6 +344,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 timestep, embedded_timestep = self.adaln_single(
                     timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
                 )
+                print(f"Final time embedding: {timestep[0, :3]} {timestep.dtype}")
 
         # 2. Blocks
         if self.caption_projection is not None:
