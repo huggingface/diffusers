@@ -139,7 +139,6 @@ class PatchEmbed(nn.Module):
         super().__init__()
 
         num_patches = (height // patch_size) * (width // patch_size)
-        print(f"Grid: {int(num_patches**0.5)}")
         self.flatten = flatten
         self.layer_norm = layer_norm
 
