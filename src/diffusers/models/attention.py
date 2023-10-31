@@ -308,6 +308,7 @@ class BasicTransformerBlock(nn.Module):
             ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
+        print(f"At the end transformer block hidden_states: {hidden_states.shape}")
 
         return hidden_states
 
