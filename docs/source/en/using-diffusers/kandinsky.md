@@ -477,7 +477,6 @@ image
 <div class="flex justify-center">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinskyv22-interpolate.png"/>
 </div>
-```
 
 </hfoption>
 </hfoptions>
