@@ -156,7 +156,7 @@ class PatchEmbed(nn.Module):
         self.height, self.width = height // patch_size, width // patch_size
         self.base_size = height // patch_size
         self.interpolation_scale = interpolation_scale
-        print(f"base_size: {self.base_size}, interpolation_scale: {interpolation_scale}")
+        # print(f"base_size: {self.base_size}, interpolation_scale: {interpolation_scale}")
         pos_embed = get_2d_sincos_pos_embed(
             embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
         )
@@ -166,8 +166,8 @@ class PatchEmbed(nn.Module):
         height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
 
         latent = self.proj(latent)
-        print("Serializing latent from the patch embedding")
-        torch.save(latent, "latent.pt")
+        # print("Serializing latent from the patch embedding")
+        # torch.save(latent, "latent.pt")
         if self.flatten:
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
         if self.layer_norm:
@@ -192,10 +192,10 @@ class PatchEmbed(nn.Module):
         else:
             print("Using default pos embeddings.")
             pos_embed = self.pos_embed
-        print("Serializing pe from the patch embedding")
-        torch.save(pos_embed, "pe.pt")
-        print("Serializing pe from final output from patch embedding")
-        torch.save(latent + pos_embed, "final_pe_latent.pt")
+        # print("Serializing pe from the patch embedding")
+        # torch.save(pos_embed, "pe.pt")
+        # print("Serializing pe from final output from patch embedding")
+        # torch.save(latent + pos_embed, "final_pe_latent.pt")
         return latent + pos_embed
 
 
