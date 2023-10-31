@@ -608,20 +608,18 @@ def main():
     logger.info("Loading models and optimizer")
 
     if args.model_config_name_or_path is None and args.pretrained_model_name_or_path is None:
-        # Taken from config of movq at kandinsky-community/kandinsky-2-2-decoder
+        # Taken from config of movq at kandinsky-community/kandinsky-2-2-decoder but without the attention layers
         model = VQModel(
             act_fn="silu",
             block_out_channels=[
                 128,
                 256,
-                256,
-                512
+                512,
             ],
             down_block_types=[
                 "DownEncoderBlock2D",
                 "DownEncoderBlock2D",
                 "DownEncoderBlock2D",
-                "AttnDownEncoderBlock2D"
             ],
             in_channels=3,
             latent_channels=4,
@@ -633,7 +631,6 @@ def main():
             sample_size=32,
             scaling_factor=0.18215,
             up_block_types=[
-                "AttnUpDecoderBlock2D",
                 "UpDecoderBlock2D",
                 "UpDecoderBlock2D",
                 "UpDecoderBlock2D"
