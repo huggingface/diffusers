@@ -260,7 +260,7 @@ class BasicTransformerBlock(nn.Module):
             else:
                 # For PixArt norm2 isn't applied here:
                 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L70C1-L76C103
-                norm_hidden_states = hidden_states
+                norm_hidden_states = hidden_states.squeeze(1)
 
             attn_output = self.attn2(
                 norm_hidden_states,
