@@ -188,6 +188,8 @@
       title: UNet2DConditionModel
     - local: api/models/unet3d-cond
       title: UNet3DConditionModel
+    - local: api/models/unet-motion
+      title: UNetMotionModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
@@ -211,6 +213,8 @@
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
     - local: api/pipelines/attend_and_excite
+    - local: api/pipelienes/animatediff
+      title: AnimateDiff
       title: Attend-and-Excite
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion

@@ -161,25 +161,9 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         residual = hidden_states
 
-        # Apply group norm over batch_frames
-        if self.apply_framewise_group_norm:
-            hidden_states = self.norm(hidden_states)
-            hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
-            hidden_states = hidden_states.permute(0, 3, 4, 1, 2).reshape(
-                batch_size * height * width, num_frames, channel
-            )
-
-        # Apply group norm after separating batch and frames
-        else:
-            hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
-            hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
-
-            hidden_states = self.norm(hidden_states)
-            hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(
-                batch_size * height * width, num_frames, channel
-            )
-
-        torch.save(hidden_states, "hs-notframewise.pt")
+        hidden_states = self.norm(hidden_states)
+        hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
+        hidden_states = hidden_states.permute(0, 3, 4, 1, 2).reshape(batch_size * height * width, num_frames, channel)
 
         hidden_states = self.proj_in(hidden_states)
         encoder_hidden_states = encoder_hidden_states if self.use_cross_attention else None
