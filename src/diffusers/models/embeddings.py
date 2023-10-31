@@ -742,7 +742,7 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
 
     def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
-        print(f"Final timesteps_proj: {timesteps_proj[0, :3]} {timesteps_proj.dtype}")
+        print(f"Freq timesteps_proj: {timesteps_proj[0, :3]} {timesteps_proj.dtype}")
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
         print(f"Final time embedding: {timesteps_emb[0, :3]} {timesteps_emb.dtype}")
 
