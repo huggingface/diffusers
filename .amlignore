@@ -1,0 +1,11 @@
+.git
+.github
+.vscode
+build
+docker
+docs
+mlruns
+scripts
+tests
+.ruff_cache
+wandb

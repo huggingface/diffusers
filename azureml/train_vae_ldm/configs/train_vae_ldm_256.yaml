@@ -1,0 +1,98 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+
+experiment_name: Diffusers_VAE_256
+display_name: Diffusers - Train VAE 256-64 - 1GPUs
+settings:
+    default_compute: azureml:devcnegpucluster
+
+tags:
+  content: Reduce the number of downsampling steps in VAE.
+
+inputs:
+  dataset_img_dir:
+    type: uri_folder
+    mode: ro_mount
+    path: azureml://datastores/celeba_data/paths/img/
+  dataset_ann_dir:
+    type: uri_folder
+    mode: ro_mount
+    path: azureml://datastores/celeba_data/paths/mask/
+  dataset_img_size: 256
+  vae_spacial_compression: 4
+  train_batch_size: 5
+  max_train_steps: 100000
+  vae_train_sampling: "False"
+  gradient_accumulation_steps: 1
+  optim_weight_decay: 1e-2 # We reduce weight decay because we reduce the batch_size BS = 128 => WD = 1e-2
+  learning_rate: 2e-5
+  lr_warmup_steps: 500
+  lambda_kl: 1e-6
+  lambda_lpips: 1e-1
+  val_every_nepochs: 1
+  val_num_samples: 10
+  resume_from_checkpoint: None # Latest or None
+  lr_scheduler: constant_with_warmup
+
+outputs:
+  output_dir:
+      type: uri_folder
+      mode: rw_mount
+      path: azureml://datastores/workspaceblobstore/paths/diffusers/vae/celeba_sis_256/
+
+jobs:
+  train_celeba:
+    resources:
+      instance_count: 2
+      shm_size: 16g
+    distribution:
+      type: pytorch # Can work with torchrun https://github.com/huggingface/accelerate/issues/1836
+      process_count_per_instance: 1
+    code: ../../../
+    command: >- 
+      export WANDB_API_KEY="3e4b14a7034176844f769f9e8809dd617bbb6e3a" &&
+      export WANDB_ENTITY="fponchon" &&
+      pip install wandb lpips && 
+      pip install -e .[training] &&
+      python examples/community/semantic_image_synthesis/train_vae_ldm.py
+      --dataset_img_dir ${{inputs.dataset_img_dir}} 
+      --dataset_ann_dir ${{inputs.dataset_ann_dir}} 
+      --dataset_img_size ${{inputs.dataset_img_size}}
+      --vae_spacial_compression ${{inputs.vae_spacial_compression}}
+      --output_dir  ${{outputs.output_dir}} 
+      --train_batch_size ${{inputs.train_batch_size}} 
+      --max_train_steps ${{inputs.max_train_steps}}
+      --vae_train_sampling ${{inputs.vae_train_sampling}}
+      --gradient_accumulation_steps ${{inputs.gradient_accumulation_steps}} 
+      --optim_weight_decay ${{inputs.optim_weight_decay}}
+      --learning_rate ${{inputs.learning_rate}}
+      --lr_scheduler ${{inputs.lr_scheduler}}
+      --lr_warmup_steps ${{inputs.lr_warmup_steps}}
+      --lambda_kl ${{inputs.lambda_kl}}
+      --lambda_lpips ${{inputs.lambda_lpips}}
+      --val_every_nepochs ${{inputs.val_every_nepochs}} 
+      --val_num_samples ${{inputs.val_num_samples}}
+      --resume_from_checkpoint ${{inputs.resume_from_checkpoint}}
+    inputs:
+      dataset_img_dir: ${{parent.inputs.dataset_img_dir}}
+      dataset_ann_dir: ${{parent.inputs.dataset_ann_dir}}
+      dataset_img_size: ${{parent.inputs.dataset_img_size}}
+      vae_spacial_compression: ${{parent.inputs.vae_spacial_compression}}
+      train_batch_size: ${{parent.inputs.train_batch_size}}
+      max_train_steps: ${{parent.inputs.max_train_steps}}
+      vae_train_sampling: ${{parent.inputs.vae_train_sampling}}
+      gradient_accumulation_steps: ${{parent.inputs.gradient_accumulation_steps}}
+      optim_weight_decay: ${{parent.inputs.optim_weight_decay}}
+      learning_rate: ${{parent.inputs.learning_rate}}
+      lr_scheduler: ${{parent.inputs.lr_scheduler}}
+      lr_warmup_steps: ${{parent.inputs.lr_warmup_steps}}
+      lambda_kl: ${{parent.inputs.lambda_kl}}
+      lambda_lpips: ${{parent.inputs.lambda_lpips}}
+      val_every_nepochs: ${{parent.inputs.val_every_nepochs}}
+      val_num_samples: ${{parent.inputs.val_num_samples}}
+      resume_from_checkpoint: ${{parent.inputs.resume_from_checkpoint}}
+    outputs:
+      output_dir: ${{parent.outputs.output_dir}} 
+
+    environment: azureml:diffusers_env@latest
+    compute: azureml:devcnegpucluster

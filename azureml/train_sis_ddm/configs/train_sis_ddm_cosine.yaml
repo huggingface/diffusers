@@ -1,0 +1,101 @@
+$schema: https://azuremlschemas.azureedge.net/latest/pipelineJob.schema.json
+type: pipeline
+
+experiment_name: Diffusers_SIS_256
+display_name: Diffusers - Train SIS - 8GPUs
+settings:
+    default_compute: azureml:devcnegpucluster
+
+inputs:
+  dataset_img_dir:
+    type: uri_folder
+    mode: ro_mount
+    path: azureml://datastores/celeba_data/paths/img/
+  dataset_ann_dir:
+    type: uri_folder
+    mode: ro_mount
+    path: azureml://datastores/celeba_data/paths/mask/
+  dataset_img_size: 256
+  ddp_variance_type: learned_range
+  ddp_guidance_scale: 7.5
+  ddp_training_beta_type: squaredcos_cap_v2
+  ddp_validation_beta_type: squaredcos_cap_v2 # squaredcos_cap_v2 | linear
+  train_batch_size: 4
+  max_train_steps: 500000
+  gradient_accumulation_steps: 4
+  train_ucond_prob: 0.1
+  optim_weight_decay: 1e-2 # We reduce weight decay because we reduce the batch_size BS = 128 => WD = 1e-2
+  learning_rate: 2e-5
+  lambda_vlb: 1e-3
+  lr_warmup_steps: 500
+  val_every_nepochs: 5
+  val_num_samples: 10
+  resume_from_checkpoint: None # Latest or None
+  lr_scheduler: constant_with_warmup
+
+outputs:
+  output_dir:
+      type: uri_folder
+      mode: rw_mount
+      path: azureml://datastores/workspaceblobstore/paths/diffusers/celeba_sis_256/
+
+jobs:
+  train_celeba:
+    resources:
+      instance_count: 8
+      shm_size: 16g
+    distribution:
+      type: pytorch # Can work with torchrun https://github.com/huggingface/accelerate/issues/1836
+      process_count_per_instance: 1
+    code: ../../../
+    command: >- 
+      export WANDB_API_KEY="3e4b14a7034176844f769f9e8809dd617bbb6e3a" &&
+      export WANDB_ENTITY="fponchon" &&
+      pip install wandb &&
+      pip install -e .[training] &&
+      python examples/community/semantic_image_synthesis/train_sis_ddm.py
+      --dataset_img_dir ${{inputs.dataset_img_dir}} 
+      --dataset_ann_dir ${{inputs.dataset_ann_dir}} 
+      --dataset_img_size ${{inputs.dataset_img_size}}
+      --ddp_variance_type ${{inputs.ddp_variance_type}}
+      --ddp_guidance_scale ${{inputs.ddp_guidance_scale}}
+      --ddp_training_beta_type ${{inputs.ddp_training_beta_type}}
+      --ddp_validation_beta_type ${{inputs.ddp_validation_beta_type}}
+      --train_ucond_prob ${{inputs.train_ucond_prob}}
+      --lambda_vlb ${{inputs.lambda_vlb}}
+      --output_dir  ${{outputs.output_dir}} 
+      --train_batch_size ${{inputs.train_batch_size}} 
+      --max_train_steps ${{inputs.max_train_steps}}
+      --gradient_accumulation_steps ${{inputs.gradient_accumulation_steps}} 
+      --optim_weight_decay ${{inputs.optim_weight_decay}}
+      --learning_rate ${{inputs.learning_rate}}
+      --lr_scheduler ${{inputs.lr_scheduler}}
+      --lr_warmup_steps ${{inputs.lr_warmup_steps}}
+      --val_every_nepochs ${{inputs.val_every_nepochs}} 
+      --val_num_samples ${{inputs.val_num_samples}}
+      --resume_from_checkpoint ${{inputs.resume_from_checkpoint}}
+    inputs:
+      dataset_img_dir: ${{parent.inputs.dataset_img_dir}}
+      dataset_ann_dir: ${{parent.inputs.dataset_ann_dir}}
+      dataset_img_size: ${{parent.inputs.dataset_img_size}}
+      ddp_variance_type: ${{parent.inputs.ddp_variance_type}}
+      ddp_guidance_scale: ${{parent.inputs.ddp_guidance_scale}}
+      ddp_training_beta_type: ${{parent.inputs.ddp_training_beta_type}}
+      ddp_validation_beta_type: ${{parent.inputs.ddp_validation_beta_type}}
+      train_ucond_prob: ${{parent.inputs.train_ucond_prob}}
+      lambda_vlb : ${{parent.inputs.lambda_vlb}}
+      train_batch_size: ${{parent.inputs.train_batch_size}}
+      max_train_steps: ${{parent.inputs.max_train_steps}}
+      gradient_accumulation_steps: ${{parent.inputs.gradient_accumulation_steps}}
+      optim_weight_decay: ${{parent.inputs.optim_weight_decay}}
+      learning_rate: ${{parent.inputs.learning_rate}}
+      lr_scheduler: ${{parent.inputs.lr_scheduler}}
+      lr_warmup_steps: ${{parent.inputs.lr_warmup_steps}}
+      val_every_nepochs: ${{parent.inputs.val_every_nepochs}}
+      val_num_samples: ${{parent.inputs.val_num_samples}}
+      resume_from_checkpoint: ${{parent.inputs.resume_from_checkpoint}}
+    outputs:
+      output_dir: ${{parent.outputs.output_dir}} 
+
+    environment: azureml:diffusers_env@latest
+    compute: azureml:devcnegpucluster
