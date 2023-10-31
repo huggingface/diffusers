@@ -223,7 +223,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # 5. PixArt-Alpha blocks.
         # TODO: Use `caption_projection` in the call.
         if caption_channels is not None:
-            self.adaln_single = AdaLayerNormSingle(inner_dim, size_emb_dim=inner_dim // 3)
+            self.adaln_single = AdaLayerNormSingle(inner_dim)
             self.caption_projection = CaptionProjection(
                 in_features=caption_channels, hidden_size=inner_dim, class_dropout_prob=dropout
             )
@@ -308,8 +308,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
-        # TODO: Use added_cond_kwargs in the call to the transformer blocks.
-
         # 1. Input
         if self.is_input_continuous:
             batch, _, height, width = hidden_states.shape
@@ -340,6 +338,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             if self.config.caption_channels is not None:
                 if added_cond_kwargs is None:
                     raise ValueError("`added_cond_kwargs` cannot be None when using `caption_channels`.")
+                added_cond_kwargs = {"resolution": 1.0, "aspect_ratio": 2.0}
                 timestep = self.adaln_single(timestep, added_cond_kwargs, hidden_states.dtype)
 
         # 2. Blocks

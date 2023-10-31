@@ -117,6 +117,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
     # TODO:
     # Align so that can use:
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
+    # Might need to also return the masks.
     def encode_prompt(
         self,
         prompt: Union[str, List[str]],
@@ -644,6 +645,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         if hasattr(self, "text_encoder_offload_hook") and self.text_encoder_offload_hook is not None:
             self.text_encoder_offload_hook.offload()
 
+        # 6.1 Prepare micro-conditions.
+        resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
+        aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_images_per_prompt, 1)
+        resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
+        aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
+        added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
+
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -666,11 +674,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timesteps = timesteps.expand(latent_model_input.shape[0])
                 # predict noise model_output
-                # noise_pred = self.transformer(
-                #     latent_model_input, timestep=timesteps, class_labels=class_labels_input
-                # ).sample
-                # TODO: major modifications here.
-                noise_pred = self.transformer(latent_model_input, timesteps=timesteps)[0]
+                noise_pred = self.transformer(
+                    latent_model_input,
+                    encoder_hidden_states=prompt_embeds,
+                    timesteps=timesteps,
+                    added_cond_kwargs=added_cond_kwargs,
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:

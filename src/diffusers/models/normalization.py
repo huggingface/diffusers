@@ -85,13 +85,12 @@ class AdaLayerNormSingle(nn.Module):
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
-        size_emb_dim (`int`): The size of the micro-conditioning embeddings.
     """
 
-    def __init__(self, embedding_dim: int, size_emb_dim: int):
+    def __init__(self, embedding_dim: int):
         super().__init__()
 
-        self.emb = CombinedTimestepSizeEmbeddings(embedding_dim, size_emb_dim=size_emb_dim)
+        self.emb = CombinedTimestepSizeEmbeddings(embedding_dim, size_emb_dim=embedding_dim // 3)
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
@@ -99,9 +98,10 @@ class AdaLayerNormSingle(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
-        added_cond_kwargs: Dict[str, torch.Tensor],
+        added_cond_kwargs: Dict[str, torch.Tensor] = None,
         hidden_dtype: Optional[torch.dtype] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # No modulation happening here.
         return self.linear(self.silu(self.emb(timestep, **added_cond_kwargs, hidden_dtype=hidden_dtype)))
 
 
