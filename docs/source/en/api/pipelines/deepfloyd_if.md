@@ -53,8 +53,8 @@ pip install diffusers accelerate transformers safetensors
 
 The following sections give more in-detail examples of how to use IF. Specifically:
 
-- [Text-to-Image Generation](#texttoimage-generation)
-- [Image-to-Image Generation](#text-guided-imagetoimage-generation)
+- [Text-to-Image Generation](#text-to-image-generation)
+- [Image-to-Image Generation](#text-guided-image-to-image-generation)
 - [Inpainting](#text-guided-inpainting-generation)
 - [Reusing model weights](#converting-between-different-pipelines)
 - [Speed optimization](#optimizing-for-speed)
