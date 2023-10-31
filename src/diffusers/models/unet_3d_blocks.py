@@ -43,11 +43,8 @@ def get_down_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
-    temporal_norm_num_groups=32,
-    temporal_cross_attention_dim=None,
     temporal_num_attention_heads=8,
-    temporal_attention_bias=False,
-    temporal_activation_fn="geglu",
+    temporal_cross_attention_dim=None,
     temporal_max_seq_length=32,
 ):
     if down_block_type == "DownBlock3D":
@@ -96,11 +93,8 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            temporal_norm_num_groups=temporal_norm_num_groups,
-            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_num_attention_heads=temporal_num_attention_heads,
-            temporal_attention_bias=temporal_attention_bias,
-            temporal_activation_fn=temporal_activation_fn,
+            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_max_seq_length=temporal_max_seq_length,
         )
     elif down_block_type == "CrossAttnDownBlockMotion":
@@ -123,11 +117,8 @@ def get_down_block(
             only_cross_attention=only_cross_attention,
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
-            temporal_norm_num_groups=temporal_norm_num_groups,
-            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_num_attention_heads=temporal_num_attention_heads,
-            temporal_attention_bias=temporal_attention_bias,
-            temporal_activation_fn=temporal_activation_fn,
+            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_max_seq_length=temporal_max_seq_length,
         )
 
@@ -153,11 +144,8 @@ def get_up_block(
     only_cross_attention=False,
     upcast_attention=False,
     resnet_time_scale_shift="default",
-    temporal_norm_num_groups=32,
-    temporal_cross_attention_dim=None,
     temporal_num_attention_heads=8,
-    temporal_attention_bias=False,
-    temporal_activation_fn="geglu",
+    temporal_cross_attention_dim=None,
     temporal_max_seq_length=32,
 ):
     if up_block_type == "UpBlock3D":
@@ -209,11 +197,8 @@ def get_up_block(
             resnet_groups=resnet_groups,
             resnet_time_scale_shift=resnet_time_scale_shift,
             resolution_idx=resolution_idx,
-            temporal_norm_num_groups=temporal_norm_num_groups,
-            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_num_attention_heads=temporal_num_attention_heads,
-            temporal_attention_bias=temporal_attention_bias,
-            temporal_activation_fn=temporal_activation_fn,
+            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_max_seq_length=temporal_max_seq_length,
         )
     elif up_block_type == "CrossAttnUpBlockMotion":
@@ -237,11 +222,8 @@ def get_up_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             resolution_idx=resolution_idx,
-            temporal_norm_num_groups=temporal_norm_num_groups,
-            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_num_attention_heads=temporal_num_attention_heads,
-            temporal_attention_bias=temporal_attention_bias,
-            temporal_activation_fn=temporal_activation_fn,
+            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_max_seq_length=temporal_max_seq_length,
         )
     raise ValueError(f"{up_block_type} does not exist.")
@@ -853,11 +835,8 @@ class DownBlockMotion(nn.Module):
         output_scale_factor=1.0,
         add_downsample=True,
         downsample_padding=1,
-        temporal_norm_num_groups=32,
+        temporal_num_attention_heads=1,
         temporal_cross_attention_dim=None,
-        temporal_num_attention_heads=8,
-        temporal_attention_bias=False,
-        temporal_activation_fn="geglu",
         temporal_max_seq_length=32,
     ):
         super().__init__()
@@ -884,14 +863,13 @@ class DownBlockMotion(nn.Module):
                 TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
-                    norm_num_groups=temporal_norm_num_groups,
+                    norm_num_groups=resnet_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
-                    attention_bias=temporal_attention_bias,
-                    activation_fn=temporal_activation_fn,
-                    use_positional_embedding=True,
-                    max_seq_length=temporal_max_seq_length,
+                    attention_bias=False,
+                    activation_fn="geglu",
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
-                    apply_framewise_group_norm=True,
                 )
             )
 
@@ -975,11 +953,8 @@ class CrossAttnDownBlockMotion(nn.Module):
         only_cross_attention=False,
         upcast_attention=False,
         attention_type="default",
-        temporal_norm_num_groups=32,
         temporal_cross_attention_dim=None,
         temporal_num_attention_heads=8,
-        temporal_attention_bias=False,
-        temporal_activation_fn="geglu",
         temporal_max_seq_length=32,
     ):
         super().__init__()
@@ -1038,14 +1013,13 @@ class CrossAttnDownBlockMotion(nn.Module):
                 TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
-                    norm_num_groups=temporal_norm_num_groups,
+                    norm_num_groups=resnet_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
-                    attention_bias=temporal_attention_bias,
-                    activation_fn=temporal_activation_fn,
-                    use_positional_embedding=True,
-                    max_seq_length=temporal_max_seq_length,
+                    attention_bias=False,
+                    activation_fn="geglu",
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
-                    apply_framewise_group_norm=True,
                 )
             )
 
@@ -1166,11 +1140,8 @@ class CrossAttnUpBlockMotion(nn.Module):
         only_cross_attention=False,
         upcast_attention=False,
         attention_type="default",
-        temporal_norm_num_groups=32,
         temporal_cross_attention_dim=None,
         temporal_num_attention_heads=8,
-        temporal_attention_bias=False,
-        temporal_activation_fn="geglu",
         temporal_max_seq_length=32,
     ):
         super().__init__()
@@ -1230,14 +1201,13 @@ class CrossAttnUpBlockMotion(nn.Module):
                 TransformerTemporalModel(
                     num_attention_heads=temporal_num_attention_heads,
                     in_channels=out_channels,
-                    norm_num_groups=temporal_norm_num_groups,
+                    norm_num_groups=resnet_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
-                    attention_bias=temporal_attention_bias,
-                    activation_fn=temporal_activation_fn,
-                    use_positional_embedding=True,
-                    max_seq_length=temporal_max_seq_length,
+                    attention_bias=False,
+                    activation_fn="geglu",
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
-                    apply_framewise_group_norm=True,
                 )
             )
 
@@ -1363,8 +1333,6 @@ class UpBlockMotion(nn.Module):
         temporal_norm_num_groups=32,
         temporal_cross_attention_dim=None,
         temporal_num_attention_heads=8,
-        temporal_attention_bias=False,
-        temporal_activation_fn="geglu",
         temporal_max_seq_length=32,
     ):
         super().__init__()
@@ -1396,12 +1364,11 @@ class UpBlockMotion(nn.Module):
                     in_channels=out_channels,
                     norm_num_groups=temporal_norm_num_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
-                    attention_bias=temporal_attention_bias,
-                    activation_fn=temporal_activation_fn,
-                    use_positional_embedding=True,
-                    max_seq_length=temporal_max_seq_length,
+                    attention_bias=False,
+                    activation_fn="geglu",
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
                     attention_head_dim=out_channels // temporal_num_attention_heads,
-                    apply_framewise_group_norm=True,
                 )
             )
 
@@ -1500,11 +1467,8 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         use_linear_projection=False,
         upcast_attention=False,
         attention_type="default",
-        temporal_norm_num_groups=32,
+        temporal_num_attention_heads=1,
         temporal_cross_attention_dim=None,
-        temporal_num_attention_heads=8,
-        temporal_attention_bias=False,
-        temporal_activation_fn="geglu",
         temporal_max_seq_length=32,
     ):
         super().__init__()
@@ -1576,13 +1540,12 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                     num_attention_heads=temporal_num_attention_heads,
                     attention_head_dim=in_channels // temporal_num_attention_heads,
                     in_channels=in_channels,
-                    norm_num_groups=temporal_norm_num_groups,
+                    norm_num_groups=resnet_groups,
                     cross_attention_dim=temporal_cross_attention_dim,
-                    attention_bias=temporal_attention_bias,
-                    use_positional_embedding=True,
-                    activation_fn=temporal_activation_fn,
-                    max_seq_length=temporal_max_seq_length,
-                    apply_framewise_group_norm=True,
+                    attention_bias=False,
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=temporal_max_seq_length,
+                    activation_fn="geglu",
                 )
             )
 

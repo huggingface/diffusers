@@ -20,7 +20,7 @@ from torch import nn
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import get_activation
 from .attention_processor import Attention
-from .embeddings import CombinedTimestepLabelEmbeddings, PositionalEmbedding
+from .embeddings import CombinedTimestepLabelEmbeddings, SinusoidalPositionalEmbedding
 from .lora import LoRACompatibleLinear
 
 
@@ -96,6 +96,10 @@ class BasicTransformerBlock(nn.Module):
             Whether to apply a final dropout after the last feed-forward layer.
         attention_type (`str`, *optional*, defaults to `"default"`):
             The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
+        positional_embeddings (`str`, *optional*, defaults to `None`):
+            The type of positional embeddings to apply to.
+        num_positional_embeddings (`int`, *optional*, defaults to `None`):
+            The maximum number of positional embeddings to apply.
     """
 
     def __init__(
@@ -115,8 +119,8 @@ class BasicTransformerBlock(nn.Module):
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
         attention_type: str = "default",
-        use_positional_embedding: bool = False,
-        max_seq_length: Optional[int] = None,
+        positional_embeddings: Optional[str] = None,
+        num_positional_embeddings: Optional[int] = None,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -130,11 +134,13 @@ class BasicTransformerBlock(nn.Module):
                 f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
             )
 
-        if use_positional_embedding and (max_seq_length is None):
-            raise ValueError("If `use_positional_embedding` is set to `True`, `max_sequence_length` must be defined.")
+        if positional_embeddings and (num_positional_embeddings is None):
+            raise ValueError(
+                "If `positional_embedding` type is defined, `num_positition_embeddings` must also be defined."
+            )
 
-        if use_positional_embedding:
-            self.pos_embed = PositionalEmbedding(dim, max_seq_length=max_seq_length)
+        if positional_embeddings == "sinusoidal":
+            self.pos_embed = SinusoidalPositionalEmbedding(dim, max_seq_length=num_positional_embeddings)
         else:
             self.pos_embed = None
 

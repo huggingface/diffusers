@@ -55,12 +55,6 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             Configure if the `TransformerBlock` attention should contain a bias parameter.
         double_self_attention (`bool`, *optional*):
             Configure if each `TransformerBlock` should contain two self-attention layers.
-        use_positional_embedding (`bool`, *optional*):
-            Whether to apply positional embeddings before each attention layer
-        max_seq_length (`int`, *optional*, defaults to 32):
-            Maximum sequence length for positional embeddings.
-        apply_framewise_group_norm (`bool`, *optional*, defaults to `False`):
-            Whether to apply group normalization to each frame individually.
     """
 
     @register_to_config
@@ -74,12 +68,11 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         cross_attention_dim: Optional[int] = None,
         attention_bias: bool = False,
-        sample_size: Optional[int] = None,
         activation_fn: str = "geglu",
         norm_elementwise_affine: bool = True,
         double_self_attention: bool = True,
-        use_positional_embedding: bool = False,
-        max_seq_length: int = 32,
+        positional_embeddings: Optional[str] = None,
+        num_positional_embeddings: Optional[int] = None,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -105,8 +98,8 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
                     attention_bias=attention_bias,
                     double_self_attention=double_self_attention,
                     norm_elementwise_affine=norm_elementwise_affine,
-                    use_positional_embedding=use_positional_embedding,
-                    max_seq_length=max_seq_length,
+                    positional_embeddings=positional_embeddings,
+                    num_positional_embeddings=num_positional_embeddings,
                 )
                 for d in range(num_layers)
             ]

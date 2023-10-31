@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -30,6 +30,7 @@ from .attention_processor import (
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .transformer_temporal import TransformerTemporalModel
+from .unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unet_2d_condition import UNet2DConditionModel
 from .unet_3d_blocks import (
     CrossAttnDownBlockMotion,
@@ -71,8 +72,8 @@ class MotionModules(nn.Module):
                     attention_bias=attention_bias,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=in_channels // num_attention_heads,
-                    use_positional_embedding=True,
-                    max_seq_length=max_seq_length,
+                    positional_embeddings="sinusoidal",
+                    num_positional_embeddings=max_seq_length,
                 )
             )
 
@@ -90,6 +91,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         motion_activation_fn="geglu",
         motion_norm_num_groups=32,
         motion_max_seq_length=32,
+        use_motion_mid_block=True,
     ):
         """Container to store AnimateDiff Motion Modules
 
@@ -125,16 +127,19 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                 )
             )
 
-        self.mid_block = MotionModules(
-            in_channels=block_out_channels[-1],
-            norm_num_groups=motion_norm_num_groups,
-            cross_attention_dim=motion_cross_attention_dim,
-            activation_fn=motion_activation_fn,
-            attention_bias=motion_attention_bias,
-            num_attention_heads=motion_num_attention_heads,
-            layers_per_block=motion_mid_block_layers_per_block,
-            max_seq_length=motion_max_seq_length,
-        )
+        if use_motion_mid_block:
+            self.mid_block = MotionModules(
+                in_channels=block_out_channels[-1],
+                norm_num_groups=motion_norm_num_groups,
+                cross_attention_dim=motion_cross_attention_dim,
+                activation_fn=motion_activation_fn,
+                attention_bias=motion_attention_bias,
+                num_attention_heads=motion_num_attention_heads,
+                layers_per_block=motion_mid_block_layers_per_block,
+                max_seq_length=motion_max_seq_length,
+            )
+        else:
+            self.mid_block = None
 
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
@@ -199,13 +204,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         attention_head_dim: Union[int, Tuple[int]] = 8,
         use_linear_projection: bool = False,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
-        motion_norm_num_groups: Optional[int] = 32,
         motion_cross_attention_dim: Optional[int] = None,
-        motion_num_attention_heads: Optional[int] = 8,
-        motion_attention_bias: bool = False,
-        motion_activation_fn: str = "geglu",
         motion_max_seq_length: Optional[int] = 32,
-        motion_apply_framewise_groupnorm: bool = True,
+        motion_num_attention_heads: int = 8,
+        use_motion_mid_block: int = True,
     ):
         super().__init__()
 
@@ -288,33 +290,41 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 downsample_padding=downsample_padding,
                 use_linear_projection=use_linear_projection,
                 dual_cross_attention=False,
-                temporal_norm_num_groups=motion_norm_num_groups,
-                temporal_cross_attention_dim=motion_cross_attention_dim,
                 temporal_num_attention_heads=motion_num_attention_heads,
-                temporal_attention_bias=motion_attention_bias,
-                temporal_activation_fn=motion_activation_fn,
+                temporal_cross_attention_dim=motion_cross_attention_dim,
                 temporal_max_seq_length=motion_max_seq_length,
             )
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = UNetMidBlockCrossAttnMotion(
-            in_channels=block_out_channels[-1],
-            temb_channels=time_embed_dim,
-            resnet_eps=norm_eps,
-            resnet_act_fn=act_fn,
-            output_scale_factor=mid_block_scale_factor,
-            cross_attention_dim=cross_attention_dim,
-            num_attention_heads=num_attention_heads[-1],
-            resnet_groups=norm_num_groups,
-            dual_cross_attention=False,
-            temporal_norm_num_groups=motion_norm_num_groups,
-            temporal_cross_attention_dim=motion_cross_attention_dim,
-            temporal_num_attention_heads=motion_num_attention_heads,
-            temporal_attention_bias=motion_attention_bias,
-            temporal_activation_fn=motion_activation_fn,
-            temporal_max_seq_length=motion_max_seq_length,
-        )
+        if use_motion_mid_block:
+            self.mid_block = UNetMidBlockCrossAttnMotion(
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                cross_attention_dim=cross_attention_dim,
+                num_attention_heads=num_attention_heads[-1],
+                resnet_groups=norm_num_groups,
+                dual_cross_attention=False,
+                temporal_cross_attention_dim=motion_cross_attention_dim,
+                temporal_num_attention_heads=motion_num_attention_heads,
+                temporal_max_seq_length=motion_max_seq_length,
+            )
+
+        else:
+            self.mid_block = UNetMidBlock2DCrossAttn(
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                cross_attention_dim=cross_attention_dim,
+                num_attention_heads=num_attention_heads[-1],
+                resnet_groups=norm_num_groups,
+                dual_cross_attention=False,
+            )
 
         # count how many layers upsample the images
         self.num_upsamplers = 0
@@ -354,11 +364,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 dual_cross_attention=False,
                 resolution_idx=i,
                 use_linear_projection=use_linear_projection,
-                temporal_norm_num_groups=motion_norm_num_groups,
-                temporal_cross_attention_dim=motion_cross_attention_dim,
                 temporal_num_attention_heads=motion_num_attention_heads,
-                temporal_attention_bias=motion_attention_bias,
-                temporal_activation_fn=motion_activation_fn,
+                temporal_cross_attention_dim=motion_cross_attention_dim,
                 temporal_max_seq_length=motion_max_seq_length,
             )
             self.up_blocks.append(up_block)
@@ -411,14 +418,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         config["up_block_types"] = up_blocks
 
         if has_motion_adapter:
-            config["motion_norm_num_groups"] = motion_adapter.config["motion_norm_num_groups"]
             config["motion_cross_attention_dim"] = motion_adapter.config["motion_cross_attention_dim"]
             config["motion_num_attention_heads"] = motion_adapter.config["motion_num_attention_heads"]
-            config["motion_attention_bias"] = motion_adapter.config["motion_attention_bias"]
-            config["motion_activation_fn"] = motion_adapter.config["motion_activation_fn"]
             config["motion_max_seq_length"] = motion_adapter.config["motion_max_seq_length"]
-            config["motion_layers_per_block"] = motion_adapter.config["motion_layers_per_block"]
-            config["motion_mid_block_layers_per_block"] = motion_adapter.config["motion_mid_block_layers_per_block"]
+            config["use_motion_mid_block"] = motion_adapter.config["use_motion_mid_block"]
 
         model = cls.from_config(config)
 
@@ -455,6 +458,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if has_motion_adapter:
             model.load_motion_modules(motion_adapter)
 
+        # ensure that the Motion UNet is the same dtype as the UNet2DConditionModel
+        model.to(unet.dtype)
+
         return model
 
     def freeze_unet2d_params(self):
@@ -488,7 +494,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for i, up_block in enumerate(motion_adapter.up_blocks):
             self.up_blocks[i].motion_modules.load_state_dict(up_block.motion_modules.state_dict())
 
-        self.mid_block.motion_modules.load_state_dict(motion_adapter.mid_block.motion_modules.state_dict())
+        # to support older motion modules that don't have a mid_block
+        if hasattr(self.mid_block, "motion_modules"):
+            self.mid_block.motion_modules.load_state_dict(motion_adapter.mid_block.motion_modules.state_dict())
 
     def save_motion_modules(
         self,
@@ -509,13 +517,14 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         adapter = MotionAdapter(
             block_out_channels=self.config["block_out_channels"],
-            motion_norm_num_groups=self.config["motion_norm_num_groups"],
-            motion_cross_attention_dim=self.config["motion_cross_attention_dim"],
-            motion_num_attention_heads=self.config["motion_num_attention_heads"],
-            motion_attention_bias=self.config["motion_attention_bias"],
-            motion_activation_fn=self.config["motion_activation_fn"],
-            motion_max_seq_length=self.config["motion_max_seq_length"],
             motion_layers_per_block=self.config["layers_per_block"],
+            motion_norm_num_groups=self.config["norm_num_groups"],
+            motion_num_attention_heads=self.config["motion_num_attention_heads"],
+            motion_cross_attention_dim=self.config["motion_cross_attention_dim"],
+            motion_attention_bias=False,
+            motion_activation_fn="geglu",
+            motion_max_seq_length=self.config["motion_max_seq_length"],
+            use_motion_mid_block=self.config["use_motion_mid_block"],
         )
         adapter.load_state_dict(motion_state_dict)
         adapter.save_pretrained(
@@ -551,72 +560,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             fn_recursive_add_processors(name, module, processors)
 
         return processors
-
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
-    def set_attention_slice(self, slice_size):
-        r"""
-        Enable sliced attention computation.
-
-        When this option is enabled, the attention module splits the input tensor in slices to compute attention in
-        several steps. This is useful for saving some memory in exchange for a small decrease in speed.
-
-        Args:
-            slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
-                When `"auto"`, input to the attention heads is halved, so attention is computed in two steps. If
-                `"max"`, maximum amount of memory is saved by running only one slice at a time. If a number is
-                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
-                must be a multiple of `slice_size`.
-        """
-        sliceable_head_dims = []
-
-        def fn_recursive_retrieve_sliceable_dims(module: torch.nn.Module):
-            if hasattr(module, "set_attention_slice"):
-                sliceable_head_dims.append(module.sliceable_head_dim)
-
-            for child in module.children():
-                fn_recursive_retrieve_sliceable_dims(child)
-
-        # retrieve number of attention layers
-        for module in self.children():
-            fn_recursive_retrieve_sliceable_dims(module)
-
-        num_sliceable_layers = len(sliceable_head_dims)
-
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = [dim // 2 for dim in sliceable_head_dims]
-        elif slice_size == "max":
-            # make smallest slice possible
-            slice_size = num_sliceable_layers * [1]
-
-        slice_size = num_sliceable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
-
-        if len(slice_size) != len(sliceable_head_dims):
-            raise ValueError(
-                f"You have provided {len(slice_size)}, but {self.config} has {len(sliceable_head_dims)} different"
-                f" attention layers. Make sure to match `len(slice_size)` to be {len(sliceable_head_dims)}."
-            )
-
-        for i in range(len(slice_size)):
-            size = slice_size[i]
-            dim = sliceable_head_dims[i]
-            if size is not None and size > dim:
-                raise ValueError(f"size {size} has to be smaller or equal to {dim}.")
-
-        # Recursively walk through all the children.
-        # Any children which exposes the set_attention_slice method
-        # gets the message
-        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
-            if hasattr(module, "set_attention_slice"):
-                module.set_attention_slice(slice_size.pop())
-
-            for child in module.children():
-                fn_recursive_set_attention_slice(child, slice_size)
-
-        reversed_slice_size = list(reversed(slice_size))
-        for module in self.children():
-            fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(

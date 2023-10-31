@@ -1,8 +1,9 @@
 import gc
 import unittest
-
-import torch
+import diffusers
+from diffusers.utils import logging
 import numpy as np
+import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -13,18 +14,33 @@ from diffusers import (
     UNet2DConditionModel,
     UNetMotionModel,
 )
+from diffusers.utils.testing_utils import numpy_cosine_similarity_distance, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
-from diffusers.utils.testing_utils import torch_device, slow, require_torch_gpu, numpy_cosine_similarity_distance
+from ..test_pipelines_common import PipelineTesterMixin
 
 
-class AnimateDiffPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+def to_np(tensor):
+    if isinstance(tensor, torch.Tensor):
+        tensor = tensor.detach().cpu().numpy()
+
+    return tensor
+
+
+class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AnimateDiffPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "generator",
+            "latents",
+            "return_dict",
+            "callback",
+            "callback_steps",
+        ]
+    )
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -42,9 +58,8 @@ class AnimateDiffPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixi
         scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
-            beta_schedule="scaled_linear",
+            beta_schedule="linear",
             clip_sample=False,
-            set_alpha_to_one=False,
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
@@ -69,7 +84,12 @@ class AnimateDiffPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixi
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        motion_adapter = MotionAdapter(block_out_channels=(4, 8), motion_layers_per_block=2, motion_norm_num_groups=2)
+        motion_adapter = MotionAdapter(
+            block_out_channels=(32, 64),
+            motion_layers_per_block=2,
+            motion_norm_num_groups=2,
+            motion_num_attention_heads=4,
+        )
 
         components = {
             "unet": unet,
@@ -78,8 +98,6 @@ class AnimateDiffPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixi
             "motion_adapter": motion_adapter,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
-            "safety_checker": None,
-            "feature_extractor": None,
         }
         return components
 
@@ -94,15 +112,112 @@ class AnimateDiffPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixi
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 7.5,
-            "output_type": "np",
+            "output_type": "pt",
         }
         return inputs
 
     def test_motion_unet_loading(self):
         components = self.get_dummy_components()
-        pipe = AnimateDiffPipeline.from_pretrained(**components)
+        pipe = AnimateDiffPipeline(**components)
 
         assert isinstance(pipe.unet, UNetMotionModel)
+
+    @unittest.skip("Attention slicing is not enabled in this pipeline")
+    def test_attention_slicing_forward_pass(self):
+        pass
+
+    def test_inference_batch_single_identical(
+        self,
+        batch_size=2,
+        expected_max_diff=1e-4,
+        additional_params_copy_to_batched_inputs=["num_inference_steps"],
+    ):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for components in pipe.components.values():
+            if hasattr(components, "set_default_attn_processor"):
+                components.set_default_attn_processor()
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs(torch_device)
+        # Reset generator in case it is has been used in self.get_dummy_inputs
+        inputs["generator"] = self.get_generator(0)
+
+        logger = logging.get_logger(pipe.__module__)
+        logger.setLevel(level=diffusers.logging.FATAL)
+
+        # batchify inputs
+        batched_inputs = {}
+        batched_inputs.update(inputs)
+
+        for name in self.batch_params:
+            if name not in inputs:
+                continue
+
+            value = inputs[name]
+            if name == "prompt":
+                len_prompt = len(value)
+                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
+                batched_inputs[name][-1] = 100 * "very long"
+
+            else:
+                batched_inputs[name] = batch_size * [value]
+
+        if "generator" in inputs:
+            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
+
+        if "batch_size" in inputs:
+            batched_inputs["batch_size"] = batch_size
+
+        for arg in additional_params_copy_to_batched_inputs:
+            batched_inputs[arg] = inputs[arg]
+
+        output = pipe(**inputs)
+        output_batch = pipe(**batched_inputs)
+
+        assert output_batch[0].shape[0] == batch_size
+
+        max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
+        assert max_diff < expected_max_diff
+
+    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
+    def test_to_device(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.to("cpu")
+        # pipeline creates a new motion UNet under the hood. So we need to check the device from pipe.components
+        model_devices = [
+            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+        ]
+        self.assertTrue(all(device == "cpu" for device in model_devices))
+
+        output_cpu = pipe(**self.get_dummy_inputs("cpu"))[0]
+        self.assertTrue(np.isnan(output_cpu).sum() == 0)
+
+        pipe.to("cuda")
+        model_devices = [
+            component.device.type for component in pipe.components.values() if hasattr(component, "device")
+        ]
+        self.assertTrue(all(device == "cuda" for device in model_devices))
+
+        output_cuda = pipe(**self.get_dummy_inputs("cuda"))[0]
+        self.assertTrue(np.isnan(to_np(output_cuda)).sum() == 0)
+
+    def test_to_dtype(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        # pipeline creates a new motion UNet under the hood. So we need to check the dtype from pipe.components
+        model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
+        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
+
+        pipe.to(torch_dtype=torch.float16)
+        model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
+        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
 
 @slow
@@ -115,8 +230,7 @@ class AnimateDiffPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_animatediff(self):
-        # make sure here that pndm scheduler skips prk
-        adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter-test")
+        adapter = MotionAdapter.from_pretrained("dn6/animatediff-test")
         pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
         pipe = pipe.to(torch_device)
         pipe.scheduler = DDIMScheduler(

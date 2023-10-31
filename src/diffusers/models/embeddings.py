@@ -249,7 +249,7 @@ class GaussianFourierProjection(nn.Module):
         return out
 
 
-class PositionalEmbedding(nn.Module):
+class SinusoidalPositionalEmbedding(nn.Module):
     """Apply positional information to a sequence of embeddings.
 
     Takes in a sequence of embeddings with shape (batch_size, seq_length, embed_dim) and adds positional embeddings to
