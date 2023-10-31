@@ -49,10 +49,10 @@ def main(args):
     state_dict["adaln_single.emb.resolution_embedder.mlp.2.weight"] = state_dict["csize_embedder.mlp.2.weight"]
     state_dict["adaln_single.emb.resolution_embedder.mlp.2.bias"] = state_dict["csize_embedder.mlp.2.bias"]
     # Aspect ratio.
-    state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict["csize_embedder.mlp.0.weight"]
-    state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.bias"] = state_dict["csize_embedder.mlp.0.bias"]
-    state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict["csize_embedder.mlp.2.weight"]
-    state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.bias"] = state_dict["csize_embedder.mlp.2.bias"]
+    state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict["ar_embedder.mlp.0.weight"]
+    state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.bias"] = state_dict["ar_embedder.mlp.0.bias"]
+    state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict["ar_embedder.mlp.2.weight"]
+    state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.bias"] = state_dict["ar_embedder.mlp.2.bias"]
     # Shared norm.
     state_dict["adaln_single.linear.weight"] = state_dict["t_block.1.weight"]
     state_dict["adaln_single.linear.bias"] = state_dict["t_block.1.bias"]
