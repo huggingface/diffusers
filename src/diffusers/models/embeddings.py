@@ -747,6 +747,7 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
         resolution = self.resolution_embedder(resolution, batch_size=batch_size)
         aspect_ratio = self.aspect_ratio_embedder(aspect_ratio, batch_size=batch_size)
         conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
+        print(f"Final time embedding: {conditioning[0, :3]} {conditioning.dtype}")
 
         return conditioning
 
