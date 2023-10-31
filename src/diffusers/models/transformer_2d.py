@@ -372,7 +372,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
                 )
-                print(f"{i}: {hidden_states[0, :3, :3, -1]}")
+                print(f"{i}: {hidden_states.shape}")
 
         # 3. Output
         if self.is_input_continuous:
