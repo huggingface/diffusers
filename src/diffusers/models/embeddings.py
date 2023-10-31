@@ -718,7 +718,7 @@ class SizeEmbedder(nn.Module):
         current_batch_size, dims = size.shape[0], size.shape[1]
         size = size.reshape(-1)
 
-        size_freq = get_timestep_embedding(size, self.frequency_embedding_size, flip_sin_to_cos=True)
+        size_freq = get_timestep_embedding(size, self.frequency_embedding_size, downscale_freq_shift=0, flip_sin_to_cos=True)
         size_emb = self.mlp(size_freq)
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
         return size_emb
@@ -735,7 +735,7 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
     def __init__(self, embedding_dim, size_emb_dim):
         super().__init__()
 
-        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=1)
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
         self.resolution_embedder = SizeEmbedder(size_emb_dim)
         self.aspect_ratio_embedder = SizeEmbedder(size_emb_dim)
