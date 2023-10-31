@@ -1175,6 +1175,8 @@ class AttnProcessor2_0:
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
     ) -> torch.FloatTensor:
+        if encoder_hidden_states is not None:
+            print(f"From cross attention hidden_states, encoder_hidden_states: {hidden_states.shape}, {encoder_hidden_states.shape}")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
