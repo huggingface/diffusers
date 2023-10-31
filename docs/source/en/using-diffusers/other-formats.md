@@ -28,7 +28,7 @@ This guide will show you how to convert other Stable Diffusion formats to be com
 
 The checkpoint - or `.ckpt` - format is commonly used to store and save models. The `.ckpt` file contains the entire model and is typically several GBs in size. While you can load and use a `.ckpt` file directly with the [`~StableDiffusionPipeline.from_single_file`] method, it is generally better to convert the `.ckpt` file to 🤗 Diffusers so both formats are available.
 
-There are two options for converting a `.ckpt` file; use a Space to convert the checkpoint or convert the `.ckpt` file with a script.
+There are two options for converting a `.ckpt` file: use a Space to convert the checkpoint or convert the `.ckpt` file with a script.
 
 ### Convert with a Space
 
@@ -64,9 +64,9 @@ git checkout pr/13
 
 3. There are several input arguments to configure in the conversion script, but the most important ones are:
 
-    - `checkpoint_path`: The path to the `.ckpt` file to convert.
-    - `original_config_file`: A YAML file defining the configuration of the original architecture. If you can't find this file, try searching for the YAML file in the GitHub repository where you found the `.ckpt` file.
-    - `dump_path`: The path to the converted model.
+    - `checkpoint_path`: the path to the `.ckpt` file to convert.
+    - `original_config_file`: a YAML file defining the configuration of the original architecture. If you can't find this file, try searching for the YAML file in the GitHub repository where you found the `.ckpt` file.
+    - `dump_path`: the path to the converted model.
 
         For example, you can take the `cldm_v15.yaml` file from the [ControlNet](https://github.com/lllyasviel/ControlNet/tree/main/models) repository because the TemporalNet model is a Stable Diffusion v1.5 and ControlNet model.
 
@@ -94,13 +94,6 @@ git push origin pr/13:refs/pr/13
 optimization techniques](https://huggingface.co/docs/diffusers/optimization/fp16).
 
 The [Convert KerasCV](https://huggingface.co/spaces/sayakpaul/convert-kerascv-sd-diffusers) Space converts `.pb` or `.h5` files to PyTorch, and then wraps them in a [`StableDiffusionPipeline`] so it is ready for inference. The converted checkpoint is stored in a repository on the Hugging Face Hub.
-<!--Convert KerasCV:
-runtime error
-failed to create containerd task: failed to create shim task: context deadline exceeded: unknown
-
-Container logs:
-
-Failed to retrieve error logs: Failed to load logs: Not Found. Logs are persisted for 30 days after the Space stops running.-->
 
 For this example, let's convert the [`sayakpaul/textual-inversion-kerasio`](https://huggingface.co/sayakpaul/textual-inversion-kerasio/tree/main) checkpoint which was trained with Textual Inversion. It uses the special token `<my-funny-cat>` to personalize images with cats.
 
@@ -108,7 +101,7 @@ The Convert KerasCV Space allows you to input the following:
 
 * Your Hugging Face token.
 * Paths to download the UNet and text encoder weights from. Depending on how the model was trained, you don't necessarily need to provide the paths to both the UNet and text encoder. For example, Textual Inversion only requires the embeddings from the text encoder and a text-to-image model only requires the UNet weights.
-* Placeholder token is only applicable for Textual Inversion models.
+* Placeholder token is only applicable for textual inversion models.
 * The `output_repo_prefix` is the name of the repository where the converted model is stored.
 
 Click the **Submit** button to automatically convert the KerasCV checkpoint! Once the checkpoint is successfully converted, you'll see a link to the new repository containing the converted checkpoint. Follow the link to the new repository, and you'll see the Convert KerasCV Space generated a model card with an inference widget to try out the converted model.
@@ -123,7 +116,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 )
 ```
 
-Then you can generate an image like:
+Then, you can generate an image like:
 
 ```py
 from diffusers import DiffusionPipeline
