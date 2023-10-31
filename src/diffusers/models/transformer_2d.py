@@ -335,9 +335,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
-            print(f"Before embedding: {hidden_states.shape}")
             hidden_states = self.pos_embed(hidden_states)
-            print(f"After embedding: {hidden_states.shape}")
             if self.adaln_single is not None:
                 if added_cond_kwargs is None:
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
@@ -351,7 +349,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.squeeze(1).view(1, -1, hidden_states.shape[-1])
 
-        print(f"Initial shape of X, Y: {hidden_states.shape}, {encoder_hidden_states.shape}")
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
@@ -412,9 +409,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
                 hidden_states = self.proj_out_2(hidden_states)
             elif self.config.output_type == "pixart_dit":
-                print(
-                    f"At the output block scale_shift_table, timestep: {self.scale_shift_table[None].shape}, {embedded_timestep[:, None].shape}"
-                )
                 shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
                 hidden_states = self.norm_out(hidden_states)
                 # Modulation
@@ -423,7 +417,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = hidden_states.squeeze(1)
 
             # unpatchify
-            print(f"Before unpatchify: {hidden_states.shape}")
             height = width = int(hidden_states.shape[1] ** 0.5)
             hidden_states = hidden_states.reshape(
                 shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
