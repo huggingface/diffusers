@@ -138,7 +138,7 @@ class BasicTransformerBlock(nn.Module):
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
-        elif caption_channels:
+        elif caption_channels is not None:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
