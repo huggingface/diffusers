@@ -265,8 +265,8 @@ class SchedulerCommonTest(unittest.TestCase):
         timestep = scheduler.timesteps[0]
         return timestep
 
-    # NOTE: currently taking the convention that default_timestep_2 > default_timestep (alternatively,
-    # default_timestep_2 comes earlier in the timestep schedule than default_timestep)
+    # NOTE: currently taking the convention that default_timestep > default_timestep_2 (alternatively,
+    # default_timestep comes earlier in the timestep schedule than default_timestep_2)
     @property
     def default_timestep_2(self):
         kwargs = dict(self.forward_default_kwargs)
@@ -535,8 +535,8 @@ class SchedulerCommonTest(unittest.TestCase):
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
-        timestep_0 = self.default_timestep_2
-        timestep_1 = self.default_timestep
+        timestep_0 = self.default_timestep
+        timestep_1 = self.default_timestep_2
 
         for scheduler_class in self.scheduler_classes:
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
