@@ -36,7 +36,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Resolutions 512,256,128,64,32,16,8
 
 
-
 class UNet2DSISModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
@@ -190,7 +189,14 @@ class UNet2DSISModel(ModelMixin, ConfigMixin):
             "out_channels": out_channels,
             "cls_count": cls_count,
             "img_size": 256,
-            "down_block_types": ("ConvBlock", "DownBlock", "DownBlock", "DownAttnBlock", "DownAttnBlock", "DownAttnBlock"),
+            "down_block_types": (
+                "ConvBlock",
+                "DownBlock",
+                "DownBlock",
+                "DownAttnBlock",
+                "DownAttnBlock",
+                "DownAttnBlock",
+            ),
             "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "UpBlock", "UpBlock", "ConvBlock"),
             "block_out_channels": (128, 128, 256, 256, 512, 512),
         }
@@ -209,7 +215,15 @@ class UNet2DSISModel(ModelMixin, ConfigMixin):
                 "DownAttnBlock",
                 "DownAttnBlock",
             ),
-            "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "UpBlock", "UpBlock", "UpBlock", "ConvBlock"),
+            "up_block_types": (
+                "UpAttnBlock",
+                "UpAttnBlock",
+                "UpAttnBlock",
+                "UpBlock",
+                "UpBlock",
+                "UpBlock",
+                "ConvBlock",
+            ),
             "block_out_channels": (64, 128, 128, 256, 256, 512, 512),
         }
 

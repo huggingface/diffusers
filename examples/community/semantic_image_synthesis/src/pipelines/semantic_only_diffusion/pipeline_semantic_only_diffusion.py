@@ -21,7 +21,7 @@ from diffusers.pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineO
 from diffusers.schedulers import DDPMScheduler
 from diffusers.utils.torch_utils import randn_tensor
 
-from ...models import UNet2DSISModel,AutoencoderKL
+from ...models import AutoencoderKL, UNet2DSISModel
 
 
 class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
@@ -39,9 +39,9 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
     """
     unet: UNet2DSISModel
     scheduler: DDPMScheduler
-    vae:AutoencoderKL = None
+    vae: AutoencoderKL = None
 
-    def __init__(self, unet: UNet2DSISModel, scheduler: DDPMScheduler,vae: AutoencoderKL=None):
+    def __init__(self, unet: UNet2DSISModel, scheduler: DDPMScheduler, vae: AutoencoderKL = None):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
         if vae is not None:
@@ -87,13 +87,12 @@ class SemanticOnlyDiffusionPipeline(DiffusionPipeline):
         img_depth = self.unet.config.in_channels
         shape = (batch_size, img_depth, img_size, img_size)
 
-
         # We reshape the segmentation map to match the diffusion size.
-        while len(segmap.shape)<4:
+        while len(segmap.shape) < 4:
             segmap = segmap.unsqueeze(1)
         segmap = nn.UpsamplingNearest2d(size=shape[-2:])(segmap)
         model = self.unet
-        
+
         sample = randn_tensor(shape, generator=generator, device=generator.device) * self.scheduler.init_noise_sigma
         sample = sample.to(self.device)
         self.scheduler.set_timesteps(num_inference_steps)

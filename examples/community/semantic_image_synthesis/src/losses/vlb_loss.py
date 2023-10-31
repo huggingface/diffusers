@@ -49,7 +49,7 @@ def discretized_gaussian_log_likelihood(x, means, log_scales):
 
 
 class VLBLoss(nn.Module):
-    def __init__(self,discrete_L0:bool=True):
+    def __init__(self, discrete_L0: bool = True):
         """Compute the VLB Loss
 
         Args:
@@ -100,18 +100,19 @@ class VLBLoss(nn.Module):
         if self.discrete_L0:
             l_0 = -discretized_gaussian_log_likelihood(x_0, p_mean, 0.5 * p_log_var)
         else:
-            l_0 = nn.MSELoss(reduction='none')(x_0,p_mean)
+            l_0 = nn.MSELoss(reduction="none")(x_0, p_mean)
         l_0_mean = l_0.reshape(x_0.shape[0], -1).mean(dim=1)
         vlb_loss_batch = torch.where((t > 0), kl_div_mean, l_0_mean).mean()
         return vlb_loss_batch
 
-if __name__=='__main__':
-    p_mean = torch.randn((2,3,122,122))
-    p_var = torch.randn((2,3,122,122))
-    q_mean = torch.randn((2,3,122,122))
-    q_var = torch.randn((2,3,122,122))
-    x_0 = torch.randn((2,3,122,122))
-    t = torch.tensor([0,2])
-    loss = VLBLoss(False).forward(p_mean,p_var,q_mean,q_var,x_0,t)
-    loss = VLBLoss(True).forward(p_mean,p_var,q_mean,q_var,x_0,t)
-    print('terminé')
+
+if __name__ == "__main__":
+    p_mean = torch.randn((2, 3, 122, 122))
+    p_var = torch.randn((2, 3, 122, 122))
+    q_mean = torch.randn((2, 3, 122, 122))
+    q_var = torch.randn((2, 3, 122, 122))
+    x_0 = torch.randn((2, 3, 122, 122))
+    t = torch.tensor([0, 2])
+    loss = VLBLoss(False).forward(p_mean, p_var, q_mean, q_var, x_0, t)
+    loss = VLBLoss(True).forward(p_mean, p_var, q_mean, q_var, x_0, t)
+    print("terminé")

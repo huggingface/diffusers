@@ -3,36 +3,36 @@
 import argparse
 import math
 import os
+import shutil
+from datetime import datetime
+from typing import List
 
-
+import lpips
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import DataLoader,Subset
-
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from diffusers.utils.import_utils import is_bitsandbytes_available
-
+from PIL import Image as PIL_Image
+from sis_dataset import CELEBAHQ_DICT, SISDataset
+from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
-from typing import List
-import shutil
 
 from diffusers.optimization import get_scheduler
 from diffusers.utils import is_wandb_available
-from sis_dataset import CELEBAHQ_DICT, SISDataset
-from src.models import AutoencoderKL,AutoencoderSIS
+from diffusers.utils.import_utils import is_bitsandbytes_available
+from src.models import AutoencoderSIS
 
-from datetime import datetime
-import lpips
 
 if is_wandb_available():
     import wandb
 
-def parse_bool(str:str):
-    return str.upper()=="TRUE"
+
+def parse_bool(str: str):
+    return str.upper() == "TRUE"
+
 
 logger = get_logger(__name__, log_level="INFO")
 parser = argparse.ArgumentParser(description="VAE training script.")
@@ -40,9 +40,11 @@ parser = argparse.ArgumentParser(description="VAE training script.")
 parser.add_argument("--dataset_img_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/img/")
 parser.add_argument("--dataset_ann_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/mask/")
 parser.add_argument("--dataset_img_size", type=int, default=128)
-parser.add_argument("--vae_spacial_compression", type=int, default=4,
-                    help="Should be a power of 2")
-parser.add_argument("--output_dir",type=str,default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/vae",
+parser.add_argument("--vae_spacial_compression", type=int, default=4, help="Should be a power of 2")
+parser.add_argument(
+    "--output_dir",
+    type=str,
+    default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/vae",
     help="The output directory where the model predictions and checkpoints will be written.",
 )
 # Training Management
@@ -101,7 +103,10 @@ parser.add_argument(
         " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
     ),
 )
-parser.add_argument("--lambda_kl",type=float,default=1e-6,
+parser.add_argument(
+    "--lambda_kl",
+    type=float,
+    default=1e-6,
     help="Scaling factor for the Kullback-Leibler divergence penalty term.",
 )
 parser.add_argument(
@@ -135,37 +140,38 @@ parser.add_argument(
 parser.add_argument("--seed", type=int, default=42, help="A seed for reproducible training.")
 parser.add_argument("--debug", action="store_true", default=False)
 
+
 def main(
-        dataset_img_dir:str,
-        dataset_ann_dir:str,
-        dataset_img_size:str,
-        vae_spacial_compression:int,
-        output_dir:str,
-        train_batch_size:int,
-        max_train_steps:int,
-        vae_train_sampling:bool,
-        gradient_accumulation_steps:int,
-        gradient_checkpointing:int,
-        learning_rate:float,
-        scale_lr:bool,
-        lr_scheduler:str,
-        lr_warmup_steps:int,
-        use_8bit_adam:bool,
-        optim_weight_decay:float,
-        optim_max_grad_norm:float,
-        mixed_precision:str,
-        lambda_kl:float,
-        lambda_lpips:float,
-        val_every_nepochs:int,
-        val_num_samples:int,
-        tracker_name:List[str],
-        checkpointing_steps:int,
-        checkpointing_total_limit:int,
-        resume_from_checkpoint:str,
-        seed:int,
-        debug: bool = False,
-        all_args:dict=None
-    ):
+    dataset_img_dir: str,
+    dataset_ann_dir: str,
+    dataset_img_size: str,
+    vae_spacial_compression: int,
+    output_dir: str,
+    train_batch_size: int,
+    max_train_steps: int,
+    vae_train_sampling: bool,
+    gradient_accumulation_steps: int,
+    gradient_checkpointing: int,
+    learning_rate: float,
+    scale_lr: bool,
+    lr_scheduler: str,
+    lr_warmup_steps: int,
+    use_8bit_adam: bool,
+    optim_weight_decay: float,
+    optim_max_grad_norm: float,
+    mixed_precision: str,
+    lambda_kl: float,
+    lambda_lpips: float,
+    val_every_nepochs: int,
+    val_num_samples: int,
+    tracker_name: List[str],
+    checkpointing_steps: int,
+    checkpointing_total_limit: int,
+    resume_from_checkpoint: str,
+    seed: int,
+    debug: bool = False,
+    all_args: dict = None,
+):
     if debug:
         NMAX = 100
     else:
@@ -217,12 +223,13 @@ def main(
     # Load Model
     input_channels = 3
     config = AutoencoderSIS.get_config(
-        sample_size = dataset_img_size,
-        compression = vae_spacial_compression,
-        in_channels = input_channels,
-        out_channels = input_channels)
+        sample_size=dataset_img_size,
+        compression=vae_spacial_compression,
+        in_channels=input_channels,
+        out_channels=input_channels,
+    )
     vae = AutoencoderSIS(**config)
-    vae:AutoencoderSIS
+    vae: AutoencoderSIS
     vae.requires_grad_(True)
 
     # In order to save model correctly...
@@ -232,8 +239,8 @@ def main(
                 model.save_pretrained(os.path.join(output_dir, "vae"))
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
-    def load_model_hook(models: List[AutoencoderSIS], input_dir):
 
+    def load_model_hook(models: List[AutoencoderSIS], input_dir):
         for i in range(len(models)):
             # pop models so that they are not loaded again
             model = models.pop()
@@ -251,26 +258,20 @@ def main(
         vae.enable_gradient_checkpointing()
 
     if scale_lr:
-        learning_rate = (
-            learning_rate
-            * gradient_accumulation_steps
-            * train_batch_size
-            * accelerator.num_processes
-        )
+        learning_rate = learning_rate * gradient_accumulation_steps * train_batch_size * accelerator.num_processes
     if is_bitsandbytes_available() and use_8bit_adam:
         import bitsandbytes as bnb
 
         optimizer_class = bnb.optim.AdamW8bit
     else:
         optimizer_class = torch.optim.AdamW
-    optimizer = optimizer_class(vae.parameters(), lr=learning_rate,weight_decay=optim_weight_decay)
+    optimizer = optimizer_class(vae.parameters(), lr=learning_rate, weight_decay=optim_weight_decay)
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
-
 
     lr_scheduler = get_scheduler(
         lr_scheduler,
@@ -288,31 +289,22 @@ def main(
         train_dataloader,
         val_dataloader,
         lr_scheduler,
-    ) = accelerator.prepare(
-        vae, optimizer, train_dataloader, val_dataloader, lr_scheduler
-    )
-
+    ) = accelerator.prepare(vae, optimizer, train_dataloader, val_dataloader, lr_scheduler)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("train-vae-CelebA", all_args)
+        accelerator.init_trackers("train-vae-CelebA", all_args, init_kwargs={"wandb": {"dir": "./outputs"}})
 
     # ------------------------------ TRAIN ------------------------------ #
-    total_batch_size = (
-        train_batch_size
-        * accelerator.num_processes
-        * gradient_accumulation_steps
-    )
+    total_batch_size = train_batch_size * accelerator.num_processes * gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_indices)}")
     logger.info(f"  Num test samples = {len(val_indices)}")
     logger.info(f"  Num Epochs = {num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {train_batch_size}")
-    logger.info(
-        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
-    )
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {gradient_accumulation_steps}")
     global_step = 0
     first_epoch = 0
@@ -324,41 +316,47 @@ def main(
     progress_bar.set_description("Steps")
 
     lpips_loss_fn = lpips.LPIPS(net="alex").to(accelerator.device)
-    
+
     total_loss = 0.0
     kl_loss = 0.0
     lpips_loss = 0.0
     mse_loss = 0.0
     for epoch in range(first_epoch, num_train_epochs):
         vae.train()
-
+        accelerator.wait_for_everyone()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(vae):
                 total_loss_batch = 0.0
                 x, _, _ = batch
                 # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/autoencoder_kl.py
                 # We use a "trick" in order to use DDP that needs a forward method.
-                posterior = vae.forward(x,encode=True).latent_dist
+                posterior = vae.forward(x, encode=True).latent_dist
                 # We sample during training instead of mode..
                 if vae_train_sampling:
                     z = posterior.sample()
                 else:
                     z = posterior.mode()
-                pred = vae.forward(z,decode=True).sample
+                pred = vae.forward(z, decode=True).sample
 
                 kl_loss_batch = posterior.kl().mean()
                 mse_loss_batch = F.mse_loss(pred, x, reduction="mean")
                 lpips_loss_batch = lpips_loss_fn(pred, x).mean()
 
-                total_loss_batch = (
-                    mse_loss_batch + lambda_lpips * lpips_loss_batch + lambda_kl * kl_loss_batch
-                )
+                total_loss_batch = mse_loss_batch + lambda_lpips * lpips_loss_batch + lambda_kl * kl_loss_batch
 
                 # Gather the losses across all processes for logging (if we use distributed training).
-                total_loss += accelerator.gather(total_loss_batch.repeat(train_batch_size)).mean()/gradient_accumulation_steps
-                kl_loss +=accelerator.gather(kl_loss_batch.repeat(train_batch_size)).mean()/gradient_accumulation_steps
-                lpips_loss += accelerator.gather(lpips_loss_batch.repeat(train_batch_size)).mean()/gradient_accumulation_steps
-                mse_loss +=accelerator.gather(mse_loss_batch.repeat(train_batch_size)).mean()/gradient_accumulation_steps
+                total_loss += (
+                    accelerator.gather(total_loss_batch.repeat(train_batch_size)).mean() / gradient_accumulation_steps
+                )
+                kl_loss += (
+                    accelerator.gather(kl_loss_batch.repeat(train_batch_size)).mean() / gradient_accumulation_steps
+                )
+                lpips_loss += (
+                    accelerator.gather(lpips_loss_batch.repeat(train_batch_size)).mean() / gradient_accumulation_steps
+                )
+                mse_loss += (
+                    accelerator.gather(mse_loss_batch.repeat(train_batch_size)).mean() / gradient_accumulation_steps
+                )
 
                 accelerator.backward(total_loss_batch)
                 if accelerator.sync_gradients:
@@ -378,7 +376,7 @@ def main(
                     "lpips": lpips_loss.detach().item(),
                     "kl": kl_loss.detach().item(),
                 }
-                accelerator.log(logs,step=global_step)
+                accelerator.log(logs, step=global_step)
                 progress_bar.set_postfix(**logs)
                 total_loss = 0.0
                 mse_loss = 0.0
@@ -410,8 +408,6 @@ def main(
 
             if global_step >= max_train_steps:
                 break
-        
-            
 
         if accelerator.is_main_process:
             if epoch % val_every_nepochs == 0:
@@ -424,17 +420,15 @@ def main(
                     for _, batch in enumerate(val_dataloader):
                         x, _, ids = batch
                         reconstructions = vae_model(x).sample
-                        images.append(
-                            torch.cat([x.cpu(), reconstructions.cpu()], axis=-1).squeeze(0) # Last dim = Width
-                        )
+                        th_arr = torch.cat([x.cpu(), reconstructions.cpu()], axis=-1).squeeze(0)  # Last dim = Width
+                        np_img = (127.5 * (th_arr + 1)).permute(1, 2, 0).numpy().astype(np.uint8)
+                        images.append(PIL_Image.fromarray(np_img, mode="RGB"))
                         image_ids.append(ids)
 
                     for tracker in accelerator.trackers:
                         if tracker.name == "tensorboard":
                             np_images = np.stack([np.asarray(img) for img in images])
-                            tracker.writer.add_images(
-                                "Original (left) / Reconstruction (right)", np_images, epoch
-                            )
+                            tracker.writer.add_images("Original (left) / Reconstruction (right)", np_images, epoch)
                         elif tracker.name == "wandb":
                             tracker.log(
                                 {
@@ -444,8 +438,6 @@ def main(
                                     ]
                                 }
                             )
-                        else:
-                            logger.warn(f"image logging not implemented for {tracker.name}")
                     del vae_model
                     torch.cuda.empty_cache()
 
@@ -453,7 +445,7 @@ def main(
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         vae = accelerator.unwrap_model(vae)
-        vae.save_pretrained(os.path.join(output_dir,'vae'))
+        vae.save_pretrained(os.path.join(output_dir, "vae"))
 
     accelerator.end_training()
 
@@ -461,5 +453,5 @@ def main(
 if __name__ == "__main__":
     args = parser.parse_args()
     args_dict = vars(args)
-    args_dict['all_args']=args_dict.copy()
+    args_dict["all_args"] = args_dict.copy()
     main(**args_dict)

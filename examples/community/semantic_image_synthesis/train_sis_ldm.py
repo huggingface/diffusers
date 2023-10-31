@@ -18,15 +18,15 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from packaging import version
+from sis_dataset import CELEBAHQ_DICT, SISDataset
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
-from sis_dataset import CELEBAHQ_DICT, SISDataset
 
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils.import_utils import is_bitsandbytes_available
 from src.losses.vlb_loss import VLBLoss
-from src.models import UNet2DSISModel,AutoencoderSIS,AutoencoderKL
+from src.models import AutoencoderSIS, UNet2DSISModel
 from src.pipelines.semantic_only_diffusion import SemanticOnlyDiffusionPipeline
 from src.schedulers.ddpm_training import DDPMScheduler, DDPMTrainingScheduler
 
@@ -42,7 +42,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_img_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/img/")
 parser.add_argument("--dataset_ann_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/mask/")
 parser.add_argument("--dataset_img_size", type=int, default=256)
-parser.add_argument("--vae_name_or_path", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/models/vae/256px_64px/sample/checkpoint-100000/vae")
+parser.add_argument(
+    "--vae_name_or_path",
+    type=str,
+    default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/models/vae/256px_64px/sample/checkpoint-100000/vae",
+)
 parser.add_argument("--output_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/ddm")
 parser.add_argument("--train_batch_size", type=int, default=2)
 parser.add_argument("--train_ucond_prob", type=float, default=0.1)
@@ -143,7 +147,7 @@ def main(
     dataset_img_dir: str,
     dataset_ann_dir: str,
     dataset_img_size: int,
-    vae_name_or_path:str,
+    vae_name_or_path: str,
     output_dir: str,
     train_batch_size: int,
     train_ucond_prob: float,
@@ -228,7 +232,7 @@ def main(
     # If the variance is learned, we'll use a model that output a 2xInput_Channel tensor.
 
     vae = AutoencoderSIS.from_pretrained(vae_name_or_path)
-    vae:AutoencoderSIS
+    vae: AutoencoderSIS
     input_channels = vae.config.latent_channels
     if "learned" in ddp_variance_type:
         learned_variance = True
@@ -236,7 +240,9 @@ def main(
     else:
         learned_variance = False
         output_channels = input_channels
-    config = UNet2DSISModel.get_config(train_dataset.img_size//vae.config.compression, input_channels, output_channels, train_dataset.cls_count)
+    config = UNet2DSISModel.get_config(
+        train_dataset.img_size // vae.config.compression, input_channels, output_channels, train_dataset.cls_count
+    )
     unet = UNet2DSISModel(**config)
     if use_ema:
         ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DSISModel, model_config=unet.config)
@@ -354,14 +360,15 @@ def main(
         total_loss = 0.0
         simple_loss = 0.0
         vlb_loss = 0.0
+        accelerator.wait_for_everyone()
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(unet),accelerator.autocast():
+            with accelerator.accumulate(unet), accelerator.autocast():
                 loss_total_batch = 0.0
                 x, y, id = batch
-                b,c,h,w = x.shape
+                b, c, h, w = x.shape
                 # We encode the image to the latent space.
                 with torch.no_grad():
-                    x_enc = vae.forward(x,encode=True).latent_dist.mode()
+                    x_enc = vae.forward(x, encode=True).latent_dist.mode()
                 # We create a noise like X
                 noise = torch.randn_like(x_enc)
                 timesteps = torch.randint(
@@ -370,7 +377,10 @@ def main(
                 # We create condition and replace y by ucond when necessary...
                 segmap = nn.UpsamplingNearest2d(size=x_enc.shape[-2:])(y.unsqueeze(1)).squeeze(1)
                 cond = (
-                    F.one_hot(segmap.long(), num_classes=train_dataset.cls_count).to(x_enc.device).float().permute(0, 3, 1, 2)
+                    F.one_hot(segmap.long(), num_classes=train_dataset.cls_count)
+                    .to(x_enc.device)
+                    .float()
+                    .permute(0, 3, 1, 2)
                 )
                 ### We add some unconditionnal training iterations.
                 ucond = torch.rand(b, device=x_enc.device) < train_ucond_prob  # 1 if < p_ucond
@@ -477,9 +487,8 @@ def main(
                 val_scheduler = DDPMScheduler().from_config(scheduler_config)
                 # create pipeline
                 pipeline = SemanticOnlyDiffusionPipeline(
-                    unet=accelerator.unwrap_model(unet), 
-                    scheduler=val_scheduler,
-                    vae=accelerator.unwrap_model(vae))
+                    unet=accelerator.unwrap_model(unet), scheduler=val_scheduler, vae=accelerator.unwrap_model(vae)
+                )
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
 
@@ -514,9 +523,9 @@ def main(
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unet.to(torch.float32)
+        unet = accelerator.unwrap_model(unet).to(torch.float32)
         unet: UNet2DSISModel
-        unet.save_pretrained(project_dir)
+        unet.save_pretrained(os.path.join(project_dir, "unet"))
         noise_scheduler.save_pretrained(project_dir)
 
 

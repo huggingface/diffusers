@@ -17,9 +17,9 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from packaging import version
+from sis_dataset import CELEBAHQ_DICT, SISDataset
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
-from sis_dataset import CELEBAHQ_DICT, SISDataset
 
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -230,7 +230,9 @@ def main(
     else:
         learned_variance = False
         output_channels = input_channels
-    config = UNet2DSISModel.get_config(train_dataset.img_size, input_channels, output_channels, train_dataset.cls_count)
+    config = UNet2DSISModel.get_config(
+        train_dataset.img_size, input_channels, output_channels, train_dataset.cls_count
+    )
     unet = UNet2DSISModel(**config)
     if use_ema:
         ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DSISModel, model_config=unet.config)
@@ -347,8 +349,9 @@ def main(
         total_loss = 0.0
         simple_loss = 0.0
         vlb_loss = 0.0
+        accelerator.wait_for_everyone()
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(unet),accelerator.autocast():
+            with accelerator.accumulate(unet), accelerator.autocast():
                 x, y, id = batch
                 loss_total_batch = 0.0
                 # We create a noise like X
@@ -496,7 +499,6 @@ def main(
                         )
                 del pipeline
                 torch.cuda.empty_cache()
-        accelerator.wait_for_everyone()
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
