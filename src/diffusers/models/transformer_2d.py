@@ -422,6 +422,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = self.proj_out(hidden_states)
 
             # unpatchify
+            print(f"Before unpatchify: {hidden_states.shape}")
             height = width = int(hidden_states.shape[1] ** 0.5)
             hidden_states = hidden_states.reshape(
                 shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
