@@ -226,7 +226,7 @@ image
 
 <Tip>
 
-Read the [Inference with 🤗 PEFT](../tutorials/using_peft_for_inference) tutorial to learn more about its integration with 🤗 Diffusers and how you can easily work with and juggle multiple adapters. Additionally, install 🤗 Diffusers and 🤗 PEFT from the source to run the example in this section.
+Read the [Inference with 🤗 PEFT](../tutorials/using_peft_for_inference) tutorial to learn more about its integration with 🤗 Diffusers and how you can easily work with and juggle multiple adapters. You'll need to install 🤗 Diffusers and PEFT from source to run the example in this section.
 
 </Tip>
 
