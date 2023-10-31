@@ -247,6 +247,7 @@ class BasicTransformerBlock(nn.Module):
         if self.use_ada_layer_norm_zero or self.caption_channels is not None:
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
+        hidden_states = hidden_states.squeeze(1)
         print(f"hidden_states after self.attn1: {hidden_states.shape}")
 
         # 2.5 GLIGEN Control
