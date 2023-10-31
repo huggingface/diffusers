@@ -1175,13 +1175,6 @@ class AttnProcessor2_0:
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
     ) -> torch.FloatTensor:
-        if encoder_hidden_states is not None:
-            print(
-                f"From cross attention hidden_states, encoder_hidden_states: {hidden_states.shape}, {encoder_hidden_states.shape}"
-            )
-
-        if encoder_hidden_states is None:
-            print(f"From self attention: hidden states starting with {hidden_states.shape}")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -1207,8 +1200,6 @@ class AttnProcessor2_0:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         args = () if USE_PEFT_BACKEND else (scale,)
-        if encoder_hidden_states is None:
-            print(f"From self-attention to_q, hidden_states: {attn.to_q.weight.shape}, {hidden_states.shape}")
         query = attn.to_q(hidden_states, *args)
 
         if encoder_hidden_states is None:

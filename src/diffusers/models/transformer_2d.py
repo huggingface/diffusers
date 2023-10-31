@@ -413,6 +413,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
                 hidden_states = self.proj_out_2(hidden_states)
             elif self.config.output_type == "pixart_dit":
+                print(
+                    f"At the output block scale_shift_table, timestep: {self.scale_shift_table[None].shape}, {timestep[:, None].shape}"
+                )
                 shift, scale = (self.scale_shift_table[None] + timestep[:, None]).chunk(2, dim=1)
                 hidden_states = self.norm_out(hidden_states)
                 # Modulation
