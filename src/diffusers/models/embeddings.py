@@ -151,6 +151,7 @@ class PatchEmbed(nn.Module):
             self.norm = None
 
         self.patch_size = patch_size
+        self.height, self.width = height, width
         self.base_size = height // patch_size
         self.interpolation_scale = interpolation_scale
         pos_embed = get_2d_sincos_pos_embed(
@@ -159,7 +160,7 @@ class PatchEmbed(nn.Module):
         self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
 
     def forward(self, latent):
-        self.height, self.width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
+        height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
 
         latent = self.proj(latent)
         if self.flatten:
@@ -167,13 +168,23 @@ class PatchEmbed(nn.Module):
         if self.layer_norm:
             latent = self.norm(latent)
 
-        # Prepare positional embeddings
-        pos_embed = get_2d_sincos_pos_embed(
-            embed_dim=self.pos_embed.shape[-1],
-            grid_size=(self.height, self.width),
-            base_size=self.base_size,
-            interpolation_scale=self.interpolation_scale,
-        )
+        # Interpolate positional embeddings if needed.
+        if self.height != height or self.width != width:
+            pos_embed = (
+                torch.from_numpy(
+                    get_2d_sincos_pos_embed(
+                        embed_dim=self.pos_embed.shape[-1],
+                        grid_size=(height, width),
+                        base_size=self.base_size,
+                        interpolation_scale=self.interpolation_scale,
+                    )
+                )
+                .float()
+                .unsqueeze(0)
+                .to(latent.device)
+            )
+        else:
+            pos_embed = self.pos_embed
         return latent + pos_embed
 
 
