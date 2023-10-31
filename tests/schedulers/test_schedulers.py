@@ -255,13 +255,33 @@ class SchedulerCommonTest(unittest.TestCase):
 
     @property
     def default_timestep(self):
-        return 0
+        kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        scheduler_config = self.get_scheduler_config()
+        scheduler = self.scheduler_classes[0](**scheduler_config)
+
+        scheduler.set_timesteps(num_inference_steps)
+        timestep = scheduler.timesteps[0]
+        return timestep
 
     # NOTE: currently taking the convention that default_timestep_2 > default_timestep (alternatively,
     # default_timestep_2 comes earlier in the timestep schedule than default_timestep)
     @property
     def default_timestep_2(self):
-        return 1
+        kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        scheduler_config = self.get_scheduler_config()
+        scheduler = self.scheduler_classes[0](**scheduler_config)
+
+        scheduler.set_timesteps(num_inference_steps)
+        if len(scheduler.timesteps) < 2:
+            raise ValueError(
+                "At most one timestep found in default timestep schedule, cannot find a second distinct timestep."
+            )
+        timestep_2 = scheduler.timesteps[1]
+        return timestep_2
 
     @property
     def default_num_inference_steps(self):
