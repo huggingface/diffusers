@@ -141,11 +141,16 @@ class VQModel(ModelMixin, ConfigMixin):
         dec = self.decoder(quant2, quant if self.config.norm_type == "spatial" else None)
 
         if not return_dict:
-            return (dec, commit_loss,)
+            return (
+                dec,
+                commit_loss,
+            )
 
         return DecoderOutput(sample=dec, commit_loss=commit_loss)
 
-    def forward(self, sample: torch.FloatTensor, return_dict: bool = True, return_loss: bool = False) -> Union[DecoderOutput, torch.FloatTensor]:
+    def forward(
+        self, sample: torch.FloatTensor, return_dict: bool = True, return_loss: bool = False
+    ) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         The [`VQModel`] forward method.
 
@@ -166,7 +171,10 @@ class VQModel(ModelMixin, ConfigMixin):
 
         if not return_dict:
             if return_loss:
-                return (dec.sample, dec.commit_loss,)
+                return (
+                    dec.sample,
+                    dec.commit_loss,
+                )
             return (dec.sample,)
         if return_loss:
             return dec
