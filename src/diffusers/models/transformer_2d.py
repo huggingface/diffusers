@@ -348,8 +348,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if self.caption_projection is not None:
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.squeeze(1).view(1, -1, hidden_states.shape[-1])
-            for i  in range(10):
-                print(f"{i} encoder_hidden_states: {encoder_hidden_states[0, :3, i]}")
 
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
