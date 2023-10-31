@@ -156,6 +156,7 @@ class PatchEmbed(nn.Module):
         self.height, self.width = height // patch_size, width // patch_size
         self.base_size = height // patch_size
         self.interpolation_scale = interpolation_scale
+        print(f"base_size: {self.base_size}, interpolation_scale: {interpolation_scale}")
         pos_embed = get_2d_sincos_pos_embed(
             embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
         )
