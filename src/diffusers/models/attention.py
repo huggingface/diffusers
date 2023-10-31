@@ -139,7 +139,6 @@ class BasicTransformerBlock(nn.Module):
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
         elif caption_channels is not None:
-            print(f"Using caption channels: {caption_channels}")
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
@@ -228,6 +227,7 @@ class BasicTransformerBlock(nn.Module):
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
             # print(shift_msa[0, :3, -1], scale_msa[0, :3, -1], gate_msa[0, :3, -1], shift_mlp[0, :3, -1], scale_mlp[0, :3, -1], gate_mlp[0, :3, -1])
+            print(f"before layer norm: {hidden_states[0, :3, -1]}")
             norm_hidden_states = self.norm1(hidden_states)
             print(f"norm_hidden_states: {norm_hidden_states[0, :3, -1]}")
             # Modulate
