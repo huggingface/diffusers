@@ -348,6 +348,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if self.caption_projection is not None:
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.squeeze(1).view(1, -1, hidden_states.shape[-1])
+        
+        print(f"Initial shape of X, Y: {hidden_states.shape}, {encoder_hidden_states.shape}")
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
