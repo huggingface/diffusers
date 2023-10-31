@@ -1203,7 +1203,7 @@ class AttnProcessor2_0:
 
         args = () if USE_PEFT_BACKEND else (scale,)
         if encoder_hidden_states is None:
-            print(f"From self-attention: {attn.to_q.weight.shape}")
+            print(f"From self-attention to_q, hidden_states: {attn.to_q.weight.shape}, {hidden_states.shape}")
         query = attn.to_q(hidden_states, *args)
 
         if encoder_hidden_states is None:
