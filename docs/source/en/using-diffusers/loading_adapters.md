@@ -131,8 +131,8 @@ image
 
 The [`~loaders.LoraLoaderMixin.load_lora_weights`] method loads LoRA weights into both the UNet and text encoder. It is the preferred way for loading LoRAs because it can handle cases where:
 
-- The LoRA weights don't have separate identifiers for the UNet and text encoder.
-- The LoRA weights have separate identifiers for the UNet and text encoder.
+- the LoRA weights don't have separate identifiers for the UNet and text encoder
+- the LoRA weights have separate identifiers for the UNet and text encoder
 
 But if you only need to load LoRA weights into the UNet, then you can use the [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`] method. Let's load the [jbilcke-hf/sdxl-cinematic-1](https://huggingface.co/jbilcke-hf/sdxl-cinematic-1) LoRA:
 
@@ -207,8 +207,6 @@ Then fuse this pipeline with the next set of LoRA weights:
 pipeline.load_lora_weights("ostris/super-cereal-sdxl-lora")
 pipeline.fuse_lora(lora_scale=0.7)
 ```
-<!--The current API is supported for operating with a single LoRA file. You are trying to load and fuse more than one LoRA which is not well-supported.
--->
 
 <Tip warning={true}>
 
