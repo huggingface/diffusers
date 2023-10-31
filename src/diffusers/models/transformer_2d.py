@@ -293,7 +293,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # this helps to broadcast it as a bias over attention scores, which will be in one of the following shapes:
         #   [batch,  heads, query_tokens, key_tokens] (e.g. torch sdp attn)
         #   [batch * heads, query_tokens, key_tokens] (e.g. xformers or classic attn)
-        print(f"x: {hidden_states[0, :2, :2, -1]}, {hidden_states.dtype}")
         if attention_mask is not None and attention_mask.ndim == 2:
             # assume that mask is expressed as:
             #   (1 = keep,      0 = discard)
@@ -337,6 +336,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
             hidden_states = self.pos_embed(hidden_states)
+            print(f"x: {hidden_states[0, :4, -1]}, {hidden_states.dtype}")
             if self.adaln_single is not None:
                 if added_cond_kwargs is None:
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
