@@ -348,6 +348,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # 2. Blocks
         if self.caption_projection is not None:
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
+            print(f"Projected captions: {encoder_hidden_states[0, :3]}")
             encoder_hidden_states = encoder_hidden_states.squeeze(1).view(1, -1, hidden_states.shape[-1])
 
         for block in self.transformer_blocks:
