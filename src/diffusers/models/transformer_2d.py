@@ -335,7 +335,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
-            print(f"is_input_patches: {self.is_input_patches}")
             print(f"Before embedding: {hidden_states.shape}")
             hidden_states = self.pos_embed(hidden_states)
             print(f"After embedding: {hidden_states.shape}")
@@ -343,7 +342,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 if added_cond_kwargs is None:
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
                 batch_size = hidden_states.shape[0]
-                timestep = self.adaln_single(
+                timestep, embedded_timestep = self.adaln_single(
                     timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
                 )
 
@@ -414,9 +413,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = self.proj_out_2(hidden_states)
             elif self.config.output_type == "pixart_dit":
                 print(
-                    f"At the output block scale_shift_table, timestep: {self.scale_shift_table[None].shape}, {timestep[:, None].shape}"
+                    f"At the output block scale_shift_table, timestep: {self.scale_shift_table[None].shape}, {embedded_timestep[:, None].shape}"
                 )
-                shift, scale = (self.scale_shift_table[None] + timestep[:, None]).chunk(2, dim=1)
+                shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
                 hidden_states = self.norm_out(hidden_states)
                 # Modulation
                 hidden_states = hidden_states * (1 + scale) + shift
