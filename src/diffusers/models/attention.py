@@ -227,11 +227,11 @@ class BasicTransformerBlock(nn.Module):
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
             # print(shift_msa[0, :3, -1], scale_msa[0, :3, -1], gate_msa[0, :3, -1], shift_mlp[0, :3, -1], scale_mlp[0, :3, -1], gate_mlp[0, :3, -1])
-            print(f"before layer norm: {hidden_states[0, :5, 0:3]}")
-            print(f"before layer norm: {hidden_states[0, :5, 3:5]}")
+            # print(f"before layer norm: {hidden_states[0, :5, 0:3]}")
+            # print(f"before layer norm: {hidden_states[0, :5, 3:5]}")
             norm_hidden_states = self.norm1(hidden_states)
-            print(f"norm_hidden_states: {norm_hidden_states[0, :5, 0:3]}")
-            print(f"norm_hidden_states: {norm_hidden_states[0, :5, 3:5]}")
+            # print(f"norm_hidden_states: {norm_hidden_states[0, :5, 0:3]}")
+            # print(f"norm_hidden_states: {norm_hidden_states[0, :5, 3:5]}")
             # Modulate
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
             norm_hidden_states = norm_hidden_states.squeeze(1)
