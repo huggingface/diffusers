@@ -174,11 +174,23 @@ def log_validation(model, args, validation_transform, accelerator, global_step):
     images = images.permute(0, 2, 3, 1).cpu().numpy().astype(np.uint8)
     original_images = original_images.permute(0, 2, 3, 1).cpu().numpy().astype(np.uint8)
     images = np.concatenate([original_images, images], axis=2)
-    pil_images = [Image.fromarray(image) for image in images]
+    images = [Image.fromarray(image) for image in images]
 
     # Log images
-    wandb_images = [wandb.Image(image, caption="Original, Generated") for image in pil_images]
-    accelerator.log({"vae_images": wandb_images}, step=global_step)
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images("validation", np_images, global_step, dataformats="NHWC")
+        if tracker.name == "wandb":
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{i}: Original, Generated") for i, image in enumerate(images)
+                    ]
+                }
+            )
+    torch.cuda.empty_cache()
+    return images
 
 
 def save_checkpoint(model, discriminator, args, accelerator, global_step):
@@ -863,12 +875,19 @@ def main():
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     end = time.time()
+    progress_bar = tqdm(
+        range(0, args.max_train_steps),
+        initial=global_step,
+        desc="Steps",
+        # Only show the progress bar once on each machine.
+        disable=not accelerator.is_local_main_process,
+    )
     # As stated above, we are not doing epoch based training here, but just using this for book keeping and being able to
     # reuse the same training loop with other datasets/loaders.
     avg_gen_loss, avg_discr_loss = None, None
     for epoch in range(first_epoch, args.num_train_epochs):
         model.train()
-        for i, batch in tqdm(enumerate(train_dataloader)):
+        for i, batch in enumerate(train_dataloader):
             pixel_values = batch["pixel_values"]
             pixel_values = pixel_values.to(accelerator.device, non_blocking=True)
             data_time_m.update(time.time() - end)
@@ -884,8 +903,7 @@ def main():
             # encode images to the latent space and get the commit loss from vq tokenization
             # Return commit loss
             fmap, commit_loss = model(pixel_values, return_dict=False, return_loss=True)
-            if accelerator.sync_gradients:
-                global_step += 1
+
             if generator_step:
                 with accelerator.accumulate(model):
                     # reconstruction loss. Pixel level differences between input vs output
@@ -953,9 +971,12 @@ def main():
                     ):
                         log_grad_norm(discriminator, accelerator, global_step)
             # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients and not generator_step and accelerator.is_main_process:
+            if accelerator.sync_gradients:
+                global_step += 1
+                progress_bar.update(1)
                 if args.use_ema:
                     ema_model.step(model.parameters())
+            if accelerator.sync_gradients and not generator_step and accelerator.is_main_process:
                 # wait for both generator and discriminator to settle
                 batch_time_m.update(time.time() - end)
                 end = time.time()
