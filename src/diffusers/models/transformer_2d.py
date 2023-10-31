@@ -420,6 +420,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 # Modulation
                 hidden_states = hidden_states * (1 + scale) + shift
                 hidden_states = self.proj_out(hidden_states)
+                hidden_states = hidden_states.squeeze(1)
 
             # unpatchify
             print(f"Before unpatchify: {hidden_states.shape}")
