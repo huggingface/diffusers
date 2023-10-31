@@ -719,6 +719,8 @@ class SizeEmbedder(nn.Module):
         size = size.reshape(-1)
 
         size_freq = get_timestep_embedding(size, self.frequency_embedding_size, downscale_freq_shift=0, flip_sin_to_cos=True)
+        print(f"size_freq: {size_freq[:5]}")
+        
         size_emb = self.mlp(size_freq)
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
         return size_emb
