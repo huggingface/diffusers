@@ -18,9 +18,9 @@ specific language governing permissions and limitations under the License.
 
 🤗 Diffusers provides a [`~diffusers.utils.PushToHubMixin`] for uploading your model, scheduler, or pipeline to the Hub. It is an easy way to store your files on the Hub, and also allows you to share your work with others. Under the hood, the [`~diffusers.utils.PushToHubMixin`]:
 
-1. creates a repository on the Hub;
-2. saves your model, scheduler, or pipeline files so they can be reloaded later;
-3. uploads folder containing these files to the Hub.
+1. creates a repository on the Hub
+2. saves your model, scheduler, or pipeline files so they can be reloaded later
+3. uploads folder containing these files to the Hub
 
 This guide will show you how to use the [`~diffusers.utils.PushToHubMixin`] to upload your files to the Hub.
 
@@ -50,7 +50,7 @@ controlnet = ControlNetModel(
 controlnet.push_to_hub("my-controlnet-model")
 ```
 
-For model's, you can also specify the [*variant*](loading#checkpoint-variants) of the weights to push to the Hub. For example, to push `fp16` weights:
+For models, you can also specify the [*variant*](loading#checkpoint-variants) of the weights to push to the Hub. For example, to push `fp16` weights:
 
 ```py
 controlnet.push_to_hub("my-controlnet-model", variant="fp16")
@@ -66,7 +66,7 @@ model = ControlNetModel.from_pretrained("your-namespace/my-controlnet-model")
 
 ## Scheduler
 
-To push a scheduler to the Hub, call [`~diffusers.utils.PushToHubMixin.push_to_hub`] and specfiy the repository id of the scheduler to be stored on the Hub:
+To push a scheduler to the Hub, call [`~diffusers.utils.PushToHubMixin.push_to_hub`] and specify the repository id of the scheduler to be stored on the Hub:
 
 ```py
 from diffusers import DDIMScheduler
