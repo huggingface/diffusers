@@ -247,7 +247,8 @@ class BasicTransformerBlock(nn.Module):
         if self.use_ada_layer_norm_zero or self.caption_channels is not None:
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
-        hidden_states = hidden_states.squeeze(1)
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
 
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
@@ -262,7 +263,7 @@ class BasicTransformerBlock(nn.Module):
             else:
                 # For PixArt norm2 isn't applied here:
                 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L70C1-L76C103
-                norm_hidden_states = hidden_states.squeeze(1)
+                norm_hidden_states = hidden_states
 
             attn_output = self.attn2(
                 norm_hidden_states,
@@ -305,6 +306,8 @@ class BasicTransformerBlock(nn.Module):
             ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
 
         return hidden_states
 
