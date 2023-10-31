@@ -238,6 +238,8 @@ class BasicTransformerBlock(nn.Module):
         gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
 
         print(f"hidden_states before self.attn1: {hidden_states.shape}")
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
         attn_output = self.attn1(
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
