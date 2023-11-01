@@ -207,7 +207,7 @@ input prompts while preserving the original input images as much as possible.
 There are 8 canonical pre-trained adapters trained on different conditionings such as edge detection, sketch,
 depth maps, and semantic segmentations.
 
-## Fabric  <!--Documentation is not yet available, so the link is broken now.-->
+## Fabric
 
 [Paper](https://arxiv.org/abs/2307.10159)
 
