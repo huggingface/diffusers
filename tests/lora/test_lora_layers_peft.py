@@ -1778,11 +1778,19 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         This test simply checks that loading a LoRA with an empty network alpha works fine
         See: https://github.com/huggingface/diffusers/issues/5606
         """
+        generator = torch.Generator().manual_seed(0)
+
         pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", dtype=torch.float16).to(
             "cuda"
         )
         civitai_path = hf_hub_download("ybelkada/test-ahi-civitai", "ahi_lora_weights.safetensors")
         pipeline.load_lora_weights(civitai_path, adapter_name="ahri")
+
+        images = pipeline(
+            "ahri, masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+        ).images
+        images = images[0, -3:, -3:, -1].flatten()
+        import pdb; pdb.set_trace()
 
     def test_canny_lora(self):
         controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")
