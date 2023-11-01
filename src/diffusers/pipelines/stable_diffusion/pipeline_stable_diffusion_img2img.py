@@ -73,9 +73,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-CALLBACK_ON_STEP_END_TENSOR_INPUTS = ["latents", "prompt_embeds", "negative_prompt_embeds"]
-
-
 def preprocess(image):
     deprecation_message = "The preprocess method is deprecated and will be removed in diffusers 1.0.0. Please use VaeImageProcessor.preprocess(...) instead"
     deprecate("preprocess", "1.0.0", deprecation_message, standard_warn=False)
@@ -136,6 +133,7 @@ class StableDiffusionImg2ImgPipeline(
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -507,10 +505,10 @@ class StableDiffusionImg2ImgPipeline(
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in CALLBACK_ON_STEP_END_TENSOR_INPUTS for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {CALLBACK_ON_STEP_END_TENSOR_INPUTS}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in CALLBACK_ON_STEP_END_TENSOR_INPUTS]}"
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -671,7 +669,7 @@ class StableDiffusionImg2ImgPipeline(
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: int = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = CALLBACK_ON_STEP_END_TENSOR_INPUTS,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "prompt_embeds", "negative_prompt_embeds"],
         **kwargs,
     ):
         r"""

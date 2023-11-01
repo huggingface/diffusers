@@ -35,8 +35,6 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-CALLBACK_ON_STEP_END_TENSOR_INPUTS = ["latents", "prompt_embeds", "negative_prompt_embeds", "depth_mask"]
-
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.preprocess
 def preprocess(image):
@@ -88,6 +86,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
     model_cpu_offload_seq = "text_encoder->unet->vae"
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "depth_mask"]
 
     def __init__(
         self,
@@ -415,10 +414,10 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in CALLBACK_ON_STEP_END_TENSOR_INPUTS for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {CALLBACK_ON_STEP_END_TENSOR_INPUTS}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in CALLBACK_ON_STEP_END_TENSOR_INPUTS]}"
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -598,7 +597,12 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = CALLBACK_ON_STEP_END_TENSOR_INPUTS,
+        callback_on_step_end_tensor_inputs: List[str] = [
+            "latents",
+            "prompt_embeds",
+            "negative_prompt_embeds",
+            "depth_mask",
+        ],
         **kwargs,
     ):
         r"""
