@@ -203,7 +203,7 @@ if __name__ == "__main__":
         "--save", default=True, type=bool, required=False, help="Whether to save the converted pipeline or not."
     )
     parser.add_argument(
-        "--checkpoint_path", default=None, type=str, required=True, help="Path to the output pipeline."
+        "--checkpoint_path", default=None, type=str, required=False, help="Path to the output pipeline."
     )
 
     args = parser.parse_args()
