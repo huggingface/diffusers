@@ -688,7 +688,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         freeu_keys = {"s1", "s2", "b1", "b2"}
         for i, upsample_block in enumerate(self.up_blocks):
             for k in freeu_keys:
-                if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
+                if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
     # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.forward
@@ -709,7 +709,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         Args:
             sample (`torch.FloatTensor`):
-                The noisy input tensor with the following shape `(batch, channel, num_frames, height, width`.
+                The noisy input tensor with the following shape `(batch, num_frames, channel, height, width`.
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
@@ -775,7 +775,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        batch, channels, num_frames, height, width = sample.shape
+        num_frames = sample.shape[2]
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
@@ -790,8 +790,15 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
         # 2. pre-process
-        sample = sample.permute(0, 2, 1, 3, 4).reshape((batch * num_frames, channels, height, width))
+        sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
         sample = self.conv_in(sample)
+
+        sample = self.transformer_in(
+            sample,
+            num_frames=num_frames,
+            cross_attention_kwargs=cross_attention_kwargs,
+            return_dict=False,
+        )[0]
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -802,8 +809,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
-                    cross_attention_kwargs=cross_attention_kwargs,
                     num_frames=num_frames,
+                    cross_attention_kwargs=cross_attention_kwargs,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb, num_frames=num_frames)
@@ -823,17 +830,14 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 4. mid
         if self.mid_block is not None:
-            inputs = {
-                "hidden_states": sample,
-                "temb": emb,
-                "encoder_hidden_states": encoder_hidden_states,
-                "attention_mask": attention_mask,
-                "cross_attention_kwargs": cross_attention_kwargs,
-            }
-            if hasattr(self.mid_block, "motion_modules"):
-                inputs.update({"num_frames": num_frames})
-
-            sample = self.mid_block(**inputs)
+            sample = self.mid_block(
+                sample,
+                emb,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=attention_mask,
+                num_frames=num_frames,
+                cross_attention_kwargs=cross_attention_kwargs,
+            )
 
         if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
