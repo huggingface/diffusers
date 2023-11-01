@@ -228,10 +228,10 @@ class BasicTransformerBlock(nn.Module):
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
             norm_hidden_states = self.norm1(hidden_states)
-            print("Serializing normed hidden states")
-            torch.save(norm_hidden_states, f"norm_hidden_states_{i}.pt")
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
             norm_hidden_states = norm_hidden_states.squeeze(1)
+            print("Serializing normed hidden states after modulation")
+            torch.save(norm_hidden_states, f"norm_hidden_states_{i}.pt")
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0

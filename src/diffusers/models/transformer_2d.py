@@ -350,7 +350,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.squeeze(1).view(1, -1, hidden_states.shape[-1])
 
-        print("Serializing block-wise")
+        # print("Serializing block-wise")
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
