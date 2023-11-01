@@ -365,7 +365,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     use_reentrant=False,
                 )
             else:
-                torch.save(hidden_states, f"hidden_states_{i}.pt")
                 hidden_states = block(
                     hidden_states,
                     attention_mask=attention_mask,
