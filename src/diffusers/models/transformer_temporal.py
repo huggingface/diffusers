@@ -48,13 +48,15 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
-            This is fixed during training since it is used to learn a number of position embeddings.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
         attention_bias (`bool`, *optional*):
             Configure if the `TransformerBlock` attention should contain a bias parameter.
         double_self_attention (`bool`, *optional*):
             Configure if each `TransformerBlock` should contain two self-attention layers.
+        positional_embeddings: (`str`, *optional*):
+            The type of positional embeddings to apply to the sequence input before passing use.
+        num_positional_embeddings: (`int`, *optional*):
+            The maximum length of the sequence over which to apply positional embeddings.
     """
 
     @register_to_config
