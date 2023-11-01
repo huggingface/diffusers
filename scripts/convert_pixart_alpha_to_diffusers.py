@@ -79,12 +79,11 @@ def main(args):
         # Transformer blocks.
         state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = state_dict[f"blocks.{depth}.scale_shift_table"]
 
-        q, k, v = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.weight"], 3, dim=0)
-        q_bias, k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.bias"], 3, dim=0)
-
         # Attention is all you need 🤘
 
         # Self attention.
+        q, k, v = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.weight"], 3, dim=0)
+        q_bias, k_bias, v_bias = torch.chunk(state_dict[f"blocks.{depth}.attn.qkv.bias"], 3, dim=0)
         state_dict[f"transformer_blocks.{depth}.attn1.to_q.weight"] = q
         state_dict[f"transformer_blocks.{depth}.attn1.to_q.bias"] = q_bias
         state_dict[f"transformer_blocks.{depth}.attn1.to_k.weight"] = k
