@@ -20,7 +20,7 @@ from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU
 from .attention_processor import Attention
-from .embeddings import CombinedTimestepLabelEmbeddings, SinusoidalPositionalEmbedding
+from .embeddings import SinusoidalPositionalEmbedding
 from .lora import LoRACompatibleLinear
 from .normalization import AdaLayerNorm, AdaLayerNormZero
 
