@@ -494,7 +494,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         num_inference_steps: int = 20,
         timesteps: List[int] = None,
-        guidance_scale: float = 7.0,
+        guidance_scale: float = 4.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         height: Optional[int] = None,
