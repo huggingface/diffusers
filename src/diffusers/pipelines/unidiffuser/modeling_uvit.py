@@ -6,9 +6,10 @@ from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
-from ...models.attention import AdaLayerNorm, FeedForward
+from ...models.attention import FeedForward
 from ...models.attention_processor import Attention
 from ...models.embeddings import TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
+from ...models.normalization import AdaLayerNorm
 from ...models.transformer_2d import Transformer2DModelOutput
 from ...utils import logging
 

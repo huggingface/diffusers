@@ -192,7 +192,7 @@ been added to the text encoder embedding matrix and consequently been trained.
 <Tip>
 
 💡 The community has created a large library of different textual inversion embedding vectors, called [sd-concepts-library](https://huggingface.co/sd-concepts-library).
-Instead of training textual inversion embeddings from scratch you can also see whether a fitting textual inversion embedding has already been added to the libary.
+Instead of training textual inversion embeddings from scratch you can also see whether a fitting textual inversion embedding has already been added to the library.
 
 </Tip>
 

@@ -151,7 +151,7 @@ telling JAX which input arguments are static, that is, arguments that
 are known at compile time and won't change. In our case, it is num_inference_steps, 
 height, width and return_latents.
 
-Once the function is compiled, these parameters are ommited from future calls and 
+Once the function is compiled, these parameters are omitted from future calls and 
 cannot be changed without modifying the code and recompiling.
 
 ```python

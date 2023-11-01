@@ -40,7 +40,7 @@ In the following, we give an overview of different ways to contribute, ranked by
 As said before, **all contributions are valuable to the community**.
 In the following, we will explain each contribution a bit more in detail.
 
-For all contributions 4.-9. you will need to open a PR. It is explained in detail how to do so in [Opening a pull requst](#how-to-open-a-pr)
+For all contributions 4.-9. you will need to open a PR. It is explained in detail how to do so in [Opening a pull request](#how-to-open-a-pr)
 
 ### 1. Asking and answering questions on the Diffusers discussion forum or on the Diffusers Discord
 
@@ -63,7 +63,7 @@ In the same spirit, you are of immense help to the community by answering such q
 
 **Please** keep in mind that the more effort you put into asking or answering a question, the higher
 the quality of the publicly documented knowledge. In the same way, well-posed and well-answered questions create a high-quality knowledge database accessible to everybody, while badly posed questions or answers reduce the overall quality of the public knowledge database.
-In short, a high quality question or answer is *precise*, *concise*, *relevant*, *easy-to-understand*, *accesible*, and *well-formated/well-posed*. For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
+In short, a high quality question or answer is *precise*, *concise*, *relevant*, *easy-to-understand*, *accessible*, and *well-formated/well-posed*. For more information, please have a look through the [How to write a good issue](#how-to-write-a-good-issue) section.
 
 **NOTE about channels**:
 [*The forum*](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) is much better indexed by search engines, such as Google. Posts are ranked by popularity rather than chronologically. Hence, it's easier to look up questions and answers that we posted some time ago.
@@ -168,7 +168,7 @@ more precise, provide the link to a duplicated issue or redirect them to [the fo
 If you have verified that the issued bug report is correct and requires a correction in the source code,
 please have a look at the next sections.
 
-For all of the following contributions, you will need to open a PR. It is explained in detail how to do so in the [Opening a pull requst](#how-to-open-a-pr) section.
+For all of the following contributions, you will need to open a PR. It is explained in detail how to do so in the [Opening a pull request](#how-to-open-a-pr) section.
 
 ### 4. Fixing a "Good first issue"
 

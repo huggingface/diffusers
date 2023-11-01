@@ -19,7 +19,7 @@ Diffusers examples are a collection of scripts to demonstrate how to effectively
 for a variety of use cases involving training or fine-tuning.
 
 **Note**: If you are looking for **official** examples on how to use `diffusers` for inference, 
-please have a look at [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)
+please have a look at [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
 
 Our examples aspire to be **self-contained**, **easy-to-tweak**, **beginner-friendly** and for **one-purpose-only**.
 More specifically, this means:
