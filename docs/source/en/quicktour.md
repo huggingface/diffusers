@@ -133,7 +133,7 @@ Then load the saved weights into the pipeline:
 >>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", use_safetensors=True)
 ```
 
-Now you can run the pipeline as you would in the section above.
+Now, you can run the pipeline as you would in the section above.
 
 ### Swapping schedulers
 
@@ -173,11 +173,11 @@ The model configuration is a 🧊 frozen 🧊 dictionary, which means those para
 
 Some of the most important parameters are:
 
-* `sample_size`: The height and width dimension of the input sample.
-* `in_channels`: The number of input channels of the input sample.
-* `down_block_types` and `up_block_types`: The type of down- and upsampling blocks used to create the UNet architecture.
-* `block_out_channels`: The number of output channels of the downsampling blocks; also used in reverse order for the number of input channels of the upsampling blocks.
-* `layers_per_block`: The number of ResNet blocks present in each UNet block.
+* `sample_size`: the height and width dimension of the input sample.
+* `in_channels`: the number of input channels of the input sample.
+* `down_block_types` and `up_block_types`: the type of down- and upsampling blocks used to create the UNet architecture.
+* `block_out_channels`: the number of output channels of the downsampling blocks; also used in reverse order for the number of input channels of the upsampling blocks.
+* `layers_per_block`: the number of ResNet blocks present in each UNet block.
 
 To use the model for inference, create the image shape with random Gaussian noise. It should have a `batch` axis because the model can receive multiple random noises, a `channel` axis corresponding to the number of input channels, and a `sample_size` axis for the height and width of the image:
 
@@ -210,7 +210,7 @@ Schedulers manage going from a noisy sample to a less noisy sample given the mod
 
 </Tip>
 
-For the quicktour, you'll instantiate the [`DDPMScheduler`] with it's [`~diffusers.ConfigMixin.from_config`] method:
+For the quicktour, you'll instantiate the [`DDPMScheduler`] with its [`~diffusers.ConfigMixin.from_config`] method:
 
 ```py
 >>> from diffusers import DDPMScheduler
@@ -245,9 +245,9 @@ DDPMScheduler {
 
 Some of the most important parameters are:
 
-* `num_train_timesteps`: The length of the denoising process or in other words, the number of timesteps required to process random Gaussian noise into a data sample.
-* `beta_schedule`: The type of noise schedule to use for inference and training.
-* `beta_start` and `beta_end`: The start and end noise values for the noise schedule.
+* `num_train_timesteps`: the length of the denoising process or, in other words, the number of timesteps required to process random Gaussian noise into a data sample.
+* `beta_schedule`: the type of noise schedule to use for inference and training.
+* `beta_start` and `beta_end`: the start and end noise values for the noise schedule.
 
 To predict a slightly less noisy image, pass the following to the scheduler's [`~diffusers.DDPMScheduler.step`] method: model output, `timestep`, and current `sample`.
 
@@ -257,7 +257,7 @@ To predict a slightly less noisy image, pass the following to the scheduler's [`
 torch.Size([1, 3, 256, 256])
 ```
 
-The `less_noisy_sample` can be passed to the next `timestep` where it'll get even less noisier! Let's bring it all together now and visualize the entire denoising process. 
+The `less_noisy_sample` can be passed to the next `timestep` where it'll get even less noisy! Let's bring it all together now and visualize the entire denoising process. 
 
 First, create a function that postprocesses and displays the denoised image as a `PIL.Image`:
 
@@ -311,10 +311,10 @@ Sit back and watch as a cat is generated from nothing but noise! 😻
 
 ## Next steps
 
-Hopefully you generated some cool images with 🧨 Diffusers in this quicktour! For your next steps, you can:
+Hopefully, you generated some cool images with 🧨 Diffusers in this quicktour! For your next steps, you can:
 
 * Train or finetune a model to generate your own images in the [training](./tutorials/basic_training) tutorial.
 * See example official and community [training or finetuning scripts](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples) for a variety of use cases.
-* Learn more about loading, accessing, changing and comparing schedulers in the [Using different Schedulers](./using-diffusers/schedulers) guide.
-* Explore prompt engineering, speed and memory optimizations, and tips and tricks for generating higher quality images with the [Stable Diffusion](./stable_diffusion) guide.
+* Learn more about loading, accessing, changing, and comparing schedulers in the [Using different Schedulers](./using-diffusers/schedulers) guide.
+* Explore prompt engineering, speed and memory optimizations, and tips and tricks for generating higher-quality images with the [Stable Diffusion](./stable_diffusion) guide.
 * Dive deeper into speeding up 🧨 Diffusers with guides on [optimized PyTorch on a GPU](./optimization/fp16), and inference guides for running [Stable Diffusion on Apple Silicon (M1/M2)](./optimization/mps) and [ONNX Runtime](./optimization/onnx).
