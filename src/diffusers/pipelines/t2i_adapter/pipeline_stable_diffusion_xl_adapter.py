@@ -1068,7 +1068,6 @@ class StableDiffusionXLAdapterPipeline(
 
         return StableDiffusionXLPipelineOutput(images=image)
 
-
     # Overrride to properly handle the loading and unloading of the additional text encoder.
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.load_lora_weights
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
