@@ -190,12 +190,7 @@ class PatchEmbed(nn.Module):
                 .to(latent.device)
             )
         else:
-            print("Using default pos embeddings.")
             pos_embed = self.pos_embed
-        # print("Serializing pe from the patch embedding")
-        # torch.save(pos_embed, "pe.pt")
-        # print("Serializing pe from final output from patch embedding")
-        # torch.save(latent + pos_embed, "final_pe_latent.pt")
         return latent + pos_embed
 
 
