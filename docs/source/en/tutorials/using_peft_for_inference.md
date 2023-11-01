@@ -153,8 +153,8 @@ image
 You have attached multiple adapters in this tutorial, and if you're feeling a bit lost on what adapters have been attached to the pipeline's components, you can easily check the list of active adapters using the [`~diffusers.loaders.LoraLoaderMixin.get_active_adapters`] method:
 
 ```py
->>>active_adapters = pipe.get_active_adapters()
->>>active_adapters
+active_adapters = pipe.get_active_adapters()
+active_adapters
 ["toy", "pixel"]
 ```
 
