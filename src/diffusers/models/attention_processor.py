@@ -1177,6 +1177,9 @@ class AttnProcessor2_0:
         i=None
     ) -> torch.FloatTensor:
         residual = hidden_states
+        if encoder_hidden_states is None and i == 0:
+            print(f"Serializing the initial hidden state for {i}:")
+            torch.save(hidden_states, f"hidden_states_{i}.pt")
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
