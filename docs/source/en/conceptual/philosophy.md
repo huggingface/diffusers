@@ -55,7 +55,7 @@ We try to apply these design principles consistently across the library. Neverth
 
 ## Design Philosophy in Details
 
-Now, let's look a bit into the nitty-gritty details of the design philosophy. Diffusers essentially consists of three major classes, [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines), [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models), and [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers).
+Now, let's look a bit into the nitty-gritty details of the design philosophy. Diffusers essentially consists of three major classes: [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines), [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models), and [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers).
 Let's walk through more in-detail design decisions for each class.
 
 ### Pipelines
