@@ -107,14 +107,6 @@ ALL_IMPORTABLE_CLASSES = {}
 for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
-CALLBACK_ON_STEP_END_INPUTS = [
-    "guidance_scale",
-    "latents",
-    "prompt_embeds",
-    "cross_attention_kwargs",
-    "guidance_rescale",
-]
-
 
 @dataclass
 class ImagePipelineOutput(BaseOutput):
