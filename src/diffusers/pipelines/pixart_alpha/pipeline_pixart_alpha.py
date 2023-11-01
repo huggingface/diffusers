@@ -616,13 +616,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare timesteps
-        if timesteps is not None:
-            self.scheduler.set_timesteps(timesteps=timesteps, device=device)
-            timesteps = self.scheduler.timesteps
-            num_inference_steps = len(timesteps)
-        else:
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-            timesteps = self.scheduler.timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
@@ -636,7 +631,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             generator,
             latents,
         )
-        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -657,35 +651,29 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                if do_classifier_free_guidance:
+                    half = latent_model_input[: len(latent_model_input) // 2]
+                    latent_model_input = torch.cat([half, half], dim=0)
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                timesteps = t
-                if not torch.is_tensor(timesteps):
-                    # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-                    # This would be a good case for the `match` statement (Python 3.10+)
-                    is_mps = latent_model_input.device.type == "mps"
-                    if isinstance(timesteps, float):
-                        dtype = torch.float32 if is_mps else torch.float64
-                    else:
-                        dtype = torch.int32 if is_mps else torch.int64
-                    timesteps = torch.tensor([timesteps], dtype=dtype, device=latent_model_input.device)
-                elif len(timesteps.shape) == 0:
-                    timesteps = timesteps[None].to(latent_model_input.device)
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timesteps = timesteps.expand(latent_model_input.shape[0])
                 # predict noise model_output
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
-                    timesteps=timesteps,
+                    timesteps=t,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    eps, rest = noise_pred[:, :latent_channels], noise_pred[:, latent_channels:]
+                    cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
+
+                    half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
+                    eps = torch.cat([half_eps, half_eps], dim=0)
+
+                    noise_pred = torch.cat([eps, rest], dim=1)
 
                 # learned sigma
                 if self.transformer.config.out_channels // 2 == latent_channels:
@@ -693,15 +681,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 else:
                     noise_pred = noise_pred
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                # compute previous image: x_t -> x_t-1
+                latent_model_input = self.scheduler.step(noise_pred, t, latent_model_input, return_dict=False)[0]
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
+            if do_classifier_free_guidance:
+                latents, _ = latent_model_input.chunk(2, dim=0)
+            else:
+                latents = latent_model_input
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
