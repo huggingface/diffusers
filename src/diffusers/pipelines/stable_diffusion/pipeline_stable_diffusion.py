@@ -597,60 +597,8 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         return self._guidance_scale > 1
 
     @property
-    def generator(self):
-        return self._generator
-
-    @property
-    def eta(self):
-        return self._eta
-
-    @property
     def cross_attention_kwargs(self):
         return self._cross_attention_kwargs
-
-    @property
-    def extra_step_kwargs(self):
-        return self._extra_step_kwargs
-
-    @property
-    def step_index(self):
-        return self._step_index
-
-    @property
-    def timestep(self):
-        return self._timestep
-
-    @property
-    def timesteps(self):
-        return self._timesteps
-
-    @property
-    def height(self):
-        return self._height
-
-    @property
-    def width(self):
-        return self._width
-
-    @property
-    def num_inference_steps(self):
-        return self._num_inference_steps
-
-    @property
-    def num_images_per_prompt(self):
-        return self._num_images_per_prompt
-
-    @property
-    def batch_size(self):
-        return self._batch_size
-
-    @property
-    def output_type(self):
-        return self._output_type
-
-    @property
-    def return_dict(self):
-        return self._return_dict
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -779,14 +727,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             callback_on_step_end_tensor_inputs,
         )
 
-        self._height = height
-        self._width = width
-        self._num_inference_steps = num_inference_steps
-        self._num_images_per_prompt = num_images_per_prompt
-        self._generator = generator
-        self._eta = eta
-        self._output_type = output_type
-        self._return_dict = return_dict
         self._guidance_scale = guidance_scale
         self._guidance_rescale = guidance_rescale
         self._clip_skip = clip_skip
@@ -799,7 +739,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        self._batch_size = batch_size
 
         device = self._execution_device
 
@@ -811,7 +750,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
-            self.num_images_per_prompt,
+            num_images_per_prompt,
             self.do_classifier_free_guidance,
             negative_prompt,
             prompt_embeds=prompt_embeds,
