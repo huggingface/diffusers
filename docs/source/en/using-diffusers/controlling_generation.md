@@ -211,7 +211,7 @@ depth maps, and semantic segmentations.
 
 [Paper](https://arxiv.org/abs/2307.10159)
 
-[Fabric](../api/pipelines/fabric) is a training-free
+[Fabric](https://github.com/huggingface/diffusers/tree/442017ccc877279bcf24fbe92f92d3d0def191b6/examples/community#stable-diffusion-fabric-pipeline) is a training-free
 approach applicable to a wide range of popular diffusion models, which exploits
 the self-attention layer present in the most widely used architectures to condition
 the diffusion process on a set of feedback images.
