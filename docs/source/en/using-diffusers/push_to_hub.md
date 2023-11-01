@@ -13,8 +13,6 @@ specific language governing permissions and limitations under the License.
 # Push files to the Hub
 
 [[open-in-colab]]
-<!--Notebook links don't work.
--->
 
 🤗 Diffusers provides a [`~diffusers.utils.PushToHubMixin`] for uploading your model, scheduler, or pipeline to the Hub. It is an easy way to store your files on the Hub, and also allows you to share your work with others. Under the hood, the [`~diffusers.utils.PushToHubMixin`]:
 
