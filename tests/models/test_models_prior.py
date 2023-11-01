@@ -21,14 +21,7 @@ import torch
 from parameterized import parameterized
 
 from diffusers import PriorTransformer
-from diffusers.utils.testing_utils import (
-    backend_empty_cache,
-    enable_full_determinism,
-    floats_tensor,
-    slow,
-    torch_all_close,
-    torch_device,
-)
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, slow, torch_all_close, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 
@@ -164,7 +157,7 @@ class PriorTransformerIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        backend_empty_cache()
+        torch.cuda.empty_cache()
 
     @parameterized.expand(
         [
