@@ -208,9 +208,9 @@
       title: Overview
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
-    - local: api/pipelines/attend_and_excite
     - local: api/pipelienes/animatediff
       title: AnimateDiff
+    - local: api/pipelines/attend_and_excite
       title: Attend-and-Excite
     - local: api/pipelines/audio_diffusion
       title: Audio Diffusion
@@ -396,5 +396,5 @@
       title: Utilities
     - local: api/image_processor
       title: VAE Image Processor
-    title: Internal classes   
+    title: Internal classes
   title: API
