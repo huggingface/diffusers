@@ -1783,9 +1783,14 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         civitai_path = hf_hub_download("ybelkada/test-ahi-civitai", "ahi_lora_weights.safetensors")
         pipeline.load_lora_weights(civitai_path, adapter_name="ahri")
 
-        images = pipeline("ahri, masterpiece, league of legends", output_type="np", generator=torch.manual_seed(156), num_inference_steps=5).images
+        images = pipeline(
+            "ahri, masterpiece, league of legends",
+            output_type="np",
+            generator=torch.manual_seed(156),
+            num_inference_steps=5,
+        ).images
         images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0. , 0. , 0. , 0.002557, 0.020954, 0.001792, 0.006581, 0.00591 , 0.002995])
+        expected = np.array([0.0, 0.0, 0.0, 0.002557, 0.020954, 0.001792, 0.006581, 0.00591, 0.002995])
 
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipeline)
