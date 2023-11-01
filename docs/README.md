@@ -109,7 +109,7 @@ although we can write them directly in Markdown.
 
 Adding a new tutorial or section is done in two steps:
 
-- Add a new file under `docs/source/<languageCode>`. This file can either be ReStructuredText (.rst) or Markdown (.md).
+- Add a new Markdown (.md) file under `docs/source/<languageCode>`.
 - Link that file in `docs/source/<languageCode>/_toctree.yml` on the correct toc-tree.
 
 Make sure to put your new file under the proper section. It's unlikely to go in the first section (*Get Started*), so
