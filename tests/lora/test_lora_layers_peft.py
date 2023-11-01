@@ -1780,17 +1780,18 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         """
         generator = torch.Generator().manual_seed(0)
 
-        pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", dtype=torch.float16).to(
-            "cuda"
-        )
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to("cuda")
         civitai_path = hf_hub_download("ybelkada/test-ahi-civitai", "ahi_lora_weights.safetensors")
         pipeline.load_lora_weights(civitai_path, adapter_name="ahri")
 
-        images = pipeline(
-            "ahri, masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
-        ).images
+        images = pipeline("ahri, masterpiece", output_type="np", generator=generator, num_inference_steps=5).images
         images = images[0, -3:, -3:, -1].flatten()
-        import pdb; pdb.set_trace()
+        expected = np.array([0.5498, 0.4248, 0.4045, 0.499, 0.4629, 0.4048, 0.4668, 0.4133, 0.3503])
+
+        self.assertTrue(np.allclose(images, expected, atol=1e-3))
+        release_memory(pipeline)
 
     def test_canny_lora(self):
         controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")
