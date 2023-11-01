@@ -823,14 +823,17 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 4. mid
         if self.mid_block is not None:
-            sample = self.mid_block(
-                sample,
-                emb,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
-                num_frames=num_frames,
-                cross_attention_kwargs=cross_attention_kwargs,
-            )
+            inputs = {
+                "hidden_states": sample,
+                "temb": emb,
+                "encoder_hidden_states": encoder_hidden_states,
+                "attention_mask": attention_mask,
+                "cross_attention_kwargs": cross_attention_kwargs,
+            }
+            if hasattr(self.mid_block, "motion_modules"):
+                inputs.update({"num_frames": num_frames})
+
+            sample = self.mid_block(**inputs)
 
         if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
