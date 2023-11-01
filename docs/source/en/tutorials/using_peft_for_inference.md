@@ -11,8 +11,6 @@ specific language governing permissions and limitations under the License.
 -->
 
 [[open-in-colab]]
-<!--Notebook links don't work.
--->
 
 # Inference with PEFT
 
