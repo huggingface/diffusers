@@ -17,8 +17,8 @@ specific language governing permissions and limitations under the License.
 Each training script is:
 
 - **Self-contained**: the training script does not depend on any local files, and all packages required to run the script are installed from the `requirements.txt` file.
-- **Easy-to-tweak**: the training scripts are an example of how to train a diffusion model for a specific task and it won't work out-of-the-box for every training scenario. You'll likely need to adapt the training script for your specific use-case. To help you with that, we've fully exposed the data preprocessing code and the training loop in the script so you can modify it for your own use.
-- **Beginner-friendly**: the training scripts are designed to be beginner-friendly and easy to understand rather than including the latest state-of-the-art methods to get the best and most competitive results. Any training methods we consider too complex are purposefully left out.
+- **Easy-to-tweak**: the training scripts are an example of how to train a diffusion model for a specific task and won't work out-of-the-box for every training scenario. You'll likely need to adapt the training script for your specific use-case. To help you with that, we've fully exposed the data preprocessing code and the training loop in the script so you can modify it for your own use.
+- **Beginner-friendly**: the training scripts are designed to be beginner-friendly and easy to understand, rather than including the latest state-of-the-art methods to get the best and most competitive results. Any training methods we consider too complex are purposefully left out.
 - **Single-purpose**: each training script is expressly designed for only one task to keep it readable and understandable.
 
 Our current collection of training scripts include:

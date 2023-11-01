@@ -20,7 +20,7 @@ The text-to-image script is experimental, and it's easy to overfit and run into 
 
 Text-to-image models like Stable Diffusion are conditioned to generate images given a text prompt.
 
-Training a model can be taxing on your hardware, but if you enable `gradient_checkpoint` and `mixed_precision`, it is possible to train a model on a single 24GB GPU. If you're training with larger batch sizes or want to train faster, it's better to use GPUs with more than 30GB of memory. JAX/Flax are also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing or gradient accumulation, so you'll need a GPU with at least 30GB of memory or a v3 TPU. You can reduce your memory footprint even more by enabling memory-efficient attention with [xFormers](../optimization/xformers) (not supported for Flax).
+Training a model can be taxing on your hardware, but if you enable `gradient_checkpoint` and `mixed_precision`, it is possible to train a model on a single 24GB GPU. If you're training with larger batch sizes or want to train faster, it's better to use GPUs with more than 30GB of memory. You can reduce your memory footprint by enabling memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing, gradient accumulation or xFormers. A GPU with at least 30GB of memory or a TPU v3 is recommended for training with Flax.
 
 This guide will explore the [train_text_to_image.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) training script to help you become familiar with it and how you can adapt it for your own use-case.
 
@@ -73,7 +73,7 @@ To setup a default 🤗 Accelerate environment without choosing any configuratio
 accelerate config default
 ```
 
-Or if your environment doesn't support an interactive shell like a notebook, you can use:
+Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
 ```bash
 from accelerate.utils import write_basic_config
