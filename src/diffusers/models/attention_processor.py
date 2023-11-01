@@ -1238,7 +1238,7 @@ class AttnProcessor2_0:
         )
         if initial_encoder_hidden_states:
             print(f"Serializing attention values: {hidden_states.shape}")
-            torch.save(hidden_states, f"query_{i}.pt")
+            torch.save(hidden_states, f"hidden_states_{i}.pt")
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
