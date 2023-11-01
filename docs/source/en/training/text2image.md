@@ -161,7 +161,7 @@ Lastly, the [training loop](https://github.com/huggingface/diffusers/blob/8959c5
 
 Once you've made all your changes or you're okay with the default configuration, you're ready to launch the training script! 🚀
 
-<hfoptions id="launchtraining">
+<hfoptions id="training-inference">
 <hfoption id="PyTorch">
 
 Let's train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate our own Pokémon. Set the environment variables `MODEL_NAME` and `dataset_name` to the model (either from the Hub or a local path) and the dataset. If you're training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
@@ -227,7 +227,7 @@ python train_text_to_image_flax.py \
 
 Once training is complete, you can use your newly trained model for inference like:
 
-<hfoptions id="inference">
+<hfoptions id="training-inference">
 <hfoption id="PyTorch">
 
 ```py
