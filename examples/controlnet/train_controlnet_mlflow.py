@@ -394,10 +394,10 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument("--optimizer_algorithm", type=str, default=None, help="The optimizer algorithm used in training process" )
-    # parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    # parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--weight_decay", type=float, default=0,required=True, help="Weight decay to use.")
-    # parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
@@ -881,53 +881,48 @@ def main(args):
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
-
+    #Initialize the optimizer
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
-    if args.optimizer_algorithm == "AdamW":
-        if args.use_8bit_adam:
-            try:
-                import bitsandbytes as bnb
-            except ImportError:
-                raise ImportError(
-                    "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
-                )
-
+    if args.use_8bit_adam:
+        try:
+            import bitsandbytes as bnb
+        except ImportError:
+            raise ImportError(
+                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+            )
+        if args.optimizer_algorithm == "AdamW":
             optimizer_class = bnb.optim.AdamW8bit
-        else:
+        elif args.optimizer_algorithm == "AdamW":
+            optimizer_class = bnb.optim.Adam8bit
+        elif args.optimizer_algorithm == "RMSprop":
+            optimizer_class = bnb.optim.RMSprop8bit
+    else: 
+        if args.optimizer_algorithm == "AdamW":
             optimizer_class = torch.optim.AdamW
-
-        # Optimizer creation
-        params_to_optimize = controlnet.parameters()
-        optimizer = optimizer_class(
-            params_to_optimize,
-            lr=args.learning_rate,
-            betas=(0.9, 0.999),
-            weight_decay=args.weight_decay,
-            eps=1e-08,
-        )
-    if args.optimizer_algorithm == "Adam":
-        optimizer_class = torch.optim.Adam
-        # Optimizer creation
-        params_to_optimize = controlnet.parameters()
-        optimizer = optimizer_class(
-            params_to_optimize,
-            lr=args.learning_rate,
-            betas=(0.9, 0.999),
-            weight_decay=args.aweight_decay,
-            eps=1e-08,
-        )
+        elif args.optimizer_algorithm == "AdamW":
+            optimizer_class = torch.optim.Adam
+        elif args.optimizer_algorithm == "RMSprop":
+            optimizer_class = torch.optim.RMSprop
+    
+    # Optimizer creation
+    params_to_optimize = controlnet.parameters()
     if args.optimizer_algorithm == "RMSprop":
-        optimizer_class = torch.optim.RMSprop
-        # Optimizer creation
-        params_to_optimize = controlnet.parameters()
         optimizer = optimizer_class(
             params_to_optimize,
             lr=args.learning_rate,
-            alpha=0.99,
-            momentum=0,
+            momentum=args.momentum,
             weight_decay=args.weight_decay,
-            eps=1e-08,
+            eps=args.adam_epsilon,
         )
+    else:
+        optimizer = optimizer_class(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.weight_decay,
+            eps=args.adam_epsilon,
+        )
+
     train_dataset = make_train_dataset(args, tokenizer, accelerator)
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -953,6 +948,7 @@ def main(args):
         num_cycles=args.lr_num_cycles,
         power=args.lr_power,
     )
+    
 
     # Prepare everything with our `accelerator`.
     controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(

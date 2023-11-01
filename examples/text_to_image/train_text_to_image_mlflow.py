@@ -618,47 +618,44 @@ def main():
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    # Initialize the optimizer
-    if args.optimizer_algorithm == "AdamW":
-        if args.use_8bit_adam:
-            try:
-                import bitsandbytes as bnb
-            except ImportError:
-                raise ImportError(
-                    "Please install bitsandbytes to use 8-bit Adam. You can do so by running `pip install bitsandbytes`"
-                )
-
+    #Initialize the optimizer
+    # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
+    if args.use_8bit_adam:
+        try:
+            import bitsandbytes as bnb
+        except ImportError:
+            raise ImportError(
+                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+            )
+        if args.optimizer_algorithm == "AdamW":
             optimizer_cls = bnb.optim.AdamW8bit
-        else:
+        elif args.optimizer_algorithm == "AdamW":
+            optimizer_cls = bnb.optim.Adam8bit
+        elif args.optimizer_algorithm == "RMSprop":
+            optimizer_cls = bnb.optim.RMSprop8bit
+    else: 
+        if args.optimizer_algorithm == "AdamW":
             optimizer_cls = torch.optim.AdamW
+        elif args.optimizer_algorithm == "AdamW":
+            optimizer_cls = torch.optim.Adam
+        elif args.optimizer_algorithm == "RMSprop":
+            optimizer_cls = torch.optim.RMSprop
 
-        optimizer = optimizer_cls(
-            unet.parameters(),
-            lr=args.learning_rate,
-            betas=(0.9, 0.999),
-            weight_decay=args.weight_decay,
-            eps=1e-08,
-        )
-    if args.optimizer_algorithm == "Adam":
-        optimizer_cls = torch.optim.Adam
-        # Optimizer creation
-        optimizer = optimizer_cls(
-            unet.parameters(),
-            lr=args.learning_rate,
-            betas=(0.9, 0.999),
-            weight_decay=args.weight_decay,
-            eps=1e-08,
-        )
+
+    # Optimizer creation
     if args.optimizer_algorithm == "RMSprop":
-        optimizer_cls = torch.optim.RMSprop
-        # Optimizer creation
         optimizer = optimizer_cls(
-            unet.parameters(),
             lr=args.learning_rate,
-            alpha=0.99,
-            momentum=0,
+            momentum=args.momentum,
             weight_decay=args.weight_decay,
-            eps=1e-08,
+            eps=args.adam_epsilon,
+        )
+    else:
+        optimizer = optimizer_cls(
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.weight_decay,
+            eps=args.adam_epsilon,
         )
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).

@@ -186,12 +186,12 @@ def parse_args():
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument("--optimizer_algorithm", type=str, default=None, help="The optimizer algorithm used in training process" )
-    # parser.add_argument("--adam_beta1", type=float, default=0.95, help="The beta1 parameter for the Adam optimizer.")
-    # parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_beta1", type=float, default=0.95, help="The beta1 parameter for the Adam optimizer.")
+    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument(
         "--weight_decay", type=float, default=1e-6,required=True, help="Weight decay magnitude for the Adam optimizer."
     )
-    # parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer.")
+    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer.")
     parser.add_argument(
         "--use_ema",
         action="store_true",
@@ -469,17 +469,17 @@ def main(args):
         optimizer = torch.optim.AdamW(
             model.parameters(),
             lr=args.learning_rate,
-            betas=(0.9, 0.999),
+            betas=(args.adam_beta1, args.adam_beta2),
             weight_decay=args.weight_decay,
-            eps=1e-08,
+            eps=args.adam_epsilon,
         )
     if args.optimizer_algorithm == "Adam":
         optimizer = torch.optim.Adam(
             model.parameters(),
             lr=args.learning_rate,
-            betas=(0.9, 0.999),
+            betas=(args.adam_beta1, args.adam_beta2),
             weight_decay=args.weight_decay,
-            eps=1e-08,
+            eps=args.adam_epsilon,
         ) 
     if args.optimizer_algorithm == "RMSprop":
         optimizer = torch.optim.RMSprop(
@@ -488,7 +488,7 @@ def main(args):
             alpha=0.99,
             momentum=0,
             weight_decay=args.weight_decay,
-            eps=1e-08,
+            eps=args.adam_epsilon,
         )
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
