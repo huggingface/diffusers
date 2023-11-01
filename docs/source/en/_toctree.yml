@@ -40,6 +40,8 @@
       title: Push files to the Hub
     title: Loading & Hub
   - sections:
+    - local: using-diffusers/pipeline_overview
+      title: Overview
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
@@ -70,6 +72,8 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
+    - local: using-diffusers/kandinsky
+      title: Kandinsky
     - local: using-diffusers/controlnet
       title: ControlNet
     - local: using-diffusers/shap-e
@@ -241,7 +245,7 @@
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
-      title: Kandinsky
+      title: Kandinsky 2.1
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
     - local: api/pipelines/latent_consistency_models
