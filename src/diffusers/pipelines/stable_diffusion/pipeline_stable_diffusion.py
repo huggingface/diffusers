@@ -502,10 +502,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 f" {type(callback_steps)}."
             )
         if callback_on_step_end_tensor_inputs is not None and not all(
-            k in set(inspect.signature(self.__call__).parameters.keys()) for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError("`callback_on_step_end_tensor_inputs` has to be input arguments to `__call__` method")
-        elif callback_on_step_end_tensor_inputs is not None and not all(
             k in CALLBACK_ON_STEP_END_TENSOR_INPUTS for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
@@ -623,6 +619,10 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
     @property
     def timestep(self):
         return self._timestep
+
+    @property
+    def timesteps(self):
+        return self._timesteps
 
     @property
     def height(self):
@@ -827,7 +827,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(self.num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        self._timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -846,10 +846,10 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         self._extra_step_kwargs = self.prepare_extra_step_kwargs(self.generator, self.eta)
 
         # 7. Denoising loop
-        num_warmup_steps = len(timesteps) - self.num_inference_steps * self.scheduler.order
+        num_warmup_steps = len(self.timesteps) - self.num_inference_steps * self.scheduler.order
 
         with self.progress_bar(total=self.num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
+            for i, t in enumerate(self.timesteps):
                 self._step_index = i
                 self._timestep = t
                 # expand the latents if we are doing classifier free guidance
@@ -890,7 +890,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
-                if self.step_index == len(timesteps) - 1 or (
+                if self.step_index == len(self.timesteps) - 1 or (
                     (self.step_index + 1) > num_warmup_steps and (self.step_index + 1) % self.scheduler.order == 0
                 ):
                     progress_bar.update()
