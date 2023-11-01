@@ -969,7 +969,6 @@ def main(args):
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
-    #Initialize the optimizer
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
         try:
@@ -980,14 +979,14 @@ def main(args):
             )
         if args.optimizer_algorithm == "AdamW":
             optimizer_class = bnb.optim.AdamW8bit
-        elif args.optimizer_algorithm == "AdamW":
+        elif args.optimizer_algorithm == "Adam":
             optimizer_class = bnb.optim.Adam8bit
         elif args.optimizer_algorithm == "RMSprop":
             optimizer_class = bnb.optim.RMSprop8bit
     else: 
         if args.optimizer_algorithm == "AdamW":
             optimizer_class = torch.optim.AdamW
-        elif args.optimizer_algorithm == "AdamW":
+        elif args.optimizer_algorithm == "Adam":
             optimizer_class = torch.optim.Adam
         elif args.optimizer_algorithm == "RMSprop":
             optimizer_class = torch.optim.RMSprop
