@@ -691,7 +691,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
-    # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.forward
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -792,13 +791,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # 2. pre-process
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
         sample = self.conv_in(sample)
-
-        sample = self.transformer_in(
-            sample,
-            num_frames=num_frames,
-            cross_attention_kwargs=cross_attention_kwargs,
-            return_dict=False,
-        )[0]
 
         # 3. down
         down_block_res_samples = (sample,)
