@@ -590,10 +590,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         return self._guidance_rescale
 
     @property
-    def lora_scale(self):
-        return self._lora_scale
-
-    @property
     def clip_skip(self):
         return self._clip_skip
 
@@ -808,7 +804,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         device = self._execution_device
 
         # 3. Encode input prompt
-        self._lora_scale = (
+        lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
 
@@ -820,7 +816,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=self.lora_scale,
+            lora_scale=lora_scale,
             clip_skip=self.clip_skip,
         )
         # For classifier free guidance, we need to do two forward passes.
