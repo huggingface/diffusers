@@ -231,8 +231,6 @@ class PipelineTesterMixin:
             "latents",
             "output_type",
             "return_dict",
-            "callback",
-            "callback_steps",
         ]
     )
 
