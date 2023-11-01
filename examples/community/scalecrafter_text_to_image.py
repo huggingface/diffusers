@@ -198,8 +198,8 @@ class ScaleCrafterTexttoImagePipeline(StableDiffusionPipeline):
         content = response.content.decode("utf-8")
         config = yaml.safe_load(content)
         # 0. Default height and width to unet
-        height = config['latent_height'] or self.unet.config.sample_size * self.vae_scale_factor
-        width = config['latent_width'] or self.unet.config.sample_size * self.vae_scale_factor
+        height = config['latent_height'] * self.vae_scale_factor or self.unet.config.sample_size * self.vae_scale_factor
+        width = config['latent_width'] * self.vae_scale_factor or self.unet.config.sample_size * self.vae_scale_factor
         inflate_tau = config['inflate_tau']
         ndcfg_tau = config['ndcfg_tau']
         dilate_tau = config['dilate_tau']
