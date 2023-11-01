@@ -161,7 +161,7 @@ active_adapters
 You can also get the active adapters of each pipeline component with [`~diffusers.loaders.LoraLoaderMixin.get_list_adapters`]:
 
 ```py
->>>list_adapters_component_wise = pipe.get_list_adapters()
->>>list_adapters_component_wise
+list_adapters_component_wise = pipe.get_list_adapters()
+list_adapters_component_wise
 {"text_encoder": ["toy", "pixel"], "unet": ["toy", "pixel"], "text_encoder_2": ["toy", "pixel"]}
 ```
