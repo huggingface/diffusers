@@ -1174,6 +1174,7 @@ class AttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
+        i=None
     ) -> torch.FloatTensor:
         residual = hidden_states
 
@@ -1201,6 +1202,8 @@ class AttnProcessor2_0:
 
         args = () if USE_PEFT_BACKEND else (scale,)
         query = attn.to_q(hidden_states, *args)
+        print("Serializing query")
+        torch.save(query, f"query_{i}.pt")
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states

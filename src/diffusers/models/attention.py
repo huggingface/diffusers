@@ -243,9 +243,8 @@ class BasicTransformerBlock(nn.Module):
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
+            i=i
         )
-        print("Serializing attn output")
-        torch.save(attn_output, f"attn_output_{i}.pt")
         if self.use_ada_layer_norm_zero or self.caption_channels is not None:
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
