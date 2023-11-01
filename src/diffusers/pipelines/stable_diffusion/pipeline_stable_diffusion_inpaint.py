@@ -767,10 +767,6 @@ class StableDiffusionInpaintPipeline(
         return self._guidance_scale
 
     @property
-    def strength(self):
-        return self._strength
-
-    @property
     def clip_skip(self):
         return self._clip_skip
 
@@ -782,60 +778,8 @@ class StableDiffusionInpaintPipeline(
         return self._guidance_scale > 1
 
     @property
-    def generator(self):
-        return self._generator
-
-    @property
-    def eta(self):
-        return self._eta
-
-    @property
     def cross_attention_kwargs(self):
         return self._cross_attention_kwargs
-
-    @property
-    def extra_step_kwargs(self):
-        return self._extra_step_kwargs
-
-    @property
-    def step_index(self):
-        return self._step_index
-
-    @property
-    def timestep(self):
-        return self._timestep
-
-    @property
-    def timesteps(self):
-        return self._timesteps
-
-    @property
-    def height(self):
-        return self._height
-
-    @property
-    def width(self):
-        return self._width
-
-    @property
-    def num_inference_steps(self):
-        return self._num_inference_steps
-
-    @property
-    def num_images_per_prompt(self):
-        return self._num_images_per_prompt
-
-    @property
-    def batch_size(self):
-        return self._batch_size
-
-    @property
-    def output_type(self):
-        return self._output_type
-
-    @property
-    def return_dict(self):
-        return self._return_dict
 
     @torch.no_grad()
     def __call__(
@@ -1010,15 +954,6 @@ class StableDiffusionInpaintPipeline(
             callback_on_step_end_tensor_inputs,
         )
 
-        self._height = height
-        self._width = width
-        self._strength = strength
-        self._num_inference_steps = num_inference_steps
-        self._num_images_per_prompt = num_images_per_prompt
-        self._generator = generator
-        self._eta = eta
-        self._output_type = output_type
-        self._return_dict = return_dict
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
@@ -1030,7 +965,6 @@ class StableDiffusionInpaintPipeline(
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        self._batch_size = batch_size
 
         device = self._execution_device
 
@@ -1041,7 +975,7 @@ class StableDiffusionInpaintPipeline(
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
-            self.num_images_per_prompt,
+            num_images_per_prompt,
             self.do_classifier_free_guidance,
             negative_prompt,
             prompt_embeds=prompt_embeds,
@@ -1056,24 +990,24 @@ class StableDiffusionInpaintPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. set timesteps
-        self.scheduler.set_timesteps(self.num_inference_steps, device=device)
-        self._timesteps, self._num_inference_steps = self.get_timesteps(
-            num_inference_steps=self.num_inference_steps, strength=self.strength, device=device
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps, num_inference_steps = self.get_timesteps(
+            num_inference_steps=num_inference_steps, strength=strength, device=device
         )
         # check that number of inference steps is not < 1 - as this doesn't make sense
-        if self.num_inference_steps < 1:
+        if num_inference_steps < 1:
             raise ValueError(
-                f"After adjusting the num_inference_steps by strength parameter: {self.strength}, the number of pipeline"
-                f"steps is {self.num_inference_steps} which is < 1 and not appropriate for this pipeline."
+                f"After adjusting the num_inference_steps by strength parameter: {strength}, the number of pipeline"
+                f"steps is {num_inference_steps} which is < 1 and not appropriate for this pipeline."
             )
         # at which timestep to set the initial noise (n.b. 50% if strength is 0.5)
-        latent_timestep = self.timesteps[:1].repeat(self.batch_size * self.num_images_per_prompt)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         # create a boolean to check if the strength is set to 1. if so then initialise the latents with pure noise
-        is_strength_max = self.strength == 1.0
+        is_strength_max = strength == 1.0
 
         # 5. Preprocess mask and image
 
-        init_image = self.image_processor.preprocess(image, height=self.height, width=self.width)
+        init_image = self.image_processor.preprocess(image, height=height, width=width)
         init_image = init_image.to(dtype=torch.float32)
 
         # 6. Prepare latent variables
@@ -1082,13 +1016,13 @@ class StableDiffusionInpaintPipeline(
         return_image_latents = num_channels_unet == 4
 
         latents_outputs = self.prepare_latents(
-            self.batch_size * self.num_images_per_prompt,
+            batch_size * num_images_per_prompt,
             num_channels_latents,
-            self.height,
-            self.width,
+            height,
+            width,
             prompt_embeds.dtype,
             device,
-            self.generator,
+            generator,
             latents,
             image=init_image,
             timestep=latent_timestep,
@@ -1103,7 +1037,7 @@ class StableDiffusionInpaintPipeline(
             latents, noise = latents_outputs
 
         # 7. Prepare mask latent variables
-        mask_condition = self.mask_processor.preprocess(mask_image, height=self.height, width=self.width)
+        mask_condition = self.mask_processor.preprocess(mask_image, height=height, width=width)
 
         if masked_image_latents is None:
             masked_image = init_image * (mask_condition < 0.5)
@@ -1113,12 +1047,12 @@ class StableDiffusionInpaintPipeline(
         mask, masked_image_latents = self.prepare_mask_latents(
             mask_condition,
             masked_image,
-            self.batch_size * self.num_images_per_prompt,
-            self.height,
-            self.width,
+            batch_size * num_images_per_prompt,
+            height,
+            width,
             prompt_embeds.dtype,
             device,
-            self.generator,
+            generator,
             self.do_classifier_free_guidance,
         )
 
@@ -1141,19 +1075,17 @@ class StableDiffusionInpaintPipeline(
             )
 
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        self._extra_step_kwargs = self.prepare_extra_step_kwargs(self.generator, self.eta)
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 10. Denoising loop
-        num_warmup_steps = len(self.timesteps) - self.num_inference_steps * self.scheduler.order
-        with self.progress_bar(total=self.num_inference_steps) as progress_bar:
-            for i, t in enumerate(self.timesteps):
-                self._step_index = i
-                self._timestep = t
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
                 # concat latents, mask, masked_image_latents in the channel dimension
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, self.timestep)
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 if num_channels_unet == 9:
                     latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
@@ -1161,7 +1093,7 @@ class StableDiffusionInpaintPipeline(
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
-                    self.timestep,
+                    t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     return_dict=False,
@@ -1173,9 +1105,7 @@ class StableDiffusionInpaintPipeline(
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(
-                    noise_pred, self.timestep, latents, **self.extra_step_kwargs, return_dict=False
-                )[0]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
                 if num_channels_unet == 4:
                     init_latents_proper = image_latents
                     if self.do_classifier_free_guidance:
@@ -1183,8 +1113,8 @@ class StableDiffusionInpaintPipeline(
                     else:
                         init_mask = mask
 
-                    if i < len(self.timesteps) - 1:
-                        noise_timestep = self.timesteps[i + 1]
+                    if i < len(timesteps) - 1:
+                        noise_timestep = timesteps[i + 1]
                         init_latents_proper = self.scheduler.add_noise(
                             init_latents_proper, noise, torch.tensor([noise_timestep])
                         )
@@ -1195,7 +1125,7 @@ class StableDiffusionInpaintPipeline(
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, callback_kwargs)
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
@@ -1204,20 +1134,18 @@ class StableDiffusionInpaintPipeline(
                     masked_image_latents = callback_outputs.pop("masked_image_latents", masked_image_latents)
 
                 # call the callback, if provided
-                if self.step_index == len(self.timesteps) - 1 or (
-                    (self.step_index + 1) > num_warmup_steps and (self.step_index + 1) % self.scheduler.order == 0
-                ):
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        step_idx = self.step_index // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, self.timestep, latents)
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
-        if not self.output_type == "latent":
+        if not output_type == "latent":
             condition_kwargs = {}
             if isinstance(self.vae, AsymmetricAutoencoderKL):
                 init_image = init_image.to(device=device, dtype=masked_image_latents.dtype)
                 init_image_condition = init_image.clone()
-                init_image = self._encode_vae_image(init_image, generator=self.generator)
+                init_image = self._encode_vae_image(init_image, generator=generator)
                 mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
                 condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, **condition_kwargs)[0]
@@ -1231,12 +1159,12 @@ class StableDiffusionInpaintPipeline(
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        image = self.image_processor.postprocess(image, output_type=self.output_type, do_denormalize=do_denormalize)
+        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # Offload all models
         self.maybe_free_model_hooks()
 
-        if not self.return_dict:
+        if not return_dict:
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
