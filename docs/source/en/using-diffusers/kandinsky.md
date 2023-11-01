@@ -123,7 +123,7 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_
 
 For image-to-image, pass the initial image and text prompt to condition the image with to the pipeline. Start by loading the prior pipeline:
 
-<hfoptions id="kandinsky-image-to-image">
+<hfoptions id="image-to-image">
 <hfoption id="Kandinsky 2.1">
 
 ```py
@@ -206,7 +206,7 @@ image = pipeline(image=original_image, image_embeds=image_emebds, negative_image
 
 Use the [`AutoPipelineForImage2Image`] to automatically call the combined pipelines under the hood:
 
-<hfoptions id="combined-image-to-image">
+<hfoptions id="image-to-image">
 <hfoption id="Kandinsky 2.1">
 
 ```py
@@ -280,7 +280,7 @@ mask = 1 - mask
 
 For inpainting, you'll need the original image, a mask of the area to replace in the original image, and a text prompt of what to inpaint. Load the prior pipeline:
 
-<hfoptions id="kandinsky-inpaint">
+<hfoptions id="inpaint">
 <hfoption id="Kandinsky 2.1">
 
 ```py
@@ -327,7 +327,7 @@ prior_output = prior_pipeline(prompt)
 
 Now pass the initial image, mask, and prompt and embeddings to the pipeline to generate an image:
 
-<hfoptions id="kandinsky-image-to-image-generate">
+<hfoptions id="inpaint">
 <hfoption id="Kandinsky 2.1">
 
 ```py
@@ -354,7 +354,7 @@ image = pipeline(image=init_image, mask_image=mask, **prior_output, height=768, 
 
 You can also use the end-to-end [`KandinskyInpaintCombinedPipeline`] and [`KandinskyV22InpaintCombinedPipeline`] to call the prior and decoder pipelines together under the hood. Use the [`AutoPipelineForInpainting`] for this:
 
-<hfoptions id="kandinsky-inpaint-combined">
+<hfoptions id="inpaint">
 <hfoption id="Kandinsky 2.1">
 
 ```py
@@ -442,7 +442,7 @@ weights = [0.3, 0.3, 0.4]
 
 Call the `interpolate` function to generate the embeddings, and then pass them to the pipeline to generate the image:
 
-<hfoptions id="interpolate-generate">
+<hfoptions id="interpolate">
 <hfoption id="Kandinsky 2.1">
 
 ```py
