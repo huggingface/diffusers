@@ -1203,7 +1203,7 @@ class AttnProcessor2_0:
         args = () if USE_PEFT_BACKEND else (scale,)
         query = attn.to_q(hidden_states, *args)
         print("Serializing query")
-        inner_dim = key.shape[-1]
+        inner_dim = query.shape[-1]
         head_dim = inner_dim // attn.heads
         torch.save(query.view(batch_size, -1, attn.heads, head_dim), f"query_{i}.pt")
 
