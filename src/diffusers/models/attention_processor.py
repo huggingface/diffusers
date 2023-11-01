@@ -1225,8 +1225,8 @@ class AttnProcessor2_0:
 
         print(f"Serializing query, key, and value: {hidden_states.shape}")
         torch.save(query, f"query_{i}.pt")
-        torch.save(query, f"key_{i}.pt")
-        torch.save(query, f"value_{i}.pt")
+        torch.save(key, f"key_{i}.pt")
+        torch.save(value, f"value_{i}.pt")
 
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
