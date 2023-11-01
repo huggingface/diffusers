@@ -209,6 +209,7 @@ class BasicTransformerBlock(nn.Module):
         timestep: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
+        i = None
     ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
@@ -226,16 +227,11 @@ class BasicTransformerBlock(nn.Module):
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
-            # print(shift_msa[0, :3, -1], scale_msa[0, :3, -1], gate_msa[0, :3, -1], shift_mlp[0, :3, -1], scale_mlp[0, :3, -1], gate_mlp[0, :3, -1])
-            # print(f"before layer norm: {hidden_states[0, :5, 0:3]}")
-            # print(f"before layer norm: {hidden_states[0, :5, 3:5]}")
             norm_hidden_states = self.norm1(hidden_states)
-            # print(f"norm_hidden_states: {norm_hidden_states[0, :5, 0:3]}")
-            # print(f"norm_hidden_states: {norm_hidden_states[0, :5, 3:5]}")
-            # Modulate
+            print("Serializing normed hidden states")
+            torch.save(norm_hidden_states, f"norm_hidden_states_{i}.pt")
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
             norm_hidden_states = norm_hidden_states.squeeze(1)
-            # print(f"norm_hidden_states: {norm_hidden_states[0, :5, 3:5]}")
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
