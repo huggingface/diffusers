@@ -263,7 +263,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
 
     def __init__(self, embed_dim: int, max_seq_length: int = 32):
         super().__init__()
-        pe = get_1d_sincos_pos_embed_from_grid(embed_dim, torch.arange(32))
+        pe = get_1d_sincos_pos_embed_from_grid(embed_dim, torch.arange(max_seq_length))
         pe = torch.tensor(pe, dtype=torch.float32).unsqueeze(0)
         self.register_buffer("pe", pe)
 
