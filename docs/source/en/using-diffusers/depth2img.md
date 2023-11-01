@@ -25,7 +25,7 @@ from PIL import Image
 
 from diffusers import StableDiffusionDepth2ImgPipeline
 
-pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
+pipeline = StableDiffusionDepth2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
     torch_dtype=torch.float16,
     use_safetensors=True,
@@ -38,8 +38,8 @@ Now pass your prompt to the pipeline. You can also pass a `negative_prompt` to p
 url = "http://images.cocodataset.org/val2017/000000039769.jpg"
 init_image = Image.open(requests.get(url, stream=True).raw)
 prompt = "two tigers"
-n_prompt = "bad, deformed, ugly, bad anatomy"
-image = pipe(prompt=prompt, image=init_image, negative_prompt=n_prompt, strength=0.7).images[0]
+negative_prompt = "bad, deformed, ugly, bad anatomy"
+image = pipeline(prompt=prompt, image=init_image, negative_prompt=negative_prompt, strength=0.7).images[0]
 image
 ```
 
@@ -55,3 +55,6 @@ Play around with the Spaces below and see if you notice a difference between gen
 	width="850"
 	height="500"
 ></iframe>
+
+<!--ERROR: "Your space is on error, check its status on hf.co"
+-->

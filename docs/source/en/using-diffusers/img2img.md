@@ -21,11 +21,12 @@ With 🤗 Diffusers, this is as easy as 1-2-3:
 1. Load a checkpoint into the [`AutoPipelineForImage2Image`] class; this pipeline automatically handles loading the correct pipeline class  based on the checkpoint:
 
 ```py
+import torch
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
@@ -48,7 +49,7 @@ init_image = load_image("https://huggingface.co/datasets/huggingface/documentati
 ```py
 prompt = "cat wizard, gandalf, lord of the rings, detailed, fantasy, cute, adorable, Pixar, Disney, 8k"
 image = pipeline(prompt, image=init_image).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 <div class="flex gap-4">
@@ -76,6 +77,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -92,7 +94,7 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
 # pass prompt and image to pipeline
 image = pipeline(prompt, image=init_image).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 <div class="flex gap-4">
@@ -116,6 +118,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -132,7 +135,7 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
 # pass prompt and image to pipeline
 image = pipeline(prompt, image=init_image, strength=0.5).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 <div class="flex gap-4">
@@ -158,9 +161,10 @@ import requests
 from PIL import Image
 from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
@@ -174,7 +178,7 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
 # pass prompt and image to pipeline
 image = pipeline(prompt, image=init_image).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 <div class="flex gap-4">
@@ -199,7 +203,7 @@ There are several important parameters you can configure in the pipeline that'll
 - 📈 a higher `strength` value gives the model more "creativity" to generate an image that's different from the initial image; a `strength` value of 1.0 means the initial image is more or less ignored
 - 📉 a lower `strength` value means the generated image is more similar to the initial image
 
-The `strength` and `num_inference_steps` parameter are related because `strength` determines the number of noise steps to add. For example, if the `num_inference_steps` is 50 and `strength` is 0.8, then this means adding 40 (50 * 0.8) steps of noise to the initial image and then denoising for 40 steps to get the newly generated image.
+The `strength` and `num_inference_steps` parameters are related because `strength` determines the number of noise steps to add. For example, if the `num_inference_steps` is 50 and `strength` is 0.8, then this means adding 40 (50 * 0.8) steps of noise to the initial image and then denoising for 40 steps to get the newly generated image.
 
 ```py
 import torch
@@ -207,6 +211,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -220,11 +225,10 @@ response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
-image = init_image
 
 # pass prompt and image to pipeline
 image = pipeline(prompt, image=init_image, strength=0.8).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 <div class="flex flex-row gap-4">
@@ -254,6 +258,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -270,7 +275,7 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
 # pass prompt and image to pipeline
 image = pipeline(prompt, image=init_image, guidance_scale=8.0).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 <div class="flex flex-row gap-4">
@@ -298,6 +303,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -315,17 +321,17 @@ negative_prompt = "ugly, deformed, disfigured, poor details, bad anatomy"
 
 # pass prompt and image to pipeline
 image = pipeline(prompt, negative_prompt=negative_prompt, image=init_image).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 <div class="flex flex-row gap-4">
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-negative-1.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">negative prompt = "ugly, deformed, disfigured, poor details, bad anatomy"</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">negative_prompt = "ugly, deformed, disfigured, poor details, bad anatomy"</figcaption>
   </div>
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-negative-2.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">negative prompt = "jungle"</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">negative_prompt = "jungle"</figcaption>
   </div>
 </div>
 
@@ -342,6 +348,7 @@ Start by generating an image with the text-to-image pipeline:
 ```py
 from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
 import torch
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -349,20 +356,21 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
-image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
+text2image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
+text2image
 ```
 
 Now you can pass this generated image to the image-to-image pipeline:
 
 ```py
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
-image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=image).images[0]
-image
+image2image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=text2image).images[0]
+make_image_grid([text2image, image2image], rows=1, cols=2)
 ```
 
 ### Image-to-image-to-image
@@ -377,6 +385,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -404,8 +413,8 @@ It is important to specify `output_type="latent"` in the pipeline to keep all th
 Pass the latent output from this pipeline to the next pipeline to generate an image in a [comic book art style](https://huggingface.co/ogkalu/Comic-Diffusion):
 
 ```py
-pipelne = AutoPipelineForImage2Image.from_pretrained(
-    "ogkalu/Comic-Diffusion", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+pipeline = AutoPipelineForImage2Image.from_pretrained(
+    "ogkalu/Comic-Diffusion", torch_dtype=torch.float16
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
@@ -418,14 +427,14 @@ Repeat one more time to generate the final image in a [pixel art style](https://
 
 ```py
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "kohbanye/pixel-art-style", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "kohbanye/pixel-art-style", torch_dtype=torch.float16
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # need to include the token "pixelartstyle" in the prompt to use this checkpoint
 image = pipeline("Astronaut in a jungle, pixelartstyle", image=image).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 ### Image-to-upscaler-to-super-resolution
@@ -440,6 +449,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -475,6 +485,9 @@ upscaler.enable_xformers_memory_efficient_attention()
 
 image_2 = upscaler(prompt, image=image_1, output_type="latent").images[0]
 ```
+<!--
+ValueError: AutoPipeline can't find a pipeline linked to StableDiffusionLatentUpscalePipeline for None
+-->
 
 Finally, chain it to a super-resolution pipeline to further enhance the resolution:
 
@@ -485,8 +498,8 @@ super_res = AutoPipelineForImage2Image.from_pretrained(
 super_res.enable_model_cpu_offload()
 super_res.enable_xformers_memory_efficient_attention()
 
-image_3 = upscaler(prompt, image=image_2).images[0]
-image_3
+image_3 = super_res(prompt, image=image_2).images[0]
+make_image_grid([init_image, image_3], rows=1, cols=2)
 ```
 
 ## Control image generation
@@ -504,13 +517,13 @@ from diffusers import AutoPipelineForImage2Image
 import torch
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
-image = pipeline(prompt_emebds=prompt_embeds, # generated from Compel
-    negative_prompt_embeds, # generated from Compel
+image = pipeline(prompt_embeds=prompt_embeds, # generated from Compel
+    negative_prompt_embeds=negative_prompt_embeds, # generated from Compel
     image=init_image,
 ).images[0]
 ```
@@ -522,19 +535,24 @@ ControlNets provide a more flexible and accurate way to control image generation
 For example, let's condition an image with a depth map to keep the spatial information in the image.
 
 ```py
+import requests
+from PIL import Image
+from io import BytesIO
+from diffusers.utils import load_image, make_image_grid
+
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
 response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image = init_image.resize((958, 960)) # resize to depth image dimensions
 depth_image = load_image("https://huggingface.co/lllyasviel/control_v11f1p_sd15_depth/resolve/main/images/control.png")
+make_image_grid([init_image, depth_image], rows=1, cols=2)
 ```
 
 Load a ControlNet model conditioned on depth maps and the [`AutoPipelineForImage2Image`]:
 
 ```py
 from diffusers import ControlNetModel, AutoPipelineForImage2Image
-from diffusers.utils import load_image
 import torch
 
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
@@ -549,8 +567,8 @@ Now generate a new image conditioned on the depth map, initial image, and prompt
 
 ```py
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
-image = pipeline(prompt, image=init_image, control_image=depth_image).images[0]
-image
+image_control_net = pipeline(prompt, image=init_image, control_image=depth_image).images[0]
+make_image_grid([init_image, depth_image, image_control_net], rows=1, cols=3)
 ```
 
 <div class="flex flex-row gap-4">
@@ -580,8 +598,8 @@ pipeline.enable_xformers_memory_efficient_attention()
 prompt = "elden ring style astronaut in a jungle" # include the token "elden ring style" in the prompt
 negative_prompt = "ugly, deformed, disfigured, poor details, bad anatomy"
 
-image = pipeline(prompt, negative_prompt=negative_prompt, image=init_image, strength=0.45, guidance_scale=10.5).images[0]
-image
+image_elden_ring = pipeline(prompt, negative_prompt=negative_prompt, image=image_control_net, strength=0.45, guidance_scale=10.5).images[0]
+make_image_grid([init_image, depth_image, image_control_net, image_elden_ring], rows=2, cols=2)
 ```
 
 <div class="flex justify-center">
@@ -597,10 +615,10 @@ Running diffusion models is computationally expensive and intensive, but with a 
 + pipeline.enable_xformers_memory_efficient_attention()
 ```
 
-With [`torch.compile`](../optimization/torch2.0#torch.compile), you can boost your inference speed even more by wrapping your UNet with it:
+With [`torch.compile`](../optimization/torch2.0#torchcompile), you can boost your inference speed even more by wrapping your UNet with it:
 
 ```py
-pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
 To learn more, take a look at the [Reduce memory usage](../optimization/memory) and [Torch 2.0](../optimization/torch2.0) guides.
