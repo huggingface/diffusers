@@ -199,7 +199,7 @@ If you are a JAX/Flax user, please check [this section](#changing-the-scheduler-
 ## Compare schedulers
 
 So far we have tried running the stable diffusion pipeline with two schedulers: [`PNDMScheduler`] and [`DDIMScheduler`]. 
-A number of better schedulers have been released that can be run with much fewer steps, let's compare them here:
+A number of better schedulers have been released that can be run with much fewer steps; let's compare them here:
 
 [`LMSDiscreteScheduler`] usually leads to better results:
 
@@ -258,8 +258,7 @@ image
 </p>
 
 
-At the time of November 15th, 2022 [`DPMSolverMultistepScheduler`] gives arguably the best speed/quality trade-off and can be run with as little 
-as 20 steps.
+[`DPMSolverMultistepScheduler`] gives a reasonable speed/quality trade-off and can be run with as little as 20 steps.
 
 ```python
 from diffusers import DPMSolverMultistepScheduler
@@ -277,7 +276,7 @@ image
     <br>
 </p>
 
-As you can see most images look very similar and are arguably of very similar quality. It often really depends on the specific use case which scheduler to choose. A good approach is always to run multiple different
+As you can see, most images look very similar and are arguably of very similar quality. It often really depends on the specific use case which scheduler to choose. A good approach is always to run multiple different
 schedulers to compare results.
 
 ## Changing the Scheduler in Flax
