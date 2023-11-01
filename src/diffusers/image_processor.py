@@ -380,7 +380,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
             VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
-        resample (`str`, *optional*, defaults to `lanczos`):
+        resample (`str`, *optional*, defaults to `bilinear`):
             Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1].
@@ -393,7 +393,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         self,
         do_resize: bool = True,
         vae_scale_factor: int = 8,
-        resample: str = "lanczos",
+        resample: str = "bilinear",
         do_normalize: bool = True,
     ):
         super().__init__()
@@ -410,9 +410,24 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             # special case for grayscale (single channel) images
             pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
         else:
-            pil_images = [Image.fromarray(image[:, :, :3]) for image in images]
+            pil_images = [Image.fromarray(image[:, :, :3][:,:,::-1]) for image in images]  #TODO Estelle [:,:,::-1]
 
         return pil_images
+
+    @staticmethod
+    def depth_pil_to_numpy(images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
+        """
+        Convert a PIL image or a list of PIL images to NumPy arrays.
+        """   
+        if not isinstance(images, list):
+            images = [images]
+
+        images = [np.array(image).astype(np.float32) /  (2**16 - 1) for image in images]
+        images = np.stack(images, axis=0)
+        # images = images *2 -1
+        # images = (images * 127.5 + 127.5)/255
+        return images
+    
 
     @staticmethod
     def rgblike_to_depthmap(image):
@@ -425,7 +440,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         """
         return image[:, :, 1] * 2**8 + image[:, :, 2]
 
-    def numpy_to_depth(self, images):
+    def numpy_to_pil_depth(self, images):
         """
         Convert a NumPy depth image or a batch of images to a PIL image.
         """
@@ -480,7 +495,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             return image[:, :, :, :3], image_depth
 
         if output_type == "pil":
-            return self.numpy_to_pil(image), self.numpy_to_depth(image)
+            return self.numpy_to_pil(image), self.numpy_to_pil_depth(image)
         else:
             raise Exception(f"This type {output_type} is not supported")
 
@@ -491,6 +506,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         depth: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
         height: Optional[int] = None,
         width: Optional[int] = None,
+        target_res: Optional[int] = None,
     ) -> torch.Tensor:
         """
         Preprocess the image input. Accepted formats are PIL images, NumPy arrays or PyTorch tensors.
@@ -498,25 +514,8 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
 
         # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
-        if self.config.do_convert_grayscale and isinstance(image, (torch.Tensor, np.ndarray)) and image.ndim == 3:
-            if isinstance(image, torch.Tensor):
-                # if image is a pytorch tensor could have 2 possible shapes:
-                #    1. batch x height x width: we should insert the channel dimension at position 1
-                #    2. channnel x height x width: we should insert batch dimension at position 0,
-                #       however, since both channel and batch dimension has same size 1, it is same to insert at position 1
-                #    for simplicity, we insert a dimension of size 1 at position 1 for both cases
-                image = image.unsqueeze(1)
-            else:
-                # if it is a numpy array, it could have 2 possible shapes:
-                #   1. batch x height x width: insert channel dimension on last position
-                #   2. height x width x channel: insert batch dimension on first position
-                if rgb.shape[-1] == 1:
-                    rgb = np.expand_dims(rgb, axis=0)
-                    depth = np.expand_dims(depth, axis=0)
-
-                else:
-                    rgb = np.expand_dims(rgb, axis=-1)
-                    depth = np.expand_dims(depth, axis=-1)
+        if self.config.do_convert_grayscale and isinstance(rgb, (torch.Tensor, np.ndarray)) and rgb.ndim == 3:
+            raise Exception("This is not yet supported")
 
         if isinstance(rgb, supported_formats):
             rgb = [rgb]
@@ -528,16 +527,17 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
         if isinstance(rgb[0], PIL.Image.Image):
             if self.config.do_convert_rgb:
-                rgb = [self.convert_to_rgb(i) for i in rgb]
-                depth = [self.convert_to_depth(i) for i in depth]
-            if self.config.do_resize:
-                height, width = self.get_default_height_width(rgb[0], height, width)
+                raise Exception("This is not yet supported")
+                # rgb = [self.convert_to_rgb(i) for i in rgb]
+                # depth = [self.convert_to_depth(i) for i in depth]  #TODO define convert_to_depth
+            if self.config.do_resize or target_res:
+                height, width = self.get_default_height_width(rgb[0], height, width) if not target_res else target_res
                 rgb = [self.resize(i, height, width) for i in rgb]
                 depth = [self.resize(i, height, width) for i in depth]
             rgb = self.pil_to_numpy(rgb)  # to np
             rgb = self.numpy_to_pt(rgb)  # to pt
 
-            depth = self.pil_to_numpy(depth)  # to np
+            depth = self.depth_pil_to_numpy(depth)  # to np
             depth = self.numpy_to_pt(depth)  # to pt
 
         elif isinstance(rgb[0], np.ndarray):
@@ -554,31 +554,32 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
                 depth = self.resize(depth, height, width)
 
         elif isinstance(rgb[0], torch.Tensor):
-            rgb = torch.cat(rgb, axis=0) if rgb[0].ndim == 4 else torch.stack(rgb, axis=0)
+            raise Exception("This is not yet supported")
+            # rgb = torch.cat(rgb, axis=0) if rgb[0].ndim == 4 else torch.stack(rgb, axis=0)
 
-            if self.config.do_convert_grayscale and rgb.ndim == 3:
-                rgb = rgb.unsqueeze(1)
+            # if self.config.do_convert_grayscale and rgb.ndim == 3:
+            #     rgb = rgb.unsqueeze(1)
 
-            channel = rgb.shape[1]
+            # channel = rgb.shape[1]
 
 
-            height, width = self.get_default_height_width(rgb, height, width)
-            if self.config.do_resize:
-                rgb = self.resize(rgb, height, width)
+            # height, width = self.get_default_height_width(rgb, height, width)
+            # if self.config.do_resize:
+            #     rgb = self.resize(rgb, height, width)
 
-            depth = torch.cat(depth, axis=0) if depth[0].ndim == 4 else torch.stack(depth, axis=0)
+            # depth = torch.cat(depth, axis=0) if depth[0].ndim == 4 else torch.stack(depth, axis=0)
 
-            if self.config.do_convert_grayscale and depth.ndim == 3:
-                depth = depth.unsqueeze(1)
+            # if self.config.do_convert_grayscale and depth.ndim == 3:
+            #     depth = depth.unsqueeze(1)
 
-            channel = depth.shape[1]
-            # don't need any preprocess if the image is latents
-            if depth == 4:
-                return rgb, depth
+            # channel = depth.shape[1]
+            # # don't need any preprocess if the image is latents
+            # if depth == 4:
+            #     return rgb, depth
 
-            height, width = self.get_default_height_width(depth, height, width)
-            if self.config.do_resize:
-                depth = self.resize(depth, height, width)
+            # height, width = self.get_default_height_width(depth, height, width)
+            # if self.config.do_resize:
+            #     depth = self.resize(depth, height, width)
         # expected range [0,1], normalize to [-1,1]
         do_normalize = self.config.do_normalize
         if rgb.min() < 0 and do_normalize:

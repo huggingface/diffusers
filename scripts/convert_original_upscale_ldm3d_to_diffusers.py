@@ -237,14 +237,10 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                 if sd_hf_unet[new_k].shape != v.shape:
                     print(f"Warning: {new_k} - HF:  {sd_hf_unet[new_k].shape} , ldm3d: {v.shape}  ")
                 v_ema = ldm3d_unet[f"model_ema.{k.replace('model.diff', 'diff').replace('.', '')}"]
-                if v.shape[-1]==1:
-                    v = v.squeeze(-1)
-                    if v.shape[-1]==1:
-                        v=v.squeeze(-1)
-                if v_ema.shape[-1]==1:
-                    v_ema = v_ema.squeeze(-1)
-                    if v_ema.shape[-1]==1:
-                        v_ema=v_ema.squeeze(-1)
+                if  v.numel() == sd_hf_unet[new_k].numel():
+                    if v.shape != sd_hf_unet[new_k].shape:
+                        v = v.squeeze()
+                        v_ema = v_ema.squeeze()
                 new_ldm3d_unet[new_k] = v
                 new_ldm3d_unet_ema[new_k] = v_ema
 
