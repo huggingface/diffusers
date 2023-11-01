@@ -27,7 +27,7 @@ Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.
 
 To use the Kandinsky models for any task, you always start by setting up the prior pipeline to encode the prompt and generate the image embeddings. The prior pipeline also generates `negative_image_embeds` that correspond to the negative prompt `""`. For better results, you can pass an actual `negative_prompt` to the prior pipeline, but this'll increase the effective batch size of the prior pipeline by 2x.
 
-<hfoptions id="kandinsky-text-to-image">
+<hfoptions id="text-to-image">
 <hfoption id="Kandinsky 2.1">
 
 ```py
@@ -84,7 +84,7 @@ image = pipeline(image_embeds=image_embeds, negative_image_embeds=negative_image
 
 Use the [`AutoPipelineForText2Image`] to automatically call the combined pipelines under the hood:
 
-<hfoptions id="combined-text-to-image">
+<hfoptions id="text-to-image">
 <hfoption id="Kandinsky 2.1">
 
 ```py
