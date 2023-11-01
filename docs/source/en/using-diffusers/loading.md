@@ -33,7 +33,7 @@ This guide will show you how to load:
 
 </Tip>
 
-The [`DiffusionPipeline`] class is the simplest and most generic way to load any diffusion model from the Hub. If you want to know what's latest and trending, you could also use [this link](https://huggingface.co/models?library=diffusers&sort=trending). The [`DiffusionPipeline.from_pretrained`] method automatically detects the correct pipeline class from the checkpoint, downloads, and caches all the required configuration and weight files, and returns a pipeline instance ready for inference.
+The [`DiffusionPipeline`] class is the simplest and most generic way to load the latest trending diffusion model from the [Hub](https://huggingface.co/models?library=diffusers&sort=trending). The [`DiffusionPipeline.from_pretrained`] method automatically detects the correct pipeline class from the checkpoint, downloads, and caches all the required configuration and weight files, and returns a pipeline instance ready for inference.
 
 ```python
 from diffusers import DiffusionPipeline
