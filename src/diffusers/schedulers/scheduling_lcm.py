@@ -324,6 +324,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         num_inference_steps: int,
         device: Union[str, torch.device] = None,
         original_inference_steps: Optional[int] = None,
+        strength: int = 1.0,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -370,7 +371,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # Currently, only linear spacing is supported.
         c = self.config.num_train_timesteps // original_steps
         # LCM Training Steps Schedule
-        lcm_origin_timesteps = np.asarray(list(range(1, original_steps + 1))) * c - 1
+        lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * c - 1
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
         # LCM Inference Steps Schedule
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]

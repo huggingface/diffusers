@@ -1,8 +1,8 @@
 import gc
+import random
 import unittest
 
 import numpy as np
-import random
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -14,11 +14,11 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
+    load_image,
     require_torch_gpu,
     slow,
     torch_device,
-    floats_tensor,
-    load_image,
 )
 
 from ..pipeline_params import (
@@ -32,7 +32,9 @@ from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMix
 enable_full_determinism()
 
 
-class LatentConsistencyModelImg2ImgPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class LatentConsistencyModelImg2ImgPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = LatentConsistencyModelImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "negative_prompt", "negative_prompt_embeds"}
     required_optional_params = PipelineTesterMixin.required_optional_params - {"latents", "negative_prompt"}
@@ -144,9 +146,10 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(PipelineLatentTesterMixin, 
         inputs = self.get_dummy_inputs(device)
         output = pipe(**inputs)
         image = output.images
-        assert image.shape == (1, 64, 64, 3)
+        assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
+        print(torch.from_numpy(image_slice).flatten())
         # TODO: get expected slice
         expected_slice = np.array([0.1540, 0.5205, 0.5458, 0.1200, 0.3983, 0.4350, 0.5386, 0.3522, 0.3614])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
@@ -184,7 +187,9 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
         return inputs
 
     def test_lcm_onestep(self):
-        pipe = LatentConsistencyModelImg2ImgPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", safety_checker=None)
+        pipe = LatentConsistencyModelImg2ImgPipeline.from_pretrained(
+            "SimianLuo/LCM_Dreamshaper_v7", safety_checker=None
+        )
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -199,7 +204,9 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
-        pipe = LatentConsistencyModelImg2ImgPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", safety_checker=None)
+        pipe = LatentConsistencyModelImg2ImgPipeline.from_pretrained(
+            "SimianLuo/LCM_Dreamshaper_v7", safety_checker=None
+        )
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

@@ -20,11 +20,12 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...schedulers import LCMScheduler
 from diffusers import AutoencoderKL, DiffusionPipeline, UNet2DConditionModel, logging
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+
+from ...schedulers import LCMScheduler
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
