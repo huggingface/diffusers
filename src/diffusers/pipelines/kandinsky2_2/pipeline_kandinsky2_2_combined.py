@@ -201,10 +201,6 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         self.prior_pipe.set_progress_bar_config(**kwargs)
         self.decoder_pipe.set_progress_bar_config(**kwargs)
 
-    @property
-    def _callback_tensor_inputs(self):
-        return self.decoder_pipe._callback_tensor_inputs
-
     @torch.no_grad()
     @replace_example_docstring(TEXT2IMAGE_EXAMPLE_DOC_STRING)
     def __call__(
@@ -428,10 +424,6 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
     def set_progress_bar_config(self, **kwargs):
         self.prior_pipe.set_progress_bar_config(**kwargs)
         self.decoder_pipe.set_progress_bar_config(**kwargs)
-
-    @property
-    def _callback_tensor_inputs(self):
-        return self.decoder_pipe._callback_tensor_inputs
 
     @torch.no_grad()
     @replace_example_docstring(IMAGE2IMAGE_EXAMPLE_DOC_STRING)
@@ -668,10 +660,6 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
     def set_progress_bar_config(self, **kwargs):
         self.prior_pipe.set_progress_bar_config(**kwargs)
         self.decoder_pipe.set_progress_bar_config(**kwargs)
-
-    @property
-    def _callback_tensor_inputs(self):
-        return self.decoder_pipe._callback_tensor_inputs
 
     @torch.no_grad()
     @replace_example_docstring(INPAINT_EXAMPLE_DOC_STRING)

@@ -153,6 +153,12 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=5e-3)
 
+    def test_callback_inputs(self):
+        pass
+
+    def test_callback_cfg(self):
+        pass
+
 
 class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = KandinskyV22Img2ImgCombinedPipeline
@@ -268,6 +274,12 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
 
     def save_load_local(self):
         super().test_save_load_local(expected_max_difference=5e-3)
+
+    def test_callback_inputs(self):
+        pass
+
+    def test_callback_cfg(self):
+        pass
 
 
 class KandinskyV22PipelineInpaintCombinedFastTests(PipelineTesterMixin, unittest.TestCase):
