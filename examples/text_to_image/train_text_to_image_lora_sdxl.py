@@ -840,7 +840,7 @@ def main(args):
         all_images = []
         crop_top_lefts = []
         for image in images:
-            original_sizes.append((image.width, image.height))
+            original_sizes.append((image.height, image.width))
             image = train_resize(image)
             if args.center_crop:
                 y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
