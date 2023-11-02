@@ -79,6 +79,7 @@ else:
             "AutoencoderTiny",
             "ControlNetModel",
             "ModelMixin",
+            "MotionAdapter",
             "MultiAdapter",
             "PriorTransformer",
             "T2IAdapter",
@@ -88,6 +89,7 @@ else:
             "UNet2DConditionModel",
             "UNet2DModel",
             "UNet3DConditionModel",
+            "UNetMotionModel",
             "VQModel",
         ]
     )
@@ -195,6 +197,7 @@ else:
         [
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
+            "AnimateDiffPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
@@ -440,6 +443,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             ControlNetModel,
             ModelMixin,
+            MotionAdapter,
             MultiAdapter,
             PriorTransformer,
             T2IAdapter,
@@ -449,6 +453,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet2DConditionModel,
             UNet2DModel,
             UNet3DConditionModel,
+            UNetMotionModel,
             VQModel,
         )
         from .optimization import (
@@ -537,6 +542,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
+            AnimateDiffPipeline,
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,

@@ -742,14 +742,14 @@ class PipelineTesterMixin:
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
+        offloaded_modules = [
+            v
+            for k, v in pipe.components.items()
+            if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
+        ]
         self.assertTrue(
-            all(
-                v.device == "cpu"
-                for k, v in pipe.components.values()
-                if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
-            ),
-            "CPU offloading should leave all pipeline components on the CPU after inference",
-        )
+            all(v.device.type == "cpu" for v in offloaded_modules)
+        ), f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}"
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
