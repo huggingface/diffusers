@@ -670,12 +670,11 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         # We do this first to capture the "True" call values. If we do this at a later point in time,
         # we cannot ensure that the call values weren't changed during the process.
         # We update the `generator` later, though as we define a new generator in case it was passed as `None`.
-        if generator is None:
-            seed = random.randint(0, MAX_SEED)
-            generator = torch.manual_seed(seed)
-
         workflow = None
         if return_workflow:
+            if generator is None:
+                seed = random.randint(0, MAX_SEED)
+                generator = torch.manual_seed(seed)
             workflow = self.populate_workflow_from_pipeline()
 
         # 0. Default height and width to unet

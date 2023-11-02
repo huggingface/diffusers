@@ -845,12 +845,11 @@ class StableDiffusionControlNetPipeline(
         # We do this first to capture the "true" call values. If we do this at a later point in time,
         # we cannot ensure that the true call values weren't changed during the process.
         # We update the `generator` later, though as we define a new generator in case it was passed as `None`.
-        if generator is None:
-            seed = random.randint(0, MAX_SEED)
-            generator = torch.manual_seed(seed)
-
         workflow = None
         if return_workflow:
+            if generator is None:
+                seed = random.randint(0, MAX_SEED)
+                generator = torch.manual_seed(seed)
             workflow = self.populate_workflow_from_pipeline()
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
