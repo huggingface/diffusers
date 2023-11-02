@@ -40,7 +40,7 @@ In the following, we give an overview of different ways to contribute, ranked by
 As said before, **all contributions are valuable to the community**.
 In the following, we will explain each contribution a bit more in detail.
 
-For all contributions 4.-9. you will need to open a PR. It is explained in detail how to do so in [Opening a pull request](#how-to-open-a-pr).
+For all contributions 4-9, you will need to open a PR. It is explained in detail how to do so in [Opening a pull request](#how-to-open-a-pr).
 
 ### 1. Asking and answering questions on the Diffusers discussion forum or on the Diffusers Discord
 
