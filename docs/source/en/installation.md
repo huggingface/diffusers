@@ -50,6 +50,14 @@ pip install diffusers["flax"] transformers
 </jax>
 </frameworkcontent>
 
+## Install with conda
+
+After activating your virtual environment, with `conda` (maintained by the community):
+
+```bash
+conda install -c conda-forge diffusers
+```
+
 ## Install from source
 
 Before installing 🤗 Diffusers from source, make sure you have PyTorch and 🤗 Accelerate installed.
