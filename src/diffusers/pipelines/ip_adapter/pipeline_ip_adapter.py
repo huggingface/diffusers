@@ -460,6 +460,9 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         # TODO
 
         # 1. Define call parameters
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
+
         device = self._execution_device
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
