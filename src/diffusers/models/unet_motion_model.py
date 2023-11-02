@@ -95,14 +95,18 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         Args:
             block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each UNet block.
-            layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
-            num_attention_heads (`int`, *optional*):
-            The number of heads to use in each attention layer.
-            attention_bias (bool, optional, defaults to False): Whether to include bias in attention layers.
-            cross_attention_dim (int, optional, Defaults to None): Set in order to use cross attention.
-            activation_fn (str, optional, Defaults to "geglu"): Activation Function.
-            norm_num_groups (int, optional): _description_. Defaults to 32.
-            max_seq_length (int, optional): _description_. Defaults to 24.
+            motion_layers_per_block (`int`, *optional*, defaults to 2):
+                The number of motion layers per UNet block.
+            motion_mid_block_layers_per_block (`int`, *optional*, defaults to 1):
+                The number of motion layers in the middle UNet block.
+            motion_num_attention_heads (`int`, *optional*, defaults to 8):
+                The number of heads to use in each attention layer of the motion module.
+            motion_norm_num_groups (`int`, *optional*, defaults to 32):
+                The number of groups to use in each group normalization layer of the motion module.
+            motion_max_seq_length (`int`, *optional*, defaults to 32):
+                The maximum sequence length to use in the motion module.
+            use_motion_mid_block (`bool`, *optional*, defaults to True):
+                Whether to use a motion module in the middle of the UNet.
         """
 
         super().__init__()
@@ -686,7 +690,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         return_dict: bool = True,
     ) -> Union[UNet3DConditionOutput, Tuple]:
         r"""
-        The [`UNet3DConditionModel`] forward method.
+        The [`UNetMotionModel`] forward method.
 
         Args:
             sample (`torch.FloatTensor`):
