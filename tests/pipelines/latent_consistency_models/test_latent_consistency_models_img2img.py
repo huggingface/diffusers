@@ -129,10 +129,10 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         inputs["num_inference_steps"] = 1
         output = pipe(**inputs)
         image = output.images
-        assert image.shape == (1, 64, 64, 3)
+        assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.1441, 0.5304, 0.5452, 0.1361, 0.4011, 0.4370, 0.5326, 0.3492, 0.3637])
+        expected_slice = np.array([0.5865, 0.2854, 0.2828, 0.7473, 0.6006, 0.4580, 0.4397, 0.6415, 0.6069])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
@@ -149,9 +149,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        print(torch.from_numpy(image_slice).flatten())
-        # TODO: get expected slice
-        expected_slice = np.array([0.1540, 0.5205, 0.5458, 0.1200, 0.3983, 0.4350, 0.5386, 0.3522, 0.3614])
+        expected_slice = np.array([0.4903, 0.3304, 0.3503, 0.5241, 0.5153, 0.4585, 0.3222, 0.4764, 0.4891])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
 
     def test_inference_batch_single_identical(self):

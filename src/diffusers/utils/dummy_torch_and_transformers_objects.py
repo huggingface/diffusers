@@ -497,7 +497,7 @@ class KandinskyV22PriorPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class LatentConsistencyModelPipeline(metaclass=DummyObject):
+class LatentConsistencyModelImg2ImgPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -512,7 +512,7 @@ class LatentConsistencyModelPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers"])
 
 
-class LatentConsistencyModelImg2ImgPipeline(metaclass=DummyObject):
+class LatentConsistencyModelPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
