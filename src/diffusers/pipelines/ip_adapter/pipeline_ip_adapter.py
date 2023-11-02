@@ -63,6 +63,7 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         image_encoder: CLIPVisionModelWithProjection,
         ip_adapter_image_processor: CLIPImageProcessor,
         scheduler: KarrasDiffusionSchedulers,
+        _initialize_ip_adapter_modules: bool = True
     ):
         super().__init__()
 
@@ -78,7 +79,9 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
-        self._set_ip_adapter()
+        
+        if _initialize_ip_adapter_modules:
+            self._set_ip_adapter()
 
     def _set_ip_adapter(self):
         unet = self.unet
