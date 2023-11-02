@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import PIL
 import torch
 import torch.nn.functional as F
-import inspect
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
