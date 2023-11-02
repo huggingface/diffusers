@@ -1604,8 +1604,6 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                 )[0]
                 hidden_states = motion_module(
                     hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
                     num_frames=num_frames,
                 )[0]
                 hidden_states = resnet(hidden_states, temb, scale=lora_scale)

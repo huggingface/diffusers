@@ -50,7 +50,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
         attention_bias (`bool`, *optional*):
             Configure if the `TransformerBlock` attention should contain a bias parameter.
-        sample_size: (`int`, *optional*):
+        sample_size: (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
             This is fixed during training since it is used to learn a number of position embeddings.
         activation_fn (`str`, *optional*, defaults to `"geglu"`):
             Activation function to use in feed-forward. See `diffusers.models.activations.get_activation` for supported
