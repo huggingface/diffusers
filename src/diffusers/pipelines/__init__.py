@@ -110,7 +110,10 @@ else:
         "KandinskyV22PriorEmb2EmbPipeline",
         "KandinskyV22PriorPipeline",
     ]
-    _import_structure["latent_consistency_models"] = ["LatentConsistencyModelPipeline"]
+    _import_structure["latent_consistency_models"] = [
+        "LatentConsistencyModelImg2ImgPipeline",
+        "LatentConsistencyModelPipeline",
+    ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
@@ -334,7 +337,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
         )
-        from .latent_consistency_models import LatentConsistencyModelPipeline
+        from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
         from .latent_diffusion import LDMTextToImagePipeline
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
