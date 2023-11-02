@@ -1093,7 +1093,7 @@ class StableDiffusionControlNetPipeline(
         if not return_dict:
             outputs = (image, has_nsfw_concept)
 
-            if workflow is not None:
+            if return_workflow:
                 outputs += (workflow,)
 
             return outputs
