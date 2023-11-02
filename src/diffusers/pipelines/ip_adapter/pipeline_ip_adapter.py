@@ -415,7 +415,7 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
-            image = self.image_processor(image, return_tensors="pt").pixel_values
+            image = self.ip_adapter_image_processor(image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
         (image_embeddings,) = self.image_encoder(image).image_embeds
