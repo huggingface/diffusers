@@ -15,7 +15,6 @@
 
 
 import json
-import os
 import tempfile
 import unittest
 import uuid
@@ -34,7 +33,7 @@ from diffusers import (
 )
 from diffusers.utils.constants import WORKFLOW_NAME
 from diffusers.utils.testing_utils import torch_device
-from diffusers.workflow_utils import populate_workflow_from_pipeline
+from diffusers.workflow_utils import Workflow
 
 
 class WorkflowFastTests(unittest.TestCase):
@@ -144,86 +143,6 @@ class WorkflowPushToHubTester(unittest.TestCase):
     repo_id = f"test-workflow-{identifier}"
     org_repo_id = f"valid_org/{repo_id}-org"
 
-    def get_dummy_components(self):
-        torch.manual_seed(0)
-        unet = UNet2DConditionModel(
-            block_out_channels=(4, 8),
-            layers_per_block=1,
-            sample_size=32,
-            in_channels=4,
-            out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
-            norm_num_groups=2,
-        )
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-        )
-        torch.manual_seed(0)
-        vae = AutoencoderKL(
-            block_out_channels=[4, 8],
-            in_channels=3,
-            out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            latent_channels=4,
-            norm_num_groups=2,
-        )
-        torch.manual_seed(0)
-        text_encoder_config = CLIPTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=32,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
-            pad_token_id=1,
-            vocab_size=1000,
-        )
-        text_encoder = CLIPTextModel(text_encoder_config)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            dummy_vocab = {"<|startoftext|>": 0, "<|endoftext|>": 1, "!": 2}
-            vocab_path = os.path.join(tmpdir, "vocab.json")
-            with open(vocab_path, "w") as f:
-                json.dump(dummy_vocab, f)
-
-            merges = "Ġ t\nĠt h"
-            merges_path = os.path.join(tmpdir, "merges.txt")
-            with open(merges_path, "w") as f:
-                f.writelines(merges)
-            tokenizer = CLIPTokenizer(vocab_file=vocab_path, merges_file=merges_path)
-
-        components = {
-            "unet": unet,
-            "scheduler": scheduler,
-            "vae": vae,
-            "text_encoder": text_encoder,
-            "tokenizer": tokenizer,
-            "safety_checker": None,
-            "feature_extractor": None,
-        }
-        return components
-
-    def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
-        else:
-            generator = torch.Generator(device=device).manual_seed(seed)
-        inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
-            "generator": generator,
-            "num_inference_steps": 2,
-            "guidance_scale": 6.0,
-            "output_type": "np",
-        }
-        return inputs
-
     def compare_workflow_values(self, repo_id: str, actual_workflow: dict):
         local_path = hf_hub_download(repo_id=repo_id, filename=WORKFLOW_NAME, token=TOKEN)
         with open(local_path) as f:
@@ -232,11 +151,9 @@ class WorkflowPushToHubTester(unittest.TestCase):
             assert actual_workflow[k] == locally_loaded_workflow[k]
 
     def test_push_to_hub(self):
-        inputs = self.get_dummy_inputs(device="cpu")
-        components = self.get_dummy_components()
-        pipeline = StableDiffusionPipeline(**components)
+        workflow = Workflow()
+        workflow.update({"prompt": "hey", "num_inference_steps": 25})
 
-        workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, pipeline)
         workflow.push_to_hub(self.repo_id, token=TOKEN)
         self.compare_workflow_values(repo_id=f"{USER}/{self.repo_id}", actual_workflow=workflow)
 
@@ -244,11 +161,9 @@ class WorkflowPushToHubTester(unittest.TestCase):
         delete_repo(token=TOKEN, repo_id=self.repo_id)
 
     def test_push_to_hub_in_organization(self):
-        inputs = self.get_dummy_inputs(device="cpu")
-        components = self.get_dummy_components()
-        pipeline = StableDiffusionPipeline(**components)
+        workflow = Workflow()
+        workflow.update({"prompt": "hey", "num_inference_steps": 25})
 
-        workflow = populate_workflow_from_pipeline(list(inputs.keys()), inputs, pipeline)
         workflow.push_to_hub(self.org_repo_id, token=TOKEN)
         self.compare_workflow_values(repo_id=self.org_repo_id, actual_workflow=workflow)
 
