@@ -31,7 +31,7 @@ Before you begin, make sure you have 🤗 Datasets installed to load and preproc
 #!pip install diffusers[training]
 ```
 
-We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted:
+We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted. Make sure your token has the write role.
 
 ```py
 >>> from huggingface_hub import notebook_login
@@ -59,7 +59,6 @@ For convenience, create a `TrainingConfig` class containing the training hyperpa
 ```py
 >>> from dataclasses import dataclass
 
-
 >>> @dataclass
 ... class TrainingConfig:
 ...     image_size = 128  # the generated image resolution
@@ -75,6 +74,7 @@ For convenience, create a `TrainingConfig` class containing the training hyperpa
 ...     output_dir = "ddpm-butterflies-128"  # the model name locally and on the HF Hub
 
 ...     push_to_hub = True  # whether to upload the saved model to the HF Hub
+...     hub_model_id = "<your-username>/<my-awesome-model>"  # the name of the repository to create on the HF Hub
 ...     hub_private_repo = False
 ...     overwrite_output_dir = True  # overwrite the old model when re-running the notebook
 ...     seed = 0
@@ -253,9 +253,7 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 ```py
 >>> from diffusers import DDPMPipeline
 >>> from diffusers.utils import make_image_grid
->>> import math
 >>> import os
-
 
 >>> def evaluate(config, epoch, pipeline):
 ...     # Sample some images from random noise (this is the backward diffusion process).

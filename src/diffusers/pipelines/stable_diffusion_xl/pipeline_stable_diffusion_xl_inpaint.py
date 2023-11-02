@@ -840,9 +840,9 @@ class StableDiffusionXLInpaintPipeline(
             )
 
             num_inference_steps = (timesteps < discrete_timestep_cutoff).sum().item()
-            if self.scheduler.order == 2:
-                # if the scheduler is a 2nd order scheduler we ALWAYS have to do +1
-                # because `num_inference_steps` will always be even given that every timestep
+            if self.scheduler.order == 2 and num_inference_steps % 2 == 0:
+                # if the scheduler is a 2nd order scheduler we might have to do +1
+                # because `num_inference_steps` might be even given that every timestep
                 # (except the highest one) is duplicated. If `num_inference_steps` is even it would
                 # mean that we cut the timesteps in the middle of the denoising step
                 # (between 1st and 2nd devirative) which leads to incorrect results. By adding 1
