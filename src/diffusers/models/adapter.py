@@ -456,7 +456,7 @@ class AdapterResnetBlock(nn.Module):
         This method takes input tensor x and applies a convolutional layer, ReLU activation, and another convolutional
         layer on the input tensor. It returns addition with the input tensor.
         """
-    
+
         h = self.act(self.block1(x))
         h = self.block2(h)
 
