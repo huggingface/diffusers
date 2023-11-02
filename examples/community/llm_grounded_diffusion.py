@@ -98,6 +98,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 # Note that the first up block is `UpBlock2D` rather than `CrossAttnUpBlock2D` and does not have attention. The last index is always 0 in our case since we have one `BasicTransformerBlock` in each `Transformer2DModel`.
 DEFAULT_GUIDANCE_ATTN_KEYS = [("mid", 0, 0, 0), ("up", 1, 0, 0), ("up", 1, 1, 0), ("up", 1, 2, 0)]
 
+
 def convert_attn_keys(key):
     """Convert the attention key from tuple format to the torch state format"""
 
@@ -110,6 +111,7 @@ def convert_attn_keys(key):
 
 DEFAULT_GUIDANCE_ATTN_KEYS = [convert_attn_keys(key) for key in DEFAULT_GUIDANCE_ATTN_KEYS]
 
+
 def scale_proportion(obj_box, H, W):
     # Separately rounding box_w and box_h to allow shift invariant box sizes. Otherwise box sizes may change when both coordinates being rounded end with ".5".
     x_min, y_min = round(obj_box[0] * W), round(obj_box[1] * H)
@@ -120,6 +122,7 @@ def scale_proportion(obj_box, H, W):
     x_max, y_max = min(x_max, W), min(y_max, H)
 
     return x_min, y_min, x_max, y_max
+
 
 # Adapted from the parent class `AttnProcessor2_0`
 class AttnProcessorWithHook(AttnProcessor2_0):
@@ -287,9 +290,9 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
         # box: x, y, w, h (in 512 format) -> x_min, y_min, x_max, y_max
         x_min, y_min = box[0] / width, box[1] / height
         w_box, h_box = box[2] / width, box[3] / height
-        
+
         x_max, y_max = x_min + w_box, y_min + h_box
-        
+
         return x_min, y_min, x_max, y_max
 
     @classmethod
@@ -299,22 +302,22 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
 
         if cls.objects_text in text:
             text = text.split(cls.objects_text)[1]
-            
+
         text_split = text.split(cls.bg_prompt_text_no_trailing_space)
         if len(text_split) == 2:
             gen_boxes, text_rem = text_split
         else:
             raise ValueError(f"LLM response is incomplete: {text}")
-        
+
         text_split = text_rem.split(cls.neg_prompt_text_no_trailing_space)
-        
+
         if len(text_split) == 2:
             bg_prompt, neg_prompt = text_split
         else:
             raise ValueError(f"LLM response is incomplete: {text}")
-        
+
         try:
-            gen_boxes = ast.literal_eval(gen_boxes)    
+            gen_boxes = ast.literal_eval(gen_boxes)
         except SyntaxError as e:
             # Sometimes the response is in plain text
             if "No objects" in gen_boxes or gen_boxes.strip() == "":
@@ -323,20 +326,20 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
                 raise e
         bg_prompt = bg_prompt.strip()
         neg_prompt = neg_prompt.strip()
-        
+
         # LLM may return "None" to mean no negative prompt provided.
         if neg_prompt == "None":
             neg_prompt = ""
-        
+
         return gen_boxes, bg_prompt, neg_prompt
 
     @classmethod
     def parse_llm_response(cls, response, canvas_height=512, canvas_width=512):
         # Infer from spec
         gen_boxes, bg_prompt, neg_prompt = cls._parse_response_with_negative(text=response)
-        
+
         gen_boxes = sorted(gen_boxes, key=lambda gen_box: gen_box[0])
-        
+
         phrases = [name for name, _ in gen_boxes]
         boxes = [cls.convert_box(box, height=canvas_height, width=canvas_width) for _, box in gen_boxes]
 
@@ -928,7 +931,7 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
         unet_additional_kwargs={},
         guidance_callback=None,
         **kwargs,
-    ):  
+    ):
         scheduler, unet = self.scheduler, self.unet
 
         iteration = 0
@@ -945,7 +948,9 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
             try:
                 self.enable_attn_hook(enabled=True)
 
-                while loss.item() / loss_scale > loss_threshold and iteration < max_iter and index < guidance_timesteps:
+                while (
+                    loss.item() / loss_scale > loss_threshold and iteration < max_iter and index < guidance_timesteps
+                ):
                     self._saved_attn = {}
 
                     latents.requires_grad_(True)
