@@ -89,7 +89,6 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
 
-        self.use_cross_attention = cross_attention_dim is not None
         self.in_channels = in_channels
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
@@ -169,7 +168,6 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
 
         hidden_states = self.proj_in(hidden_states)
-        encoder_hidden_states = encoder_hidden_states if self.use_cross_attention else None
 
         # 2. Blocks
         for block in self.transformer_blocks:
