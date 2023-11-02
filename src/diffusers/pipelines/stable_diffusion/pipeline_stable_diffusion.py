@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-import random
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
@@ -34,7 +33,6 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.constants import MAX_SEED
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import StableDiffusionPipelineOutput
@@ -669,12 +667,10 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         """
         # We do this first to capture the "True" call values. If we do this at a later point in time,
         # we cannot ensure that the call values weren't changed during the process.
-        # We update the `generator` later, though as we define a new generator in case it was passed as `None`.
         workflow = None
         if return_workflow:
             if generator is None:
-                seed = torch.initial_seed()
-                generator = torch.manual_seed(seed)
+                raise ValueError(f"`generator` cannot be None when `return_workflow` is {return_workflow}.")
             workflow = self.populate_workflow_from_pipeline()
 
         # 0. Default height and width to unet
