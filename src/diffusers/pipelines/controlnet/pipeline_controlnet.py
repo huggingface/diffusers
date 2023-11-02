@@ -848,7 +848,7 @@ class StableDiffusionControlNetPipeline(
         workflow = None
         if return_workflow:
             if generator is None:
-                seed = random.randint(0, MAX_SEED)
+                seed = torch.initial_seed()
                 generator = torch.manual_seed(seed)
             workflow = self.populate_workflow_from_pipeline()
 
