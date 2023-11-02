@@ -38,7 +38,6 @@ from ...utils import (
 )
 from ...utils.constants import MAX_SEED
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
-from ...workflow_utils import populate_workflow_from_pipeline
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
@@ -852,10 +851,7 @@ class StableDiffusionControlNetPipeline(
 
         workflow = None
         if return_workflow:
-            signature = inspect.signature(self.__call__)
-            argument_names = [param.name for param in signature.parameters.values()]
-            call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
-            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self)
+            workflow = self.populate_workflow_from_pipeline()
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 

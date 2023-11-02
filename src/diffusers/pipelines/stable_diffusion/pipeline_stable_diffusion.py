@@ -36,7 +36,6 @@ from ...utils import (
 )
 from ...utils.constants import MAX_SEED
 from ...utils.torch_utils import randn_tensor
-from ...workflow_utils import populate_workflow_from_pipeline
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -677,10 +676,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         workflow = None
         if return_workflow:
-            signature = inspect.signature(self.__call__)
-            argument_names = [param.name for param in signature.parameters.values()]
-            call_arg_values = inspect.getargvalues(inspect.currentframe()).locals
-            workflow = populate_workflow_from_pipeline(argument_names, call_arg_values, self)
+            workflow = self.populate_workflow_from_pipeline()
 
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor

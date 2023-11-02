@@ -57,7 +57,7 @@ from ..utils import (
 )
 from ..utils.constants import WORKFLOW_NAME
 from ..utils.torch_utils import is_compiled_module
-from ..workflow_utils import _NON_CALL_ARGUMENTS
+from ..workflow_utils import _NON_CALL_ARGUMENTS, Workflow
 
 
 if is_transformers_available():
@@ -2079,6 +2079,57 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
+
+    def populate_workflow_from_pipeline(self) -> Dict:
+        r"""Populates the call arguments in a dictionary.
+
+        Returns:
+            [`Workflow`]: A dictionary containing the details of the pipeline call arguments and (optionally) LoRA
+            checkpoint details.
+        """
+        # A `Workflow` object is an extended Python dictionary. So, all regular dictionary methods
+        # apply to it.
+        workflow = Workflow()
+
+        signature = inspect.signature(self.__call__)
+        argument_names = [param.name for param in signature.parameters.values()]
+        call_arg_values = inspect.getargvalues(inspect.currentframe().f_back).locals
+
+        # Populate call arguments.
+        call_arguments = {
+            arg: call_arg_values[arg]
+            for arg in argument_names
+            if arg != "return_workflow"
+            and "image" not in arg
+            and not isinstance(call_arg_values[arg], (torch.Tensor, np.ndarray, Callable))
+        }
+        workflow.update(call_arguments)
+
+        # Handle generator device and seed.
+        generator = workflow["generator"]
+        if isinstance(generator, list):
+            for g in generator:
+                if "generator_seed" not in workflow:
+                    workflow.update({"generator_seed": [g.initial_seed()]})
+                    workflow.update({"generator_device": [str(g.device)]})
+                else:
+                    workflow["generator_seed"].append(g.initial_seed())
+                    workflow["generator_device"].append(g.device)
+        else:
+            workflow.update({"generator_seed": generator.initial_seed()})
+            workflow.update({"generator_device": str(generator.device)})
+
+        workflow.pop("generator")
+
+        # Handle pipeline-level things.
+        if hasattr(self, "config") and hasattr(self.config, "_name_or_path"):
+            pipeline_config_name_or_path = self.config._name_or_path
+        else:
+            pipeline_config_name_or_path = None
+        workflow["_name_or_path"] = pipeline_config_name_or_path
+        workflow["scheduler_config"] = self.scheduler.config
+
+        return workflow
 
     def load_workflow(
         self, workflow_id_or_path: Union[str, dict], filename: Optional[str] = None, load_scheduler: bool = False
