@@ -32,9 +32,20 @@ pipeline = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
 ).to("cuda")
 
-outputs = pipeline("A painting of a horse", num_inference_steps=15, return_workflow=True)
+outputs = pipeline(
+    "A painting of a horse",
+    num_inference_steps=15,
+    generator=torch.manual_seed(0),
+    return_workflow=True
+)
 workflow = outputs.workflow
 ```
+
+<Tip warning={true}>
+
+It's mandatory to specify the `generator` when `return_workflow` is set to True.
+
+</Tip>
 
 If you look at this specific workflow, you'll see values like the number of inference steps, guidance scale, and height and width as well as the scheduler details:
 
@@ -56,7 +67,7 @@ If you look at this specific workflow, you'll see values like the number of infe
  'cross_attention_kwargs': None,
  'guidance_rescale': 0.0,
  'clip_skip': None,
- 'generator_seed': 331018828,
+ 'generator_seed': 0,
  'generator_device': device(type='cpu'),
  '_name_or_path': 'runwayml/stable-diffusion-v1-5',
  'scheduler_config': FrozenDict([('num_train_timesteps', 1000),
