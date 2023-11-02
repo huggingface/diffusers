@@ -185,34 +185,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_float16_inference(self):
         super().test_float16_inference()
 
-    def test_callback_cfg(self):
-        components = self.get_dummy_components()
-        components["latent_mean"] = 0
-        components["latent_std"] = 0
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        def callback_no_cfg(pipe, i, t, callback_kwargs):
-            if i == 1:
-                for k, w in callback_kwargs.items():
-                    if k in self.callback_cfg_params:
-                        callback_kwargs[k] = callback_kwargs[k].chunk(2)[-1]
-                pipe._guidance_scale = 1.0
-
-            return callback_kwargs
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["guidance_scale"] = 1.0
-        out_no_cfg = pipe(**inputs)[0]
-
-        inputs["guidance_scale"] = 7.5
-        inputs["callback_on_step_end"] = callback_no_cfg
-        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        out_callback_no_cfg = pipe(**inputs)[0]
-
-        assert out_no_cfg.shape == out_callback_no_cfg.shape
-
+    # override because we need to make sure latent_mean and latent_std to be 0
     def test_callback_inputs(self):
         components = self.get_dummy_components()
         components["latent_mean"] = 0
@@ -234,8 +207,8 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             self.assertTrue(
                 len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
             )
-            last_t = callback_kwargs["timesteps"][-2]
-            if t == last_t:
+            last_i = pipe._num_timesteps - 1
+            if i == last_i:
                 callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
             return callback_kwargs
 

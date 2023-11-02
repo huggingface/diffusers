@@ -253,6 +253,7 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_sequential_cpu_offload_forward_pass(self):
         super().test_sequential_cpu_offload_forward_pass(expected_max_diff=5e-4)
 
+    # override default test because we need to zero out mask too in order to make sure final latent is all zero
     def test_callback_inputs(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -272,8 +273,8 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             self.assertTrue(
                 len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
             )
-            last_t = callback_kwargs["timesteps"][-1]
-            if t == last_t:
+            last_i = pipe._num_timesteps - 1
+            if i == last_i:
                 callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
                 callback_kwargs["mask_image"] = torch.zeros_like(callback_kwargs["mask_image"])
             return callback_kwargs

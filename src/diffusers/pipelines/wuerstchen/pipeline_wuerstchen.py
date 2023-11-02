@@ -78,7 +78,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         "text_encoder_hidden_states",
         "negative_prompt_embeds",
         "image_embeddings",
-        "timesteps",
     ]
 
     def __init__(
@@ -362,6 +361,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents, self.scheduler)
 
         # 6. Run denoising loop
+        self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
             effnet = (

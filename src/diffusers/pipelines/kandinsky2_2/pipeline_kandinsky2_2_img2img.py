@@ -106,7 +106,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "unet->movq"
-    _callback_tensor_inputs = ["latents", "image_embeds", "negative_image_embeds", "timesteps"]
+    _callback_tensor_inputs = ["latents", "image_embeds", "negative_image_embeds"]
 
     def __init__(
         self,
@@ -199,7 +199,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         **kwargs,
     ):
         """
@@ -316,6 +316,7 @@ class KandinskyV22Img2ImgPipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             latents, latent_timestep, batch_size, num_images_per_prompt, image_embeds.dtype, device, generator
         )
+        self._num_timesteps = len(timesteps)
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents

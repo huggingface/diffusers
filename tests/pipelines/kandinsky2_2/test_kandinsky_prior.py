@@ -238,6 +238,7 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
 
+    # override default test because no output_type "latent", use "pt" instead
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
 
@@ -262,8 +263,8 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             self.assertTrue(
                 len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
             )
-            last_t = callback_kwargs["timesteps"][-1]
-            if t == last_t:
+            last_i = pipe._num_timesteps - 1
+            if i == last_i:
                 callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
             return callback_kwargs
 

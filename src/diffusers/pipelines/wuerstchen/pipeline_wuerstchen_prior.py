@@ -90,7 +90,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     unet_name = "prior"
     text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->prior"
-    _callback_tensor_inputs = ["latents", "text_encoder_hidden_states", "negative_prompt_embeds", "timesteps"]
+    _callback_tensor_inputs = ["latents", "text_encoder_hidden_states", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -448,6 +448,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents, self.scheduler)
 
         # 6. Run denoising loop
+        self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
 

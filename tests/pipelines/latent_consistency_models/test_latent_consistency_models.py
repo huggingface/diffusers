@@ -144,9 +144,11 @@ class LatentConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, Pipelin
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
 
+    # skip because lcm pipeline apply cfg differently
     def test_callback_cfg(self):
         pass
 
+    # override default test because the final latent variable is "denoised" instead of "latents"
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
 
@@ -171,8 +173,8 @@ class LatentConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, Pipelin
             self.assertTrue(
                 len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
             )
-            last_t = callback_kwargs["timesteps"][-1]
-            if t == last_t:
+            last_i = pipe._num_timesteps - 1
+            if i == last_i:
                 callback_kwargs["denoised"] = torch.zeros_like(callback_kwargs["denoised"])
             return callback_kwargs
 

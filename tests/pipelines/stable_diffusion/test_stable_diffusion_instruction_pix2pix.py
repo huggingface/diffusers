@@ -234,7 +234,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
 
-    # Overwrite the default test_callback_cfg because pix2pix create inputs for cfg differently
+    # Override the default test_callback_cfg because pix2pix create inputs for cfg differently
     def test_callback_cfg(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

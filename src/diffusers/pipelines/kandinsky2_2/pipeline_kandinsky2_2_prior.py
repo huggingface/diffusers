@@ -106,7 +106,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "text_encoder->image_encoder->prior"
     _exclude_from_cpu_offload = ["prior"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "text_encoder_hidden_states", "text_mask", "timesteps"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "text_encoder_hidden_states", "text_mask"]
 
     def __init__(
         self,
@@ -377,7 +377,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pt",  # pt only
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -466,7 +466,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
             latents,
             self.scheduler,
         )
-
+        self._num_timesteps = len(timesteps)
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents

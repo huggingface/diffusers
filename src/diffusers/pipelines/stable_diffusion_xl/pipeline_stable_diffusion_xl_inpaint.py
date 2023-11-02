@@ -295,7 +295,6 @@ class StableDiffusionXLInpaintPipeline(
         "latents",
         "prompt_embeds",
         "negative_prompt_embeds",
-        "timesteps",
         "add_text_embeds",
         "add_time_ids",
         "negative_pooled_prompt_embeds",
@@ -1044,7 +1043,7 @@ class StableDiffusionXLInpaintPipeline(
         negative_aesthetic_score: float = 2.5,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         **kwargs,
     ):
         r"""
@@ -1448,6 +1447,7 @@ class StableDiffusionXLInpaintPipeline(
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
             timesteps = timesteps[:num_inference_steps]
 
+        self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
