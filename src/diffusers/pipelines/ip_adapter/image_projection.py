@@ -15,13 +15,14 @@
 
 from torch import nn
 
-from ...configuration_utils import ConfigMixin
+from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
 
 
 class ImageProjectionModel(ModelMixin, ConfigMixin):
     """Image Projection Model."""
 
+    @register_to_config
     def __init__(self, cross_attention_dim=1024, clip_embeddings_dim=1024, clip_extra_context_tokens=4):
         super().__init__()
 
