@@ -919,6 +919,11 @@ class PipelineTesterMixin:
         if "guidance_scale" not in sig.parameters:
             return
 
+        self.assertTrue(
+            hasattr(self, "guidance_scale") and hasattr(self, "do_classifier_free_guidance"),
+            f" {self.pipeline_class} should have `guidance_scale` and `do_classifier_free_guidance` property",
+        )
+
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)

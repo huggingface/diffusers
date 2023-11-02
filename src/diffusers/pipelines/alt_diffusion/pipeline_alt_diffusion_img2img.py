@@ -751,15 +751,19 @@ class AltDiffusionImg2ImgPipeline(
             deprecate(
                 "callback",
                 "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider use"
-                " `callback_on_step_end`",
+                (
+                    "Passing `callback` as an input argument to `__call__` is deprecated, consider use"
+                    " `callback_on_step_end`"
+                ),
             )
         if callback_steps is not None:
             deprecate(
                 "callback_steps",
                 "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use"
-                " `callback_on_step_end`",
+                (
+                    "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use"
+                    " `callback_on_step_end`"
+                ),
             )
 
         # 1. Check inputs. Raise error if not correct
