@@ -78,7 +78,7 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         self._set_ip_adapter()
 
     def _set_ip_adapter(self):
-        unet = self.pipeline.unet
+        unet = self.unet
         attn_procs = {}
         for name in unet.attn_processors.keys():
             cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
@@ -220,13 +220,13 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         ip_layers = torch.nn.ModuleList(
             [
                 module if isinstance(module, nn.Module) else nn.Identity()
-                for module in self.pipeline.unet.attn_processors.values()
+                for module in self.unet.attn_processors.values()
             ]
         )
         ip_layers.load_state_dict(state_dict["ip_adapter"])
 
     def set_scale(self, scale):
-        for attn_processor in self.pipeline.unet.attn_processors.values():
+        for attn_processor in self.unet.attn_processors.values():
             if isinstance(attn_processor, (IPAttnProcessor, IPAttnProcessor2_0)):
                 attn_processor.scale = scale
 
