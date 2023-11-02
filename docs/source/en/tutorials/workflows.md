@@ -320,11 +320,3 @@ Other unsupported serialization types include:
 
 * LoRA checkpoints: any information from LoRA checkpoints that might be loaded into a pipeline isn't serialized. Workflows generated from pipelines loaded with a LoRA checkpoint should be handled cautiously! You should ensure the LoRA checkpoint is loaded into the pipeline first before loading the corresponding workflow.
 * Call arguments including the following types: `torch.Tensor`, `np.ndarray`, `Callable`, `PIL.Image.Image`, and `List[PIL.Image.Image]`. 
-
-## Workflow
-
-[[autodoc]] workflow_utils.Workflow
-
-## workflow_utils.populate_workflow_from_pipeline
-
-[[autodoc]] workflow_utils.populate_workflow_from_pipeline

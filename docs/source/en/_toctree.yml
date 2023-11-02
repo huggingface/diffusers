@@ -173,6 +173,8 @@
       title: Logging
     - local: api/outputs
       title: Outputs
+    - local: api/workflows
+      title: Shareable workflows
     title: Main Classes
   - sections:
     - local: api/models/overview
