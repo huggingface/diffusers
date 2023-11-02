@@ -1,13 +1,31 @@
-import warnings
+# Copyright 2023 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ...utils import logging
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 class IPAttnProcessor(nn.Module):
     r"""
     Attention processor for IP-Adapater.
+
     Args:
         hidden_size (`int`):
             The hidden size of the attention layer.
@@ -40,7 +58,7 @@ class IPAttnProcessor(nn.Module):
         scale=1.0,
     ):
         if scale != 1.0:
-            warnings.warn("`scale` of IPAttnProcessor should be set by " "`IPAdapterPipeline.set_scale`")
+            logger.warning("`scale` of IPAttnProcessor should be set with `IPAdapterPipeline.set_scale`.")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -116,6 +134,7 @@ class IPAttnProcessor(nn.Module):
 class IPAttnProcessor2_0(torch.nn.Module):
     r"""
     Attention processor for IP-Adapater for PyTorch 2.0.
+
     Args:
         hidden_size (`int`):
             The hidden size of the attention layer.
@@ -131,7 +150,9 @@ class IPAttnProcessor2_0(torch.nn.Module):
         super().__init__()
 
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
@@ -151,7 +172,7 @@ class IPAttnProcessor2_0(torch.nn.Module):
         scale=1.0,
     ):
         if scale != 1.0:
-            warnings.warn("`scale` of IPAttnProcessor should be set by " "`IPAdapterPipeline.set_scale`")
+            logger.warning("`scale` of IPAttnProcessor should be set by " "`IPAdapterPipeline.set_scale`")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -243,7 +264,7 @@ class IPAttnProcessor2_0(torch.nn.Module):
         return hidden_states
 
 
-## for controlnet
+## for ControlNet
 class CNAttnProcessor:
     r"""
     Default processor for performing attention-related computations.
@@ -262,7 +283,7 @@ class CNAttnProcessor:
         scale=1.0,
     ):
         if scale != 1.0:
-            warnings.warn("`scale` of IPAttnProcessor should be set by " "`IPAdapterPipeline.set_scale`")
+            logger.warning("`scale` of IPAttnProcessor should be set by " "`IPAdapterPipeline.set_scale`")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -324,7 +345,9 @@ class CNAttnProcessor2_0:
 
     def __init__(self, text_context_len=77):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+            raise ImportError(
+                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
+            )
         self.text_context_len = text_context_len
 
     def __call__(
@@ -337,7 +360,7 @@ class CNAttnProcessor2_0:
         scale=1.0,
     ):
         if scale != 1.0:
-            warnings.warn("`scale` of IPAttnProcessor should be set by " "`IPAdapterPipeline.set_scale`")
+            logger.warning("`scale` of IPAttnProcessor should be set by " "`IPAdapterPipeline.set_scale`")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
