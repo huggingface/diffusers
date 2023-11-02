@@ -7,15 +7,12 @@ settings:
     default_compute: azureml:devcnegpucluster
 
 inputs:
-  dataset_img_dir:
+  dataset_name_or_path:
     type: uri_folder
     mode: ro_mount
-    path: azureml://datastores/celeba_data/paths/img/
-  dataset_ann_dir:
-    type: uri_folder
-    mode: ro_mount
-    path: azureml://datastores/celeba_data/paths/mask/
+    path: azureml://datastores/celeba_data/paths/hf/
   dataset_img_size: 256
+  dataset_cls_count: 19
   vae_name_or_path:
     type: uri_folder
     mode: ro_mount
@@ -24,15 +21,16 @@ inputs:
   ddp_guidance_scale: 7.5
   ddp_training_beta_type: linear
   ddp_validation_beta_type: linear # squaredcos_cap_v2 | linear
-  train_batch_size: 32 # https://huggingface.co/pcuenq/stable-diffusion-v1-4 = 32
+  train_batch_size: 32 # https://huggingface.co/pcuenq/stable-diffusion-v1-4 = 32 x 4 GPU = 128
   max_train_steps: 200000
-  gradient_accumulation_steps: 4 # https://huggingface.co/pcuenq/stable-diffusion-v1-4 = 4
+  gradient_accumulation_steps: 1
   train_ucond_prob: 0.2
   optim_weight_decay: 1e-2 # We reduce weight decay because we reduce the batch_size BS = 128 => WD = 1e-2
-  learning_rate: 1e-4 # https://huggingface.co/pcuenq/stable-diffusion-v1-4 => B = 2048, ici 512 => 1e-4 = 2.5e-5
+  learning_rate: 1e-4 # https://huggingface.co/pcuenq/stable-diffusion-v1-4
   lambda_vlb: 1e-3
+  min_snr_gamma: 0.0
   lr_warmup_steps: 500
-  val_every_nepochs: 3
+  val_every_nepochs: 5
   val_num_samples: 10
   resume_from_checkpoint: none # latest or none
   lr_scheduler: constant_with_warmup
@@ -46,7 +44,7 @@ outputs:
 jobs:
   train_celeba:
     resources:
-      instance_count: 8
+      instance_count: 4
       shm_size: 16g
     distribution:
       type: pytorch # Can work with torchrun https://github.com/huggingface/accelerate/issues/1836
@@ -58,8 +56,8 @@ jobs:
       pip install wandb &&
       pip install -e .[training] &&
       python examples/community/semantic_image_synthesis/train_sis_ldm.py
-      --dataset_img_dir ${{inputs.dataset_img_dir}} 
-      --dataset_ann_dir ${{inputs.dataset_ann_dir}} 
+      --dataset_name_or_path ${{inputs.dataset_name_or_path}} 
+      --dataset_cls_count ${{inputs.dataset_cls_count}} 
       --dataset_img_size ${{inputs.dataset_img_size}}
       --vae_name_or_path ${{inputs.vae_name_or_path}}
       --ddp_variance_type ${{inputs.ddp_variance_type}}
@@ -68,6 +66,7 @@ jobs:
       --ddp_validation_beta_type ${{inputs.ddp_validation_beta_type}}
       --train_ucond_prob ${{inputs.train_ucond_prob}}
       --lambda_vlb ${{inputs.lambda_vlb}}
+      --min_snr_gamma ${{inputs.min_snr_gamma}}
       --output_dir  ${{outputs.output_dir}} 
       --train_batch_size ${{inputs.train_batch_size}} 
       --max_train_steps ${{inputs.max_train_steps}}
@@ -80,8 +79,8 @@ jobs:
       --val_num_samples ${{inputs.val_num_samples}}
       --resume_from_checkpoint ${{inputs.resume_from_checkpoint}}
     inputs:
-      dataset_img_dir: ${{parent.inputs.dataset_img_dir}}
-      dataset_ann_dir: ${{parent.inputs.dataset_ann_dir}}
+      dataset_name_or_path: ${{parent.inputs.dataset_name_or_path}}
+      dataset_cls_count: ${{parent.inputs.dataset_cls_count}}
       dataset_img_size: ${{parent.inputs.dataset_img_size}}
       vae_name_or_path: ${{parent.inputs.vae_name_or_path}}
       ddp_variance_type: ${{parent.inputs.ddp_variance_type}}
@@ -90,6 +89,7 @@ jobs:
       ddp_validation_beta_type: ${{parent.inputs.ddp_validation_beta_type}}
       train_ucond_prob: ${{parent.inputs.train_ucond_prob}}
       lambda_vlb : ${{parent.inputs.lambda_vlb}}
+      min_snr_gamma: ${{parent.inputs.min_snr_gamma}}
       train_batch_size: ${{parent.inputs.train_batch_size}}
       max_train_steps: ${{parent.inputs.max_train_steps}}
       gradient_accumulation_steps: ${{parent.inputs.gradient_accumulation_steps}}

@@ -11,9 +11,12 @@ from typing import List
 import accelerate
 import numpy as np
 import torch
+from datasets import load_dataset,load_from_disk
+from torchvision.transforms import Resize,Compose,ToTensor,Normalize,InterpolationMode
 import torch.nn.functional as F
 import wandb
 from accelerate import Accelerator
+
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from packaging import version
@@ -26,7 +29,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils.import_utils import is_bitsandbytes_available
 from src.losses.vlb_loss import VLBLoss
 from src.models import UNet2DSISModel
-from src.pipelines.semantic_only_diffusion import SemanticOnlyDiffusionPipeline
+from src.pipelines.semantic_only_diffusion import SemanticOnlyDDMPipeline
 from src.schedulers.ddpm_training import DDPMScheduler, DDPMTrainingScheduler
 
 
@@ -38,9 +41,9 @@ logger = get_logger(__name__)
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dataset_img_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/img/")
-parser.add_argument("--dataset_ann_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/mask/")
-parser.add_argument("--dataset_img_size", type=int, default=128)
+parser.add_argument("--dataset_name_or_path", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/hf/")
+parser.add_argument("--dataset_img_size", type=int, default=64)
+parser.add_argument("--dataset_cls_count",type=int, default=19)
 parser.add_argument("--output_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/ddm")
 parser.add_argument("--train_batch_size", type=int, default=2)
 parser.add_argument("--train_ucond_prob", type=float, default=0.1)
@@ -138,9 +141,9 @@ parser.add_argument("--debug", action="store_true", default=False)
 
 
 def main(
-    dataset_img_dir: str,
-    dataset_ann_dir: str,
+    dataset_name_or_path: str,
     dataset_img_size: int,
+    dataset_cls_count: str,
     output_dir: str,
     train_batch_size: int,
     train_ucond_prob: float,
@@ -199,14 +202,31 @@ def main(
     # Manage Seed
     set_seed(seed)
     # We create a Dataset and Dataloaders
-    train_dataset = SISDataset(
-        dataset_img_dir, dataset_ann_dir, img_size=dataset_img_size, cls_dict=CELEBAHQ_DICT, nmax=NMAX
-    )
+    if os.path.exists(dataset_name_or_path):
+        dataset = load_from_disk(dataset_name_or_path)
+    else:
+        dataset = load_dataset(dataset_name_or_path)
+    # We create train / val dataset...
+    train_dataset = dataset['train']
+    if NMAX:
+        train_indices = np.arange(min(len(train_dataset),NMAX))
+    test_dataset = dataset['test']
+    test_indices = np.arange(min(len(train_dataset),val_num_samples))
 
-    indices = np.arange(len(train_dataset))
-    np.random.shuffle(indices)
-    train_indices = indices[val_num_samples:]
-    val_indices = indices[:val_num_samples]
+    def transform(examples):
+        transforms_img = Compose([
+            Resize(dataset_img_size),
+            ToTensor(),
+            Normalize(0.5,0.5)
+        ])
+        transform_msk = Compose([
+            Resize(dataset_img_size, interpolation=InterpolationMode.NEAREST)
+        ])
+        examples["image"] = [transforms_img(image.convert("RGB")) for image in examples["image"]]
+        examples["annotation"] = [np.array(transform_msk(image)) for image in examples["annotation"]]
+        return examples
+    train_dataset.set_transform(transform)
+    test_dataset.set_transform(transform)
 
     train_dataloader = DataLoader(
         Subset(train_dataset, train_indices),
@@ -215,7 +235,7 @@ def main(
         num_workers=min(os.cpu_count(), train_batch_size),
     )
     val_dataloader = DataLoader(
-        Subset(train_dataset, val_indices),
+        Subset(test_dataset, test_indices),
         batch_size=1,
         shuffle=False,
         num_workers=1,
@@ -231,7 +251,7 @@ def main(
         learned_variance = False
         output_channels = input_channels
     config = UNet2DSISModel.get_config(
-        train_dataset.img_size, input_channels, output_channels, train_dataset.cls_count
+        dataset_img_size, input_channels, output_channels, dataset_cls_count
     )
     unet = UNet2DSISModel(**config)
     if use_ema:
@@ -352,7 +372,9 @@ def main(
         accelerator.wait_for_everyone()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet), accelerator.autocast():
-                x, y, id = batch
+                id = batch['image_id']
+                x = batch['image']
+                y = batch['annotation']
                 loss_total_batch = 0.0
                 # We create a noise like X
                 noise = torch.randn_like(x)
@@ -361,7 +383,7 @@ def main(
                 )
                 # We create condition and replace y by ucond when necessary...
                 cond = (
-                    F.one_hot(y.long(), num_classes=train_dataset.cls_count).to(x.device).float().permute(0, 3, 1, 2)
+                    F.one_hot(y.long(), num_classes=dataset_cls_count).to(x.device).float().permute(0, 3, 1, 2)
                 )
                 ### We add some unconditionnal training iterations.
                 ucond = torch.rand(len(y), device=x.device) < train_ucond_prob  # 1 if < p_ucond
@@ -467,13 +489,15 @@ def main(
                 scheduler_config["beta_schedule"] = ddp_validation_beta_type
                 val_scheduler = DDPMScheduler().from_config(scheduler_config)
                 # create pipeline
-                pipeline = SemanticOnlyDiffusionPipeline(unet=accelerator.unwrap_model(unet), scheduler=val_scheduler)
+                pipeline = SemanticOnlyDDMPipeline(unet=accelerator.unwrap_model(unet), scheduler=val_scheduler)
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
                 for i, batch in enumerate(tqdm(val_dataloader, desc="Validation")):
-                    x, y, id = batch
+                    id = batch['image_id']
+                    x = batch['image']
+                    y = batch['annotation']
                     x = x.unsqueeze(0)
                     y = y.unsqueeze(0)
 

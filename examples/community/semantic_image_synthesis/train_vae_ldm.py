@@ -16,7 +16,8 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from PIL import Image as PIL_Image
-from sis_dataset import CELEBAHQ_DICT, SISDataset
+from datasets import load_dataset,load_from_disk
+from torchvision.transforms import Resize,Compose,ToTensor,Normalize,RandomResizedCrop
 from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
 
@@ -37,8 +38,7 @@ def parse_bool(str: str):
 logger = get_logger(__name__, log_level="INFO")
 parser = argparse.ArgumentParser(description="VAE training script.")
 # Data Management
-parser.add_argument("--dataset_img_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/img/")
-parser.add_argument("--dataset_ann_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/mask/")
+parser.add_argument("--dataset_name_or_path", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/hf/")
 parser.add_argument("--dataset_img_size", type=int, default=128)
 parser.add_argument("--vae_spacial_compression", type=int, default=4, help="Should be a power of 2")
 parser.add_argument(
@@ -142,8 +142,7 @@ parser.add_argument("--debug", action="store_true", default=False)
 
 
 def main(
-    dataset_img_dir: str,
-    dataset_ann_dir: str,
+    dataset_name_or_path: str,
     dataset_img_size: str,
     vae_spacial_compression: int,
     output_dir: str,
@@ -200,13 +199,37 @@ def main(
     # Manage Seed
     set_seed(seed)
     # We create a Dataset and Dataloaders
-    train_dataset = SISDataset(
-        dataset_img_dir, dataset_ann_dir, img_size=dataset_img_size, cls_dict=CELEBAHQ_DICT, nmax=NMAX
-    )
-    indices = np.arange(len(train_dataset))
-    np.random.shuffle(indices)
-    train_indices = indices[val_num_samples:]
-    val_indices = indices[:val_num_samples]
+    if os.path.exists(dataset_name_or_path):
+        dataset = load_from_disk(dataset_name_or_path)
+    else:
+        dataset = load_dataset(dataset_name_or_path)
+    # We create train / val dataset...
+    train_dataset = dataset['train']
+    if NMAX:
+        train_indices = np.arange(min(len(train_dataset),NMAX))
+    test_dataset = dataset['test']
+    test_indices = np.arange(min(len(train_dataset),val_num_samples))
+
+    def train_transform(examples):
+        transforms_img = Compose([
+            RandomResizedCrop(dataset_img_size,scale=(0.125,1)),
+            ToTensor(),
+            Normalize(0.5,0.5)
+        ])
+        examples["image"] = [transforms_img(image.convert("RGB")) for image in examples["image"]]
+        examples["annotation"] = [np.array(image) for image in examples["annotation"]]
+        return examples
+    def test_transform(examples):
+        transforms_img = Compose([
+            Resize(dataset_img_size),
+            ToTensor(),
+            Normalize(0.5,0.5)
+        ])
+        examples["image"] = [transforms_img(image.convert("RGB")) for image in examples["image"]]
+        examples["annotation"] = [np.array(image) for image in examples["annotation"]]
+        return examples
+    train_dataset.set_transform(train_transform)
+    test_dataset.set_transform(test_transform)
 
     train_dataloader = DataLoader(
         Subset(train_dataset, train_indices),
@@ -215,7 +238,7 @@ def main(
         num_workers=min(os.cpu_count(), train_batch_size),
     )
     val_dataloader = DataLoader(
-        Subset(train_dataset, val_indices),
+        Subset(test_dataset, test_indices),
         batch_size=1,
         shuffle=False,
         num_workers=1,
@@ -301,7 +324,7 @@ def main(
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_indices)}")
-    logger.info(f"  Num test samples = {len(val_indices)}")
+    logger.info(f"  Num test samples = {len(test_indices)}")
     logger.info(f"  Num Epochs = {num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -316,7 +339,6 @@ def main(
     progress_bar.set_description("Steps")
 
     lpips_loss_fn = lpips.LPIPS(net="alex").to(accelerator.device)
-
     total_loss = 0.0
     kl_loss = 0.0
     lpips_loss = 0.0
@@ -327,7 +349,7 @@ def main(
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(vae):
                 total_loss_batch = 0.0
-                x, _, _ = batch
+                x = batch['image']
                 # https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/autoencoder_kl.py
                 # We use a "trick" in order to use DDP that needs a forward method.
                 posterior = vae.forward(x, encode=True).latent_dist
@@ -337,7 +359,6 @@ def main(
                 else:
                     z = posterior.mode()
                 pred = vae.forward(z, decode=True).sample
-
                 kl_loss_batch = posterior.kl().mean()
                 mse_loss_batch = F.mse_loss(pred, x, reduction="mean")
                 lpips_loss_batch = lpips_loss_fn(pred, x).mean()
@@ -407,8 +428,10 @@ def main(
                         logger.info(f"Saved state to {save_path}")
 
             if global_step >= max_train_steps:
+                print(f'global_step ({global_step}) > max_train_steps ({max_train_steps})')
                 break
 
+        torch.cuda.empty_cache()
         if accelerator.is_main_process:
             if epoch % val_every_nepochs == 0:
                 with torch.no_grad():
@@ -418,7 +441,8 @@ def main(
                     images = []
                     image_ids = []
                     for _, batch in enumerate(val_dataloader):
-                        x, _, ids = batch
+                        ids = batch['image_id']
+                        x = batch['image']
                         reconstructions = vae_model(x).sample
                         th_arr = torch.cat([x.cpu(), reconstructions.cpu()], axis=-1).squeeze(0)  # Last dim = Width
                         np_img = (127.5 * (th_arr + 1)).permute(1, 2, 0).numpy().astype(np.uint8)
@@ -428,7 +452,7 @@ def main(
                     for tracker in accelerator.trackers:
                         if tracker.name == "tensorboard":
                             np_images = np.stack([np.asarray(img) for img in images])
-                            tracker.writer.add_images("Original (left) / Reconstruction (right)", np_images, epoch)
+                            tracker.writer.add_images("Original (left) / Reconstruction (right)", np_images, epoch, dataformats="NHWC")
                         elif tracker.name == "wandb":
                             tracker.log(
                                 {
@@ -445,7 +469,7 @@ def main(
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         vae = accelerator.unwrap_model(vae)
-        vae.save_pretrained(os.path.join(output_dir, "vae"))
+        vae.save_pretrained(os.path.join(output_dir, "vae_final"))
 
     accelerator.end_training()
 

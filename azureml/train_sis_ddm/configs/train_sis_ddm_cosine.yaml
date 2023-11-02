@@ -7,15 +7,12 @@ settings:
     default_compute: azureml:devcnegpucluster
 
 inputs:
-  dataset_img_dir:
+  dataset_name_or_path:
     type: uri_folder
     mode: ro_mount
-    path: azureml://datastores/celeba_data/paths/img/
-  dataset_ann_dir:
-    type: uri_folder
-    mode: ro_mount
-    path: azureml://datastores/celeba_data/paths/mask/
+    path: azureml://datastores/celeba_data/paths/hf/
   dataset_img_size: 256
+  dataset_cls_count: 19
   ddp_variance_type: learned_range
   ddp_guidance_scale: 7.5
   ddp_training_beta_type: squaredcos_cap_v2
@@ -54,8 +51,8 @@ jobs:
       pip install wandb &&
       pip install -e .[training] &&
       python examples/community/semantic_image_synthesis/train_sis_ddm.py
-      --dataset_img_dir ${{inputs.dataset_img_dir}} 
-      --dataset_ann_dir ${{inputs.dataset_ann_dir}} 
+      --dataset_name_or_path ${{inputs.dataset_name_or_path}} 
+      --dataset_cls_count ${{inputs.dataset_cls_count}} 
       --dataset_img_size ${{inputs.dataset_img_size}}
       --ddp_variance_type ${{inputs.ddp_variance_type}}
       --ddp_guidance_scale ${{inputs.ddp_guidance_scale}}
@@ -75,8 +72,8 @@ jobs:
       --val_num_samples ${{inputs.val_num_samples}}
       --resume_from_checkpoint ${{inputs.resume_from_checkpoint}}
     inputs:
-      dataset_img_dir: ${{parent.inputs.dataset_img_dir}}
-      dataset_ann_dir: ${{parent.inputs.dataset_ann_dir}}
+      dataset_name_or_path: ${{parent.inputs.dataset_name_or_path}}
+      dataset_cls_count: ${{parent.inputs.dataset_cls_count}}
       dataset_img_size: ${{parent.inputs.dataset_img_size}}
       ddp_variance_type: ${{parent.inputs.ddp_variance_type}}
       ddp_guidance_scale: ${{parent.inputs.ddp_guidance_scale}}

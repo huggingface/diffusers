@@ -6,7 +6,7 @@ import math
 import os
 import shutil
 from datetime import datetime
-from typing import List
+from typing import Any, List
 
 import accelerate
 import numpy as np
@@ -14,6 +14,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
+from datasets import load_dataset,load_from_disk
+from torchvision.transforms import Resize,Compose,ToTensor,Normalize,InterpolationMode
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -26,8 +28,8 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from diffusers.utils.import_utils import is_bitsandbytes_available
 from src.losses.vlb_loss import VLBLoss
-from src.models import AutoencoderSIS, UNet2DSISModel
-from src.pipelines.semantic_only_diffusion import SemanticOnlyDiffusionPipeline
+from src.models import AutoencoderKL, AutoencoderSIS, UNet2DSISModel
+from src.pipelines.semantic_only_diffusion import SemanticOnlyLDMPipeline
 from src.schedulers.ddpm_training import DDPMScheduler, DDPMTrainingScheduler
 
 
@@ -39,15 +41,15 @@ logger = get_logger(__name__)
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dataset_img_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/img/")
-parser.add_argument("--dataset_ann_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/mask/")
+parser.add_argument("--dataset_name_or_path", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/hf/")
 parser.add_argument("--dataset_img_size", type=int, default=256)
+parser.add_argument("--dataset_cls_count",type=int, default=19)
 parser.add_argument(
     "--vae_name_or_path",
     type=str,
     default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/models/vae/256px_64px/sample/checkpoint-100000/vae",
 )
-parser.add_argument("--output_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/ddm")
+parser.add_argument("--output_dir", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/ldm")
 parser.add_argument("--train_batch_size", type=int, default=2)
 parser.add_argument("--train_ucond_prob", type=float, default=0.1)
 parser.add_argument("--max_train_steps", type=int, default=10)
@@ -79,6 +81,7 @@ parser.add_argument(
     help="Number of updates steps to accumulate before performing a backward/update pass.",
 )
 parser.add_argument("--lambda_vlb", type=float, default=1e-3)
+parser.add_argument("--min_snr_gamma", type=float, default=5, help="min_snr_gamma coefficient")
 parser.add_argument("--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes.")
 parser.add_argument("--optim_weight_decay", type=float, default=1e-2, help="optimizer weight decay like in paper")
 parser.add_argument("--optim_max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
@@ -144,9 +147,9 @@ parser.add_argument("--debug", action="store_true", default=False)
 
 
 def main(
-    dataset_img_dir: str,
-    dataset_ann_dir: str,
+    dataset_name_or_path: str,
     dataset_img_size: int,
+    dataset_cls_count: str,
     vae_name_or_path: str,
     output_dir: str,
     train_batch_size: int,
@@ -157,6 +160,7 @@ def main(
     ddp_training_beta_type: str,
     ddp_validation_beta_type: str,
     lambda_vlb: float,
+    min_snr_gamma: float,
     gradient_accumulation_steps: int,
     use_8bit_adam: bool,
     optim_weight_decay: float,
@@ -206,14 +210,31 @@ def main(
     # Manage Seed
     set_seed(seed)
     # We create a Dataset and Dataloaders
-    train_dataset = SISDataset(
-        dataset_img_dir, dataset_ann_dir, img_size=dataset_img_size, cls_dict=CELEBAHQ_DICT, nmax=NMAX
-    )
+    if os.path.exists(dataset_name_or_path):
+        dataset = load_from_disk(dataset_name_or_path)
+    else:
+        dataset = load_dataset(dataset_name_or_path)
+    # We create train / val dataset...
+    train_dataset = dataset['train']
+    if NMAX:
+        train_indices = np.arange(min(len(train_dataset),NMAX))
+    test_dataset = dataset['test']
+    test_indices = np.arange(min(len(train_dataset),val_num_samples))
 
-    indices = np.arange(len(train_dataset))
-    np.random.shuffle(indices)
-    train_indices = indices[val_num_samples:]
-    val_indices = indices[:val_num_samples]
+    def transform(examples):
+        transforms_img = Compose([
+            Resize(dataset_img_size),
+            ToTensor(),
+            Normalize(0.5,0.5)
+        ])
+        transform_msk = Compose([
+            Resize(dataset_img_size, interpolation=InterpolationMode.NEAREST)
+        ])
+        examples["image"] = [transforms_img(image.convert("RGB")) for image in examples["image"]]
+        examples["annotation"] = [np.array(transform_msk(image)) for image in examples["annotation"]]
+        return examples
+    train_dataset.set_transform(transform)
+    test_dataset.set_transform(transform)
 
     train_dataloader = DataLoader(
         Subset(train_dataset, train_indices),
@@ -222,7 +243,7 @@ def main(
         num_workers=min(os.cpu_count(), train_batch_size),
     )
     val_dataloader = DataLoader(
-        Subset(train_dataset, val_indices),
+        Subset(test_dataset, test_indices),
         batch_size=1,
         shuffle=False,
         num_workers=1,
@@ -241,20 +262,22 @@ def main(
         learned_variance = False
         output_channels = input_channels
     config = UNet2DSISModel.get_config(
-        train_dataset.img_size // vae.config.compression, input_channels, output_channels, train_dataset.cls_count
+        dataset_img_size // vae.config.compression, input_channels, output_channels, dataset_cls_count
     )
     unet = UNet2DSISModel(**config)
     if use_ema:
         ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DSISModel, model_config=unet.config)
 
-    def save_model_hook(models: List[UNet2DSISModel], weights, output_dir):
+    def save_model_hook(models: List[Any], weights, output_dir):
         if accelerator.is_main_process:
             if use_ema:
                 ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
             for i, model in enumerate(models):
-                model.save_pretrained(os.path.join(output_dir, "unet"))
-
+                if isinstance(model, UNet2DSISModel):
+                    model.save_pretrained(os.path.join(output_dir, "unet"))
+                elif isinstance(model, (AutoencoderSIS, AutoencoderKL)):
+                    model.save_pretrained(os.path.join(output_dir, "vae"))
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
@@ -364,7 +387,9 @@ def main(
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet), accelerator.autocast():
                 loss_total_batch = 0.0
-                x, y, id = batch
+                id = batch['image_id']
+                x = batch['image']
+                y = batch['annotation']
                 b, c, h, w = x.shape
                 # We encode the image to the latent space.
                 with torch.no_grad():
@@ -377,7 +402,7 @@ def main(
                 # We create condition and replace y by ucond when necessary...
                 segmap = nn.UpsamplingNearest2d(size=x_enc.shape[-2:])(y.unsqueeze(1)).squeeze(1)
                 cond = (
-                    F.one_hot(segmap.long(), num_classes=train_dataset.cls_count)
+                    F.one_hot(segmap.long(), num_classes=dataset_cls_count)
                     .to(x_enc.device)
                     .float()
                     .permute(0, 3, 1, 2)
@@ -409,7 +434,15 @@ def main(
                     )
 
                 # We compute the Loss_simple value...
-                loss_simple_batch = F.mse_loss(model_pred.float(), noise.float(), reduction="none").mean()
+                if min_snr_gamma:
+                    mse_weights = noise_scheduler.get_minsnr_k_weight(timesteps)
+                    loss_simple_batch = (
+                        mse_weights[..., None]
+                        * F.mse_loss(model_pred.float(), noise.float(), reduction="none").view(b, -1)
+                    ).mean()
+                else:
+                    loss_simple_batch = F.mse_loss(model_pred.float(), noise.float(), reduction="none").mean()
+
                 loss_total_batch += loss_simple_batch
 
                 # We gather across devices for logging.
@@ -486,7 +519,7 @@ def main(
                 scheduler_config["beta_schedule"] = ddp_validation_beta_type
                 val_scheduler = DDPMScheduler().from_config(scheduler_config)
                 # create pipeline
-                pipeline = SemanticOnlyDiffusionPipeline(
+                pipeline = SemanticOnlyLDMPipeline(
                     unet=accelerator.unwrap_model(unet), scheduler=val_scheduler, vae=accelerator.unwrap_model(vae)
                 )
                 pipeline = pipeline.to(accelerator.device)
@@ -494,7 +527,9 @@ def main(
 
                 # run inference
                 for i, batch in enumerate(tqdm(val_dataloader, desc="Validation")):
-                    x, y, id = batch
+                    id = batch['image_id']
+                    x = batch['image']
+                    y = batch['annotation']
                     x = x.unsqueeze(0)
                     y = y.unsqueeze(0)
 

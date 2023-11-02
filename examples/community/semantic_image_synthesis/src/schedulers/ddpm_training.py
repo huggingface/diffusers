@@ -50,6 +50,33 @@ class DDPMTrainingScheduler(DDPMScheduler):
         DDPMScheduler (_type_): _description_
     """
 
+    @property
+    def snr(self):
+        """We compute the snr based on :
+        https://arxiv.org/abs/2303.09556
+
+        Returns:
+            snr matrix
+        """
+        if not hasattr(self, "_snr"):
+            signal_squared = self.alphas_cumprod
+            noise_squared = 1.0 - self.alphas_cumprod
+            self._snr = signal_squared / noise_squared
+        return self._snr
+
+    def get_minsnr_k_weight(self, timesteps: torch.Tensor, k: float = 5.0):
+        """We compute the min-snr_k like in the paper :
+        https://arxiv.org/abs/2303.09556
+
+        Args:
+            k (float): _description_
+            timesteps (torch.Tensor): _description_
+
+        """
+        snr = pick_tensor(self.snr, timesteps).to(timesteps.device)
+        min_snr_k = torch.stack([snr, float(k) * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
+        return min_snr_k
+
     def previous_timesteps(self, timesteps: torch.Tensor):
         """Get the previous timestep, returns 0 for timestep 0.
 

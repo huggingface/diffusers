@@ -10,16 +10,12 @@ tags:
   content: Reduce the number of downsampling steps in VAE.
 
 inputs:
-  dataset_img_dir:
+  dataset_name_or_path:
     type: uri_folder
     mode: ro_mount
-    path: azureml://datastores/celeba_data/paths/img/
-  dataset_ann_dir:
-    type: uri_folder
-    mode: ro_mount
-    path: azureml://datastores/celeba_data/paths/mask/
+    path: azureml://datastores/celeba_data/paths/hf/
   dataset_img_size: 256
-  vae_spacial_compression: 4
+  vae_spacial_compression: 8
   train_batch_size: 5
   max_train_steps: 100000
   vae_train_sampling: "False"
@@ -55,8 +51,7 @@ jobs:
       pip install wandb lpips && 
       pip install -e .[training] &&
       python examples/community/semantic_image_synthesis/train_vae_ldm.py
-      --dataset_img_dir ${{inputs.dataset_img_dir}} 
-      --dataset_ann_dir ${{inputs.dataset_ann_dir}} 
+      --dataset_name_or_path ${{inputs.dataset_name_or_path}} 
       --dataset_img_size ${{inputs.dataset_img_size}}
       --vae_spacial_compression ${{inputs.vae_spacial_compression}}
       --output_dir  ${{outputs.output_dir}} 
@@ -74,8 +69,7 @@ jobs:
       --val_num_samples ${{inputs.val_num_samples}}
       --resume_from_checkpoint ${{inputs.resume_from_checkpoint}}
     inputs:
-      dataset_img_dir: ${{parent.inputs.dataset_img_dir}}
-      dataset_ann_dir: ${{parent.inputs.dataset_ann_dir}}
+      dataset_name_or_path: ${{parent.inputs.dataset_name_or_path}}
       dataset_img_size: ${{parent.inputs.dataset_img_size}}
       vae_spacial_compression: ${{parent.inputs.vae_spacial_compression}}
       train_batch_size: ${{parent.inputs.train_batch_size}}

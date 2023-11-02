@@ -1,1 +1,1 @@
-from .pipeline_semantic_only_diffusion import SemanticOnlyDiffusionPipeline
+from .pipeline_semantic_only_diffusion import SemanticOnlyDDMPipeline, SemanticOnlyLDMPipeline
