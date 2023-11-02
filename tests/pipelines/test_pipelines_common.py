@@ -295,7 +295,7 @@ class PipelineTesterMixin:
     @property
     def callback_cfg_params(self) -> frozenset:
         raise NotImplementedError(
-            "You need to set the attribute `cfg_params` in the child test class that requires to run test_callback_cfg. "
+            "You need to set the attribute `callback_cfg_params` in the child test class that requires to run test_callback_cfg. "
             "`callback_cfg_params` are the parameters that needs to be passed to the pipeline's callback "
             "function when dynamically adjusting `guidance_scale`. They are variables that require special"
             "treatment when `do_classifier_free_guidance` is `True`. `pipeline_params.py` provides some common"
