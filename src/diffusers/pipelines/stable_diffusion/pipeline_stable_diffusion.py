@@ -621,7 +621,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents", "prompt_embeds", "negative_prompt_embeds"],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
         **kwargs,
     ):
         r"""

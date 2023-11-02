@@ -154,12 +154,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = [
-            "latents",
-            "prompt_embeds",
-            "image_latents",
-            "timesteps",
-        ],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
         **kwargs,
     ):
         r"""

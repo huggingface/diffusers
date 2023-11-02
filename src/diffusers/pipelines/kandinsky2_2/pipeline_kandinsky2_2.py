@@ -131,7 +131,7 @@ class KandinskyV22Pipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
         **kwargs,
     ):
         """

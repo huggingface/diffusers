@@ -596,13 +596,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = [
-            "latents",
-            "prompt_embeds",
-            "negative_prompt_embeds",
-            "depth_mask",
-            "timesteps",
-        ],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
         **kwargs,
     ):
         r"""

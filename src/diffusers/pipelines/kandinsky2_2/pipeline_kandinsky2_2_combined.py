@@ -225,9 +225,9 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         return_dict: bool = True,
         prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -455,9 +455,9 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         return_dict: bool = True,
         prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -695,9 +695,9 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         return_dict: bool = True,
         prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
     ):
         """
         Function invoked when calling the pipeline for generation.
