@@ -602,6 +602,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
             "prompt_embeds",
             "negative_prompt_embeds",
             "depth_mask",
+            "timesteps",
         ],
         **kwargs,
     ):

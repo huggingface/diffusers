@@ -133,7 +133,7 @@ class StableDiffusionImg2ImgPipeline(
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "timesteps"]
 
     def __init__(
         self,
@@ -669,7 +669,12 @@ class StableDiffusionImg2ImgPipeline(
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: int = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents", "prompt_embeds", "negative_prompt_embeds"],
+        callback_on_step_end_tensor_inputs: List[str] = [
+            "latents",
+            "prompt_embeds",
+            "negative_prompt_embeds",
+            "timesteps",
+        ],
         **kwargs,
     ):
         r"""

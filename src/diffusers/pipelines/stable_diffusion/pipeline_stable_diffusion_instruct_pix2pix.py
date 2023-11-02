@@ -92,7 +92,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "image_latents"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "image_latents", "timesteps"]
 
     def __init__(
         self,
@@ -159,6 +159,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             "prompt_embeds",
             "negative_prompt_embeds",
             "image_latents",
+            "timesteps",
         ],
         **kwargs,
     ):

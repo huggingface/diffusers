@@ -875,8 +875,8 @@ class PipelineTesterMixin:
             self.assertTrue(
                 len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
             )
-
-            if i == 1:
+            last_t = callback_kwargs["timesteps"][-1]
+            if t == last_t:
                 callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
             return callback_kwargs
 
