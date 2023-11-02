@@ -71,6 +71,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
         in_channels: Optional[int] = None,
+        out_channels: Optional[int] = None,
         num_layers: int = 1,
         dropout: float = 0.0,
         norm_num_groups: int = 32,

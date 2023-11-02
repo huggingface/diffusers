@@ -131,11 +131,12 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
     def encode_prompt(
         self,
         prompt,
         device,
-        num_videos_per_prompt,
+        num_images_per_prompt,
         do_classifier_free_guidance,
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -151,7 +152,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
                 prompt to be encoded
             device: (`torch.device`):
                 torch device
-            num_videos_per_prompt (`int`):
+            num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
@@ -249,8 +250,8 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-        prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
+        prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
+        prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -303,32 +304,37 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLo
 
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
-            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
+            negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder)
+            unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 
+    # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
     def decode_latents(self, latents):
+        latents = 1 / self.vae.config.scaling_factor * latents
+
         batch_size, channels, num_frames, height, width = latents.shape
-
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-        latents = latents / self.vae.config.scaling_factor
 
-        output_frames = []
-
-        # decode frame by frame to avoid OOM
-        for frame_idx in range(latents.shape[0]):
-            frame = self.vae.decode(latents[frame_idx].unsqueeze(0), return_dict=False)[0]
-            output_frames.append(frame)
-
-        output = torch.cat(output_frames)
-        _, channels, height, width = output.shape
-        video = output[None, :].reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
-
+        image = self.vae.decode(latents).sample
+        video = (
+            image[None, :]
+            .reshape(
+                (
+                    batch_size,
+                    num_frames,
+                    -1,
+                )
+                + image.shape[2:]
+            )
+            .permute(0, 2, 1, 3, 4)
+        )
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
+        video = video.float()
         return video
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
