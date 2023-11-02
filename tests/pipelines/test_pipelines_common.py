@@ -292,6 +292,20 @@ class PipelineTesterMixin:
             "See existing pipeline tests for reference."
         )
 
+    @property
+    def callback_cfg_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `cfg_params` in the child test class that requires to run test_callback_cfg. "
+            "`callback_cfg_params` are the parameters that needs to be passed to the pipeline's callback "
+            "function when dynamically adjusting `guidance_scale`. They are variables that require special"
+            "treatment when `do_classifier_free_guidance` is `True`. `pipeline_params.py` provides some common"
+            " sets of parameters such as `TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS`. If your pipeline's "
+            "set of cfg arguments has minor changes from one of the common sets of cfg arguments, "
+            "do not make modifications to the existing common sets of cfg arguments. I.e. for inpaint pipeine, you "
+            " need to adjust batch size of `mask` and `masked_image_latents` so should set the attribute as"
+            "`callback_cfg_params = TEXT_TO_IMAGE_CFG_PARAMS.union({'mask', 'masked_image_latents'})`"
+        )
+
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
         super().tearDown()
@@ -888,6 +902,42 @@ class PipelineTesterMixin:
 
         output = pipe(**inputs)[0]
         assert output.abs().sum() == 0
+
+    def test_callback_cfg(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if not ("callback_on_step_end_tensor_inputs" in sig.parameters and "callback_on_step_end" in sig.parameters):
+            return
+
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        def callback_no_cfg(pipe, i, t, callback_kwargs):
+            if i == 1:
+                for k, w in callback_kwargs.items():
+                    if k in self.callback_cfg_params:
+                        callback_kwargs[k] = callback_kwargs[k].chunk(2)[-1]
+                pipe._guidance_scale = 1.0
+
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["guidance_scale"] = 1.0
+        inputs["num_inference_steps"] = 2
+        out_no_cfg = pipe(**inputs)[0]
+
+        inputs["guidance_scale"] = 7.5
+        inputs["callback_on_step_end"] = callback_no_cfg
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        inputs["num_inference_steps"] = 2
+        out_callback_no_cfg = pipe(**inputs)[0]
+
+        assert out_no_cfg.shape == out_callback_no_cfg.shape
 
 
 @is_staging_test
