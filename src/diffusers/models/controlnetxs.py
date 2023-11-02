@@ -391,50 +391,22 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # 1 - input blocks (encoder)
         for i, (m_base, m_ctrl)  in enumerate(zip(base_down_subblocks, ctrl_down_subblocks)):
             # A - concat base -> ctrl
-            torch.save(h_ctrl, 'enc_A1.pt')
-            print('A1]',h_ctrl.flatten()[:10])
-
             cat_to_ctrl = next(it_enc_convs_in)(h_base)
-            torch.save(cat_to_ctrl, 'enc_A2.pt')
-            print('A2]',cat_to_ctrl.flatten()[:10])
-
             h_ctrl = torch.cat([h_ctrl, cat_to_ctrl], dim=1)
-            torch.save(h_ctrl, 'enc_A3.pt')
-            print('A3]',h_ctrl.flatten()[:10])
-
             debug_by_umer('enc', 'h_ctr', h_ctrl)
-
             # B - apply base subblock
             h_base = m_base(h_base, temb, cemb)
-            torch.save(h_base, 'enc_B1.pt')
-            print('B1]',h_base.flatten()[:10])
-
             debug_by_umer('enc', 'h_base', h_base)
-
             # C - apply ctrl subblock
             h_ctrl = m_ctrl(h_ctrl, temb, cemb)
-            torch.save(h_ctrl, 'enc_C1.pt')
-            print('C1]',h_ctrl.flatten()[:10])
-
             debug_by_umer('enc', 'h_ctrl', h_ctrl)
-
             # D - add ctrl -> base
             add_to_base = next(it_enc_convs_out)(h_ctrl)
-            torch.save(add_to_base, 'enc_D1.pt')
-            print('D1]',add_to_base.flatten()[:10])
-
             scale = next(scales)
-            torch.save(scale, 'enc_D2.pt')
-            print('D2]',scale.flatten()[:10])
-
             h_base = h_base + add_to_base * scale
-            torch.save(h_base, 'enc_D3.pt')
-            print('D3]',h_base.flatten()[:10])
-
             debug_by_umer('enc', 'h_base', h_base)
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
-            raise ValueError("Alright captain, do your analysis")
         h_ctrl = torch.concat([h_ctrl, h_base], dim=1)
         debug_by_umer('enc', 'h_ctrl', h_ctrl)
         # 2 - mid blocks (bottleneck)
