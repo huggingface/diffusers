@@ -682,15 +682,17 @@ class ResnetBlock2D(nn.Module):
                 in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )
 
-    def forward(self, input_tensor, temb, scale: float = 1.0):
+    @classmethod
+    def toggle_DO_UMER_CACHE(cls, b): cls.DO_UMER_CACHE = b
 
-        DO_UMER_CACHE = False
+    DO_UMER_CACHE = False
+    def forward(self, input_tensor, temb, scale: float = 1.0):
 
         UMER_DEBUG_CACHE = []
         umer_cache_i = 0 
         def append_to_umer_cache(msg,obj,comment):
             nonlocal umer_cache_i
-            if not DO_UMER_CACHE: return
+            if not self.DO_UMER_CACHE: return
             if hasattr(obj,'cpu'): obj = obj.cpu()
             UMER_DEBUG_CACHE.append((umer_cache_i, msg,comment,obj))
             umer_cache_i += 1
@@ -784,7 +786,7 @@ class ResnetBlock2D(nn.Module):
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
         append_to_umer_cache('hidden_states', output_tensor, 'after skip + scale')
 
-        if DO_UMER_CACHE:
+        if self.DO_UMER_CACHE:
             import pickle
             with open('intermediate_output/local_resnet.pkl','wb') as f:
                 pickle.dump(UMER_DEBUG_CACHE, f)

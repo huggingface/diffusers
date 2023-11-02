@@ -169,7 +169,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas)
 
-        print(f'At the end of __init__, the sigmas are {self.sigmas[:5]} ...')
+        #print(f'At the end of __init__, the sigmas are {self.sigmas[:5]} ...')
 
         # setable values
         self.num_inference_steps = None

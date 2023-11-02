@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Union, Tuple
+from typing import Any, Dict, Optional, Union, Tuple
 
 from itertools import zip_longest
 
@@ -86,6 +86,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             control_model_ratio=0.1,
             base_model_channel_sizes=base_model_channel_sizes,
             control_scale=0.95,
+            addition_embed_type='text_time',
         )
         cnxs_model.base_model = base_model
         return cnxs_model
@@ -146,6 +147,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             },
             global_pool_conditions: bool = False, # Todo Umer: Needed by SDXL pipeline, but what is this?,
             control_scale=1,
+            addition_embed_type: Optional[str] = None,
         ):
         super().__init__()
 
@@ -161,7 +163,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.learn_embedding = learn_embedding
 
         # 1 - Create controller
-        self.control_model = ctrl_model = UNet2DConditionModel(
+        self.control_model = UNet2DConditionModel(
             block_out_channels=block_out_channels,
             down_block_types=down_block_types,
             up_block_types=up_block_types,
@@ -189,10 +191,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # 4 - Build connections between base and control model
         self.enc_zero_convs_out = nn.ModuleList([])
         self.enc_zero_convs_in = nn.ModuleList([])
-
         self.middle_block_out = nn.ModuleList([])
         self.middle_block_in = nn.ModuleList([])
-
         self.dec_zero_convs_out = nn.ModuleList([])
         self.dec_zero_convs_in = nn.ModuleList([])
 
@@ -239,6 +239,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.flip_sin_to_cos = True # default params
         self.freq_shift = 0
         # !! TODO !! : learn_embedding is True, so we need our own embedding
+        # Edit: That's already part of the ctrl model, even thought it's not used
         # Todo: Only when `learn_embedding = False` can we just use the base model's time embedding, otherwise we need to create our own 
         
         # Text embedding
@@ -255,7 +256,16 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     DEBUG_LOG_by_Umer = False
     DEBUG_LOG_by_Umer_file = 'debug_log.pkl'
-    def forward(self, x: torch.Tensor, t: torch.Tensor, encoder_hidden_states: torch.Tensor, c: dict, hint: torch.Tensor, no_control=False, **kwargs):
+    def forward(
+        self,
+        x: torch.Tensor,
+        t: torch.Tensor,
+        encoder_hidden_states: torch.Tensor,
+        hint: torch.Tensor,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+        no_control=False,
+    ):
         if self.base_model is None:
             raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel by `cnxs_model.base_model = the_base_model`")
 
@@ -275,19 +285,16 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # return_dict: bool = True,
         """
 
-        x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
+        #x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
         if x.size(0) // 2 == hint.size(0): hint = torch.cat([hint, hint], dim=0) # for classifier free guidance
         
         timesteps=t
-        y=c.get("vector", None)
-
+        
         if no_control or self.no_control:
-            return self.base_model(x, timesteps, encoder_hidden_states, **kwargs)
+            return self.base_model(x, timesteps, encoder_hidden_states,cross_attention_kwargs=cross_attention_kwargs,added_cond_kwargs=added_cond_kwargs)
 
         # time embeddings
-        print("timesteps =",timesteps)
         timesteps = timesteps[None]
-        print("timesteps =",timesteps)
         t_emb = get_timestep_embedding(
             timesteps, 
             self.model_channels,
@@ -295,17 +302,47 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.freq_shift,
         )
-        print(f't_emb.shape = {list(t_emb.shape)}')
-        print(f'learn_embedding = {self.learn_embedding}')
         if self.learn_embedding:
-            temb = self.control_model.time_embedding(t_emb) * self.control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.control_scale ** 0.3)
-            print(f't_emb.shape = {list(temb.shape)}')
+            temb = self.control_model.time_embedding(t_emb) * self.config.control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.config.control_scale ** 0.3)
         else:
             temb = self.base_model.time_embedding(t_emb)
+        aug_emb = None
 
         # text embeddings
         cemb = encoder_hidden_states
 
+        # added time & text embeddings
+        if self.config.addition_embed_type == "text":
+            raise NotImplementedError()
+        elif self.config.addition_embed_type == "text_image":
+            raise NotImplementedError()
+        elif self.config.addition_embed_type == "text_time":
+            # SDXL - style
+            if "text_embeds" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                )
+            text_embeds = added_cond_kwargs.get("text_embeds")
+            if "time_ids" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                )
+            time_ids = added_cond_kwargs.get("time_ids")
+            time_embeds = self.base_model.add_time_proj(time_ids.flatten())
+            time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
+            add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
+            add_embeds = add_embeds.to(temb.dtype)
+            aug_emb = self.base_model.add_embedding(add_embeds)
+
+        elif self.config.addition_embed_type == "image":
+            raise NotImplementedError()
+        elif self.config.addition_embed_type == "image_hint":
+            raise NotImplementedError()
+
+        temb = temb + aug_emb if aug_emb is not None else temb
+     
+
+        ###
         guided_hint = self.input_hint_block(hint)
 
         h_ctrl = h_base = x
@@ -353,16 +390,51 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         hs_ctrl.append(h_ctrl)
         # 1 - input blocks (encoder)
         for i, (m_base, m_ctrl)  in enumerate(zip(base_down_subblocks, ctrl_down_subblocks)):
-            h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
+            # A - concat base -> ctrl
+            torch.save(h_ctrl, 'enc_A1.pt')
+            print('A1]',h_ctrl.flatten()[:10])
+
+            cat_to_ctrl = next(it_enc_convs_in)(h_base)
+            torch.save(cat_to_ctrl, 'enc_A2.pt')
+            print('A2]',cat_to_ctrl.flatten()[:10])
+
+            h_ctrl = torch.cat([h_ctrl, cat_to_ctrl], dim=1)
+            torch.save(h_ctrl, 'enc_A3.pt')
+            print('A3]',h_ctrl.flatten()[:10])
+
             debug_by_umer('enc', 'h_ctr', h_ctrl)
+
+            # B - apply base subblock
             h_base = m_base(h_base, temb, cemb)
+            torch.save(h_base, 'enc_B1.pt')
+            print('B1]',h_base.flatten()[:10])
+
             debug_by_umer('enc', 'h_base', h_base)
+
+            # C - apply ctrl subblock
             h_ctrl = m_ctrl(h_ctrl, temb, cemb)
+            torch.save(h_ctrl, 'enc_C1.pt')
+            print('C1]',h_ctrl.flatten()[:10])
+
             debug_by_umer('enc', 'h_ctrl', h_ctrl)
-            h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)
+
+            # D - add ctrl -> base
+            add_to_base = next(it_enc_convs_out)(h_ctrl)
+            torch.save(add_to_base, 'enc_D1.pt')
+            print('D1]',add_to_base.flatten()[:10])
+
+            scale = next(scales)
+            torch.save(scale, 'enc_D2.pt')
+            print('D2]',scale.flatten()[:10])
+
+            h_base = h_base + add_to_base * scale
+            torch.save(h_base, 'enc_D3.pt')
+            print('D3]',h_base.flatten()[:10])
+
             debug_by_umer('enc', 'h_base', h_base)
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
+            raise ValueError("Alright captain, do your analysis")
         h_ctrl = torch.concat([h_ctrl, h_base], dim=1)
         debug_by_umer('enc', 'h_ctrl', h_ctrl)
         # 2 - mid blocks (bottleneck)

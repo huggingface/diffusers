@@ -737,6 +737,8 @@ class StableDiffusionXLControlNetXSPipeline(
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
+        print('add_time_ids =', add_time_ids)
+
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -752,11 +754,10 @@ class StableDiffusionXLControlNetXSPipeline(
                     x=latent_model_input,
                     t=t,
                     encoder_hidden_states=prompt_embeds,
-                    c={},
                     hint=image, # todo: better naming
-                    #cross_attention_kwargs=cross_attention_kwargs,
-                    #return_dict=False,
+                    cross_attention_kwargs=cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
+                    #return_dict=False,
                 ).sample
 
                 # perform guidance

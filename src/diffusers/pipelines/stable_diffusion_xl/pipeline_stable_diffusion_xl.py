@@ -912,6 +912,10 @@ class StableDiffusionXLPipeline(
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
             timesteps = timesteps[:num_inference_steps]
 
+        # todo: delete
+        print(f"add_time_ids.shape = {add_time_ids.shape}")
+        print(f"add_text_embeds.shape = {add_text_embeds.shape}")
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -921,6 +925,16 @@ class StableDiffusionXLPipeline(
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+                print(f'latents.shape={list(latent_model_input.shape)} | ', end='')
+                print(f't={t} | ', end='')
+                print(f'enc_h.shape={list(prompt_embeds.shape)} | ', end='')
+                if cross_attention_kwargs is not None:
+                    print(f'cross_attn_kw.keys={list(cross_attention_kwargs.keys())} | ', end='')
+                else:
+                    print(f'cross_attn_kw is None | ', end='')
+                print(f'added_cond_kw.keys={list(added_cond_kwargs.keys())}')
+
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
