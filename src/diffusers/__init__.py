@@ -80,6 +80,7 @@ else:
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
+        StableDiffusionIPAdapterPipeline,
     )
     from .schedulers import (
         CMStochasticIterativeScheduler,
