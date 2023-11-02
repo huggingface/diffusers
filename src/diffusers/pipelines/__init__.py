@@ -62,6 +62,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["alt_diffusion"] = ["AltDiffusionImg2ImgPipeline", "AltDiffusionPipeline"]
+    _import_structure["animatediff"] = ["AnimateDiffPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
@@ -291,6 +292,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
+        from .animatediff import AnimateDiffPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
         from .blip_diffusion import BlipDiffusionPipeline

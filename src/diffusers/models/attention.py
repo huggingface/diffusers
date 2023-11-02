@@ -20,6 +20,7 @@ from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU
 from .attention_processor import Attention
+from .embeddings import SinusoidalPositionalEmbedding
 from .lora import LoRACompatibleLinear
 from .normalization import AdaLayerNorm, AdaLayerNormZero
 
@@ -96,6 +97,10 @@ class BasicTransformerBlock(nn.Module):
             Whether to apply a final dropout after the last feed-forward layer.
         attention_type (`str`, *optional*, defaults to `"default"`):
             The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
+        positional_embeddings (`str`, *optional*, defaults to `None`):
+            The type of positional embeddings to apply to.
+        num_positional_embeddings (`int`, *optional*, defaults to `None`):
+            The maximum number of positional embeddings to apply.
     """
 
     def __init__(
@@ -115,6 +120,8 @@ class BasicTransformerBlock(nn.Module):
         norm_type: str = "layer_norm",
         final_dropout: bool = False,
         attention_type: str = "default",
+        positional_embeddings: Optional[str] = None,
+        num_positional_embeddings: Optional[int] = None,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -127,6 +134,16 @@ class BasicTransformerBlock(nn.Module):
                 f"`norm_type` is set to {norm_type}, but `num_embeds_ada_norm` is not defined. Please make sure to"
                 f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
             )
+
+        if positional_embeddings and (num_positional_embeddings is None):
+            raise ValueError(
+                "If `positional_embedding` type is defined, `num_positition_embeddings` must also be defined."
+            )
+
+        if positional_embeddings == "sinusoidal":
+            self.pos_embed = SinusoidalPositionalEmbedding(dim, max_seq_length=num_positional_embeddings)
+        else:
+            self.pos_embed = None
 
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
@@ -207,6 +224,9 @@ class BasicTransformerBlock(nn.Module):
         else:
             norm_hidden_states = self.norm1(hidden_states)
 
+        if self.pos_embed is not None:
+            norm_hidden_states = self.pos_embed(norm_hidden_states)
+
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
@@ -234,6 +254,8 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
+            if self.pos_embed is not None:
+                norm_hidden_states = self.pos_embed(norm_hidden_states)
 
             attn_output = self.attn2(
                 norm_hidden_states,
