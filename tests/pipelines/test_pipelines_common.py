@@ -897,7 +897,6 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
         inputs["callback_on_step_end"] = callback_inputs_test
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        inputs["num_inference_steps"] = 2
         inputs["output_type"] = "latent"
 
         output = pipe(**inputs)[0]
@@ -928,13 +927,11 @@ class PipelineTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["guidance_scale"] = 1.0
-        inputs["num_inference_steps"] = 2
         out_no_cfg = pipe(**inputs)[0]
 
         inputs["guidance_scale"] = 7.5
         inputs["callback_on_step_end"] = callback_no_cfg
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        inputs["num_inference_steps"] = 2
         out_callback_no_cfg = pipe(**inputs)[0]
 
         assert out_no_cfg.shape == out_callback_no_cfg.shape
