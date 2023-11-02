@@ -208,7 +208,7 @@
       title: Overview
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
-    - local: api/pipelienes/animatediff
+    - local: api/pipelines/animatediff
       title: AnimateDiff
     - local: api/pipelines/attend_and_excite
       title: Attend-and-Excite
