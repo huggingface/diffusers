@@ -54,7 +54,7 @@ class StableDiffusion2InpaintPipelineFastTests(
         []
     )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
     image_latents_params = frozenset([])
-    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"mask", "masked_image_latents"})
 
     def get_dummy_components(self):
         torch.manual_seed(0)

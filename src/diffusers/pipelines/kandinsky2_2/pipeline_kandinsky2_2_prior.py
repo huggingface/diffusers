@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import PIL.Image
 import torch
@@ -106,6 +106,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "text_encoder->image_encoder->prior"
     _exclude_from_cpu_offload = ["prior"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "text_encoder_hidden_states", "text_mask", "timesteps"]
 
     def __init__(
         self,
@@ -354,6 +355,14 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -367,6 +376,8 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         guidance_scale: float = 4.0,
         output_type: Optional[str] = "pt",  # pt only
         return_dict: bool = True,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -407,6 +418,13 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
 
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
         if isinstance(prompt, str):
             prompt = [prompt]
         elif not isinstance(prompt, list):
@@ -428,14 +446,15 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         batch_size = len(prompt)
         batch_size = batch_size * num_images_per_prompt
 
-        do_classifier_free_guidance = guidance_scale > 1.0
+        self._guidance_scale = guidance_scale
+
         prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt, device, num_images_per_prompt, self.do_classifier_free_guidance, negative_prompt
         )
 
         # prior
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        prior_timesteps_tensor = self.scheduler.timesteps
+        timesteps = self.scheduler.timesteps
 
         embedding_dim = self.prior.config.embedding_dim
 
@@ -448,9 +467,9 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
             self.scheduler,
         )
 
-        for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
+        for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
             predicted_image_embedding = self.prior(
                 latent_model_input,
@@ -460,16 +479,16 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 attention_mask=text_mask,
             ).predicted_image_embedding
 
-            if do_classifier_free_guidance:
+            if self.do_classifier_free_guidance:
                 predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
+                predicted_image_embedding = predicted_image_embedding_uncond + self.guidance_scale * (
                     predicted_image_embedding_text - predicted_image_embedding_uncond
                 )
 
-            if i + 1 == prior_timesteps_tensor.shape[0]:
+            if i + 1 == timesteps.shape[0]:
                 prev_timestep = None
             else:
-                prev_timestep = prior_timesteps_tensor[i + 1]
+                prev_timestep = timesteps[i + 1]
 
             latents = self.scheduler.step(
                 predicted_image_embedding,
@@ -478,6 +497,19 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 generator=generator,
                 prev_timestep=prev_timestep,
             ).prev_sample
+
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                latents = callback_outputs.pop("latents", latents)
+                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                text_encoder_hidden_states = callback_outputs.pop(
+                    "text_encoder_hidden_states", text_encoder_hidden_states
+                )
+                text_mask = callback_outputs.pop("text_mask", text_mask)
 
         latents = self.prior.post_process_latents(latents)
 
