@@ -30,7 +30,7 @@ With the advance of text-to-image models (e.g., Stable Diffusion) and correspond
 
 AnimateDiff works with a MotionAdapter checkpoint and a Stable Diffusion model checkpoint. The MotionAdapter is a collection of Motion Modules that are responsible for adding coherent motion across image frames. These modules are applied after the Resnet and Attention blocks in Stable Diffusion UNet.
 
-In the following we give a simple example of how to use a *MotionAdapter* checkpoint with Diffusers for inference based on StableDiffusion-1.4/1.5.
+The following example demonstrates how to use a *MotionAdapter* checkpoint with Diffusers for inference based on StableDiffusion-1.4/1.5.
 
 ```python
 import torch
@@ -39,8 +39,17 @@ from diffusers.utils import export_to_gif
 
 # Load the motion adapter
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
+# load SD 1.5 based finetuned model
 pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
-pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
+pipe.scheduler = DDIMScheduler(
+    beta_schedule="linear",
+    steps_offset=1,
+    clip_sample=False,
+    beta_start=0.00085,
+    beta_end=0.012,
+    timestep_spacing="linspace",
+)
+# enable memory savings
 pipe.enable_model_cpu_offload()
 
 output = pipe(
@@ -55,9 +64,27 @@ frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
 ```
 
+<Tip>
+
+AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples.
+
+</Tip>
+
+## AnimateDiffPipeline
+[[autodoc]] AnimateDiffPipeline
+	- all
+	- __call__
+    - enable_freeu
+    - disable_freeu
+    - enable_vae_slicing
+    - disable_vae_slicing
+    - enable_vae_tiling
+    - disable_vae_tiling
+
+## AnimateDiffPipelineOutput
+
+[[autodoc]] pipelines.animatediff.AnimateDiffPipelineOutput
+
 ## Available checkpoints
 
-Motion Adapter checkpoints can be found under [guoyww/animatediff](https://huggingface.co/guoyww/).
-
-These checkpoints will work with any model based on Stable Diffusion 1.4/1.5
-
+Motion Adapter checkpoints can be found under [guoyww](https://huggingface.co/guoyww/). These checkpoints are meant to work with any model based on Stable Diffusion 1.4/1.5

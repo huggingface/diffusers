@@ -86,9 +86,6 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         motion_layers_per_block=2,
         motion_mid_block_layers_per_block=1,
         motion_num_attention_heads=8,
-        motion_attention_bias=False,
-        motion_cross_attention_dim=None,
-        motion_activation_fn="geglu",
         motion_norm_num_groups=32,
         motion_max_seq_length=32,
         use_motion_mid_block=True,
@@ -118,9 +115,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                 MotionModules(
                     in_channels=output_channel,
                     norm_num_groups=motion_norm_num_groups,
-                    cross_attention_dim=motion_cross_attention_dim,
-                    activation_fn=motion_activation_fn,
-                    attention_bias=motion_attention_bias,
+                    cross_attention_dim=None,
+                    activation_fn="geglu",
+                    attention_bias=False,
                     num_attention_heads=motion_num_attention_heads,
                     max_seq_length=motion_max_seq_length,
                     layers_per_block=motion_layers_per_block,
@@ -131,9 +128,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
             self.mid_block = MotionModules(
                 in_channels=block_out_channels[-1],
                 norm_num_groups=motion_norm_num_groups,
-                cross_attention_dim=motion_cross_attention_dim,
-                activation_fn=motion_activation_fn,
-                attention_bias=motion_attention_bias,
+                cross_attention_dim=None,
+                activation_fn="geglu",
+                attention_bias=False,
                 num_attention_heads=motion_num_attention_heads,
                 layers_per_block=motion_mid_block_layers_per_block,
                 max_seq_length=motion_max_seq_length,
@@ -149,9 +146,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                 MotionModules(
                     in_channels=output_channel,
                     norm_num_groups=motion_norm_num_groups,
-                    cross_attention_dim=motion_cross_attention_dim,
-                    activation_fn=motion_activation_fn,
-                    attention_bias=motion_attention_bias,
+                    cross_attention_dim=None,
+                    activation_fn="geglu",
+                    attention_bias=False,
                     num_attention_heads=motion_num_attention_heads,
                     max_seq_length=motion_max_seq_length,
                     layers_per_block=motion_layers_per_block + 1,
@@ -201,10 +198,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
-        attention_head_dim: Union[int, Tuple[int]] = 8,
         use_linear_projection: bool = False,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
-        motion_cross_attention_dim: Optional[int] = None,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = 8,
         motion_max_seq_length: Optional[int] = 32,
         motion_num_attention_heads: int = 8,
         use_motion_mid_block: int = True,
@@ -212,19 +207,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         super().__init__()
 
         self.sample_size = sample_size
-
-        if num_attention_heads is not None:
-            raise NotImplementedError(
-                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
-            )
-
-        # If `num_attention_heads` is not defined (which is the case for most models)
-        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
-        # The reason for this behavior is to correct for incorrectly named variables that were introduced
-        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
-        # which is why we correct for the naming here.
-        num_attention_heads = num_attention_heads or attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -291,7 +273,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 use_linear_projection=use_linear_projection,
                 dual_cross_attention=False,
                 temporal_num_attention_heads=motion_num_attention_heads,
-                temporal_cross_attention_dim=motion_cross_attention_dim,
                 temporal_max_seq_length=motion_max_seq_length,
             )
             self.down_blocks.append(down_block)
@@ -308,7 +289,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=False,
-                temporal_cross_attention_dim=motion_cross_attention_dim,
                 temporal_num_attention_heads=motion_num_attention_heads,
                 temporal_max_seq_length=motion_max_seq_length,
             )
@@ -365,7 +345,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 resolution_idx=i,
                 use_linear_projection=use_linear_projection,
                 temporal_num_attention_heads=motion_num_attention_heads,
-                temporal_cross_attention_dim=motion_cross_attention_dim,
                 temporal_max_seq_length=motion_max_seq_length,
             )
             self.up_blocks.append(up_block)
@@ -418,7 +397,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         config["up_block_types"] = up_blocks
 
         if has_motion_adapter:
-            config["motion_cross_attention_dim"] = motion_adapter.config["motion_cross_attention_dim"]
             config["motion_num_attention_heads"] = motion_adapter.config["motion_num_attention_heads"]
             config["motion_max_seq_length"] = motion_adapter.config["motion_max_seq_length"]
             config["use_motion_mid_block"] = motion_adapter.config["use_motion_mid_block"]
@@ -520,9 +498,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             motion_layers_per_block=self.config["layers_per_block"],
             motion_norm_num_groups=self.config["norm_num_groups"],
             motion_num_attention_heads=self.config["motion_num_attention_heads"],
-            motion_cross_attention_dim=self.config["motion_cross_attention_dim"],
-            motion_attention_bias=False,
-            motion_activation_fn="geglu",
             motion_max_seq_length=self.config["motion_max_seq_length"],
             use_motion_mid_block=self.config["use_motion_mid_block"],
         )
@@ -598,6 +573,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
+    # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size=None, dim=0):
         """
         Sets the attention processor to use [feed forward
@@ -627,6 +603,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for module in self.children():
             fn_recursive_feed_forward(module, chunk_size, dim)
 
+    # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
     def disable_forward_chunking(self):
         def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
             if hasattr(module, "set_chunk_feed_forward"):
@@ -638,6 +615,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for module in self.children():
             fn_recursive_feed_forward(module, None, 0)
 
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.

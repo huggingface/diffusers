@@ -69,7 +69,7 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
             "down_block_types": ("CrossAttnDownBlockMotion", "DownBlockMotion"),
             "up_block_types": ("UpBlockMotion", "CrossAttnUpBlockMotion"),
             "cross_attention_dim": 32,
-            "attention_head_dim": 8,
+            "num_attention_heads": 4,
             "out_channels": 4,
             "in_channels": 4,
             "layers_per_block": 1,
@@ -213,9 +213,6 @@ class UNetMotionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase)
     def test_pickle(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
         model = self.model_class(**init_dict)
         model.to(torch_device)
 

@@ -44,7 +44,6 @@ def get_down_block(
     upcast_attention=False,
     resnet_time_scale_shift="default",
     temporal_num_attention_heads=8,
-    temporal_cross_attention_dim=None,
     temporal_max_seq_length=32,
 ):
     if down_block_type == "DownBlock3D":
@@ -94,7 +93,6 @@ def get_down_block(
             downsample_padding=downsample_padding,
             resnet_time_scale_shift=resnet_time_scale_shift,
             temporal_num_attention_heads=temporal_num_attention_heads,
-            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_max_seq_length=temporal_max_seq_length,
         )
     elif down_block_type == "CrossAttnDownBlockMotion":
@@ -118,7 +116,6 @@ def get_down_block(
             upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             temporal_num_attention_heads=temporal_num_attention_heads,
-            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_max_seq_length=temporal_max_seq_length,
         )
 
@@ -198,7 +195,6 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
             resolution_idx=resolution_idx,
             temporal_num_attention_heads=temporal_num_attention_heads,
-            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_max_seq_length=temporal_max_seq_length,
         )
     elif up_block_type == "CrossAttnUpBlockMotion":
@@ -223,7 +219,6 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
             resolution_idx=resolution_idx,
             temporal_num_attention_heads=temporal_num_attention_heads,
-            temporal_cross_attention_dim=temporal_cross_attention_dim,
             temporal_max_seq_length=temporal_max_seq_length,
         )
     raise ValueError(f"{up_block_type} does not exist.")
@@ -1095,8 +1090,6 @@ class CrossAttnDownBlockMotion(nn.Module):
                 )[0]
                 hidden_states = motion_module(
                     hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
                     num_frames=num_frames,
                 )[0]
 
@@ -1301,8 +1294,6 @@ class CrossAttnUpBlockMotion(nn.Module):
                 )[0]
                 hidden_states = motion_module(
                     hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
                     num_frames=num_frames,
                 )[0]
 
