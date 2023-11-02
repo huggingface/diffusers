@@ -669,6 +669,10 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         self.prior_pipe.set_progress_bar_config(**kwargs)
         self.decoder_pipe.set_progress_bar_config(**kwargs)
 
+    @property
+    def _callback_tensor_inputs(self):
+        return self.decoder_pipe._callback_tensor_inputs
+
     @torch.no_grad()
     @replace_example_docstring(INPAINT_EXAMPLE_DOC_STRING)
     def __call__(
@@ -690,6 +694,10 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         return_dict: bool = True,
+        prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -767,6 +775,8 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
             guidance_scale=prior_guidance_scale,
             output_type="pt",
             return_dict=False,
+            callback_on_step_end=prior_callback_on_step_end,
+            callback_on_step_end_tensor_inputs=prior_callback_on_step_end_tensor_inputs,
         )
         image_embeds = prior_outputs[0]
         negative_image_embeds = prior_outputs[1]
@@ -806,5 +816,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
             callback=callback,
             callback_steps=callback_steps,
             return_dict=return_dict,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
         return outputs
