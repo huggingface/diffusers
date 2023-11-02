@@ -2727,6 +2727,7 @@ class FromSingleFileMixin:
         text_encoder = kwargs.pop("text_encoder", None)
         vae = kwargs.pop("vae", None)
         controlnet = kwargs.pop("controlnet", None)
+        adapter = kwargs.pop("adapter", None)
         tokenizer = kwargs.pop("tokenizer", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
@@ -2819,6 +2820,7 @@ class FromSingleFileMixin:
             model_type=model_type,
             stable_unclip=stable_unclip,
             controlnet=controlnet,
+            adapter=adapter,
             from_safetensors=from_safetensors,
             extract_ema=extract_ema,
             image_size=image_size,
@@ -3087,13 +3089,13 @@ class FromOriginalControlnetMixin:
         Examples:
 
         ```py
-        from diffusers import StableDiffusionControlnetPipeline, ControlNetModel
+        from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
 
         url = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"  # can also be a local path
         model = ControlNetModel.from_single_file(url)
 
         url = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned.safetensors"  # can also be a local path
-        pipe = StableDiffusionControlnetPipeline.from_single_file(url, controlnet=controlnet)
+        pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=controlnet)
         ```
         """
         # import here to avoid circular dependency
@@ -3171,7 +3173,7 @@ class FromOriginalControlnetMixin:
         )
 
         if torch_dtype is not None:
-            controlnet.to(torch_dtype=torch_dtype)
+            controlnet.to(dtype=torch_dtype)
 
         return controlnet
 
