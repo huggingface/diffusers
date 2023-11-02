@@ -23,6 +23,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.attention import Attention, GatedSelfAttentionDense
@@ -32,7 +33,6 @@ from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusion
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging, replace_example_docstring
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 
 EXAMPLE_DOC_STRING = """
@@ -42,12 +42,12 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import DiffusionPipeline
 
         >>> pipe = DiffusionPipeline.from_pretrained(
-        ...     "longlian/lmd_plus", 
+        ...     "longlian/lmd_plus",
         ...     custom_pipeline="llm-grounded-diffusion",
         ...     variant="fp16", torch_dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
-        
+
         >>> # Generate an image described by the prompt and
         >>> # insert objects described by text at the region defined by bounding boxes
         >>> prompt = "a waterfall and a modern high speed train in a beautiful forest with fall foliage"
@@ -65,7 +65,7 @@ EXAMPLE_DOC_STRING = """
         ... ).images
 
         >>> images[0].save("./lmd_plus_generation.jpg")
-        
+
         >>> # Generate directly from a text prompt and an LLM response
         >>> prompt = "a waterfall and a modern high speed train in a beautiful forest with fall foliage"
         >>> phrases, boxes, bg_prompt, neg_prompt = pipe.parse_llm_response(\"""
@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
         Background prompt: A beautiful forest with fall foliage
         Negative prompt:
         \""")
-        
+
         >> images = pipe(
         ...     prompt=prompt,
         ...     negative_prompt=neg_prompt,
@@ -84,11 +84,11 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=50,
         ...     lmd_guidance_kwargs={}
         ... ).images
-        
+
         >>> images[0].save("./lmd_plus_generation.jpg")
 
 images[0]
-        
+
         ```
 """
 
@@ -298,7 +298,7 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
     @classmethod
     def _parse_response_with_negative(cls, text):
         if not text:
-            raise ValueError(f"LLM response is empty")
+            raise ValueError("LLM response is empty")
 
         if cls.objects_text in text:
             text = text.split(cls.objects_text)[1]
@@ -751,7 +751,7 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
             clip_skip=clip_skip,
         )
 
-        uncond_prompt_embeds, cond_prompt_embeds = negative_prompt_embeds, prompt_embeds
+        cond_prompt_embeds = prompt_embeds
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
