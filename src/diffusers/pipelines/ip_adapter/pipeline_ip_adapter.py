@@ -228,9 +228,9 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
                 module if isinstance(module, nn.Module) else nn.Identity()
                 for module in self.unet.attn_processors.values()
             ]
-        ).to(dtype=self.unet.dtype, device=self.unet.device)
-        print(f"UNet dtype: {self.unet.dtype} UNet device: {self.unet.device}")
+        )
         ip_layers.load_state_dict(state_dict["ip_adapter"])
+        ip_layers.to(device=self.unet.device, dtype=self.unet.dtype)
 
     def set_scale(self, scale):
         for attn_processor in self.unet.attn_processors.values():
