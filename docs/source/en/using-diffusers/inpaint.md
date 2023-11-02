@@ -591,7 +591,7 @@ make_image_grid([init_image, mask_image, image, image_elden_ring], rows=2, cols=
 
 It can be difficult and slow to run diffusion models if you're resource constrained, but it doesn't have to be with a few optimization tricks. One of the biggest (and easiest) optimizations you can enable is switching to memory-efficient attention. If you're using PyTorch 2.0, [scaled-dot product attention](../optimization/torch2.0#scaled-dot-product-attention) is automatically enabled and you don't need to do anything else. For non-PyTorch 2.0 users, you can install and use [xFormers](../optimization/xformers)'s implementation of memory-efficient attention. Both options reduce memory usage and accelerate inference.
 
-You can also offload the model to the GPU to save even more memory:
+You can also offload the model to the CPU to save even more memory:
 
 ```diff
 + pipeline.enable_xformers_memory_efficient_attention()
