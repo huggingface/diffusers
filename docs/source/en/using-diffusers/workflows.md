@@ -110,13 +110,13 @@ Once the pipeline is loaded with the desired workflow, it's ready to be called:
 image = pipeline().images[0]
 ```
 
-By default, while loading a workflow, we don't modify the scheduler of the underlying pipeline from the workflow. But you can change this behaviour by doing:
+By default, while loading a workflow, the scheduler of the underlying pipeline from the workflow isn't modified but you can change it by adding `load_scheduler=True`:
 
 ```
 pipeline.load_workflow("sayakpaul/my-simple-workflow-sd", load_scheduler=True)
 ```
 
-This is particularly useful if you had changed the scheduler after loading a pipeline.
+This is particularly useful if you have changed the scheduler after loading a pipeline.
 
 You can also override the pipeline call arguments. For example, to add a `negative_prompt`:
 
@@ -144,7 +144,7 @@ However, make sure to thoroughly inspect the values you are calling the pipeline
 
 Loading from a local workflow is also possible:
 
-```
+```py
 from diffusers import DiffusionPipeline
 import torch
 
@@ -156,7 +156,7 @@ pipeline.load_workflow("path_to_local_dir")
 image = pipeline().images[0]
 ```
 
-Alternatively, if you want to manually load a workflow file and populate the pipeline arguments, you can do so:
+Alternatively, if you want to load a workflow file and populate the pipeline arguments manually:
 
 ```python
 from diffusers import DiffusionPipeline
@@ -284,15 +284,14 @@ If you look at the workflow, you'll see the image that was passed to the pipelin
              ('clip_sample', False)])}
 ```
 
-As you can notice, the `image` passed to the `pipeline` isn't a part of `workflow`.
 
-Let's serialize it and reload the pipeline:
+Let's serialize the workflow and reload the pipeline to see what happens when you try to use it.
 
 ```python
 workflow.save_workflow("my-simple-workflow-sd", filename="controlnet_simple.json", push_to_hub=True)
 ```
 
-Steps to load the workflow into [`StableDiffusionControlNetPipeline`] should remain the same as the example above:
+Then load the workflow into [`StableDiffusionControlNetPipeline`]:
 
 ```python
 # load control net and stable diffusion v1-5
@@ -326,6 +325,6 @@ Other unsupported serialization types include:
 
 [[autodoc]] workflow_utils.Workflow
 
-## workfllow_utils.populate_workflow_from_pipeline
+## workflow_utils.populate_workflow_from_pipeline
 
 [[autodoc]] workflow_utils.populate_workflow_from_pipeline
