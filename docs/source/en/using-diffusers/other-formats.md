@@ -136,55 +136,41 @@ image = pipeline(prompt, num_inference_steps=50).images[0]
 [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (A1111) is a popular web UI for Stable Diffusion that supports model sharing platforms like [Civitai](https://civitai.com/). Models trained with the Low-Rank Adaptation (LoRA) technique are especially popular because they're fast to train and have a much smaller file size than a fully finetuned model. 🤗 Diffusers supports loading A1111 LoRA checkpoints with [`~loaders.LoraLoaderMixin.load_lora_weights`]:
 
 ```py
-from diffusers import DiffusionPipeline, UniPCMultistepScheduler
+from diffusers import StableDiffusionXLPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained(
-    "andite/anything-v4.0", torch_dtype=torch.float16, safety_checker=None
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "Lykon/dreamshaper-xl-1-0", torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
-pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
 ```
-<!--Repository Not Found for url: https://huggingface.co/api/models/andite/anything-v4.0.
-Please make sure you specified the correct `repo_id` and `repo_type`.-->
 
-Download a LoRA checkpoint from Civitai; this example uses the [Howls Moving Castle,Interior/Scenery LoRA (Ghibli Stlye)](https://civitai.com/models/14605?modelVersionId=19998) checkpoint, but feel free to try out any LoRA checkpoint!
+Download a LoRA checkpoint from Civitai; this example uses the [Blueprintify SD XL 1.0](https://civitai.com/models/150986/blueprintify-sd-xl-10) checkpoint, but feel free to try out any LoRA checkpoint!
 
 ```py
 # uncomment to download the safetensor weights
-#!wget https://civitai.com/api/download/models/19998 -O howls_moving_castle.safetensors
+!wget https://civitai.com/api/download/models/168776 -O blueprintify.safetensors
 ```
 
 Load the LoRA checkpoint into the pipeline with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method:
 
 ```py
-pipeline.load_lora_weights(".", weight_name="howls_moving_castle.safetensors")
+pipeline.load_lora_weights(".", weight_name="blueprintify.safetensors")
 ```
 
 Now you can use the pipeline to generate images:
 
 ```py
-prompt = "masterpiece, illustration, ultra-detailed, cityscape, san francisco, golden gate bridge, california, bay area, in the snow, beautiful detailed starry sky"
+prompt = "bl3uprint, a highly detailed blueprint of the empire state building, explaining how to build all parts, many txt, blueprint grid backdrop"
 negative_prompt = "lowres, cropped, worst quality, low quality, normal quality, artifacts, signature, watermark, username, blurry, more than one bridge, bad architecture"
 
-images = pipeline(
+image = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
-    width=512,
-    height=512,
-    num_inference_steps=25,
-    num_images_per_prompt=4,
     generator=torch.manual_seed(0),
-).images
-```
-
-Display the images:
-
-```py
-from diffusers.utils import make_image_grid
-
-make_image_grid(images, 2, 2)
+).images[0]
+image
 ```
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/a1111-lora-sf.png"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/blueprint-lora.png"/>
 </div>
