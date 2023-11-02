@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Shareable workflows
+# Working with workflows
 
 <Tip warning={true}>
 
@@ -21,6 +21,8 @@ specific language governing permissions and limitations under the License.
 Workflows provide a simple mechanism to share your pipeline call arguments and scheduler configuration, making it easier to reproduce results. 
 
 ## Serializing a workflow
+
+A [`Workflow`] object provides all the argument values in the `__call__()` of a pipeline. Add `return_workflow=True` to return a `Workflow` object. 
 
 ```python
 from diffusers import DiffusionPipeline
@@ -72,8 +74,6 @@ If you look at this specific workflow, you'll see values like the number of infe
              ('_diffusers_version', '0.6.0'),
              ('clip_sample', False)])}
 ```
-
-A [`Workflow`] object provides all the argument values in the `__call__()` of a pipeline. Add `return_workflow=True` to return a `Workflow` object:
 
 Once you have generated a workflow object, you can serialize it with [`~Workflow.save_workflow`]:
 
@@ -144,7 +144,7 @@ However, make sure to thoroughly inspect the values you are calling the pipeline
 
 Loading from a local workflow is also possible:
 
-```py
+```python
 from diffusers import DiffusionPipeline
 import torch
 

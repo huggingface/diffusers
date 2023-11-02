@@ -18,7 +18,8 @@
   - local: tutorials/basic_training
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
-    title: Inference with PEFT
+    title: Working with workflows
+  - local: tutorials/workflows
   title: Tutorials
 - sections:
   - sections:
@@ -38,8 +39,6 @@
       title: Load adapters
     - local: using-diffusers/push_to_hub
       title: Push files to the Hub
-    - local: using-diffusers/workflows
-      title: Load a workflow
     title: Loading & Hub
   - sections:
     - local: using-diffusers/unconditional_image_generation
