@@ -57,7 +57,7 @@ Any question or comment related to the Diffusers library can be asked on the [di
 - ...
 
 Every question that is asked on the forum or on Discord actively encourages the community to publicly
-share knowledge and might very well help a beginner in the future that has the same question you're
+share knowledge and might very well help a beginner in the future who has the same question you're
 having. Please do pose any questions you might have.
 In the same spirit, you are of immense help to the community by answering such questions because this way you are publicly documenting knowledge for everybody to learn from.
 
@@ -134,7 +134,7 @@ You can open an issue about feedback [here](https://github.com/huggingface/diffu
 
 #### 2.4 Technical questions
 
-Technical questions are mainly about why certain code of the library was written in a certain way, or what a certain part of the code does. Please make sure to link to the code in question and please provide detail on
+Technical questions are mainly about why certain code of the library was written in a certain way, or what a certain part of the code does. Please make sure to link to the code in question and please provide details on
 why this part of the code is difficult to understand.
 
 You can open an issue about a technical question [here](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=bug&template=bug-report.yml).
@@ -144,7 +144,7 @@ You can open an issue about a technical question [here](https://github.com/huggi
 If the diffusion model community released a new model, pipeline, or scheduler that you would like to see in the Diffusers library, please provide the following information:
 
 * Short description of the diffusion pipeline, model, or scheduler and link to the paper or public release.
-* Link to any of its open-source implementation.
+* Link to any of its open-source implementation(s).
 * Link to the model weights if they are available.
 
 If you are willing to contribute to the model yourself, let us know so we can best guide you. Also, don't forget
@@ -188,7 +188,7 @@ valuable contribution**.
 Contributing to the library can have many forms:
 
 - Correcting spelling or grammatical errors.
-- Correct incorrect formatting of the docstring. If you see that the official documentation is weirdly displayed or a link is broken, we are very happy if you take some time to correct it.
+- Correct incorrect formatting of the docstring. If you see that the official documentation is weirdly displayed or a link is broken, we would be very happy if you take some time to correct it.
 - Correct the shape or dimensions of a docstring input or output tensor.
 - Clarify documentation that is hard to understand or incorrect.
 - Update outdated code examples.
@@ -269,9 +269,9 @@ To contribute an example, it is highly recommended to look at already existing e
 We strongly advise contributors to make use of the [Accelerate library](https://github.com/huggingface/accelerate) as it's tightly integrated
 with Diffusers.
 Once an example script works, please make sure to add a comprehensive `README.md` that states how to use the example exactly. This README should include:
-- An example command on how to run the example script as shown [here e.g.](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#running-locally-with-pytorch).
-- A link to some training results (logs, models, ...) that show what the user can expect as shown [here e.g.](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
-- If you are adding a non-official/research training example, **please don't forget** to add a sentence that you are maintaining this training example which includes your git handle as shown [here e.g.](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/intel_opts#diffusers-examples-with-intel-optimizations).
+- An example command on how to run the example script as shown [here](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#running-locally-with-pytorch).
+- A link to some training results (logs, models, etc.) that show what the user can expect as shown [here](https://api.wandb.ai/report/patrickvonplaten/xm6cd5q5).
+- If you are adding a non-official/research training example, **please don't forget** to add a sentence that you are maintaining this training example which includes your git handle as shown [here](https://github.com/huggingface/diffusers/tree/main/examples/research_projects/intel_opts#diffusers-examples-with-intel-optimizations).
 
 If you are contributing to the official training examples, please also make sure to add a test to [examples/test_examples.py](https://github.com/huggingface/diffusers/blob/main/examples/test_examples.py). This is not necessary for non-official training examples.
 
@@ -450,7 +450,7 @@ Push the changes to your account using:
 webpage of your fork on GitHub. Click on 'Pull request' to send your changes
 to the project maintainers for review.
 
-7. It's ok if maintainers ask you for changes. It happens to core contributors
+7. It's OK if maintainers ask you for changes. It happens to core contributors
 too! So everyone can see the changes in the Pull request, work in your local
 branch and push the changes to your fork. They will automatically appear in
 the pull request.
