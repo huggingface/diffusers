@@ -5,11 +5,15 @@ from ...utils import (
 )
 
 
-_import_structure = {"pipeline_latent_consistency_models": ["LatentConsistencyModelPipeline"]}
+_import_structure = {
+    "pipeline_latent_consistency_text2img": ["LatentConsistencyModelPipeline"],
+    "pipeline_latent_consistency_img2img": ["LatentConsistencyModelImg2ImgPipeline"],
+}
 
 
 if TYPE_CHECKING:
-    from .pipeline_latent_consistency_models import LatentConsistencyModelPipeline
+    from .pipeline_latent_consistency_text2img import LatentConsistencyModelPipeline
+    from .pipeline_latent_consistency_img2img import LatentConsistencyModelImg2ImgPipeline
 
 else:
     import sys
