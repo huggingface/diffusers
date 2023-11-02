@@ -27,13 +27,7 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LCMScheduler
-from ...utils import (
-    USE_PEFT_BACKEND,
-    logging,
-    scale_lora_layers,
-    unscale_lora_layers,
-    deprecate
-)
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
@@ -46,7 +40,7 @@ class LatentConsistencyModelImg2ImgPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
-    Pipeline for text-to-image generation using a latent consistency model.
+    Pipeline for image-to-image generation using a latent consistency model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -615,12 +609,16 @@ class LatentConsistencyModelImg2ImgPipeline(
         image = self.image_processor.preprocess(image)
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device, original_inference_steps=original_inference_steps, strength=strength)
+        self.scheduler.set_timesteps(
+            num_inference_steps, device, original_inference_steps=original_inference_steps, strength=strength
+        )
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
         original_inference_steps = (
-            original_inference_steps if original_inference_steps is not None else self.scheduler.config.original_inference_steps
+            original_inference_steps
+            if original_inference_steps is not None
+            else self.scheduler.config.original_inference_steps
         )
         latent_timestep = torch.tensor(int(strength * original_inference_steps))
         latents = self.prepare_latents(

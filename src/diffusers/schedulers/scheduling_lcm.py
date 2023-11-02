@@ -350,7 +350,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         self.num_inference_steps = num_inference_steps
         original_steps = (
-            original_inference_steps if original_inference_steps is not None else self.original_inference_steps
+            original_inference_steps if original_inference_steps is not None else self.config.original_inference_steps
         )
 
         if original_steps > self.config.num_train_timesteps:
