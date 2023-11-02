@@ -75,6 +75,7 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
             image_projection=image_projection,
             scheduler=scheduler,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self._set_ip_adapter()
 
     def _set_ip_adapter(self):
