@@ -2727,6 +2727,7 @@ class FromSingleFileMixin:
         text_encoder = kwargs.pop("text_encoder", None)
         vae = kwargs.pop("vae", None)
         controlnet = kwargs.pop("controlnet", None)
+        adapter = kwargs.pop("adapter", None)
         tokenizer = kwargs.pop("tokenizer", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
@@ -2819,6 +2820,7 @@ class FromSingleFileMixin:
             model_type=model_type,
             stable_unclip=stable_unclip,
             controlnet=controlnet,
+            adapter=adapter,
             from_safetensors=from_safetensors,
             extract_ema=extract_ema,
             image_size=image_size,
