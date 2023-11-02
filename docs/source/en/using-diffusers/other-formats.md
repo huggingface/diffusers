@@ -148,7 +148,7 @@ Download a LoRA checkpoint from Civitai; this example uses the [Blueprintify SD 
 
 ```py
 # uncomment to download the safetensor weights
-!wget https://civitai.com/api/download/models/168776 -O blueprintify.safetensors
+#!wget https://civitai.com/api/download/models/168776 -O blueprintify.safetensors
 ```
 
 Load the LoRA checkpoint into the pipeline with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method:
