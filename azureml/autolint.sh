@@ -1,1 +1,0 @@
-make style && make quality

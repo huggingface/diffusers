@@ -1,1 +1,0 @@
-tensorboard --logdir '/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/output/vae'
