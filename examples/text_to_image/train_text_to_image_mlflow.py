@@ -644,8 +644,9 @@ def main():
     # Optimizer creation
     if args.optimizer_algorithm == "RMSprop":
         optimizer = optimizer_cls(
+            alpha=0.99,
             lr=args.learning_rate,
-            momentum=args.momentum,
+            momentum=0,
             weight_decay=args.weight_decay,
             eps=args.adam_epsilon,
         )
