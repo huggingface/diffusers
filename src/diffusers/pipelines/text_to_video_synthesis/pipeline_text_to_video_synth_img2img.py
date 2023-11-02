@@ -777,6 +777,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
         if output_type == "latent":
             return TextToVideoSDPipelineOutput(frames=latents)
 
+        # manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
 

@@ -12,7 +12,7 @@
   - local: tutorials/tutorial_overview
     title: Overview
   - local: using-diffusers/write_own_pipeline
-    title: Understanding models and schedulers
+    title: Understanding pipelines, models and schedulers
   - local: tutorials/autopipeline
     title: AutoPipeline
   - local: tutorials/basic_training
@@ -41,6 +41,8 @@
       title: Push files to the Hub
     title: Loading & Hub
   - sections:
+    - local: using-diffusers/pipeline_overview
+      title: Overview
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
@@ -71,6 +73,8 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
+    - local: using-diffusers/kandinsky
+      title: Kandinsky
     - local: using-diffusers/controlnet
       title: ControlNet
     - local: using-diffusers/shap-e
@@ -244,7 +248,7 @@
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
-      title: Kandinsky
+      title: Kandinsky 2.1
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
     - local: api/pipelines/latent_consistency_models
@@ -256,7 +260,7 @@
     - local: api/pipelines/musicldm
       title: MusicLDM
     - local: api/pipelines/paint_by_example
-      title: PaintByExample
+      title: Paint By Example
     - local: api/pipelines/paradigms
       title: Parallel Sampling of Diffusion Models
     - local: api/pipelines/pix2pix_zero
@@ -301,7 +305,7 @@
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth)
       - local: api/pipelines/stable_diffusion/adapter
-        title: Stable Diffusion T2I-adapter
+        title: Stable Diffusion T2I-Adapter
       - local: api/pipelines/stable_diffusion/gligen
         title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
@@ -316,7 +320,7 @@
     - local: api/pipelines/text_to_video_zero
       title: Text2Video-Zero
     - local: api/pipelines/unclip
-      title: UnCLIP
+      title: unCLIP
     - local: api/pipelines/latent_diffusion_uncond
       title: Unconditional Latent Diffusion
     - local: api/pipelines/unidiffuser
