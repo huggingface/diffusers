@@ -26,12 +26,7 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LCMScheduler
-from ...utils import (
-    USE_PEFT_BACKEND,
-    logging,
-    scale_lora_layers,
-    unscale_lora_layers,
-)
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
@@ -79,6 +74,7 @@ class LatentConsistencyModelPipeline(
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
+    _callback_tensor_inputs = ["latents", "denoised", "prompt_embeds", "w_embedding", "timesteps"]
 
     def __init__(
         self,
@@ -452,16 +448,22 @@ class LatentConsistencyModelPipeline(
         width: int,
         callback_steps: int,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -475,6 +477,18 @@ class LatentConsistencyModelPipeline(
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def cross_attention_kwargs(self):
+        return self._cross_attention_kwargs
+
+    @property
+    def clip_skip(self):
+        return self._clip_skip
 
     @torch.no_grad()
     def __call__(
@@ -495,6 +509,9 @@ class LatentConsistencyModelPipeline(
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents", "timesteps"],
+        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -557,12 +574,32 @@ class LatentConsistencyModelPipeline(
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
+
+        callback = kwargs.pop("callback", None)
+        callback_steps = kwargs.pop("callback_steps", None)
+
+        if callback is not None:
+            deprecate(
+                "callback",
+                "1.0.0",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+        if callback_steps is not None:
+            deprecate(
+                "callback_steps",
+                "1.0.0",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, height, width, callback_steps, prompt_embeds)
+        self.check_inputs(prompt, height, width, callback_steps, prompt_embeds, callback_on_step_end_tensor_inputs)
+        self._guidance_scale = guidance_scale
+        self._clip_skip = clip_skip
+        self._cross_attention_kwargs = cross_attention_kwargs
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -576,7 +613,9 @@ class LatentConsistencyModelPipeline(
         # do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        lora_scale = (
+            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+        )
 
         # NOTE: when a LCM is distilled from an LDM via latent consistency distillation (Algorithm 1) with guided
         # distillation, the forward pass of the LCM learns to approximate sampling from the LDM using CFG with the
@@ -590,7 +629,7 @@ class LatentConsistencyModelPipeline(
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=None,
             lora_scale=lora_scale,
-            clip_skip=clip_skip,
+            clip_skip=self.clip_skip,
         )
 
         # 4. Prepare timesteps
@@ -615,7 +654,7 @@ class LatentConsistencyModelPipeline(
         # NOTE: We use the Imagen CFG formulation that StableDiffusionPipeline uses rather than the original LCM paper
         # CFG formulation, so we need to subtract 1 from the input guidance_scale.
         # LCM CFG formulation:  cfg_noise = noise_cond + cfg_scale * (noise_cond - noise_uncond), (cfg_scale > 0.0 using CFG)
-        w = torch.tensor(guidance_scale - 1).repeat(bs)
+        w = torch.tensor(self.guidance_scale - 1).repeat(bs)
         w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=self.unet.config.time_cond_proj_dim).to(
             device=device, dtype=latents.dtype
         )
@@ -635,12 +674,22 @@ class LatentConsistencyModelPipeline(
                     t,
                     timestep_cond=w_embedding,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    cross_attention_kwargs=self.cross_attention_kwargs,
                     return_dict=False,
                 )[0]
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents, denoised = self.scheduler.step(model_pred, t, latents, **extra_step_kwargs, return_dict=False)
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    w_embedding = callback_outputs.pop("w_embedding", w_embedding)
+                    denoised = callback_outputs.pop("denoised", denoised)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
