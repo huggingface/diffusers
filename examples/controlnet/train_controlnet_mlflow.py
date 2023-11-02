@@ -909,7 +909,6 @@ def main(args):
     if args.optimizer_algorithm == "RMSprop":
         optimizer = optimizer_class(
             params_to_optimize,
-            lr=args.learning_rate,
             alpha=0.99,
             lr=args.learning_rate,
             momentum=0,
