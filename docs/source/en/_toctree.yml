@@ -18,8 +18,9 @@
   - local: tutorials/basic_training
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
-    title: Working with workflows
+    title: Inference with PEFT
   - local: tutorials/workflows
+    title: Working with workflows
   title: Tutorials
 - sections:
   - sections:
