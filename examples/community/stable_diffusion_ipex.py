@@ -252,8 +252,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         # optimize with ipex
         if dtype == torch.bfloat16:
             self.unet = ipex.optimize(
-                self.unet.eval(), dtype=torch.bfloat16, inplace=True, sample_input=unet_input_example
-            )
+                self.unet.eval(), dtype=torch.bfloat16, inplace=True)
             self.vae.decoder = ipex.optimize(self.vae.decoder.eval(), dtype=torch.bfloat16, inplace=True)
             self.text_encoder = ipex.optimize(self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
             if self.safety_checker is not None:
@@ -263,8 +262,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                 self.unet.eval(),
                 dtype=torch.float32,
                 inplace=True,
-                sample_input=unet_input_example,
-                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -272,7 +269,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                 self.vae.decoder.eval(),
                 dtype=torch.float32,
                 inplace=True,
-                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -280,7 +276,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                 self.text_encoder.eval(),
                 dtype=torch.float32,
                 inplace=True,
-                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -289,7 +284,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                     self.safety_checker.eval(),
                     dtype=torch.float32,
                     inplace=True,
-                    level="O1",
                     weights_prepack=True,
                     auto_kernel_selection=False,
                 )
