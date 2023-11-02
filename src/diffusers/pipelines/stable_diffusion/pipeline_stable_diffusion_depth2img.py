@@ -86,7 +86,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
     model_cpu_offload_seq = "text_encoder->unet->vae"
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "depth_mask"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "depth_mask", "timesteps"]
 
     def __init__(
         self,
