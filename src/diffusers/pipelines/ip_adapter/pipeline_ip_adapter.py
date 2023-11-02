@@ -15,12 +15,12 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import PIL
 import torch
 import torch.nn.functional as F
 from torch import nn
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import AttnProcessor, AttnProcessor2_0
@@ -61,7 +61,7 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         image_projection: ImageProjectionModel,
         image_encoder: CLIPVisionModelWithProjection,
-        image_processor: CLIPImageProcessor,
+        ip_adapter_image_processor: CLIPImageProcessor,
         scheduler: KarrasDiffusionSchedulers,
     ):
         super().__init__()
@@ -72,11 +72,12 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             text_encoder=text_encoder,
             image_encoder=image_encoder,
-            image_processor=image_processor,
+            ip_adapter_image_processor=ip_adapter_image_processor,
             image_projection=image_projection,
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self._set_ip_adapter()
 
     def _set_ip_adapter(self):
@@ -452,7 +453,7 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+        image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -591,6 +592,7 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # # Offload last model to CPU
+        # TODO
         # if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
         #     self.final_offload_hook.offload()
 
