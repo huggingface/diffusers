@@ -44,6 +44,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "return_dict",
     ]
     test_xformers_attention = False
+    callback_cfg_params = ["text_encoder_hidden_states"]
 
     @property
     def text_embedder_hidden_size(self):
@@ -183,3 +184,31 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip(reason="flaky for now")
     def test_float16_inference(self):
         super().test_float16_inference()
+
+    def test_callback_cfg(self):
+        components = self.get_dummy_components()
+        components["latent_mean"] = 0
+        components["latent_std"] = 0
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        def callback_no_cfg(pipe, i, t, callback_kwargs):
+            if i == 1:
+                for k, w in callback_kwargs.items():
+                    if k in self.callback_cfg_params:
+                        callback_kwargs[k] = callback_kwargs[k].chunk(2)[-1]
+                pipe._guidance_scale = 1.0
+
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["guidance_scale"] = 1.0
+        out_no_cfg = pipe(**inputs)[0]
+
+        inputs["guidance_scale"] = 7.5
+        inputs["callback_on_step_end"] = callback_no_cfg
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        out_callback_no_cfg = pipe(**inputs)[0]
+
+        assert out_no_cfg.shape == out_callback_no_cfg.shape

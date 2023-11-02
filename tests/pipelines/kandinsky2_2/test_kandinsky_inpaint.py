@@ -194,7 +194,7 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         "return_dict",
     ]
     test_xformers_attention = False
-    callback_cfg_params = ["image_embeds", "negative_image_embeds", "masked_image", "mask_image"]
+    callback_cfg_params = ["image_embeds", "masked_image", "mask_image"]
 
     def get_dummy_components(self):
         dummies = Dummies()

@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import ceil
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -22,11 +22,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...loaders import LoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import (
-    BaseOutput,
-    logging,
-    replace_example_docstring,
-)
+from ...utils import BaseOutput, deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_wuerstchen_prior import WuerstchenPrior
@@ -94,6 +90,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     unet_name = "prior"
     text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->prior"
+    _callback_tensor_inputs = ["latents", "text_encoder_hidden_states", "negative_prompt_embeds", "timesteps"]
 
     def __init__(
         self,
@@ -264,6 +261,14 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                            In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
             )
 
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -282,8 +287,9 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -346,9 +352,32 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             generated image embeddings.
         """
 
+        callback = kwargs.pop("callback", None)
+        callback_steps = kwargs.pop("callback_steps", None)
+
+        if callback is not None:
+            deprecate(
+                "callback",
+                "1.0.0",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+        if callback_steps is not None:
+            deprecate(
+                "callback_steps",
+                "1.0.0",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
         # 0. Define commonly used variables
         device = self._execution_device
-        do_classifier_free_guidance = guidance_scale > 1.0
+        self._guidance_scale = guidance_scale
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -363,7 +392,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             else:
                 raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
 
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             if negative_prompt is not None and not isinstance(negative_prompt, list):
                 if isinstance(negative_prompt, str):
                     negative_prompt = [negative_prompt]
@@ -376,7 +405,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt,
             negative_prompt,
             num_inference_steps,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
         )
@@ -386,7 +415,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt=prompt,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
-            do_classifier_free_guidance=do_classifier_free_guidance,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -424,16 +453,16 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
 
             # 7. Denoise image embeddings
             predicted_image_embedding = self.prior(
-                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
-                r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
+                torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
+                r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
                 c=text_encoder_hidden_states,
             )
 
             # 8. Check for classifier free guidance and apply it
-            if do_classifier_free_guidance:
+            if self.do_classifier_free_guidance:
                 predicted_image_embedding_text, predicted_image_embedding_uncond = predicted_image_embedding.chunk(2)
                 predicted_image_embedding = torch.lerp(
-                    predicted_image_embedding_uncond, predicted_image_embedding_text, guidance_scale
+                    predicted_image_embedding_uncond, predicted_image_embedding_text, self.guidance_scale
                 )
 
             # 9. Renoise latents to next timestep
@@ -443,6 +472,18 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 sample=latents,
                 generator=generator,
             ).prev_sample
+
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                latents = callback_outputs.pop("latents", latents)
+                text_encoder_hidden_states = callback_outputs.pop(
+                    "text_encoder_hidden_states", text_encoder_hidden_states
+                )
+                negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)

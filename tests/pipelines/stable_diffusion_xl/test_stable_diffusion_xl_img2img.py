@@ -53,7 +53,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
-        {"add_text_embeds", "add_time_ids", "negative_pooled_prompt_embeds", "add_neg_time_ids"}
+        {"add_text_embeds", "add_time_ids", "add_neg_time_ids"}
     )
 
     def get_dummy_components(self, skip_first_text_encoder=False):

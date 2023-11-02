@@ -55,7 +55,7 @@ class KandinskyV22PipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCa
         "return_dict",
     ]
     test_xformers_attention = True
-    callback_cfg_params = ["image_embds", "negative_image_embeds"]
+    callback_cfg_params = ["image_embds"]
 
     def get_dummy_components(self):
         dummy = Dummies()
@@ -173,7 +173,7 @@ class KandinskyV22PipelineImg2ImgCombinedFastTests(PipelineTesterMixin, unittest
         "return_dict",
     ]
     test_xformers_attention = False
-    callback_cfg_params = ["image_embds", "negative_image_embeds"]
+    callback_cfg_params = ["image_embds"]
 
     def get_dummy_components(self):
         dummy = Img2ImgDummies()
