@@ -463,9 +463,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             for param in motion_modules.parameters():
                 param.requires_grad = True
 
-        motion_modules = self.mid_block.motion_modules
-        for param in motion_modules.parameters():
-            param.requires_grad = True
+        if hasattr(self.mid_block, "motion_modules"):
+            motion_modules = self.mid_block.motion_modules
+            for param in motion_modules.parameters():
+                param.requires_grad = True
 
         return
 
@@ -803,14 +804,24 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 4. mid
         if self.mid_block is not None:
-            sample = self.mid_block(
-                sample,
-                emb,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
-                num_frames=num_frames,
-                cross_attention_kwargs=cross_attention_kwargs,
-            )
+            # To support older versions of motion modules that don't have a mid_block
+            if hasattr(self.mid_block, "motion_modules"):
+                sample = self.mid_block(
+                    sample,
+                    emb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    attention_mask=attention_mask,
+                    num_frames=num_frames,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                )
+            else:
+                sample = self.mid_block(
+                    sample,
+                    emb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    attention_mask=attention_mask,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                )
 
         if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
