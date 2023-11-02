@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -165,6 +165,10 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         prior_callback_steps: int = 1,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
+        prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -263,6 +267,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             return_dict=False,
             callback=prior_callback,
             callback_steps=prior_callback_steps,
+            callback_on_step_end=prior_callback_on_step_end,
+            callback_on_step_end_tensor_inputs=prior_callback_on_step_end_tensor_inputs,
         )
         image_embeddings = prior_outputs[0]
 
@@ -278,6 +284,8 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             return_dict=return_dict,
             callback=callback,
             callback_steps=callback_steps,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
         return outputs
