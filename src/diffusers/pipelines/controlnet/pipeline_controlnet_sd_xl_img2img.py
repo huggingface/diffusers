@@ -806,11 +806,12 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
             elif isinstance(generator, list):
                 init_latents = [
-                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                    for i in range(batch_size)
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
             else:
-                init_latents = self.vae.encode(image).latent_dist.sample(generator)
+                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
             if self.vae.config.force_upcast:
                 self.vae.to(dtype)
