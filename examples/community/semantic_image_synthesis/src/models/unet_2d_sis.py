@@ -173,6 +173,15 @@ class UNet2DSISModel(ModelMixin, ConfigMixin):
             "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "ConvBlock"),
             "block_out_channels": (128, 256, 384, 512),
         }
+        SIS_CONFIG_48 = {
+            "in_channels": in_channels,
+            "out_channels": out_channels,
+            "cls_count": cls_count,
+            "img_size": 48,
+            "down_block_types": ("ConvBlock", "DownAttnBlock", "DownAttnBlock", "DownAttnBlock"),
+            "up_block_types": ("UpAttnBlock", "UpAttnBlock", "UpAttnBlock", "ConvBlock"),
+            "block_out_channels": (128, 256, 384, 512),
+        }
         SIS_CONFIG_64 = {
             "in_channels": in_channels,
             "out_channels": out_channels,
@@ -236,7 +245,7 @@ class UNet2DSISModel(ModelMixin, ConfigMixin):
             "block_out_channels": (64, 128, 128, 256, 256, 512, 512),
         }
 
-        configuration = {"32":SIS_CONFIG_32,"64": SIS_CONFIG_64, "128": SIS_CONFIG_128, "256": SIS_CONFIG_256, "512": SIS_CONFIG_512}
+        configuration = {"32":SIS_CONFIG_32,"48":SIS_CONFIG_48,"64": SIS_CONFIG_64, "128": SIS_CONFIG_128, "256": SIS_CONFIG_256, "512": SIS_CONFIG_512}
         assert (
             str(img_size) in configuration.keys()
         ), "img_size should be in existing configurations {configuration.keys()}"

@@ -60,6 +60,17 @@ class AutoencoderSIS(AutoencoderKL):
             "latent_channels": latent_channels,
             "layers_per_block": 2,
         }
+        SIS_CONFIG_384 = {
+            "sample_size": 384,
+            "scaling_factor": 0.18215,
+            "in_channels": in_channels,
+            "out_channels": out_channels,
+            "down_block_types": down_block_types,
+            "up_block_types": up_block_types,
+            "block_out_channels": block_out_channels,
+            "latent_channels": latent_channels,
+            "layers_per_block": 2,
+        }
         SIS_CONFIG_256 = {
             "sample_size": 256,
             "scaling_factor": 0.18215,
@@ -85,6 +96,7 @@ class AutoencoderSIS(AutoencoderKL):
         CONFIG_DICT = {
             128: SIS_CONFIG_128,
             256: SIS_CONFIG_256,
+            384: SIS_CONFIG_384,
             512: SIS_CONFIG_512,
             768: SIS_CONFIG_768,
             1024: SIS_CONFIG_1024,
