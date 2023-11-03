@@ -66,7 +66,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         text_encoder ([`T5EncoderModel`]):
             Frozen text-encoder. PixArt-Alpha uses
             [T5](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5EncoderModel), specifically the
-            [flan-t5-xxl](https://huggingface.co/google/flan-t5-xxl) variant.
+            [t5-v1_1-xxl](https://huggingface.co/PixArt-alpha/PixArt-alpha/tree/main/t5-v1_1-xxl) variant.
         tokenizer (`T5Tokenizer`):
             Tokenizer of class
             [T5Tokenizer](https://huggingface.co/docs/transformers/model_doc/t5#transformers.T5Tokenizer).
