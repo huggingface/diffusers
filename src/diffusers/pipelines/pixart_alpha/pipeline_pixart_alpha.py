@@ -670,6 +670,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 t = t.expand(latent_model_input.shape[0]).to(dtype=self.transformer.dtype)
 
                 # predict noise model_output
+                print(f"latent_model_input: {latent_model_input.dtype}")
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
