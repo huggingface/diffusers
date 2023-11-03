@@ -336,15 +336,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
-            print(f"hidden_states: {hidden_states.dtype}")
             hidden_states = self.pos_embed(hidden_states)
             if self.adaln_single is not None:
                 if added_cond_kwargs is None:
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
-                # print(f"From transformer 2d: self.adaln_single: {self.adaln_single.weight.dtype}")
-                print(f"hidden_states: {hidden_states.dtype}, timestep: {timestep.dtype}")
-                for k in added_cond_kwargs:
-                    print(k, added_cond_kwargs[k].dtype)
                 batch_size = hidden_states.shape[0]
                 timestep, embedded_timestep = self.adaln_single(
                     timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
@@ -355,7 +350,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.squeeze(1).view(1, -1, hidden_states.shape[-1])
 
-        # print("Serializing block-wise")
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(

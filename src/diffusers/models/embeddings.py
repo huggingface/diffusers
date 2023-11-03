@@ -156,7 +156,6 @@ class PatchEmbed(nn.Module):
         self.height, self.width = height // patch_size, width // patch_size
         self.base_size = height // patch_size
         self.interpolation_scale = interpolation_scale
-        # print(f"base_size: {self.base_size}, interpolation_scale: {interpolation_scale}")
         pos_embed = get_2d_sincos_pos_embed(
             embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
         )
@@ -166,8 +165,6 @@ class PatchEmbed(nn.Module):
         height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
 
         latent = self.proj(latent)
-        # print("Serializing latent from the patch embedding")
-        # torch.save(latent, "latent.pt")
         if self.flatten:
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
         if self.layer_norm:
@@ -230,7 +227,6 @@ class TimestepEmbedding(nn.Module):
     def forward(self, sample, condition=None):
         if condition is not None:
             sample = sample + self.cond_proj(condition)
-        print(f"Linear 1: {self.linear_1.weight.data.dtype} sample: {sample.dtype}")
         sample = self.linear_1(sample)
 
         if self.act is not None:
@@ -750,7 +746,6 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
 
     def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
-        print(f"hidden_dtype: {hidden_dtype}")
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
         resolution = self.resolution_embedder(resolution, batch_size=batch_size)
