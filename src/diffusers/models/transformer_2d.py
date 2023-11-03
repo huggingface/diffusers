@@ -340,8 +340,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             if self.adaln_single is not None:
                 if added_cond_kwargs is None:
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
-                print(f"From transformer 2d: self.adaln_single: {self.adaln_single.weight.dtype}")
-                print(f"hidden_states: {hidden_states.dtype}")
+                # print(f"From transformer 2d: self.adaln_single: {self.adaln_single.weight.dtype}")
+                print(f"hidden_states: {hidden_states.dtype}, timestep: {timestep.dtype}")
                 for k in added_cond_kwargs:
                     print(k, added_cond_kwargs[k].dtype)
                 batch_size = hidden_states.shape[0]
