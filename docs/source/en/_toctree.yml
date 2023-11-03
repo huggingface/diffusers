@@ -188,6 +188,8 @@
       title: UNet2DConditionModel
     - local: api/models/unet3d-cond
       title: UNet3DConditionModel
+    - local: api/models/unet-motion
+      title: UNetMotionModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
@@ -210,6 +212,8 @@
       title: Overview
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
+    - local: api/pipelines/animatediff
+      title: AnimateDiff
     - local: api/pipelines/attend_and_excite
       title: Attend-and-Excite
     - local: api/pipelines/audio_diffusion
@@ -396,5 +400,5 @@
       title: Utilities
     - local: api/image_processor
       title: VAE Image Processor
-    title: Internal classes   
+    title: Internal classes
   title: API
