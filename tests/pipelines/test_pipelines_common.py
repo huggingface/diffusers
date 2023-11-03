@@ -890,7 +890,18 @@ class PipelineTesterMixin:
             f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
         )
 
-        def callback_inputs_success(pipe, i, t, callback_kwargs):
+        def callback_inputs_subset(pipe, i, t, callback_kwargs):
+            # interate over callback args
+            for tensor_name, tensor_value in callback_kwargs.items():
+                # check that we're only passing in allowed tensor inputs
+                assert tensor_name in pipe._callback_tensor_inputs
+
+            return callback_kwargs
+
+        def callback_inputs_all(pipe, i, t, callback_kwargs):
+            for tensor_name in pipe._callback_tensor_inputs:
+                assert tensor_name in callback_kwargs
+
             # interate over callback args
             for tensor_name, tensor_value in callback_kwargs.items():
                 # check that we're only passing in allowed tensor inputs
@@ -901,13 +912,13 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(torch_device)
 
         # Test passing in a subset
-        inputs["callback_on_step_end"] = callback_inputs_success
+        inputs["callback_on_step_end"] = callback_inputs_subset
         inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
         inputs["output_type"] = "latent"
         output = pipe(**inputs)[0]
 
         # Test passing in a everything
-        inputs["callback_on_step_end"] = callback_inputs_success
+        inputs["callback_on_step_end"] = callback_inputs_all
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
         inputs["output_type"] = "latent"
         output = pipe(**inputs)[0]
