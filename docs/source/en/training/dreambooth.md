@@ -431,7 +431,7 @@ image.save("dog-bucket.png")
 
 LoRA is a training technique for significantly reducing the number of trainable parameters. As a result, training is faster and it is easier to store the resulting weights because they are a lot smaller (~100MBs). Use the train_dreambooth_lora.py script to train with LoRA.
 
-We’ll discuss LoRA in more detail in the [LoRA training]() guide.
+We’ll discuss LoRA in more detail in the [LoRA training](lora) guide.
 
 ## Stable Diffusion XL
 
@@ -443,4 +443,4 @@ We’ll discuss training SDXL in more detail in the [SDXL training]() guide.
 
 Congratulations on training your DreamBooth model! To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load a DreamBooth]() model for inference if you trained your model with LoRA.
+- Learn how to [load a DreamBooth](../using-diffusers/loading_adapters) model for inference if you trained your model with LoRA.

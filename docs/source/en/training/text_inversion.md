@@ -294,5 +294,5 @@ image.save("cat-train.png")
 
 Congratulations on training your own Textual Inversion model! 🎉 To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load Textual Inversion embeddings]() and also use them as negative embeddings.
+- Learn how to [load Textual Inversion embeddings](../using-diffusers/loading_adapters) and also use them as negative embeddings.
 - Learn how to use [Textual Inversion](textual_inversion_inference) for inference with Stable Diffusion 1/2 and Stable Diffusion XL.
