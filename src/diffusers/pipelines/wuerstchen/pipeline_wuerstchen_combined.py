@@ -243,6 +243,22 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            prior_callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `prior_callback_on_step_end(self: DiffusionPipeline, step: int, timestep:
+                int, callback_kwargs: Dict)`.
+            prior_callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `prior_callback_on_step_end` function. The tensors specified in the
+                list will be passed as `callback_kwargs` argument. You will only be able to include variables listed in
+                the `._callback_tensor_inputs` attribute of your pipeine class.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeine class.
 
         Examples:
 

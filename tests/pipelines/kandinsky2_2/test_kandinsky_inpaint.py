@@ -273,7 +273,7 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             self.assertTrue(
                 len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
             )
-            last_i = pipe._num_timesteps - 1
+            last_i = pipe.num_timesteps - 1
             if i == last_i:
                 callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
                 callback_kwargs["mask_image"] = torch.zeros_like(callback_kwargs["mask_image"])
