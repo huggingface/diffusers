@@ -23,14 +23,18 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention_processor import AttnProcessor, AttnProcessor2_0
+from ...models.attention_processor import (
+    AttnProcessor,
+    AttnProcessor2_0,
+    IPAdapterAttnProcessor,
+    IPAdapterAttnProcessor2_0,
+)
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, _get_model_file, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput
-from .attention_processor import IPAttnProcessor, IPAttnProcessor2_0
 from .image_projection import ImageProjectionModel
 
 
@@ -59,11 +63,9 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        image_projection: ImageProjectionModel,
-        image_encoder: CLIPVisionModelWithProjection,
         ip_adapter_image_processor: CLIPImageProcessor,
+        image_encoder: CLIPVisionModelWithProjection,
         scheduler: KarrasDiffusionSchedulers,
-        _initialize_ip_adapter_modules: bool = True
     ):
         super().__init__()
 
@@ -74,14 +76,10 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
             text_encoder=text_encoder,
             image_encoder=image_encoder,
             ip_adapter_image_processor=ip_adapter_image_processor,
-            image_projection=image_projection,
             scheduler=scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
-        
-        if _initialize_ip_adapter_modules:
-            self._set_ip_adapter()
 
     def _set_ip_adapter(self):
         unet = self.unet
@@ -103,11 +101,12 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
                 attn_procs[name] = attn_processor_class()
             else:
                 attn_processor_class = (
-                    IPAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAttnProcessor
+                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
                 )
                 attn_procs[name] = attn_processor_class(
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
-                )
+                ).to(dtype=unet.dtype, device=unet.device)
+
         unet.set_attn_processor(attn_procs)
 
         # TODO: create a separate pipeline for this: `StableDiffusionControlNetIPAdapterPipeline`.
@@ -189,8 +188,9 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
         """
-        # Load the main state dict first which has the LoRA layers for either of
-        # UNet and text encoder or both.
+        self._set_ip_adapter()
+
+        # Load the main state dict first/
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
@@ -223,6 +223,22 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
             state_dict = torch.load(model_file, map_location="cpu")
         else:
             state_dict = pretrained_model_name_or_path_or_dict
+
+        keys = list(state_dict.keys())
+        if keys != ["image_proj", "ip_adapter"]:
+            raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing.")
+
+        # Handle image projection layers.
+        clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
+        cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
+        image_projection = ImageProjectionModel(
+            cross_attention_dim=cross_attention_dim, clip_embeddings_dim=clip_embeddings_dim
+        )
+        image_projection.to(dtype=self.unet.dtype, device=self.unet.device)
+        image_projection.load_state_dict(state_dict["image_proj"])
+        self.image_projection = image_projection
+
+        # Handle IP-Adapter cross-attention layers.
         ip_layers = torch.nn.ModuleList(
             [
                 module if isinstance(module, nn.Module) else nn.Identity()
@@ -230,11 +246,10 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
             ]
         )
         ip_layers.load_state_dict(state_dict["ip_adapter"])
-        ip_layers.to(device=self.unet.device, dtype=self.unet.dtype)
 
     def set_scale(self, scale):
         for attn_processor in self.unet.attn_processors.values():
-            if isinstance(attn_processor, (IPAttnProcessor, IPAttnProcessor2_0)):
+            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = scale
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -481,6 +496,10 @@ class StableDiffusionIPAdapterPipeline(DiffusionPipeline):
         self.set_scale(ip_adapter_scale)
 
         # 1. Check inputs and raise error if needed.
+        if hasattr(self, "image_projection") and getattr(self, "image_projection") is None:
+            raise (
+                "This pipeline cannot be called without having an `image_projection` module. Did you call `load_ip_adapter()` before running the pipeline?"
+            )
         # TODO
 
         # 1. Define call parameters
