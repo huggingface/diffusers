@@ -26,18 +26,23 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LCMScheduler
-from ...utils import (
-    USE_PEFT_BACKEND,
-    logging,
-    scale_lora_layers,
-    unscale_lora_layers,
-)
+from ...utils import USE_PEFT_BACKEND, logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import DiffusionPipeline >>> import torch >>> pipe =
+        DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7") >>> pipe.to(torch_device="cuda",
+        torch_dtype=torch.float32) >>> prompt = "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
+        >>> # Can be set to 1~50 steps. LCM support fast inference even <= 4 steps. Recommend: 1~8 steps. >>>
+        num_inference_steps = 4 >>> images = pipe(prompt=prompt, num_inference_steps=num_inference_steps,
+        guidance_scale=8.0).images >>> images[0].save("image.png")"""
 
 
 class LatentConsistencyModelPipeline(
@@ -476,6 +481,7 @@ class LatentConsistencyModelPipeline(
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     @torch.no_grad()
     def __call__(
         self,
