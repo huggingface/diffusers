@@ -372,7 +372,7 @@ class AutoPipelineForText2Image(ConfigMixin):
             if kwargs["controlnet"] is not None:
                 text_2_image_cls = _get_task_class(
                     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
-                    text_2_image_cls.__name__.replace("Pipeline", "ControlNetPipeline"),
+                    text_2_image_cls.__name__.replace("ControlNet", "").replace("Pipeline", "ControlNetPipeline"),
                 )
             else:
                 text_2_image_cls = _get_task_class(
@@ -645,7 +645,9 @@ class AutoPipelineForImage2Image(ConfigMixin):
             if kwargs["controlnet"] is not None:
                 image_2_image_cls = _get_task_class(
                     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
-                    image_2_image_cls.__name__.replace("Img2ImgPipeline", "ControlNetImg2ImgPipeline"),
+                    image_2_image_cls.__name__.replace("ControlNet", "").replace(
+                        "Img2ImgPipeline", "ControlNetImg2ImgPipeline"
+                    ),
                 )
             else:
                 image_2_image_cls = _get_task_class(
@@ -916,7 +918,9 @@ class AutoPipelineForInpainting(ConfigMixin):
             if kwargs["controlnet"] is not None:
                 inpainting_cls = _get_task_class(
                     AUTO_INPAINT_PIPELINES_MAPPING,
-                    inpainting_cls.__name__.replace("InpaintPipeline", "ControlNetInpaintPipeline"),
+                    inpainting_cls.__name__.replace("ControlNet", "").replace(
+                        "InpaintPipeline", "ControlNetInpaintPipeline"
+                    ),
                 )
             else:
                 inpainting_cls = _get_task_class(
