@@ -214,7 +214,6 @@ class BasicTransformerBlock(nn.Module):
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         batch_size = hidden_states.shape[0]
-        print(f"Starting transformer block with hidden_states: {hidden_states.shape}")
 
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
@@ -250,13 +249,11 @@ class BasicTransformerBlock(nn.Module):
             attn_output = gate_msa.unsqueeze(1) * attn_output
         elif self.caption_channels is not None:
             attn_output = gate_msa * attn_output
-        
-        print(f"attn output: {attn_output.shape} hidden_states: {hidden_states.shape}")
+
         hidden_states = attn_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
-        print(f"hidden_states: {hidden_states.shape}")
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
             hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
@@ -272,7 +269,6 @@ class BasicTransformerBlock(nn.Module):
                 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L70C1-L76C103
                 norm_hidden_states = hidden_states
 
-            print(f"norm_hidden_states: {norm_hidden_states.shape} encoder_hidden_states: {encoder_hidden_states.shape}")
             attn_output = self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,

@@ -159,8 +159,6 @@ class DiTPipeline(DiffusionPipeline):
             dtype=self.transformer.dtype,
         )
         latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
-        print(f"Starting latents: {latents.shape}")
-        print(f"Starting latent_model_input: {latent_model_input.shape}")
 
         class_labels = torch.tensor(class_labels, device=self._execution_device).reshape(-1)
         class_null = torch.tensor([1000] * batch_size, device=self._execution_device)
@@ -188,7 +186,6 @@ class DiTPipeline(DiffusionPipeline):
                 timesteps = timesteps[None].to(latent_model_input.device)
             # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
             timesteps = timesteps.expand(latent_model_input.shape[0])
-            print(f"latent_model_input: {latent_model_input.shape}")
             # predict noise model_output
             noise_pred = self.transformer(
                 latent_model_input, timestep=timesteps, class_labels=class_labels_input

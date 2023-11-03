@@ -631,8 +631,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             latents,
         )
         latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-        # print(f"Starting latents: {latents.shape}")
-        # print(f"Starting latent_model_input: {latent_model_input.shape}")
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         self.prepare_extra_step_kwargs(generator, eta)
@@ -651,7 +649,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # 7. Denoising loop
         len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps):
-            for i, t in enumerate(timesteps):                
+            for i, t in enumerate(timesteps):
                 if do_classifier_free_guidance:
                     half = latent_model_input[: len(latent_model_input) // 2]
                     latent_model_input = torch.cat([half, half], dim=0)
@@ -672,7 +670,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 t = t.expand(latent_model_input.shape[0]).to(dtype=self.transformer.dtype)
 
                 # predict noise model_output
-                print(f"latent_model_input: {latent_model_input.shape}")
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,

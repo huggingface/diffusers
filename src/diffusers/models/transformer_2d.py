@@ -284,7 +284,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
-        print(f"Within the transformer 2d model hidden_states: {hidden_states.shape}")
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
@@ -352,9 +351,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
 
         for i, block in enumerate(self.transformer_blocks):
-            print(f"starting with: hidden_states: {hidden_states.shape}")
-            if encoder_hidden_states is not None:
-                print(f"encoder_hidden_states: {encoder_hidden_states.shape}")
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     block,
