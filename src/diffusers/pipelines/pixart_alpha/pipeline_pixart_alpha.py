@@ -674,7 +674,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
-                    timestep=t,
+                    timestep=current_timestep,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
