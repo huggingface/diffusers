@@ -33,26 +33,31 @@ enable_full_determinism()
 
 class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = PixArtAlphaPipeline
-    params = TEXT_TO_IMAGE_PARAMS
+    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+
+    required_optional_params = PipelineTesterMixin.required_optional_params
 
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = Transformer2DModel(
             sample_size=16,
             num_layers=2,
-            patch_size=4,
+            patch_size=2,
             attention_head_dim=8,
-            num_attention_heads=2,
+            num_attention_heads=3,
+            caption_channels=32,
             in_channels=4,
+            cross_attention_dim=24,
             out_channels=8,
             attention_bias=True,
             activation_fn="gelu-approximate",
             num_embeds_ada_norm=1000,
             norm_type="ada_norm_single",
             norm_elementwise_affine=False,
+            output_type="pixart_dit",
         )
         vae = AutoencoderKL()
         scheduler = DDIMScheduler()
@@ -74,6 +79,8 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "numpy",
+            "height": 32,
+            "width": 32,
         }
         return inputs
 
@@ -89,10 +96,13 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
-        self.assertEqual(image.shape, (1, 16, 16, 3))
-        expected_slice = np.array([0.2946, 0.6601, 0.4329, 0.3296, 0.4144, 0.5319, 0.7273, 0.5013, 0.4457])
+        self.assertEqual(image.shape, (1, 32, 32, 3))
+        expected_slice = np.array([0.5174, 0.2495, 0.5566, 0.5259, 0.6054, 0.4732, 0.4416, 0.5192, 0.5264])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+
+    def test_inference_batch_single_identical(self):
+        self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
 
 @nightly
