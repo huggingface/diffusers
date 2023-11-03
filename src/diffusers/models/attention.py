@@ -251,6 +251,7 @@ class BasicTransformerBlock(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
+        print(f"hidden_states: {hidden_states.shape}")
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
             hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
