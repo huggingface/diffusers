@@ -952,7 +952,7 @@ class PipelineTesterMixin:
         assert out_no_cfg.shape == out_callback_no_cfg.shape
 
         # outputs won't match since we have different cfg values
-        assert not np.abs(out_no_cfg - out_callback_no_cfg).sum() > 1e-3
+        assert np.abs(out_no_cfg - out_callback_no_cfg).sum() >= 1e-3
 
 
 @is_staging_test
