@@ -139,6 +139,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
+        use_nihanth_order_dropoff: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -168,6 +169,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.set_timesteps(num_train_timesteps, None)
         self.derivatives = []
         self.is_scale_input_called = False
+        self.use_nihanth_order_dropoff = use_nihanth_order_dropoff
 
         self._step_index = None
 
@@ -301,6 +303,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             step_index = index_candidates[0]
 
         self._step_index = step_index.item()
+        self._initial_step_index = self._step_index
 
     # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
@@ -401,7 +404,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.derivatives.pop(0)
 
         # 3. Compute linear multistep coefficients
-        order = min(self.step_index + 1, order)
+        if self.use_nihanth_order_dropoff:
+            order = min(self.step_index - self._initial_step_index + 1, order)
+            order = min(len(self.timesteps) - self.step_index, order)
+        else:
+            order = min(self.step_index + 1, order)
         lms_coeffs = [self.get_lms_coefficient(order, self.step_index, curr_order) for curr_order in range(order)]
 
         # 4. Compute previous sample based on the derivatives path
