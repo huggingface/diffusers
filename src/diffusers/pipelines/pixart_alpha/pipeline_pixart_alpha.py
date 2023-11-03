@@ -613,8 +613,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-        prompt_embeds = prompt_embeds.unsqueeze(1)
-        
+
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
