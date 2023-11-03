@@ -27,13 +27,46 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LCMScheduler
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import AutoPipelineForImage2Image
+        >>> import torch
+        >>> import PIL
+
+        >>> pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
+        >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
+        >>> pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+
+        >>> prompt = "High altitude snowy mountains"
+        >>> image = PIL.Image.open("./snowy_mountains.png")
+
+        >>> # Can be set to 1~50 steps. LCM support fast inference even <= 4 steps. Recommend: 1~8 steps.
+        >>> num_inference_steps = 4
+        >>> images = pipe(
+        ...     prompt=prompt, image=image, num_inference_steps=num_inference_steps, guidance_scale=8.0
+        ... ).images
+
+        >>> images[0].save("image.png")
+        ```
+
+"""
 
 
 class LatentConsistencyModelImg2ImgPipeline(
@@ -486,6 +519,7 @@ class LatentConsistencyModelImg2ImgPipeline(
         return timesteps, num_inference_steps - t_start
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -558,6 +592,8 @@ class LatentConsistencyModelImg2ImgPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+
+        Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
