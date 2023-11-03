@@ -16,9 +16,11 @@
 import gc
 import unittest
 
+import tempfile
 import numpy as np
 import torch
 
+from ..test_pipelines_common import to_np
 from diffusers import AutoencoderKL, DDIMScheduler, PixArtAlphaPipeline, DPMSolverMultistepScheduler, Transformer2DModel
 from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
@@ -83,6 +85,68 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "width": 32,
         }
         return inputs
+
+    def test_save_load_optional_components(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        prompt = inputs["prompt"]
+        generator = inputs["generator"]
+        num_inference_steps = inputs["num_inference_steps"]
+        output_type = inputs["output_type"]
+
+        prompt_embeds, negative_prompt_embeds = pipe.encode_prompt(prompt)
+
+        # inputs with prompt converted to embeddings
+        inputs = {
+            "prompt_embeds": prompt_embeds,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+            "output_type": output_type,
+        }
+
+        # set all optional components to None
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        generator = inputs["generator"]
+        num_inference_steps = inputs["num_inference_steps"]
+        output_type = inputs["output_type"]
+
+        # inputs with prompt converted to embeddings
+        inputs = {
+            "prompt_embeds": prompt_embeds,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+            "output_type": output_type,
+        }
+
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, 1e-4)
 
     def test_inference(self):
         device = "cpu"
