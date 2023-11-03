@@ -630,6 +630,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             generator,
             latents,
         )
+        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+        print(f"Starting latents: {latents.shape}")
+        print(f"Starting latent_model_input: {latent_model_input.shape}")
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         self.prepare_extra_step_kwargs(generator, eta)
@@ -644,13 +647,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
         aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
         added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
-        print(f"Starting latents: {latents.shape}")
 
         # 7. Denoising loop
         len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps):
             for i, t in enumerate(timesteps):
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 if do_classifier_free_guidance:
                     half = latent_model_input[: len(latent_model_input) // 2]
                     latent_model_input = torch.cat([half, half], dim=0)
