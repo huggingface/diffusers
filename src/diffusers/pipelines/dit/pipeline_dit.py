@@ -215,6 +215,7 @@ class DiTPipeline(DiffusionPipeline):
         else:
             latents = latent_model_input
 
+        print(f"Final latents: {latents.shape}")
         latents = 1 / self.vae.config.scaling_factor * latents
         samples = self.vae.decode(latents).sample
 
