@@ -191,7 +191,7 @@ class PatchEmbed(nn.Module):
             )
         else:
             pos_embed = self.pos_embed
-        return latent + pos_embed
+        return (latent + pos_embed).to(latent.dtype)
 
 
 class TimestepEmbedding(nn.Module):
