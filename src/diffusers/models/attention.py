@@ -310,8 +310,10 @@ class BasicTransformerBlock(nn.Module):
         else:
             ff_output = self.ff(norm_hidden_states, scale=lora_scale)
 
-        if self.use_ada_layer_norm_zero or self.caption_channels is not None:
+        if self.use_ada_layer_norm_zero:
             ff_output = gate_mlp.unsqueeze(1) * ff_output
+        elif self.caption_channels is not None:
+            ff_output = gate_mlp * ff_output
 
         hidden_states = ff_output + hidden_states
         if hidden_states.ndim == 4:
