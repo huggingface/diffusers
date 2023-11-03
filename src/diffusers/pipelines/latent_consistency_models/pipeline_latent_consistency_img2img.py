@@ -518,6 +518,36 @@ class LatentConsistencyModelImg2ImgPipeline(
 
         return timesteps, num_inference_steps - t_start
 
+    def check_inputs(
+        self,
+        prompt: Union[str, List[str]],
+        strength: float,
+        callback_steps: int,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+    ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -602,16 +632,9 @@ class LatentConsistencyModelImg2ImgPipeline(
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
-        # 1. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(prompt, strength, callback_steps, prompt_embeds)
 
-        device = self._execution_device
-        #
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -641,10 +664,10 @@ class LatentConsistencyModelImg2ImgPipeline(
             clip_skip=clip_skip,
         )
 
-        # 3.5 encode image
+        # 4. Encode image
         image = self.image_processor.preprocess(image)
 
-        # 4. Prepare timesteps
+        # 5. Prepare timesteps
         self.scheduler.set_timesteps(
             num_inference_steps, device, original_inference_steps=original_inference_steps, strength=strength
         )
@@ -674,6 +697,7 @@ class LatentConsistencyModelImg2ImgPipeline(
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, None)
 
+        # 8. LCM Multistep Sampling Loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
