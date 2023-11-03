@@ -667,7 +667,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 elif len(t.shape) == 0:
                     t = t[None].to(latent_model_input.device)
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                t = t.expand(latent_model_input.shape[0])
+                t = t.expand(latent_model_input.shape[0]).to(dtype=self.transformer.dtype)
 
                 # predict noise model_output
                 noise_pred = self.transformer(
