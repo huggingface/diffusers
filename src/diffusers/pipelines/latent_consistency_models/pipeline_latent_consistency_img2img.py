@@ -518,8 +518,8 @@ class LatentConsistencyModelImg2ImgPipeline(
 
         return timesteps, num_inference_steps - t_start
 
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -592,6 +592,8 @@ class LatentConsistencyModelImg2ImgPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+
+        Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
