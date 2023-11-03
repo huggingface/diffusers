@@ -214,6 +214,7 @@ class BasicTransformerBlock(nn.Module):
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         batch_size = hidden_states.shape[0]
+        print(f"Starting transformer block with hidden_states: {hidden_states.shape}")
 
         if self.use_ada_layer_norm:
             norm_hidden_states = self.norm1(hidden_states, timestep)
