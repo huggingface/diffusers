@@ -8,7 +8,7 @@ The abstract of the [paper](https://arxiv.org/pdf/2310.04378.pdf) is as follows:
 
 A demo for the [SimianLuo/LCM_Dreamshaper_v7](https://huggingface.co/SimianLuo/LCM_Dreamshaper_v7) checkpoint can be found [here](https://huggingface.co/spaces/SimianLuo/Latent_Consistency_Model).
 
-The pipelines were contributed by [luosiallen](https://luosiallen.github.io/) and [dg845](https://github.com/dg845).
+The pipelines were contributed by [luosiallen](https://luosiallen.github.io/), [nagolinc](https://github.com/nagolinc), and [dg845](https://github.com/dg845).
 
 
 ## LatentConsistencyModelPipeline
