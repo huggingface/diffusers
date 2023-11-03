@@ -38,8 +38,8 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils import is_xformers_available, torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu
+from diffusers.utils import is_xformers_available
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
@@ -373,7 +373,7 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
 
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(test_mean_pixel_difference=False)
+        self._test_inference_batch_single_identical()
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

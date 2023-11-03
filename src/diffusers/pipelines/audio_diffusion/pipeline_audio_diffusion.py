@@ -22,7 +22,7 @@ from PIL import Image
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, DDPMScheduler
-from ...utils import randn_tensor
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from .mel import Mel
 
@@ -178,7 +178,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(steps)
         step_generator = step_generator or generator
         # For backwards compatibility
-        if type(self.unet.config.sample_size) == int:
+        if isinstance(self.unet.config.sample_size, int):
             self.unet.config.sample_size = (self.unet.config.sample_size, self.unet.config.sample_size)
         if noise is None:
             noise = randn_tensor(

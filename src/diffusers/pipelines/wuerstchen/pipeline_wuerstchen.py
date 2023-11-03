@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import is_accelerate_available, is_accelerate_version, logging, randn_tensor, replace_example_docstring
+from ...utils import logging, replace_example_docstring
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
@@ -34,11 +35,11 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import WuerstchenPriorPipeline, WuerstchenDecoderPipeline
 
         >>> prior_pipe = WuerstchenPriorPipeline.from_pretrained(
-        ...     "warp-diffusion/wuerstchen-prior", torch_dtype=torch.float16
+        ...     "warp-ai/wuerstchen-prior", torch_dtype=torch.float16
         ... ).to("cuda")
-        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain(
-        ...     "warp-diffusion/wuerstchen", torch_dtype=torch.float16
-        ... ).to("cuda")
+        >>> gen_pipe = WuerstchenDecoderPipeline.from_pretrain("warp-ai/wuerstchen", torch_dtype=torch.float16).to(
+        ...     "cuda"
+        ... )
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> prior_output = pipe(prompt)
@@ -71,6 +72,8 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             width=int(24*10.67)=256 in order to match the training conditions.
     """
 
+    model_cpu_offload_seq = "text_encoder->decoder->vqgan"
+
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
@@ -101,35 +104,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.decoder]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.prior_hook = hook
-
-        _, hook = cpu_offload_with_hook(self.vqgan, device, prev_module_hook=self.prior_hook)
-
-        self.final_offload_hook = hook
 
     def encode_prompt(
         self,
@@ -213,16 +187,82 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
         return text_encoder_hidden_states, uncond_text_encoder_hidden_states
 
-    def check_inputs(
+    @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
+    def __call__(
         self,
-        image_embeddings,
-        prompt,
-        negative_prompt,
-        num_inference_steps,
-        do_classifier_free_guidance,
-        device,
-        dtype,
+        image_embeddings: Union[torch.FloatTensor, List[torch.FloatTensor]],
+        prompt: Union[str, List[str]] = None,
+        num_inference_steps: int = 12,
+        timesteps: Optional[List[float]] = None,
+        guidance_scale: float = 0.0,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_images_per_prompt: int = 1,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
     ):
+        """
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            image_embedding (`torch.FloatTensor` or `List[torch.FloatTensor]`):
+                Image Embeddings either extracted from an image or generated by a Prior Model.
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation.
+            num_inference_steps (`int`, *optional*, defaults to 12):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
+                timesteps are used. Must be in descending order.
+            guidance_scale (`float`, *optional*, defaults to 0.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
+                `decoder_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely
+                linked to the text `prompt`, usually at the expense of lower image quality.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `decoder_guidance_scale` is less than `1`).
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
+                (`np.array`) or `"pt"` (`torch.Tensor`).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
+
+        Examples:
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is a list with the generated image
+            embeddings.
+        """
+
+        # 0. Define commonly used variables
+        device = self._execution_device
+        dtype = self.decoder.dtype
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        # 1. Check inputs. Raise error if not correct
         if not isinstance(prompt, list):
             if isinstance(prompt, str):
                 prompt = [prompt]
@@ -253,83 +293,13 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                            In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
             )
 
-        return image_embeddings, prompt, negative_prompt, num_inference_steps
-
-    @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
-    def __call__(
-        self,
-        image_embeddings: Union[torch.FloatTensor, List[torch.FloatTensor]],
-        prompt: Union[str, List[str]] = None,
-        num_inference_steps: int = 12,
-        timesteps: Optional[List[float]] = None,
-        guidance_scale: float = 0.0,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-    ):
-        """
-        Function invoked when calling the pipeline for generation.
-
-        Args:
-            image_embedding (`torch.FloatTensor` or `List[torch.FloatTensor]`):
-                Image Embeddings either extracted from an image or generated by a Prior Model.
-            prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
-            num_inference_steps (`int`, *optional*, defaults to 30):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
-                timesteps are used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 4.0):
-                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
-                `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
-                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting
-                `decoder_guidance_scale > 1`. Higher guidance scale encourages to generate images that are closely
-                linked to the text `prompt`, usually at the expense of lower image quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `decoder_guidance_scale` is less than `1`).
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                The number of images to generate per prompt.
-            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
-                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
-                to make generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
-                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor will ge generated by sampling using the supplied random `generator`.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between: `"pil"` (`PIL.Image.Image`), `"np"`
-                (`np.array`) or `"pt"` (`torch.Tensor`).
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-
-        Examples:
-
-        Returns:
-            [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
-            otherwise a `tuple`. When returning a tuple, the first element is a list with the generated image
-            embeddings.
-        """
-
-        # 0. Define commonly used variables
-        device = self._execution_device
-        dtype = self.decoder.dtype
-        do_classifier_free_guidance = guidance_scale > 1.0
-
-        # 1. Check inputs. Raise error if not correct
-        image_embeddings, prompt, negative_prompt, num_inference_steps = self.check_inputs(
-            image_embeddings, prompt, negative_prompt, num_inference_steps, do_classifier_free_guidance, device, dtype
-        )
-
         # 2. Encode caption
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt,
+            device,
+            image_embeddings.size(0) * num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt,
         )
         text_encoder_hidden_states = (
             torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
@@ -353,7 +323,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents, self.scheduler)
 
         # 6. Run denoising loop
-        for t in self.progress_bar(timesteps[:-1]):
+        for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
             effnet = (
                 torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
@@ -381,9 +351,16 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
+            if callback is not None and i % callback_steps == 0:
+                step_idx = i // getattr(self.scheduler, "order", 1)
+                callback(step_idx, t, latents)
+
         # 10. Scale and decode the image latents with vq-vae
         latents = self.vqgan.config.scale_factor * latents
         images = self.vqgan.decode(latents).sample.clamp(0, 1)
+
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")

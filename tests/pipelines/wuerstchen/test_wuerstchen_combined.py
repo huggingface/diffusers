@@ -21,8 +21,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenCombinedPipeline
 from diffusers.pipelines.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt, WuerstchenPrior
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -39,7 +38,8 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         "height",
         "width",
         "latents",
-        "guidance_scale",
+        "prior_guidance_scale",
+        "decoder_guidance_scale",
         "negative_prompt",
         "num_inference_steps",
         "return_dict",
@@ -161,7 +161,7 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             "prompt": "horse",
             "generator": generator,
             "prior_guidance_scale": 4.0,
-            "guidance_scale": 4.0,
+            "decoder_guidance_scale": 4.0,
             "num_inference_steps": 2,
             "prior_num_inference_steps": 2,
             "output_type": "np",

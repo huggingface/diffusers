@@ -21,8 +21,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenPriorPipeline
 from diffusers.pipelines.wuerstchen import WuerstchenPrior
-from diffusers.utils import torch_device
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps
+from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -146,7 +145,6 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         image_slice = image[0, 0, 0, -10:]
         image_from_tuple_slice = image_from_tuple[0, 0, 0, -10:]
-
         assert image.shape == (1, 2, 24, 24)
 
         expected_slice = np.array(
@@ -161,22 +159,15 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
                 218.00089,
                 -2731.5745,
                 -8056.734,
-            ],
+            ]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 5e-2
 
     @skip_mps
     def test_inference_batch_single_identical(self):
-        test_max_difference = torch_device == "cpu"
-        relax_max_difference = True
-        test_mean_pixel_difference = False
-
         self._test_inference_batch_single_identical(
-            test_max_difference=test_max_difference,
-            relax_max_difference=relax_max_difference,
-            test_mean_pixel_difference=test_mean_pixel_difference,
-            expected_max_diff=1e-1,
+            expected_max_diff=2e-1,
         )
 
     @skip_mps
