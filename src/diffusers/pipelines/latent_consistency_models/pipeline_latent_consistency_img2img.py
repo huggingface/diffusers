@@ -46,12 +46,27 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import AutoPipelineForImage2Image >>> import torch >>> import PIL >>> pipe =
-        DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7") >>> pipe.to(torch_device="cuda",
-        torch_dtype=torch.float32) >>> prompt = "High altitude snowy mountains" >>> image =
-        PIL.Image.open("./snowy_mountains.png") >>> # Can be set to 1~50 steps. LCM support fast inference even <= 4
-        steps. Recommend: 1~8 steps. >>> num_inference_steps = 4 >>> images = pipe(prompt=prompt,image=image,
-        num_inference_steps=num_inference_steps, guidance_scale=8.0).images >>> images[0].save("image.png")"""
+        >>> from diffusers import AutoPipelineForImage2Image
+        >>> import torch
+        >>> import PIL
+
+        >>> pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
+        >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
+        >>> pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+
+        >>> prompt = "High altitude snowy mountains"
+        >>> image = PIL.Image.open("./snowy_mountains.png")
+
+        >>> # Can be set to 1~50 steps. LCM support fast inference even <= 4 steps. Recommend: 1~8 steps.
+        >>> num_inference_steps = 4
+        >>> images = pipe(
+        ...     prompt=prompt, image=image, num_inference_steps=num_inference_steps, guidance_scale=8.0
+        ... ).images
+
+        >>> images[0].save("image.png")
+        ```
+
+"""
 
 
 class LatentConsistencyModelImg2ImgPipeline(
