@@ -1181,6 +1181,7 @@ class AttnProcessor2_0:
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
+        print(f"Within self attention: {hidden_states.shape}")
         input_ndim = hidden_states.ndim
 
         if input_ndim == 4:
