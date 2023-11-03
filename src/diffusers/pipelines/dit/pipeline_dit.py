@@ -159,6 +159,7 @@ class DiTPipeline(DiffusionPipeline):
             dtype=self.transformer.dtype,
         )
         latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
+        print(f"Starting latents: {latents.shape}")
         print(f"Starting latent_model_input: {latent_model_input.shape}")
 
         class_labels = torch.tensor(class_labels, device=self._execution_device).reshape(-1)
