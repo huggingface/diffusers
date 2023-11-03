@@ -26,7 +26,14 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LCMScheduler
-from ...utils import USE_PEFT_BACKEND, logging, deprecate, replace_example_docstring, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
@@ -585,7 +592,8 @@ class LatentConsistencyModelPipeline(
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`.
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
