@@ -246,8 +246,10 @@ class BasicTransformerBlock(nn.Module):
             **cross_attention_kwargs,
             i=i,
         )
-        if self.use_ada_layer_norm_zero or self.caption_channels is not None:
+        if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
+        elif self.caption_channels is not None:
+            attn_output = gate_msa * attn_output
         
         print(f"attn output: {attn_output.shape} hidden_states: {hidden_states.shape}")
         hidden_states = attn_output + hidden_states
