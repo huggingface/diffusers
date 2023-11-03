@@ -496,8 +496,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         guidance_scale: float = 4.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
+        height: Optional[int] = 1024,
+        width: Optional[int] = 1024,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -582,8 +582,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
-        height = height or self.transformer.config.sample_size
-        width = width or self.transformer.config.sample_size
+        height = height or self.transformer.config.sample_size * self.transformer.config.out_channels
+        width = width or self.transformer.config.sample_size * self.transformer.config.out_channels
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
