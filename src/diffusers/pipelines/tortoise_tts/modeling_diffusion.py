@@ -519,21 +519,17 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         self.conv_add_cond_emb_to_hidden = nn.Conv1d(2 * hidden_channels, hidden_channels, 1)
 
         # 4. Define the trunk of the denoising model
-        self.blocks = nn.ModuleList(
-            [
-                UNetBlock1D(
-                    in_channels=hidden_channels,
-                    out_channels=hidden_channels,
-                    temb_channels=hidden_channels,
-                    dropout=dropout,
-                    num_layers=num_layers,
-                    num_heads=num_heads,
-                    resnet_time_scale_shift="scale_shift",
-                    resnet_act_fn="silu",
-                )
-            ]
-            for _ in range(num_layers)
+        self.blocks = UNetBlock1D(
+            in_channels=hidden_channels,
+            out_channels=hidden_channels,
+            temb_channels=hidden_channels,
+            dropout=dropout,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            resnet_time_scale_shift="scale_shift",
+            resnet_act_fn="silu",
         )
+
         self.post_res_blocks = nn.ModuleList(
             [
                 ResnetBlock1D(

@@ -9,15 +9,14 @@ import torch.nn.functional as F
 import torchaudio
 
 from transformers import (
-    ClvpConditioningEncoder,
     ClvpFeatureExtractor,
-    ClvpModelForConditionalGeneration,
     ClvpTokenizer,
     GenerationConfig,
     UnivNetModel,
+    ClvpModelForConditionalGeneration,
 )
 
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin, FromSingleFileMixin
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -26,6 +25,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
+from ...models import ModelMixin
 
 from .modeling_common import RandomLatentConverter
 from .modeling_diffusion import DiffusionConditioningEncoder, TortoiseTTSDenoisingModel
@@ -58,7 +58,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         TODO
     """
     model_cpu_offload_seq = (
-        "autoregressive_random_latent_converter->audio_candidate_model->diffusion_random_latent_converter"
+        # "autoregressive_random_latent_converter->audio_candidate_model->diffusion_random_latent_converter"
+        "audio_candidate_model->diffusion_random_latent_converter"
         "->diffusion_conditioning_encoder->unet->vocoder"
     )
 
@@ -67,13 +68,14 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self,
         audio_candidate_model: ClvpModelForConditionalGeneration,
         audio_processor: ClvpFeatureExtractor,
-        autoregressive_random_latent_converter: RandomLatentConverter,
         tokenizer: ClvpTokenizer,
+        vocoder: UnivNetModel,
+        # autoregressive_random_latent_converter: RandomLatentConverter,
         diffusion_conditioning_encoder: DiffusionConditioningEncoder,
         diffusion_random_latent_converter: RandomLatentConverter,
         unet: TortoiseTTSDenoisingModel,
         scheduler: KarrasDiffusionSchedulers,
-        vocoder: UnivNetModel,
+
         output_sampling_rate: int = 24000,
     ):
         super().__init__()
@@ -81,26 +83,26 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self.register_modules(
             audio_candidate_model=audio_candidate_model,
             audio_processor=audio_processor,
-            autoregressive_random_latent_converter=autoregressive_random_latent_converter,
             tokenizer=tokenizer,
+            vocoder=vocoder,
+            # autoregressive_random_latent_converter=autoregressive_random_latent_converter,
             diffusion_conditioning_encoder=diffusion_conditioning_encoder,
             diffusion_random_latent_converter=diffusion_random_latent_converter,
             unet=unet,
             scheduler=scheduler,
-            vocoder=vocoder,
         )
 
         self.text_encoder = audio_candidate_model.conditioning_encoder.text_token_embedding
         self.decoder_final_norm = audio_candidate_model.speech_decoder_model.final_norm
-        self.autoregressive_hidden_dim = audio_candidate_model.config.decoder_config.n_embd
-        self.diffusion_input_dim = unet.config.in_latent_channels
+        self.autoregressive_hidden_dim = audio_candidate_model.config.decoder_config.hidden_size
+        self.diffusion_input_dim = unet.config.in_channels
 
-        if self.autoregressive_hidden_dim != autoregressive_random_latent_converter.config.channels:
-            raise ValueError(
-                f"Autoregressive random latent converter has {autoregressive_random_latent_converter.config.channels}"
-                f" channels and autoregressive hidden dim is {self.autoregressive_hidden_dim}, but expected them to be"
-                f" equal."
-            )
+        # if self.autoregressive_hidden_dim != autoregressive_random_latent_converter.config.channels:
+        #     raise ValueError(
+        #         f"Autoregressive random latent converter has {autoregressive_random_latent_converter.config.channels}"
+        #         f" channels and autoregressive hidden dim is {self.autoregressive_hidden_dim}, but expected them to be"
+        #         f" equal."
+        #     )
 
         if self.diffusion_input_dim * 2 != diffusion_random_latent_converter.config.channels:
             raise ValueError(
