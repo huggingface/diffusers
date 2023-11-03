@@ -655,6 +655,20 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     latent_model_input = torch.cat([half, half], dim=0)
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+                if not torch.is_tensor(t):
+                    # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+                    # This would be a good case for the `match` statement (Python 3.10+)
+                    is_mps = latent_model_input.device.type == "mps"
+                    if isinstance(timesteps, float):
+                        dtype = torch.float32 if is_mps else torch.float64
+                    else:
+                        dtype = torch.int32 if is_mps else torch.int64
+                    t = torch.tensor([t], dtype=dtype, device=latent_model_input.device)
+                elif len(t.shape) == 0:
+                    t = t[None].to(latent_model_input.device)
+                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+                t = t.expand(latent_model_input.shape[0])
+
                 # predict noise model_output
                 noise_pred = self.transformer(
                     latent_model_input,
