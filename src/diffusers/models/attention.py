@@ -248,6 +248,8 @@ class BasicTransformerBlock(nn.Module):
         )
         if self.use_ada_layer_norm_zero or self.caption_channels is not None:
             attn_output = gate_msa.unsqueeze(1) * attn_output
+        
+        print(f"attn output: {attn_output.shape} hidden_states: {hidden_states.shape}")
         hidden_states = attn_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
