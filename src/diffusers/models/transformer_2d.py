@@ -336,6 +336,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
+            print(f"hidden_states: {hidden_states.dtype}")
             hidden_states = self.pos_embed(hidden_states)
             if self.adaln_single is not None:
                 if added_cond_kwargs is None:
