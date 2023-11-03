@@ -644,6 +644,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
         aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
         added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
+        print(f"Starting latents: {latents.shape}")
 
         # 7. Denoising loop
         len(timesteps) - num_inference_steps * self.scheduler.order

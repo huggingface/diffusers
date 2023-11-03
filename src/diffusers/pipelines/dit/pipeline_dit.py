@@ -159,6 +159,7 @@ class DiTPipeline(DiffusionPipeline):
             dtype=self.transformer.dtype,
         )
         latent_model_input = torch.cat([latents] * 2) if guidance_scale > 1 else latents
+        print(f"Starting latent_model_input: {latent_model_input.shape}")
 
         class_labels = torch.tensor(class_labels, device=self._execution_device).reshape(-1)
         class_null = torch.tensor([1000] * batch_size, device=self._execution_device)
@@ -166,7 +167,6 @@ class DiTPipeline(DiffusionPipeline):
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
-
         for t in self.progress_bar(self.scheduler.timesteps):
             if guidance_scale > 1:
                 half = latent_model_input[: len(latent_model_input) // 2]
