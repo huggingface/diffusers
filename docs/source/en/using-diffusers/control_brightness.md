@@ -34,15 +34,15 @@ Next, configure the following parameters in the [`DDIMScheduler`]:
 2. `timestep_spacing="trailing"`, starts sampling from the last timestep
 
 ```py
->>> from diffusers import DiffusionPipeline, DDIMScheduler
+from diffusers import DiffusionPipeline, DDIMScheduler
 
->>> pipeline = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", use_safetensors=True)
+pipeline = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", use_safetensors=True)
+
 # switch the scheduler in the pipeline to use the DDIMScheduler
-
->>> pipeline.scheduler = DDIMScheduler.from_config(
-...     pipeline.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
-... )
->>> pipeline.to("cuda")
+pipeline.scheduler = DDIMScheduler.from_config(
+    pipeline.scheduler.config, rescale_betas_zero_snr=True, timestep_spacing="trailing"
+)
+pipeline.to("cuda")
 ```
 
 Finally, in your call to the pipeline, set `guidance_rescale` to prevent overexposure:
@@ -50,6 +50,7 @@ Finally, in your call to the pipeline, set `guidance_rescale` to prevent overexp
 ```py
 prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
 image = pipeline(prompt, guidance_rescale=0.7).images[0]
+image
 ```
 
 <div class="flex justify-center">

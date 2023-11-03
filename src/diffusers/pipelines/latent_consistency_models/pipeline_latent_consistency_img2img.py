@@ -27,7 +27,14 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LCMScheduler
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
@@ -44,6 +51,32 @@ def retrieve_latents(encoder_output, generator):
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
+
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import AutoPipelineForImage2Image
+        >>> import torch
+        >>> import PIL
+
+        >>> pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
+        >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
+        >>> pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+
+        >>> prompt = "High altitude snowy mountains"
+        >>> image = PIL.Image.open("./snowy_mountains.png")
+
+        >>> # Can be set to 1~50 steps. LCM support fast inference even <= 4 steps. Recommend: 1~8 steps.
+        >>> num_inference_steps = 4
+        >>> images = pipe(
+        ...     prompt=prompt, image=image, num_inference_steps=num_inference_steps, guidance_scale=8.0
+        ... ).images
+
+        >>> images[0].save("image.png")
+        ```
+
+"""
 
 
 class LatentConsistencyModelImg2ImgPipeline(
@@ -496,7 +529,38 @@ class LatentConsistencyModelImg2ImgPipeline(
 
         return timesteps, num_inference_steps - t_start
 
+    def check_inputs(
+        self,
+        prompt: Union[str, List[str]],
+        strength: float,
+        callback_steps: int,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+    ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -570,6 +634,8 @@ class LatentConsistencyModelImg2ImgPipeline(
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
 
+        Examples:
+
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
@@ -577,16 +643,9 @@ class LatentConsistencyModelImg2ImgPipeline(
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
-        # 1. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(prompt, strength, callback_steps, prompt_embeds)
 
-        device = self._execution_device
-        #
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -616,10 +675,10 @@ class LatentConsistencyModelImg2ImgPipeline(
             clip_skip=clip_skip,
         )
 
-        # 3.5 encode image
+        # 4. Encode image
         image = self.image_processor.preprocess(image)
 
-        # 4. Prepare timesteps
+        # 5. Prepare timesteps
         self.scheduler.set_timesteps(
             num_inference_steps, device, original_inference_steps=original_inference_steps, strength=strength
         )
@@ -649,6 +708,7 @@ class LatentConsistencyModelImg2ImgPipeline(
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, None)
 
+        # 8. LCM Multistep Sampling Loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
