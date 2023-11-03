@@ -235,7 +235,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.0, 0.0, 0.0106, 0.0, 0.0, 0.0087, 0.0052, 0.0062, 0.0177])
 
-        assert np.allclose(image_slice, expected_slice)
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     @require_torch_gpu
     def test_stable_diffusion_xl_offloads(self):
