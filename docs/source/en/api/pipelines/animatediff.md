@@ -20,11 +20,15 @@ The abstract of the paper is the following:
 
 With the advance of text-to-image models (e.g., Stable Diffusion) and corresponding personalization techniques such as DreamBooth and LoRA, everyone can manifest their imagination into high-quality images at an affordable cost. Subsequently, there is a great demand for image animation techniques to further combine generated static images with motion dynamics. In this report, we propose a practical framework to animate most of the existing personalized text-to-image models once and for all, saving efforts in model-specific tuning. At the core of the proposed framework is to insert a newly initialized motion modeling module into the frozen text-to-image model and train it on video clips to distill reasonable motion priors. Once trained, by simply injecting this motion modeling module, all personalized versions derived from the same base T2I readily become text-driven models that produce diverse and personalized animated images. We conduct our evaluation on several public representative personalized text-to-image models across anime pictures and realistic photographs, and demonstrate that our proposed framework helps these models generate temporally smooth animation clips while preserving the domain and diversity of their outputs. Code and pre-trained weights will be publicly available at this https URL .
 
-## Available Pipelines:
+## Available Pipelines
 
 | Pipeline | Tasks | Demo
 |---|---|:---:|
 | [AnimateDiffPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff.py) | *Text-to-Video Generation with AnimateDiff* |
+
+## Available checkpoints
+
+Motion Adapter checkpoints can be found under [guoyww](https://huggingface.co/guoyww/). These checkpoints are meant to work with any model based on Stable Diffusion 1.4/1.5
 
 ## Usage example
 
@@ -155,8 +159,6 @@ pip install peft
 Then you can use the following code to combine Motion LoRAs.
 
 ```python
-
-```python
 import torch
 from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
 from diffusers.utils import export_to_gif
@@ -211,6 +213,7 @@ export_to_gif(frames, "animation.gif")
 
 
 ## AnimateDiffPipeline
+
 [[autodoc]] AnimateDiffPipeline
 	- all
 	- __call__
@@ -225,6 +228,3 @@ export_to_gif(frames, "animation.gif")
 
 [[autodoc]] pipelines.animatediff.AnimateDiffPipelineOutput
 
-## Available checkpoints
-
-Motion Adapter checkpoints can be found under [guoyww](https://huggingface.co/guoyww/). These checkpoints are meant to work with any model based on Stable Diffusion 1.4/1.5
