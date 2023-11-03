@@ -723,8 +723,10 @@ class SizeEmbedder(nn.Module):
             assert size.shape[0] == batch_size
         current_batch_size, dims = size.shape[0], size.shape[1]
         size = size.reshape(-1)
-        size_freq = get_timestep_embedding(size, self.frequency_embedding_size, downscale_freq_shift=0, flip_sin_to_cos=True)
-        
+        size_freq = get_timestep_embedding(
+            size, self.frequency_embedding_size, downscale_freq_shift=0, flip_sin_to_cos=True
+        )
+
         size_emb = self.mlp(size_freq)
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
         return size_emb

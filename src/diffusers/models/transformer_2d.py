@@ -174,7 +174,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 patch_size=patch_size,
                 in_channels=in_channels,
                 embed_dim=inner_dim,
-                interpolation_scale=interpolation_scale
+                interpolation_scale=interpolation_scale,
             )
 
         # 3. Define transformers blocks
@@ -377,7 +377,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     timestep=timestep,
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
-                    i=i
+                    i=i,
                 )
 
         # 3. Output

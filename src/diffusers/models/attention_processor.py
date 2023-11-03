@@ -1174,7 +1174,7 @@ class AttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
-        i=None
+        i=None,
     ) -> torch.FloatTensor:
         residual = hidden_states
 

@@ -8,7 +8,7 @@ from diffusers import AutoencoderKL, DPMSolverMultistepScheduler, PixArtAlphaPip
 
 
 ckpt_id = "PixArt-alpha/PixArt-alpha"
-pretrained_models = {512: "", 1024: "PixArt-XL-2-1024x1024.pth"}
+pretrained_models = {512: "", 1024: "pixartAXL21024x1024_v10.pt"}
 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/scripts/inference.py#L125
 interpolation_scale = {512: 1, 1024: 2}
 
@@ -17,6 +17,8 @@ def main(args):
     ckpt = pretrained_models[args.image_size]
     final_path = os.path.join("/home/sayak/PixArt-alpha/scripts", "pretrained_models", ckpt)
     state_dict = torch.load(final_path, map_location=lambda storage, loc: storage)
+    del state_dict["state_dict"]["pos_embed"]
+    state_dict = state_dict["state_dict"]
 
     # Patch embeddings.
     state_dict["pos_embed.proj.weight"] = state_dict["x_embedder.proj.weight"]

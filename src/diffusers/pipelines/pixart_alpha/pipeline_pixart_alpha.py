@@ -632,7 +632,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+        self.prepare_extra_step_kwargs(generator, eta)
 
         # HACK: see comment in `enable_model_cpu_offload`
         if hasattr(self, "text_encoder_offload_hook") and self.text_encoder_offload_hook is not None:
@@ -646,8 +646,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
 
         # 7. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+        len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps):
             for i, t in enumerate(timesteps):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 if do_classifier_free_guidance:
