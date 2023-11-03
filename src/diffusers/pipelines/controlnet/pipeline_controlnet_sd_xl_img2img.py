@@ -131,6 +131,16 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(encoder_output, generator):
+    if hasattr(encoder_output, "latent_dist"):
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class StableDiffusionXLControlNetImg2ImgPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin
 ):
