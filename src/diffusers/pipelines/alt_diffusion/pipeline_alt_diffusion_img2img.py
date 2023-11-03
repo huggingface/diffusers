@@ -134,6 +134,7 @@ class AltDiffusionImg2ImgPipeline(
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
@@ -763,19 +764,15 @@ class AltDiffusionImg2ImgPipeline(
             deprecate(
                 "callback",
                 "1.0.0",
-                (
-                    "Passing `callback` as an input argument to `__call__` is deprecated, consider use"
-                    " `callback_on_step_end`"
-                ),
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use"
+                " `callback_on_step_end`",
             )
         if callback_steps is not None:
             deprecate(
                 "callback_steps",
                 "1.0.0",
-                (
-                    "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use"
-                    " `callback_on_step_end`"
-                ),
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use"
+                " `callback_on_step_end`",
             )
 
         # 1. Check inputs. Raise error if not correct

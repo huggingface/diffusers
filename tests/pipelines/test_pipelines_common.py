@@ -924,25 +924,35 @@ class PipelineTesterMixin:
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        def callback_no_cfg(pipe, i, t, callback_kwargs):
-            if i == 1:
-                for k, w in callback_kwargs.items():
-                    if k in self.callback_cfg_params:
-                        callback_kwargs[k] = callback_kwargs[k].chunk(2)[-1]
-                pipe._guidance_scale = 1.0
-
-            return callback_kwargs
-
         inputs = self.get_dummy_inputs(torch_device)
         inputs["guidance_scale"] = 1.0
         out_no_cfg = pipe(**inputs)[0]
 
+        def callback_no_cfg(pipe, i, t, callback_kwargs):
+            if i == 0:
+                for k, w in callback_kwargs.items():
+                    if k in self.callback_cfg_params:
+                        callback_kwargs[k] = callback_kwargs[k].chunk(2)[-1]
+                pipe._guidance_scale = 1
+            else:
+                # increase guidance scale by one
+                pipe._guidance_scale += 1
+
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
         inputs["guidance_scale"] = 7.5
         inputs["callback_on_step_end"] = callback_no_cfg
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
         out_callback_no_cfg = pipe(**inputs)[0]
 
+        # we increase the guidance scale by 1.0 at every step
+        assert pipe.guidance_scale == inputs["num_inference_steps"]
+
         assert out_no_cfg.shape == out_callback_no_cfg.shape
+
+        # outputs won't match since we have different cfg values
+        assert not np.abs(out_no_cfg - out_callback_no_cfg).sum() < 1e-3
 
 
 @is_staging_test
