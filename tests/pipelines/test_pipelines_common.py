@@ -875,45 +875,61 @@ class PipelineTesterMixin:
 
     def test_callback_inputs(self):
         sig = inspect.signature(self.pipeline_class.__call__)
+        has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
+        has_callback_step_end = "callback_on_step_end" in sig.parameters
 
-        if not ("callback_on_step_end_tensor_inputs" in sig.parameters and "callback_on_step_end" in sig.parameters):
+        if not (has_callback_tensor_inputs and has_callback_step_end):
             return
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-
         self.assertTrue(
             hasattr(pipe, "_callback_tensor_inputs"),
             f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
         )
 
-        def callback_inputs_test(pipe, i, t, callback_kwargs):
-            missing_callback_inputs = set()
-            for v in pipe._callback_tensor_inputs:
-                if v not in callback_kwargs:
-                    missing_callback_inputs.add(v)
-            self.assertTrue(
-                len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
-            )
-            last_i = pipe.num_timesteps - 1
-            if i == last_i:
-                callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
+        def callback_inputs_success(pipe, i, t, callback_kwargs):
+            # interate over callback args
+            for tensor_name, tensor_value in callback_kwargs.items():
+                # check that we're only passing in allowed tensor inputs
+                assert tensor_name in pipe._callback_tensor_inputs
+
             return callback_kwargs
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["callback_on_step_end"] = callback_inputs_test
+
+        # Test passing in a subset
+        inputs["callback_on_step_end"] = callback_inputs_success
+        inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
+        inputs["output_type"] = "latent"
+        output = pipe(**inputs)[0]
+
+        # Test passing in a everything
+        inputs["callback_on_step_end"] = callback_inputs_success
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
         inputs["output_type"] = "latent"
+        output = pipe(**inputs)[0]
 
+        def callback_inputs_change_tensor(pipe, i, t, callback_kwargs):
+            is_last = i == (pipe.num_timesteps - 1)
+            if is_last:
+                callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
+            return callback_kwargs
+
+        inputs["callback_on_step_end"] = callback_inputs_change_tensor
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        inputs["output_type"] = "latent"
         output = pipe(**inputs)[0]
         assert output.abs().sum() == 0
 
     def test_callback_cfg(self):
         sig = inspect.signature(self.pipeline_class.__call__)
+        has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
+        has_callback_step_end = "callback_on_step_end" in sig.parameters
 
-        if not ("callback_on_step_end_tensor_inputs" in sig.parameters and "callback_on_step_end" in sig.parameters):
+        if not (has_callback_tensor_inputs and has_callback_step_end):
             return
 
         if "guidance_scale" not in sig.parameters:
@@ -921,38 +937,31 @@ class PipelineTesterMixin:
 
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        self.assertTrue(
+            hasattr(pipe, "_callback_tensor_inputs"),
+            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        )
 
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["guidance_scale"] = 1.0
-        out_no_cfg = pipe(**inputs)[0]
-
-        def callback_no_cfg(pipe, i, t, callback_kwargs):
-            if i == 0:
-                for k, w in callback_kwargs.items():
-                    if k in self.callback_cfg_params:
-                        callback_kwargs[k] = callback_kwargs[k].chunk(2)[-1]
-                pipe._guidance_scale = 1
-            else:
-                # increase guidance scale by one
-                pipe._guidance_scale += 1
+        def callback_increase_guidance(pipe, i, t, callback_kwargs):
+            pipe._guidance_scale += 1.0
 
             return callback_kwargs
 
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["guidance_scale"] = 7.5
-        inputs["callback_on_step_end"] = callback_no_cfg
+
+        # use cfg guidance because some pipelines modify the shape of the latents
+        # outside of the denoising loop
+        inputs["guidance_scale"] = 2.0
+        inputs["callback_on_step_end"] = callback_increase_guidance
         inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
-        out_callback_no_cfg = pipe(**inputs)[0]
+        _ = pipe(**inputs)[0]
 
         # we increase the guidance scale by 1.0 at every step
-        assert pipe.guidance_scale == inputs["num_inference_steps"]
-
-        assert out_no_cfg.shape == out_callback_no_cfg.shape
-
-        # outputs won't match since we have different cfg values
-        assert not np.abs(out_no_cfg - out_callback_no_cfg).sum() < 1e-3
+        # check that the guidance scale is increased by the number of scheduler timesteps
+        # accounts for models that modify the number of inference steps based on strength
+        assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps)
 
 
 @is_staging_test
