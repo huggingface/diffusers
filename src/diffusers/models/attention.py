@@ -209,7 +209,6 @@ class BasicTransformerBlock(nn.Module):
         timestep: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
-        i=None,
     ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
@@ -243,7 +242,6 @@ class BasicTransformerBlock(nn.Module):
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
-            i=i,
         )
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output

@@ -372,7 +372,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     timestep=timestep,
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
-                    i=i,
                 )
 
         # 3. Output
