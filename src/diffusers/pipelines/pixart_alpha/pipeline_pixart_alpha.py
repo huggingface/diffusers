@@ -647,8 +647,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
 
         # 7. Denoising loop
-        len(timesteps) - num_inference_steps * self.scheduler.order
-        with self.progress_bar(total=num_inference_steps):
+        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if do_classifier_free_guidance:
                     half = latent_model_input[: len(latent_model_input) // 2]
@@ -698,11 +699,19 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 # compute previous image: x_t -> x_t-1
                 latent_model_input = self.scheduler.step(noise_pred, t, latent_model_input, return_dict=False)[0]
 
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latent_model_input)
+
             if do_classifier_free_guidance:
                 latents, _ = latent_model_input.chunk(2, dim=0)
             else:
                 latents = latent_model_input
 
+        print(f"Final latents: {latents.shape}")
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
