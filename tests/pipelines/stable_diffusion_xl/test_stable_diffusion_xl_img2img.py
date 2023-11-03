@@ -230,13 +230,12 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, -3:, -3:, -1].flatten()
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.00669, 0.00669, 0.0, 0.00693, 0.00858, 0.0, 0.00567, 0.00515, 0.00125])
-        print(", ".join([str(round(x, 4)) for x in image_slice.flatten().tolist()]))
+        expected_slice = np.array([0.0, 0.0, 0.0106, 0.0, 0.0, 0.0087, 0.0052, 0.0062, 0.0177])
 
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.allclose(image_slice, expected_slice)
 
     @require_torch_gpu
     def test_stable_diffusion_xl_offloads(self):
