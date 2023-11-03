@@ -150,7 +150,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
 
         image_slice = image[0, -3:, -3:, -1]
         expected_slice = np.array([0.4903, 0.3304, 0.3503, 0.5241, 0.5153, 0.4585, 0.3222, 0.4764, 0.4891])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
