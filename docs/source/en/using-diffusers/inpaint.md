@@ -41,8 +41,8 @@ You'll notice throughout the guide, we use [`~DiffusionPipeline.enable_model_cpu
 2. Load the base and mask images:
 
 ```py
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 ```
 
 3. Create a prompt to inpaint the image with and pass it to the pipeline with the base and mask images:
@@ -102,8 +102,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 generator = torch.Generator("cuda").manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
@@ -127,8 +127,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 generator = torch.Generator("cuda").manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
@@ -152,8 +152,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 generator = torch.Generator("cuda").manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
@@ -203,8 +203,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.6).images[0]
@@ -247,8 +247,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, guidance_scale=2.5).images[0]
@@ -286,8 +286,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 negative_prompt = "bad architecture, unstable, poor details, blurry"
@@ -374,10 +374,8 @@ text2image = pipeline("concept art digital painting of an elven castle, inspired
 Load the mask image of the output from above:
 
 ```py
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_text-chain-mask.png").convert("RGB")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_text-chain-mask.png")
 ```
-<!--Entry not found
--->
 
 And let's inpaint the masked area with a waterfall:
 
@@ -422,8 +420,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
 image_inpainting = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
@@ -529,8 +527,8 @@ pipeline.enable_model_cpu_offload()
 pipeline.enable_xformers_memory_efficient_attention()
 
 # load base and mask image
-init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png").convert("RGB")
-mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png").convert("RGB")
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
 
 # prepare control image
 def make_inpaint_condition(init_image, mask_image):
