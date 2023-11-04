@@ -311,7 +311,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if._text_preprocessing
+    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
     def _text_preprocessing(self, text, clean_caption=False):
         if clean_caption and not is_bs4_available():
             logger.warn(BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`"))
@@ -336,7 +336,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         return [process(t) for t in text]
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if._clean_caption
+    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._clean_caption
     def _clean_caption(self, caption):
         caption = str(caption)
         caption = ul.unquote_plus(caption)
