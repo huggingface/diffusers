@@ -108,6 +108,7 @@ class LatentConsistencyModelImg2ImgPipeline(
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
+    _callback_tensor_inputs = ["latents", "denoised", "prompt_embeds", "w_embedding"]
 
     def __init__(
         self,
@@ -524,16 +525,22 @@ class LatentConsistencyModelImg2ImgPipeline(
         strength: float,
         callback_steps: int,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        callback_on_step_end_tensor_inputs=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -547,6 +554,22 @@ class LatentConsistencyModelImg2ImgPipeline(
             )
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def cross_attention_kwargs(self):
+        return self._cross_attention_kwargs
+
+    @property
+    def clip_skip(self):
+        return self._clip_skip
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -653,7 +676,10 @@ class LatentConsistencyModelImg2ImgPipeline(
             )
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, strength, callback_steps, prompt_embeds)
+        self.check_inputs(prompt, strength, callback_steps, prompt_embeds, callback_on_step_end_tensor_inputs)
+        self._guidance_scale = guidance_scale
+        self._clip_skip = clip_skip
+        self._cross_attention_kwargs = cross_attention_kwargs
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -667,7 +693,9 @@ class LatentConsistencyModelImg2ImgPipeline(
         # do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        lora_scale = (
+            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+        )
 
         # NOTE: when a LCM is distilled from an LDM via latent consistency distillation (Algorithm 1) with guided
         # distillation, the forward pass of the LCM learns to approximate sampling from the LDM using CFG with the
@@ -681,7 +709,7 @@ class LatentConsistencyModelImg2ImgPipeline(
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=None,
             lora_scale=lora_scale,
-            clip_skip=clip_skip,
+            clip_skip=self.clip_skip,
         )
 
         # 4. Encode image
@@ -709,7 +737,7 @@ class LatentConsistencyModelImg2ImgPipeline(
         # NOTE: We use the Imagen CFG formulation that StableDiffusionPipeline uses rather than the original LCM paper
         # CFG formulation, so we need to subtract 1 from the input guidance_scale.
         # LCM CFG formulation:  cfg_noise = noise_cond + cfg_scale * (noise_cond - noise_uncond), (cfg_scale > 0.0 using CFG)
-        w = torch.tensor(guidance_scale - 1).repeat(bs)
+        w = torch.tensor(self.guidance_scale - 1).repeat(bs)
         w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=self.unet.config.time_cond_proj_dim).to(
             device=device, dtype=latents.dtype
         )
@@ -719,6 +747,7 @@ class LatentConsistencyModelImg2ImgPipeline(
 
         # 8. LCM Multistep Sampling Loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 latents = latents.to(prompt_embeds.dtype)
@@ -729,7 +758,7 @@ class LatentConsistencyModelImg2ImgPipeline(
                     t,
                     timestep_cond=w_embedding,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=cross_attention_kwargs,
+                    cross_attention_kwargs=self.cross_attention_kwargs,
                     return_dict=False,
                 )[0]
 
