@@ -22,6 +22,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
+    AutoencoderTiny,
     EulerDiscreteScheduler,
     StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
@@ -121,6 +122,9 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
         }
         return components
 
+    def get_dummy_tiny_autoencoder(self):
+        return AutoencoderTiny(in_channels=3, out_channels=3, latent_channels=4)
+
     def test_components_function(self):
         init_components = self.get_dummy_components()
         init_components.pop("requires_aesthetics_score")
@@ -215,6 +219,23 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+    def test_stable_diffusion_xl_img2img_tiny_autoencoder(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
+        sd_pipe.vae = self.get_dummy_tiny_autoencoder()
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1].flatten()
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.0, 0.0, 0.0106, 0.0, 0.0, 0.0087, 0.0052, 0.0062, 0.0177])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     @require_torch_gpu
     def test_stable_diffusion_xl_offloads(self):
