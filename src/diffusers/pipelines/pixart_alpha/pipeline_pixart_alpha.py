@@ -23,7 +23,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
-from ...schedulers import DPMSolverSDEScheduler
+from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
@@ -88,7 +88,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         text_encoder: T5EncoderModel,
         vae: AutoencoderKL,
         transformer: Transformer2DModel,
-        scheduler: DPMSolverSDEScheduler,
+        scheduler: DPMSolverMultistepScheduler,
     ):
         super().__init__()
 
