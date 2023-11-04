@@ -26,7 +26,6 @@ from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
-    is_accelerate_available,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -48,6 +47,14 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> import torch
+        >>> from diffusers import PixArtAlphaPipeline
+
+        >>> pipe = StableDiffusionXLPipeline.from_pretrained("pixart-alpha", torch_dtype=torch.float16)
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> prompt = "A small cactus with a happy face in the Sahara desert."
+        >>> image = pipe(prompt).images[0]
         ```
 """
 
@@ -99,7 +106,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/utils.py
-    def mask_feature(self, emb, mask):
+    def mask_text_eembeddings(self, emb, mask):
         if emb.shape[0] == 1:
             keep_index = mask.sum().item()
             return emb[:, :, :keep_index, :], keep_index
@@ -117,6 +124,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
+        mask_feature: bool = True,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -137,6 +145,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. For PixArt-Alpha, it's just the "" string.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
+            mask_feature: (bool, defaults to `True`):
+                If `True`, the function will mask the text embeddings.
         """
         if device is None:
             device = self._execution_device
@@ -230,7 +240,17 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         else:
             negative_prompt_embeds = None
 
-        return prompt_embeds, negative_prompt_embeds, prompt_embeds_attention_mask
+        # Perform additional masking.
+        if mask_feature:
+            prompt_embeds = prompt_embeds.unsqueeze(1)
+            masked_prompt_embeds, keep_indices = self.mask_text_eembeddings(
+                prompt_embeds, prompt_embeds_attention_mask
+            )
+            masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
+            masked_negative_prompt_embeds = negative_prompt_embeds[:, :keep_indices, :]
+            return masked_prompt_embeds, masked_negative_prompt_embeds
+
+        return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -250,7 +270,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -471,6 +490,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         clean_caption: bool = True,
+        mask_feature: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -527,6 +547,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
+            mask_feature (`bool` defaults to `True`): If set to `True`, the text embeddings will be masked.
 
         Examples:
 
@@ -557,7 +578,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds, prompt_embeds_attention_mask = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
@@ -565,14 +586,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             clean_caption=clean_caption,
+            mask_feature=mask_feature,
         )
-        prompt_embeds = prompt_embeds.unsqueeze(1)
-        masked_prompt_embeds, keep_indices = self.mask_feature(prompt_embeds, prompt_embeds_attention_mask)
-        masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
-        masked_negative_prompt_embeds = negative_prompt_embeds[:, :keep_indices, :]
-
         if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([masked_negative_prompt_embeds, masked_prompt_embeds], dim=0)
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -589,7 +606,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             device,
             generator,
             latents,
-        )  
+        )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -653,7 +670,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
-
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
