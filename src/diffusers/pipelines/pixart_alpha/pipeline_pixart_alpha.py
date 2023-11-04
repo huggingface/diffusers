@@ -606,9 +606,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             clean_caption=clean_caption,
         )
-        print("Serializing the prompt embeddings:")
-        torch.save(prompt_embeds, "prompt_embeds.bin")
-        torch.save(negative_prompt_embeds, "negative_prompt_embeds.bin")
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
