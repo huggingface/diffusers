@@ -96,6 +96,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self.decoder_final_norm = audio_candidate_model.speech_decoder_model.final_norm
         self.autoregressive_hidden_dim = audio_candidate_model.config.decoder_config.hidden_size
         self.diffusion_input_dim = unet.config.in_channels
+        # self.audio_sampling_rate = audio_processor.sampling_rate
 
         # if self.autoregressive_hidden_dim != autoregressive_random_latent_converter.config.channels:
         #     raise ValueError(
@@ -216,8 +217,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             elif text_inputs.input_ids.shape[0]!=1 and negative_text_inputs.input_ids.shape[0]==1:
                 negative_text_inputs.input_ids = negative_text_inputs.input_ids.repeat(text_inputs.input_ids.shape[0], 1)
                 negative_text_inputs.attention_mask = negative_text_inputs.attention_mask.repeat(text_inputs.input_ids.shape[0], 1)
-            elif prompt_embeds.shape[0]!=1 and negative_prompt_embeds.shape[0]!=1:
-                raise ValueError(f"Found {prompt_embeds.shape[0]} number of prompts and {negative_prompt_embeds.shape[0]} "
+            elif text_inputs.input_ids.shape[0]!=1 and negative_text_inputs.input_ids.shape[0]!=1:
+                raise ValueError(f"Found {text_inputs.input_ids.shape[0]} number of prompts and {negative_text_inputs.input_ids.shape[0]} "
                                  f"number of negative prompts. There must be same number of prompts and negative prompts,"
                                  f"otherwise length of one of them must be 1.")
 
@@ -243,11 +244,12 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     def prepare_audio_spectrograms(
         self,
         audio,
+        audio_sampling_rate,
         device,
         max_length,
     ):
         audio_features = self.audio_processor(raw_speech=audio,
-                                              sampling_rate=self.sampling_rate,
+                                              sampling_rate=audio_sampling_rate,
                                               max_length=max_length,
                                               return_tensors="pt",
                                               )
@@ -369,6 +371,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
                 diffusion_audio_emb = self.diffusion_random_latent_converter(latents).latents
 
+        target_size = target_size * 4 * 24000 // 22050  # This diffusion model converts from 22kHz spectrogram codes to a 24kHz spectrogram signal.
+
         diffusion_cond_emb = self.diffusion_conditioning_encoder.diffusion_cond_embedding(
             diffusion_audio_emb, autoregressive_latents, attention_mask, unconditional, batch_size, target_size
         )
@@ -480,6 +484,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         audio: List[Tuple[torch.FloatTensor, int]] = None,
+        audio_sampling_rate: int = 22050,
         # Diffusion generation parameters
         audio_length_in_s: Optional[float] = 5.12,
         num_inference_steps: int = 100,
@@ -609,12 +614,12 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         )
 
         # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
+        # if prompt is not None and isinstance(prompt, str):
+        #     batch_size = 1
+        # elif prompt is not None and isinstance(prompt, list):
+        #     batch_size = len(prompt)
 
-        output_seq_length = audio_length_in_s * self.sampling_rate
+        output_seq_length = int(audio_length_in_s * audio_sampling_rate)
 
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -627,6 +632,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # 3. Prepare audio spectrogram features
         audio_features = self.prepare_audio_spectrograms(
             audio,
+            audio_sampling_rate,
             device,
             output_seq_length,
         )
@@ -638,6 +644,9 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             do_classifier_free_guidance,
             negative_prompt,
         )
+
+        batch_size = prompt_inputs.input_ids.shape[0]
+
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
@@ -667,11 +676,14 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         audio_candidates = audio_candidates_and_scores.speech_ids
         similarity_scores = audio_candidates_and_scores.logits_per_text
-        autoregressive_latents = self.calculate_decoder_logits(audio_candidates_and_scores.decoder_hidden_states)
+        autoregressive_latents = self.calculate_decoder_logits(audio_candidates_and_scores.decoder_hidden_states,
+                                                               audio_candidates.shape[0],
+                                                               device,
+                                                               )
 
         if do_classifier_free_guidance and has_negative_prompts:
             neg_audio_candidates, audio_candidates = audio_candidates.chunk(2)
-            neg_similarity_scores, similarity_scores = similarity_scores.chunk(2)
+            neg_similarity_scores, similarity_scores = similarity_scores.chunk(2)[0].chunk(2, dim=1)[0], similarity_scores.chunk(2)[-1].chunk(2, dim=1)[-1]
             neg_autoregressive_latents, autoregressive_latents = autoregressive_latents.chunk(2)
 
         # 6. Get the top k speech candidates by text-speech similarity score
@@ -718,7 +730,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             batch_size * num_waveforms_per_prompt,
             diffusion_seq_len,
             diffusion_temperature,
-            prompt_embeds.dtype,
+            autoregressive_latents.dtype,
             device,
             generator,
             latents=latents,
@@ -728,7 +740,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         vocoder_latents = self.prepare_vocoder_latents(
             batch_size * num_waveforms_per_prompt,
             noise_length=diffusion_seq_len,
-            dtype=prompt_embeds.dtype,
+            dtype=autoregressive_latents.dtype,
             device=device,
             generator=generator,
             latents=vocoder_latents,
@@ -739,12 +751,12 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             audio,
             top_k_autoregressive_latents,
             diffusion_attention_mask,
-            prompt_embeds.dtype,
+            autoregressive_latents.dtype,
             device,
             generator,
             batch_size,
             latent_averaging_mode=latent_averaging_mode,
-            target_size=latents.shape[-1],
+            target_size=latents.shape[1],
             latents=audio_diff_latents,
         )
 
@@ -754,12 +766,12 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                     audio,
                     neg_top_k_autoregressive_latents,
                     diffusion_neg_attention_mask,
-                    prompt_embeds.dtype,
+                    autoregressive_latents.dtype,
                     device,
                     generator,
                     batch_size,
                     latent_averaging_mode=latent_averaging_mode,
-                    target_size=latents.shape[-1],
+                    target_size=latents.shape[1],
                     latents=audio_diff_latents,
                 )
             else:
@@ -769,13 +781,13 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                     None,
                     None,
                     None,
-                    prompt_embeds.dtype,
+                    autoregressive_latents.dtype,
                     device,
                     generator,
                     batch_size,
                     latent_averaging_mode=latent_averaging_mode,
                     unconditional=True,
-                    target_size=latents.shape[-1],
+                    target_size=latents.shape[1],
                     latents=None,
                 )
             diffusion_cond_emb = torch.cat([neg_diffusion_cond_emb, diffusion_cond_emb])

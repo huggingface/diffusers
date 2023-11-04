@@ -307,8 +307,8 @@ class TortoiseTTSSelfAttention(nn.Module):
         use_cache=False,
         output_attentions=False,
     ):
-        normed_hidden_states = self.layer_norm(hidden_states)
-        normed_hidden_states = torch.permute(normed_hidden_states, (0, 2, 1))
+        normed_hidden_states = self.layer_norm(hidden_states.transpose(1, 2))
+        normed_hidden_states = normed_hidden_states.transpose(1, 2)
 
         attention_output = self.attention(
             normed_hidden_states,
@@ -320,10 +320,8 @@ class TortoiseTTSSelfAttention(nn.Module):
             output_attentions=output_attentions,
         )
 
-        hidden_states = torch.permute(hidden_states, (0, 2, 1))
         hidden_states = hidden_states + self.dropout(attention_output[0])
-        outputs = (hidden_states,) + attention_output[1:]  # add attentions if we output them
-        return outputs
+        return hidden_states
 
 
 # From tortoise.models.random_latent_generator.fused_leaky_relu

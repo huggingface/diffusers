@@ -3,6 +3,7 @@ import random
 from dataclasses import dataclass
 from typing import Optional, Union
 
+import numpy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,6 +23,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def pad_or_truncate(t, length: int, random_start: bool = False):
+    t = torch.from_numpy(t) if isinstance(t, numpy.ndarray) else t
+
     gap = length - t.shape[-1]
     if gap < 0:
         return F.pad(t, (0, abs(gap)))
@@ -105,20 +108,18 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         )
 
         # Define the contextual embedder, which maps the audio waveforms into the diffusion audio embedding.
-        audio_attentions = [
+        self.contextual_embedder_conv = nn.Sequential(
+            nn.Conv1d(audio_in_channels, hidden_channels, 3, padding=1, stride=2),
+            nn.Conv1d(hidden_channels, hidden_channels * 2, 3, padding=1, stride=2),
+        )
+        self.contextual_embedder_attention = nn.Sequential(*[
             TortoiseTTSSelfAttention(
                 hidden_channels * 2,
                 n_heads=num_attention_heads,
                 dim_head=(hidden_channels * 2) // num_attention_heads,
             )
             for _ in range(audio_attention_layers)
-        ]
-
-        self.contextual_embedder = nn.Sequential(
-            nn.Conv1d(audio_in_channels, hidden_channels, 3, padding=1, stride=2),
-            nn.Conv1d(hidden_channels, hidden_channels * 2, 3, padding=1, stride=2),
-            *audio_attentions,
-        )
+        ])
 
         # Define the latent conditioner, which maps diffusion audio embeddings and autoregressive latents to the final
         # diffusion conditioning embedding.
@@ -143,13 +144,15 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         latent_averaging_mode: int = 0,
         chunk_size: Optional[int] = None,
     ):
+        audio = [audio] if not isinstance(audio[0], list) else audio
+
         chunk_size = chunk_size if chunk_size is not None else self.config.chunk_size
         audio_spectrograms = []
         for audio_sample in audio:
             if latent_averaging_mode == 0:
                 # Average across all samples (original Tortoise TTS behavior)
                 audio_sample = pad_or_truncate(audio_sample, chunk_size)
-                spectrogram = self.stft.mel_spectrogram(audio_sample)
+                spectrogram = torch.from_numpy(self.stft.mel_spectrogram(audio_sample))
                 audio_spectrograms.append(spectrogram)
             else:
                 if latent_averaging_mode == 2:
@@ -157,7 +160,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
                 for chunk in range(math.ceil(audio_sample.shape[1] / chunk_size)):
                     current_chunk = audio_sample[:, chunk * chunk_size : (chunk + 1) * chunk_size]
                     current_chunk = pad_or_truncate(current_chunk, chunk_size)
-                    chunk_spectrogram = self.stft.mel_spectrogram(current_chunk, chunk_size)
+                    chunk_spectrogram = torch.from_numpy(self.stft.mel_spectrogram(current_chunk, chunk_size))
 
                     if latent_averaging_mode == 1:
                         # Average across all chunks of all samples
@@ -168,7 +171,8 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
                 if latent_averaging_mode == 2:
                     averaged_sample_spectrogram = torch.stack(sample_audio_spectrograms).mean(0)
                     audio_spectrograms.append(averaged_sample_spectrogram)
-        audio_spectrograms = torch.stack(audio_spectrograms, dim=1)
+        audio_spectrograms = torch.stack(audio_spectrograms, dim=1).to("cuda" if torch.cuda.is_available() else "cpu")
+        audio_spectrograms = audio_spectrograms.type(torch.float32)
         return audio_spectrograms
 
     def diffusion_cond_audio_embedding(self, audio, latent_averaging_mode: int = 0, chunk_size: Optional[int] = None):
@@ -177,9 +181,12 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         # TODO: better name?
         conds = []
         for j in range(audio_spectrograms.shape[1]):
-            conds.append(self.contextual_embedder(audio_spectrograms[:, j]))
+            conv_opt = self.contextual_embedder_conv(audio_spectrograms[:, j].transpose(1, 2))
+            attn_opt = self.contextual_embedder_attention(conv_opt.transpose(1, 2))
+            conds.append(attn_opt)
+
         audio_embedding = torch.cat(conds, dim=-1)
-        audio_embedding.mean(dim=-1)
+        audio_embedding = audio_embedding.mean(dim=0)
         return audio_embedding
 
     def diffusion_cond_embedding(
@@ -200,8 +207,11 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
 
             # apply the conv layer first and carefully handle the attention mask
             if attention_mask is not None:
-                autoregressive_latents = torch.masked_fill(autoregressive_latents, attention_mask, 0.0)
-            cond_embedding = self.latent_conditioner_conv(autoregressive_latents)
+                autoregressive_latents = torch.masked_fill(autoregressive_latents, attention_mask[..., None].bool().logical_not(), 0.0)
+
+            autoregressive_latents = autoregressive_latents[:, 0, :, :]
+            cond_embedding = self.latent_conditioner_conv(autoregressive_latents.transpose(1, 2))
+            cond_embedding = cond_embedding.transpose(1, 2)
 
             # then apply the attention layers.
             # Note that because the previous conv layer had kernel_size=3 and padding=1, we don't need to change the
@@ -209,6 +219,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
             for attn_block in self.latent_conditioner_attn_blocks:
                 cond_embedding = attn_block(cond_embedding, attention_mask)
 
+            cond_embedding = cond_embedding.transpose(1, 2)
             cond_embedding = (1 + cond_scale.unsqueeze(-1)) * cond_embedding + cond_shift.unsqueeze(-1)
             if target_size is not None:
                 cond_embedding = F.interpolate(cond_embedding, size=target_size, mode="nearest")
