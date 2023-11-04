@@ -20,10 +20,8 @@ Start by creating an instance of the [`StableDiffusionDepth2ImgPipeline`]:
 
 ```python
 import torch
-import requests
-from PIL import Image
-
 from diffusers import StableDiffusionDepth2ImgPipeline
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = StableDiffusionDepth2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
@@ -36,11 +34,11 @@ Now pass your prompt to the pipeline. You can also pass a `negative_prompt` to p
 
 ```python
 url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-init_image = Image.open(requests.get(url, stream=True).raw)
+init_image = load_image(url)
 prompt = "two tigers"
 negative_prompt = "bad, deformed, ugly, bad anatomy"
 image = pipeline(prompt=prompt, image=init_image, negative_prompt=negative_prompt, strength=0.7).images[0]
-image
+make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 | Input                                                                           | Output                                                                                                                                |
