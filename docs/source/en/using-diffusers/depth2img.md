@@ -46,15 +46,3 @@ image
 | Input                                                                           | Output                                                                                                                                |
 |---------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/coco-cats.png" width="500"/> | <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/depth2img-tigers.png" width="500"/> |
-
-Play around with the Spaces below and see if you notice a difference between generated images with and without a depth map!
-
-<iframe
-	src="https://radames-stable-diffusion-depth2img.hf.space"
-	frameborder="0"
-	width="850"
-	height="500"
-></iframe>
-
-<!--ERROR: "Your space is on error, check its status on hf.co"
--->
