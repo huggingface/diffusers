@@ -539,7 +539,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(prompt, callback_steps, prompt_embeds, negative_prompt_embeds)
 
-        # 2. Default height and width to unet
+        # 2. Default height and width to transformer
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
 
