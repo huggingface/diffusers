@@ -73,11 +73,8 @@ Stable Diffusion v1.5 is a latent diffusion model initialized from an earlier ch
 
 ```py
 import torch
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import make_image_grid
+from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -87,8 +84,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
@@ -114,11 +110,8 @@ SDXL is a more powerful version of the Stable Diffusion model. It uses a larger 
 
 ```py
 import torch
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import make_image_grid
+from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -128,8 +121,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-sdxl-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
@@ -157,11 +149,8 @@ The simplest way to use Kandinsky 2.2 is:
 
 ```py
 import torch
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import make_image_grid
+from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
@@ -171,8 +160,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
@@ -207,11 +195,8 @@ The `strength` and `num_inference_steps` parameters are related because `strengt
 
 ```py
 import torch
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import make_image_grid
+from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -221,8 +206,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
@@ -254,11 +238,8 @@ You can combine `guidance_scale` with `strength` for even more precise control o
 
 ```py
 import torch
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import make_image_grid
+from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -268,8 +249,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
@@ -299,11 +279,8 @@ A negative prompt conditions the model to *not* include things in an image, and 
 
 ```py
 import torch
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import make_image_grid
+from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -313,8 +290,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 negative_prompt = "ugly, deformed, disfigured, poor details, bad anatomy"
@@ -375,17 +351,14 @@ make_image_grid([text2image, image2image], rows=1, cols=2)
 
 ### Image-to-image-to-image
 
-You can also chain multiple image-to-image pipelines together to create more interesting images. This can be useful for iteratively performing style transfer on an image, generate short GIFs, restore color to an image, or restore missing areas of an image.
+You can also chain multiple image-to-image pipelines together to create more interesting images. This can be useful for iteratively performing style transfer on an image, generating short GIFs, restoring color to an image, or restoring missing areas of an image.
 
 Start by generating an image:
 
 ```py
 import torch
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import make_image_grid
+from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -395,8 +368,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
@@ -445,11 +417,8 @@ Start with an image-to-image pipeline:
 
 ```py
 import torch
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers import AutoPipelineForImage2Image
-from diffusers.utils import make_image_grid
+from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
@@ -459,8 +428,7 @@ pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 
 prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 
@@ -477,7 +445,9 @@ It is important to specify `output_type="latent"` in the pipeline to keep all th
 Chain it to an upscaler pipeline to increase the image resolution:
 
 ```py
-upscaler = AutoPipelineForImage2Image.from_pretrained(
+from diffusers import StableDiffusionLatentUpscalePipeline
+
+upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
     "stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 upscaler.enable_model_cpu_offload()
@@ -485,21 +455,20 @@ upscaler.enable_xformers_memory_efficient_attention()
 
 image_2 = upscaler(prompt, image=image_1, output_type="latent").images[0]
 ```
-<!--
-ValueError: AutoPipeline can't find a pipeline linked to StableDiffusionLatentUpscalePipeline for None
--->
 
 Finally, chain it to a super-resolution pipeline to further enhance the resolution:
 
 ```py
-super_res = AutoPipelineForImage2Image.from_pretrained(
+from diffusers import StableDiffusionUpscalePipeline
+
+super_res = StableDiffusionUpscalePipeline.from_pretrained(
     "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 super_res.enable_model_cpu_offload()
 super_res.enable_xformers_memory_efficient_attention()
 
 image_3 = super_res(prompt, image=image_2).images[0]
-make_image_grid([init_image, image_3], rows=1, cols=2)
+make_image_grid([init_image, image_3.resize((512, 512))], rows=1, cols=2)
 ```
 
 ## Control image generation
@@ -535,15 +504,11 @@ ControlNets provide a more flexible and accurate way to control image generation
 For example, let's condition an image with a depth map to keep the spatial information in the image.
 
 ```py
-import requests
-from PIL import Image
-from io import BytesIO
 from diffusers.utils import load_image, make_image_grid
 
 # prepare image
 url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/img2img-init.png"
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 init_image = init_image.resize((958, 960)) # resize to depth image dimensions
 depth_image = load_image("https://huggingface.co/lllyasviel/control_v11f1p_sd15_depth/resolve/main/images/control.png")
 make_image_grid([init_image, depth_image], rows=1, cols=2)
