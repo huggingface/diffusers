@@ -103,8 +103,6 @@ generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
 image
 ```
-<!--The image produced is not the same.
--->
 
 ### ControlNet
 
