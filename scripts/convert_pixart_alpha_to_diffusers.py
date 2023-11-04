@@ -1,5 +1,4 @@
 import argparse
-import os
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -29,28 +28,50 @@ def main(args):
     converted_state_dict["caption_projection.mlp.2.bias"] = state_dict.pop("y_embedder.y_proj.fc2.bias")
 
     # AdaLN-single LN
-    converted_state_dict["adaln_single.emb.timestep_embedder.linear_1.weight"] = state_dict.pop("t_embedder.mlp.0.weight")
+    converted_state_dict["adaln_single.emb.timestep_embedder.linear_1.weight"] = state_dict.pop(
+        "t_embedder.mlp.0.weight"
+    )
     converted_state_dict["adaln_single.emb.timestep_embedder.linear_1.bias"] = state_dict.pop("t_embedder.mlp.0.bias")
-    converted_state_dict["adaln_single.emb.timestep_embedder.linear_2.weight"] = state_dict.pop("t_embedder.mlp.2.weight")
+    converted_state_dict["adaln_single.emb.timestep_embedder.linear_2.weight"] = state_dict.pop(
+        "t_embedder.mlp.2.weight"
+    )
     converted_state_dict["adaln_single.emb.timestep_embedder.linear_2.bias"] = state_dict.pop("t_embedder.mlp.2.bias")
 
     # Resolution.
-    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.weight"] = state_dict.pop("csize_embedder.mlp.0.weight")
-    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.bias"] = state_dict.pop("csize_embedder.mlp.0.bias")
-    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.weight"] = state_dict.pop("csize_embedder.mlp.2.weight")
-    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.bias"] = state_dict.pop("csize_embedder.mlp.2.bias")
+    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.weight"] = state_dict.pop(
+        "csize_embedder.mlp.0.weight"
+    )
+    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.bias"] = state_dict.pop(
+        "csize_embedder.mlp.0.bias"
+    )
+    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.weight"] = state_dict.pop(
+        "csize_embedder.mlp.2.weight"
+    )
+    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.bias"] = state_dict.pop(
+        "csize_embedder.mlp.2.bias"
+    )
     # Aspect ratio.
-    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict.pop("ar_embedder.mlp.0.weight")
-    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.bias"] = state_dict.pop("ar_embedder.mlp.0.bias")
-    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict.pop("ar_embedder.mlp.2.weight")
-    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.bias"] = state_dict.pop("ar_embedder.mlp.2.bias")
+    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict.pop(
+        "ar_embedder.mlp.0.weight"
+    )
+    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.bias"] = state_dict.pop(
+        "ar_embedder.mlp.0.bias"
+    )
+    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict.pop(
+        "ar_embedder.mlp.2.weight"
+    )
+    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.bias"] = state_dict.pop(
+        "ar_embedder.mlp.2.bias"
+    )
     # Shared norm.
     converted_state_dict["adaln_single.linear.weight"] = state_dict.pop("t_block.1.weight")
     converted_state_dict["adaln_single.linear.bias"] = state_dict.pop("t_block.1.bias")
 
     for depth in range(28):
         # Transformer blocks.
-        converted_state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = state_dict.pop(f"blocks.{depth}.scale_shift_table")
+        converted_state_dict[f"transformer_blocks.{depth}.scale_shift_table"] = state_dict.pop(
+            f"blocks.{depth}.scale_shift_table"
+        )
 
         # Attention is all you need 🤘
 
@@ -67,13 +88,23 @@ def main(args):
         converted_state_dict[f"transformer_blocks.{depth}.attn1.to_out.0.weight"] = state_dict.pop(
             f"blocks.{depth}.attn.proj.weight"
         )
-        converted_state_dict[f"transformer_blocks.{depth}.attn1.to_out.0.bias"] = state_dict.pop(f"blocks.{depth}.attn.proj.bias")
+        converted_state_dict[f"transformer_blocks.{depth}.attn1.to_out.0.bias"] = state_dict.pop(
+            f"blocks.{depth}.attn.proj.bias"
+        )
 
         # Feed-forward.
-        converted_state_dict[f"transformer_blocks.{depth}.ff.net.0.proj.weight"] = state_dict.pop(f"blocks.{depth}.mlp.fc1.weight")
-        converted_state_dict[f"transformer_blocks.{depth}.ff.net.0.proj.bias"] = state_dict.pop(f"blocks.{depth}.mlp.fc1.bias")
-        converted_state_dict[f"transformer_blocks.{depth}.ff.net.2.weight"] = state_dict.pop(f"blocks.{depth}.mlp.fc2.weight")
-        converted_state_dict[f"transformer_blocks.{depth}.ff.net.2.bias"] = state_dict.pop(f"blocks.{depth}.mlp.fc2.bias")
+        converted_state_dict[f"transformer_blocks.{depth}.ff.net.0.proj.weight"] = state_dict.pop(
+            f"blocks.{depth}.mlp.fc1.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{depth}.ff.net.0.proj.bias"] = state_dict.pop(
+            f"blocks.{depth}.mlp.fc1.bias"
+        )
+        converted_state_dict[f"transformer_blocks.{depth}.ff.net.2.weight"] = state_dict.pop(
+            f"blocks.{depth}.mlp.fc2.weight"
+        )
+        converted_state_dict[f"transformer_blocks.{depth}.ff.net.2.bias"] = state_dict.pop(
+            f"blocks.{depth}.mlp.fc2.bias"
+        )
 
         # Cross-attention.
         q = state_dict.pop(f"blocks.{depth}.cross_attn.q_linear.weight")
@@ -158,9 +189,7 @@ if __name__ == "__main__":
         required=False,
         help="Image size of pretrained model, either 512 or 1024.",
     )
-    parser.add_argument(
-        "--dump_path", default=None, type=str, required=True, help="Path to the output pipeline."
-    )
+    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
 
     args = parser.parse_args()
     main(args)

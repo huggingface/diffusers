@@ -14,20 +14,24 @@
 # limitations under the License.
 
 import gc
+import tempfile
 import unittest
 
-import tempfile
 import numpy as np
 import torch
-
-from ..test_pipelines_common import to_np
-from diffusers import AutoencoderKL, DDIMScheduler, PixArtAlphaPipeline, DPMSolverMultistepScheduler, Transformer2DModel
-from diffusers.utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
 from transformers import AutoTokenizer, T5EncoderModel
 
-from ..test_pipelines_common import PipelineTesterMixin
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    PixArtAlphaPipeline,
+    Transformer2DModel,
+)
+from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
+
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import PipelineTesterMixin, to_np
 
 
 enable_full_determinism()
@@ -67,7 +71,13 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
 
-        components = {"transformer": transformer.eval(), "vae": vae.eval(), "scheduler": scheduler, "text_encoder": text_encoder, "tokenizer": tokenizer}
+        components = {
+            "transformer": transformer.eval(),
+            "vae": vae.eval(),
+            "scheduler": scheduler,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+        }
         return components
 
     def get_dummy_inputs(self, device, seed=0):

@@ -109,10 +109,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             if model is not None:
                 remove_hook_from_module(model, recurse=True)
 
-        self.transformer_offload_hook = None
-        self.text_encoder_offload_hook = None
-        self.final_offload_hook = None
-
     # TODO:
     # Align so that can use:
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
@@ -636,11 +632,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        self.prepare_extra_step_kwargs(generator, eta)
-
-        # HACK: see comment in `enable_model_cpu_offload`
-        if hasattr(self, "text_encoder_offload_hook") and self.text_encoder_offload_hook is not None:
-            self.text_encoder_offload_hook.offload()
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Prepare micro-conditions.
         resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
@@ -700,7 +692,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
-                latent_model_input = self.scheduler.step(noise_pred, t, latent_model_input, return_dict=False)[0]
+                latent_model_input = self.scheduler.step(
+                    noise_pred, t, latent_model_input, **extra_step_kwargs, return_dict=False
+                )[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -714,7 +708,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             else:
                 latents = latent_model_input
 
-        print(f"Final latents: {latents.shape}")
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
