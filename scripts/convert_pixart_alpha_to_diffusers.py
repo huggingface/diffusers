@@ -152,7 +152,7 @@ def main(args):
     )
     missing, _ = transformer.load_state_dict(converted_state_dict, strict=False)
 
-    assert missing == "pos_embed.pos_embed"
+    assert missing == ["pos_embed.pos_embed"]
     assert transformer.pos_embed.pos_embed is not None
     state_dict.pop("pos_embed")
 
