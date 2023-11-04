@@ -8,7 +8,6 @@ from diffusers import AutoencoderKL, DPMSolverMultistepScheduler, PixArtAlphaPip
 
 
 ckpt_id = "PixArt-alpha/PixArt-alpha"
-pretrained_models = {512: "", 1024: "pixartAXL21024x1024_v10.pt"}
 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/scripts/inference.py#L125
 interpolation_scale = {512: 1, 1024: 2}
 
