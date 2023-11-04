@@ -590,7 +590,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+        self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Prepare micro-conditions.
         resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
@@ -650,9 +650,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
-                latent_model_input = self.scheduler.step(
-                    noise_pred, t, latent_model_input, **extra_step_kwargs, return_dict=False
-                )[0]
+                latent_model_input = self.scheduler.step(noise_pred, t, latent_model_input, return_dict=False)[0]
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
