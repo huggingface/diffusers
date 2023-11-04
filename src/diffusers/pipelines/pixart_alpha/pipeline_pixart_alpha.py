@@ -567,9 +567,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             clean_caption=clean_caption,
         )
         prompt_embeds = prompt_embeds.unsqueeze(1)
-        print("prompt_embeds: {prompt_embeds.shape}")
+        print(f"prompt_embeds: {prompt_embeds.shape}")
         masked_prompt_embeds, keep_indices = self.mask_feature(prompt_embeds, prompt_embeds_attention_mask)
-        masked_prompt_embeds = masked_prompt_embeds.sequeeze(1)
+        masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
         masked_negative_prompt_embeds = negative_prompt_embeds[:, :keep_indices, :]
 
         if do_classifier_free_guidance:
