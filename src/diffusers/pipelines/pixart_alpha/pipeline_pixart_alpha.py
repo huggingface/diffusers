@@ -48,7 +48,6 @@ if is_ftfy_available():
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-
         ```
 """
 
@@ -99,15 +98,14 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    def remove_all_hooks(self):
-        if is_accelerate_available():
-            from accelerate.hooks import remove_hook_from_module
+    # Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/utils.py
+    def mask_feature(self, emb, mask):
+        if emb.shape[0] == 1:
+            keep_index = mask.sum().item()
+            return emb[:, :, :keep_index, :], keep_index
         else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        for model in [self.text_encoder, self.transformer]:
-            if model is not None:
-                remove_hook_from_module(model, recurse=True)
+            masked_feature = emb * mask[:, None, :, None]
+            return masked_feature, emb.shape[2]
 
     # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
@@ -176,6 +174,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 )
 
             attention_mask = text_inputs.attention_mask.to(device)
+            prompt_embeds_attention_mask = attention_mask
 
             prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
             prompt_embeds = prompt_embeds[0]
@@ -231,7 +230,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         else:
             negative_prompt_embeds = None
 
-        return prompt_embeds, negative_prompt_embeds
+        return prompt_embeds, negative_prompt_embeds, prompt_embeds_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -558,7 +557,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds, prompt_embeds_attention_mask = self.encode_prompt(
             prompt,
             do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
@@ -567,9 +566,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             negative_prompt_embeds=negative_prompt_embeds,
             clean_caption=clean_caption,
         )
+        masked_prompt_embeds, keep_indices = self.mask_feature(prompt_embeds, prompt_embeds_attention_mask)
+        masked_negative_prompt_embeds = negative_prompt_embeds[:, :, :keep_indices, :]
 
         if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            prompt_embeds = torch.cat([masked_negative_prompt_embeds, masked_prompt_embeds], dim=0)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
