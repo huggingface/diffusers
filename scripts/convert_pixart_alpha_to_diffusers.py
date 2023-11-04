@@ -150,8 +150,9 @@ def main(args):
         caption_channels=4096,
         interpolation_scale=interpolation_scale[args.image_size],
     )
-    transformer.load_state_dict(converted_state_dict, strict=True)
+    missing, _ = transformer.load_state_dict(converted_state_dict, strict=False)
 
+    assert missing == "pos_embed.pos_embed"
     assert transformer.pos_embed.pos_embed is not None
     state_dict.pop("pos_embed")
 
