@@ -567,7 +567,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             clean_caption=clean_caption,
         )
         prompt_embeds = prompt_embeds.unsqueeze(1)
-        print(f"prompt_embeds: {prompt_embeds.shape}")
         masked_prompt_embeds, keep_indices = self.mask_feature(prompt_embeds, prompt_embeds_attention_mask)
         masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
         masked_negative_prompt_embeds = negative_prompt_embeds[:, :keep_indices, :]
@@ -590,8 +589,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             device,
             generator,
             latents,
-        )
-        # latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+        )  
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -608,12 +606,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                # if do_classifier_free_guidance:
-                #     half = latent_model_input[: len(latent_model_input) // 2]
-                #     latent_model_input = torch.cat([half, half], dim=0)
-                # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 current_timestep = t
@@ -640,15 +633,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     return_dict=False,
                 )[0]
 
-                # # perform guidance
-                # if do_classifier_free_guidance:
-                #     eps, rest = noise_pred[:, :latent_channels], noise_pred[:, latent_channels:]
-                #     cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
-
-                #     half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
-                #     eps = torch.cat([half_eps, half_eps], dim=0)
-
-                #     noise_pred = torch.cat([eps, rest], dim=1)
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -661,7 +645,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     noise_pred = noise_pred
 
                 # compute previous image: x_t -> x_t-1
-                # latent_model_input = self.scheduler.step(noise_pred, t, latent_model_input, return_dict=False)[0]
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 # call the callback, if provided
@@ -669,13 +652,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
-                        # callback(step_idx, t, latent_model_input)
                         callback(step_idx, t, latents)
 
-            # if do_classifier_free_guidance:
-            #     latents, _ = latent_model_input.chunk(2, dim=0)
-            # else:
-            #     latents = latent_model_input
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
