@@ -6,6 +6,7 @@ import torch
 from safetensors.torch import save_file
 from tqdm import tqdm
 
+
 def ema_scope(model):
     model_ema = LitEma(model)
     model_ema.store(model.parameters())
@@ -14,6 +15,7 @@ def ema_scope(model):
         yield None
     finally:
         model_ema.restore(model.parameters())
+
 
 def replace1_string_ldm3d2sd(input_string):
     # Define the regular expression pattern
@@ -128,7 +130,7 @@ def convert_vae_weights(ldm3d_vae, sd_hf_vae, new_path):
                             checker.append(k)
                 else:
                     new_ldm3d_vae[new_k] = v
-              #  new_ldm3d_vae_ema[new_k] = v_ema
+            #  new_ldm3d_vae_ema[new_k] = v_ema
     # assert len(checker) == 0
     assert len(new_ldm3d_vae) == len(sd_hf_vae), f"Size new: {len(new_ldm3d_vae)}, size to be: {len(sd_hf_vae)}"
     torch.save(new_ldm3d_vae, new_path)
@@ -278,8 +280,11 @@ if __name__ == "__main__":
         "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument(
-        "--diffusers_like_checkpoint_path",  type=str, required=True, 
-        default="/export/share/projects/mcai/ldm3d/ckpts/hf/ldm3d-v1", help="Path to the checkpoint to convert."
+        "--diffusers_like_checkpoint_path",
+        type=str,
+        required=True,
+        default="/export/share/projects/mcai/ldm3d/ckpts/hf/ldm3d-v1",
+        help="Path to the checkpoint to convert.",
     )
     parser.add_argument(
         "--new_folder_name",
@@ -288,11 +293,7 @@ if __name__ == "__main__":
         required=True,
         help="Path to the checkpoint to convert.",
     )
-    parser.add_argument(
-        "--use_ema",
-        action="store_true",
-        help="Whether or not using ema from the original ckpt"
-    )
+    parser.add_argument("--use_ema", action="store_true", help="Whether or not using ema from the original ckpt")
     # parser.add_argument(
     #     "--model_type",
     #     type=str,
@@ -314,7 +315,6 @@ if __name__ == "__main__":
     sd_hf_unet = torch.load(os.path.join(args.diffusers_like_checkpoint_path, "unet", "diffusion_pytorch_model.bin"))
     sd_hf_vae = torch.load(os.path.join(args.diffusers_like_checkpoint_path, "vae", "diffusion_pytorch_model.bin"))
 
-
     new_ldm3d_vae = convert_vae_weights(ldm3d_before_conversion, sd_hf_vae, new_path_vae)
     new_ldm3d_unet, new_ldm3d_unet_ema = convert_unet_weights(ldm3d_before_conversion, sd_hf_unet, new_path_unet)
 
@@ -323,7 +323,7 @@ if __name__ == "__main__":
     save_file(new_ldm3d_unet, os.path.join(args.new_folder_name, "unet/new_diffusion_pytorch_model.safetensors"))
     save_file(new_ldm3d_unet_ema, os.path.join(args.new_folder_name, "unet/new_diffusion_pytorch_model.safetensors"))
 
-#python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr_v1_lr_depth/logs/2023-09-06T01-47-29_upscaling_512_ldm3d_test/checkpoints/epoch=000000.ckpt --diffusers_like_checkpoint_path /home/estellea/LDM3D_checkpoint/ldm3d-hr --new_folder_name /home/estellea/LDM3D_checkpoint/ldm3d-hr --use_ema
+# python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr_v1_lr_depth/logs/2023-09-06T01-47-29_upscaling_512_ldm3d_test/checkpoints/epoch=000000.ckpt --diffusers_like_checkpoint_path /home/estellea/LDM3D_checkpoint/ldm3d-hr --new_folder_name /home/estellea/LDM3D_checkpoint/ldm3d-hr --use_ema
 
 
-# python convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/checkpoints/stable-diffusion/logs/AE_laion_256_100k/lr/AE_f8_all_loss_i256x256x4_op1_l32x32x4_lr1e4/2023-05-24T01-27-22_autoencoder_kl_32x32x4_depth_all_loss_laion_256_100k_rgbd_4ch_option1_lr1e4/checkpoints/last.ckpt --diffusers_like_checkpoint_path /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr --new_folder_name /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr-updated --model_type upscale 
+# python convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/checkpoints/stable-diffusion/logs/AE_laion_256_100k/lr/AE_f8_all_loss_i256x256x4_op1_l32x32x4_lr1e4/2023-05-24T01-27-22_autoencoder_kl_32x32x4_depth_all_loss_laion_256_100k_rgbd_4ch_option1_lr1e4/checkpoints/last.ckpt --diffusers_like_checkpoint_path /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr --new_folder_name /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr-updated --model_type upscale

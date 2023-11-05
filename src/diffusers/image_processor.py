@@ -219,7 +219,7 @@ class VaeImageProcessor(ConfigMixin):
         Resize image.
         """
         if isinstance(image, PIL.Image.Image):
-            image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample]) 
+            image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
         elif isinstance(image, torch.Tensor):
             image = torch.nn.functional.interpolate(
                 image,
@@ -410,7 +410,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             # special case for grayscale (single channel) images
             pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
         else:
-            pil_images = [Image.fromarray(image[:, :, :3]) for image in images]  #TODO Estelle [:,:,::-1]
+            pil_images = [Image.fromarray(image[:, :, :3]) for image in images]  # TODO Estelle [:,:,::-1]
 
         return pil_images
 
@@ -418,16 +418,15 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
     def depth_pil_to_numpy(images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
         """
         Convert a PIL image or a list of PIL images to NumPy arrays.
-        """   
+        """
         if not isinstance(images, list):
             images = [images]
 
-        images = [np.array(image).astype(np.float32) /  (2**16 - 1) for image in images]
+        images = [np.array(image).astype(np.float32) / (2**16 - 1) for image in images]
         images = np.stack(images, axis=0)
         # images = images *2 -1
         # images = (images * 127.5 + 127.5)/255
         return images
-    
 
     @staticmethod
     def rgblike_to_depthmap(image):
@@ -499,7 +498,6 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         else:
             raise Exception(f"This type {output_type} is not supported")
 
-
     def preprocess(
         self,
         rgb: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
@@ -546,7 +544,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             height, width = self.get_default_height_width(rgb, height, width)
             if self.config.do_resize:
                 rgb = self.resize(rgb, height, width)
-            
+
             depth = np.concatenate(depth, axis=0) if rgb[0].ndim == 4 else np.stack(depth, axis=0)
             depth = self.numpy_to_pt(depth)
             height, width = self.get_default_height_width(depth, height, width)
@@ -561,7 +559,6 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             #     rgb = rgb.unsqueeze(1)
 
             # channel = rgb.shape[1]
-
 
             # height, width = self.get_default_height_width(rgb, height, width)
             # if self.config.do_resize:

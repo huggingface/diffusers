@@ -15,27 +15,23 @@
 import inspect
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
-import warnings
 
 import numpy as np
 import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessorLDM3D, PipelineImageInput, PipelineDepthInput
-
+from ...image_processor import PipelineDepthInput, PipelineImageInput, VaeImageProcessorLDM3D
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import KarrasDiffusionSchedulers, DDPMScheduler
-
+from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import (
     BaseOutput,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -83,6 +79,7 @@ class LDM3DPipelineOutput(BaseOutput):
     rgb: Union[List[PIL.Image.Image], np.ndarray]
     depth: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
+
 
 class StableDiffusionUpscaleLDM3DPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
@@ -136,8 +133,6 @@ class StableDiffusionUpscaleLDM3DPipeline(
         requires_safety_checker: bool = True,
         watermarker: Optional[Any] = None,
         max_noise_level: int = 350,
-
-
     ):
         super().__init__()
 
@@ -172,8 +167,6 @@ class StableDiffusionUpscaleLDM3DPipeline(
         self.image_processor = VaeImageProcessorLDM3D(vae_scale_factor=self.vae_scale_factor, resample="bilinear")
         # self.register_to_config(requires_safety_checker=requires_safety_checker)
         self.register_to_config(max_noise_level=max_noise_level)
-
-
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
@@ -438,7 +431,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
-        target_res=None
+        target_res=None,
     ):
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -568,7 +561,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        target_res: Optional[ List[int]] = [1024, 1024],
+        target_res: Optional[List[int]] = [1024, 1024],
     ):
         r"""
         The call function to the pipeline for generation.
@@ -687,7 +680,6 @@ class StableDiffusionUpscaleLDM3DPipeline(
         # rgb = self.low_res_scheduler.add_noise(rgb, noise_rgb, noise_level)
         # noise_depth = randn_tensor(depth.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
         # depth = self.low_res_scheduler.add_noise(depth, noise_depth, noise_level)
-        
 
         batch_multiplier = 2 if do_classifier_free_guidance else 1
         latent_space_image = torch.cat([latent_space_image] * batch_multiplier * num_images_per_prompt)
@@ -707,7 +699,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
             generator,
             latents,
         )
-        
+
         # 8. Check that sizes of image and latents match
         num_channels_image = latent_space_image.shape[1]
         if num_channels_latents + num_channels_image != self.unet.config.in_channels:
@@ -728,7 +720,7 @@ class StableDiffusionUpscaleLDM3DPipeline(
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                
+
                 # concat latents, mask, masked_image_latents in the channel dimension
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                 latent_model_input = torch.cat([latent_model_input, latent_space_image], dim=1)
