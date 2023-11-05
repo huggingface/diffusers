@@ -426,21 +426,21 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
         if isinstance(midi, PrettyMIDI):
             midi = [midi]
 
-        piano_roll = []
+            piano_roll = []
 
-        for midi_ in midi:
-            for instrument in midi_.instruments:
-                if include_drums:
-                    instrument.is_drum = False
-            piano_roll_ = midi_.get_piano_roll(pedal_threshold=None, fs=200)
-            piano_roll_ = piano_roll_[:,:int(audio_length_in_s*200)]
-            if piano_roll_.shape[1] < int(audio_length_in_s*200)-1:
-                piano_roll_ = np.pad(piano_roll_, [(0, 0), (0, int(audio_length_in_s*200)-piano_roll_.shape[1]-1)])
-            piano_roll_ = piano_roll_.T[None,None,:,:]
-            piano_roll.append(piano_roll_)
-        
-        piano_roll = np.concatenate(piano_roll, axis=0)
-        piano_roll = torch.from_numpy(piano_roll)
+            for midi_ in midi:
+                for instrument in midi_.instruments:
+                    if include_drums:
+                        instrument.is_drum = False
+                piano_roll_ = midi_.get_piano_roll(pedal_threshold=None, fs=200)
+                piano_roll_ = piano_roll_[:,:int(audio_length_in_s*200)]
+                if piano_roll_.shape[1] < int(audio_length_in_s*200)-1:
+                    piano_roll_ = np.pad(piano_roll_, [(0, 0), (0, int(audio_length_in_s*200)-piano_roll_.shape[1]-1)])
+                piano_roll_ = piano_roll_.T[None,None,:,:]
+                piano_roll.append(piano_roll_)
+
+            piano_roll = np.concatenate(piano_roll, axis=0)
+            piano_roll = torch.from_numpy(piano_roll)
 
         piano_roll_batch_size = piano_roll.shape[0]
 
@@ -498,7 +498,7 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        midi: Union[PrettyMIDI, List[PrettyMIDI]] = None,
+        midi: Union[PrettyMIDI, List[PrettyMIDI], torch.FloatTensor] = None,
         audio_length_in_s: Optional[float] = None,
         num_inference_steps: int = 10,
         guidance_scale: float = 2.5,
