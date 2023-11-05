@@ -179,6 +179,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
 
+# TODO: needs to be updated.
 @nightly
 @require_torch_gpu
 class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
@@ -187,38 +188,22 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_dit_256(self):
+    def test_pixart_1024(self):
         generator = torch.manual_seed(0)
 
-        pipe = PixArtAlphaPipeline.from_pretrained("facebook/PixArtAlpha-XL-2-256")
+        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
         pipe.to("cuda")
 
-        words = ["vase", "umbrella", "white shark", "white wolf"]
-        ids = pipe.get_label_ids(words)
+        images = pipe("hey", generator=generator, num_inference_steps=2, output_type="np").images
 
-        images = pipe(ids, generator=generator, num_inference_steps=40, output_type="np").images
+        # TODO update
 
-        for word, image in zip(words, images):
-            expected_image = load_numpy(
-                f"https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/dit/{word}.npy"
-            )
-            assert np.abs((expected_image - image).max()) < 1e-2
-
-    def test_dit_512(self):
-        pipe = PixArtAlphaPipeline.from_pretrained("facebook/PixArtAlpha-XL-2-512")
-        pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-        pipe.to("cuda")
-
-        words = ["vase", "umbrella"]
-        ids = pipe.get_label_ids(words)
-
+    def test_pixart_512(self):
         generator = torch.manual_seed(0)
-        images = pipe(ids, generator=generator, num_inference_steps=25, output_type="np").images
 
-        for word, image in zip(words, images):
-            expected_image = load_numpy(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                f"/dit/{word}_512.npy"
-            )
+        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-512x512", torch_dtype=torch.float16)
+        pipe.to("cuda")
 
-            assert np.abs((expected_image - image).max()) < 1e-1
+        images = pipe("hey", generator=generator, num_inference_steps=2, output_type="np").images
+
+        # TODO update

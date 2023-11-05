@@ -247,6 +247,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         # Perform additional masking.
         if mask_feature:
+            print(f"Starting mask feature with: prompt_embeds: {prompt_embeds.shape} prompt_embeds_attention_mask: {prompt_embeds_attention_mask.shape}")
             prompt_embeds = prompt_embeds.unsqueeze(1)
             masked_prompt_embeds, keep_indices = self.mask_text_embeddings(
                 prompt_embeds, prompt_embeds_attention_mask
