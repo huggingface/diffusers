@@ -92,6 +92,16 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(encoder_output, generator):
+    if hasattr(encoder_output, "latent_dist"):
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class StableDiffusionXLImg2ImgPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin
 ):
@@ -553,8 +563,20 @@ class StableDiffusionXLImg2ImgPipeline(
                     - (denoising_start * self.scheduler.config.num_train_timesteps)
                 )
             )
-            timesteps = list(filter(lambda ts: ts < discrete_timestep_cutoff, timesteps))
-            return torch.tensor(timesteps), len(timesteps)
+
+            num_inference_steps = (timesteps < discrete_timestep_cutoff).sum().item()
+            if self.scheduler.order == 2 and num_inference_steps % 2 == 0:
+                # if the scheduler is a 2nd order scheduler we might have to do +1
+                # because `num_inference_steps` might be even given that every timestep
+                # (except the highest one) is duplicated. If `num_inference_steps` is even it would
+                # mean that we cut the timesteps in the middle of the denoising step
+                # (between 1st and 2nd devirative) which leads to incorrect results. By adding 1
+                # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
+                num_inference_steps = num_inference_steps + 1
+
+            # because t_n+1 >= t_n, we slice the timesteps starting from the end
+            timesteps = timesteps[-num_inference_steps:]
+            return timesteps, num_inference_steps
 
         return timesteps, num_inference_steps - t_start
 
@@ -592,11 +614,12 @@ class StableDiffusionXLImg2ImgPipeline(
 
             elif isinstance(generator, list):
                 init_latents = [
-                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                    for i in range(batch_size)
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
             else:
-                init_latents = self.vae.encode(image).latent_dist.sample(generator)
+                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
             if self.vae.config.force_upcast:
                 self.vae.to(dtype)

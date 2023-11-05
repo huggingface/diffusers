@@ -79,6 +79,7 @@ else:
             "AutoencoderTiny",
             "ControlNetModel",
             "ModelMixin",
+            "MotionAdapter",
             "MultiAdapter",
             "PriorTransformer",
             "T2IAdapter",
@@ -88,6 +89,7 @@ else:
             "UNet2DConditionModel",
             "UNet2DModel",
             "UNet3DConditionModel",
+            "UNetMotionModel",
             "VQModel",
         ]
     )
@@ -142,6 +144,7 @@ else:
             "KarrasVeScheduler",
             "KDPM2AncestralDiscreteScheduler",
             "KDPM2DiscreteScheduler",
+            "LCMScheduler",
             "PNDMScheduler",
             "RePaintScheduler",
             "SchedulerMixin",
@@ -194,6 +197,7 @@ else:
         [
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
+            "AnimateDiffPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
@@ -226,6 +230,8 @@ else:
             "KandinskyV22Pipeline",
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
+            "LatentConsistencyModelImg2ImgPipeline",
+            "LatentConsistencyModelPipeline",
             "LDMTextToImagePipeline",
             "MusicLDMPipeline",
             "PaintByExamplePipeline",
@@ -438,6 +444,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             ControlNetModel,
             ModelMixin,
+            MotionAdapter,
             MultiAdapter,
             PriorTransformer,
             T2IAdapter,
@@ -447,6 +454,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet2DConditionModel,
             UNet2DModel,
             UNet3DConditionModel,
+            UNetMotionModel,
             VQModel,
         )
         from .optimization import (
@@ -499,6 +507,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KarrasVeScheduler,
             KDPM2AncestralDiscreteScheduler,
             KDPM2DiscreteScheduler,
+            LCMScheduler,
             PNDMScheduler,
             RePaintScheduler,
             SchedulerMixin,
@@ -534,6 +543,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
+            AnimateDiffPipeline,
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
@@ -564,6 +574,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
+            LatentConsistencyModelImg2ImgPipeline,
+            LatentConsistencyModelPipeline,
             LDMTextToImagePipeline,
             MusicLDMPipeline,
             PaintByExamplePipeline,

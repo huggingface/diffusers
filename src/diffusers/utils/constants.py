@@ -23,6 +23,7 @@ from .import_utils import is_peft_available, is_transformers_available
 default_cache_path = HUGGINGFACE_HUB_CACHE
 
 MIN_PEFT_VERSION = "0.5.0"
+MIN_TRANSFORMERS_VERSION = "4.33.3"
 
 
 CONFIG_NAME = "config.json"
@@ -46,6 +47,6 @@ _required_peft_version = is_peft_available() and version.parse(
 ) > version.parse(MIN_PEFT_VERSION)
 _required_transformers_version = is_transformers_available() and version.parse(
     version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse("4.33")
+) > version.parse(MIN_TRANSFORMERS_VERSION)
 
 USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version

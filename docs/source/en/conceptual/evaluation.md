@@ -32,7 +32,7 @@ The methods shown in this document can also be used to evaluate different [noise
 We cover Diffusion models with the following pipelines:
 
 - Text-guided image generation (such as the [`StableDiffusionPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/text2img)).
-- Text-guided image generation, additionally conditioned on an input image (such as the [`StableDiffusionImg2ImgPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/img2img), and [`StableDiffusionInstructPix2PixPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix)).
+- Text-guided image generation, additionally conditioned on an input image (such as the [`StableDiffusionImg2ImgPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/img2img) and [`StableDiffusionInstructPix2PixPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix)).
 - Class-conditioned image generation models (such as the [`DiTPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/dit)).
 
 ## Qualitative Evaluation
@@ -87,7 +87,7 @@ import torch
 seed = 0
 generator = torch.manual_seed(seed)
 
-images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
+images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generator).images
 ```
 
 ![parti-prompts-14](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-14.png)
@@ -141,7 +141,7 @@ prompts = [
     "A small cabin on top of a snowy mountain in the style of Disney, artstation",
 ]
 
-images = sd_pipeline(prompts, num_images_per_prompt=1, output_type="numpy").images
+images = sd_pipeline(prompts, num_images_per_prompt=1, output_type="np").images
 
 print(images.shape)
 # (6, 512, 512, 3)
@@ -155,12 +155,10 @@ from functools import partial
 
 clip_score_fn = partial(clip_score, model_name_or_path="openai/clip-vit-base-patch16")
 
-
 def calculate_clip_score(images, prompts):
     images_int = (images * 255).astype("uint8")
     clip_score = clip_score_fn(torch.from_numpy(images_int).permute(0, 3, 1, 2), prompts).detach()
     return round(float(clip_score), 4)
-
 
 sd_clip_score = calculate_clip_score(images, prompts)
 print(f"CLIP score: {sd_clip_score}")
@@ -176,7 +174,7 @@ fixed seed with the [v1-4 Stable Diffusion checkpoint](https://huggingface.co/Co
 seed = 0
 generator = torch.manual_seed(seed)
 
-images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
+images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
 
 Then we load the [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffusion-v1-5) to generate images: 
@@ -185,7 +183,7 @@ Then we load the [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffus
 model_ckpt_1_5 = "runwayml/stable-diffusion-v1-5"
 sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=weight_dtype).to(device)
 
-images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
+images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
 
 And finally, we compare their CLIP scores:
@@ -295,11 +293,10 @@ def edit_image(input_image, instruction):
     image = instruct_pix2pix_pipeline(
         instruction,
         image=input_image,
-        output_type="numpy",
+        output_type="np",
         generator=generator,
     ).images[0]
     return image
-
 
 input_images = []
 original_captions = []
@@ -417,7 +414,7 @@ It should be noted that the `StableDiffusionInstructPix2PixPipeline` exposes t
 
 We can extend the idea of this metric to measure how similar the original image and edited version are. To do that, we can just do `F.cosine_similarity(img_feat_two, img_feat_one)`. For these kinds of edits, we would still want the primary semantics of the images to be preserved as much as possible, i.e., a high similarity score.
 
-We can use these metrics for similar pipelines such as the [`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline).
+We can use these metrics for similar pipelines such as the [`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline).
 
 <Tip>
 
@@ -427,7 +424,7 @@ Both CLIP score and CLIP direction similarity rely on the CLIP model, which can 
 
 ***Extending metrics like IS, FID (discussed later), or KID can be difficult*** when the model under evaluation was pre-trained on a large image-captioning dataset (such as the [LAION-5B dataset](https://laion.ai/blog/laion-5b/)). This is because underlying these metrics is an InceptionNet (pre-trained on the ImageNet-1k dataset) used for extracting intermediate image features. The pre-training dataset of Stable Diffusion may have limited overlap with the pre-training dataset of InceptionNet, so it is not a good candidate here for feature extraction.
 
-***Using the above metrics helps evaluate models that are class-conditioned. For example, [DiT](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/overview). It was pre-trained being conditioned on the ImageNet-1k classes.***
+***Using the above metrics helps evaluate models that are class-conditioned. For example, [DiT](https://huggingface.co/docs/diffusers/main/en/api/pipelines/dit). It was pre-trained being conditioned on the ImageNet-1k classes.***
 
 ### Class-conditioned image generation
 
@@ -452,7 +449,6 @@ def download(url, local_filepath):
         f.write(r.content)
     return local_filepath
 
-
 dummy_dataset_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/sample-imagenet-images.zip"
 local_filepath = download(dummy_dataset_url, dummy_dataset_url.split("/")[-1])
 
@@ -470,7 +466,7 @@ image_paths = sorted([os.path.join(dataset_path, x) for x in os.listdir(dataset_
 real_images = [np.array(Image.open(path).convert("RGB")) for path in image_paths]
 ```
 
-These are 10 images from the following Imagenet-1k classes: "cassette_player", "chain_saw" (x2), "church", "gas_pump" (x3), "parachute" (x2), and "tench".
+These are 10 images from the following ImageNet-1k classes: "cassette_player", "chain_saw" (x2), "church", "gas_pump" (x3), "parachute" (x2), and "tench".
 
 <p align="center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/real-images.png" alt="real-images"><br>
@@ -487,7 +483,6 @@ def preprocess_image(image):
     image = torch.tensor(image).unsqueeze(0)
     image = image.permute(0, 3, 1, 2) / 255.0
     return F.center_crop(image, (256, 256))
-
 
 real_images = torch.cat([preprocess_image(image) for image in real_images])
 print(real_images.shape)
@@ -517,7 +512,7 @@ words = [
 ]
 
 class_ids = dit_pipeline.get_label_ids(words)
-output = dit_pipeline(class_labels=class_ids, generator=generator, output_type="numpy")
+output = dit_pipeline(class_labels=class_ids, generator=generator, output_type="np")
 
 fake_images = output.images
 fake_images = torch.tensor(fake_images)
