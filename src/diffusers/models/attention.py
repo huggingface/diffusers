@@ -117,21 +117,19 @@ class BasicTransformerBlock(nn.Module):
         double_self_attention: bool = False,
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",
+        norm_type: str = "layer_norm",   # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single'
         final_dropout: bool = False,
         attention_type: str = "default",
-        caption_channels: int = None,
         positional_embeddings: Optional[str] = None,
         num_positional_embeddings: Optional[int] = None,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
-        self.caption_channels = caption_channels
 
-        self.use_ada_layer_norm_zero = (
-            num_embeds_ada_norm is not None and caption_channels is None
-        ) and norm_type == "ada_norm_zero"
+        self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
+        self.use_ada_layer_norm_single = norm_type == "ada_norm_single"
+        self.use_layer_norm = norm_type == "layer_norm"
 
         if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
             raise ValueError(
@@ -155,10 +153,8 @@ class BasicTransformerBlock(nn.Module):
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
         elif self.use_ada_layer_norm_zero:
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
-        elif caption_channels is None:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         else:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
         self.attn1 = Attention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -174,14 +170,11 @@ class BasicTransformerBlock(nn.Module):
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
             # the second cross attention block.
-            if self.caption_channels is None:
-                self.norm2 = (
-                    AdaLayerNorm(dim, num_embeds_ada_norm)
-                    if self.use_ada_layer_norm
-                    else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
-                )
-            else:
-                self.norm2 = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
+            self.norm2 = (
+                AdaLayerNorm(dim, num_embeds_ada_norm)
+                if self.use_ada_layer_norm
+                else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
+            )
             self.attn2 = Attention(
                 query_dim=dim,
                 cross_attention_dim=cross_attention_dim if not double_self_attention else None,
@@ -196,7 +189,7 @@ class BasicTransformerBlock(nn.Module):
             self.attn2 = None
 
         # 3. Feed-forward
-        if caption_channels is None:
+        if not self.use_ada_norm_single
             self.norm3 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine)
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout)
 
@@ -205,8 +198,8 @@ class BasicTransformerBlock(nn.Module):
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
         # 5. Scale-shift for PixArt-Alpha.
-        if caption_channels is not None:
-            self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
+        if self.use_ada_norm_single:
+            self.scale_shift_params = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
         # let chunk size default to None
         self._chunk_size = None
@@ -237,15 +230,17 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
                 hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
             )
-        elif self.caption_channels is None:
+        elif self.use_layer_norm:
             norm_hidden_states = self.norm1(hidden_states)
-        else:
+        elif self.use_ada_layer_norm_single:
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
             norm_hidden_states = self.norm1(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_msa) + shift_msa
             norm_hidden_states = norm_hidden_states.squeeze(1)
+        else:
+            raise ValueError("Incorrect norm used")
 
         if self.pos_embed is not None:
             norm_hidden_states = self.pos_embed(norm_hidden_states)
@@ -265,7 +260,7 @@ class BasicTransformerBlock(nn.Module):
         )
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
-        elif self.caption_channels is not None:
+        elif self.use_ada_layer_norm_single:
             attn_output = gate_msa * attn_output
 
         hidden_states = attn_output + hidden_states
@@ -280,9 +275,9 @@ class BasicTransformerBlock(nn.Module):
         if self.attn2 is not None:
             if self.use_ada_layer_norm:
                 norm_hidden_states = self.norm2(hidden_states, timestep)
-            elif self.caption_channels is None:
+            elif elif self.use_ada_layer_norm_zero or self.use_layer_norm:
                 norm_hidden_states = self.norm2(hidden_states)
-            else:
+            elif not self.use_ada_layer_norm_single:
                 # For PixArt norm2 isn't applied here:
                 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L70C1-L76C103
                 norm_hidden_states = hidden_states
@@ -299,13 +294,13 @@ class BasicTransformerBlock(nn.Module):
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward
-        if self.caption_channels is None:
+        if not self.use_ada_layer_norm_single:
             norm_hidden_states = self.norm3(hidden_states)
 
         if self.use_ada_layer_norm_zero:
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
-        if self.caption_channels is not None:
+        if not self.use_ada_layer_norm_single:
             norm_hidden_states = self.norm2(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
@@ -329,7 +324,7 @@ class BasicTransformerBlock(nn.Module):
 
         if self.use_ada_layer_norm_zero:
             ff_output = gate_mlp.unsqueeze(1) * ff_output
-        elif self.caption_channels is not None:
+        elif self.use_ada_layer_norm or self.use_layer_norm:
             ff_output = gate_mlp * ff_output
 
         hidden_states = ff_output + hidden_states
