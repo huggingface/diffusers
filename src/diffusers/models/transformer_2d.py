@@ -97,6 +97,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         caption_channels: int = None,
         output_type: str = "vanilla_dit",
         interpolation_scale: int = 1,
+        use_additional_conditions=False,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -225,7 +226,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.caption_projection = None
         self.adaln_single = None
         if caption_channels is not None:
-            self.adaln_single = AdaLayerNormSingle(inner_dim)
+            self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=use_additional_conditions)
             self.caption_projection = CaptionProjection(
                 in_features=caption_channels, hidden_size=inner_dim, class_dropout_prob=dropout
             )

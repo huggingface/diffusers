@@ -37,32 +37,33 @@ def main(args):
     )
     converted_state_dict["adaln_single.emb.timestep_embedder.linear_2.bias"] = state_dict.pop("t_embedder.mlp.2.bias")
 
-    # Resolution.
-    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.weight"] = state_dict.pop(
-        "csize_embedder.mlp.0.weight"
-    )
-    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.bias"] = state_dict.pop(
-        "csize_embedder.mlp.0.bias"
-    )
-    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.weight"] = state_dict.pop(
-        "csize_embedder.mlp.2.weight"
-    )
-    converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.bias"] = state_dict.pop(
-        "csize_embedder.mlp.2.bias"
-    )
-    # Aspect ratio.
-    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict.pop(
-        "ar_embedder.mlp.0.weight"
-    )
-    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.bias"] = state_dict.pop(
-        "ar_embedder.mlp.0.bias"
-    )
-    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict.pop(
-        "ar_embedder.mlp.2.weight"
-    )
-    converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.bias"] = state_dict.pop(
-        "ar_embedder.mlp.2.bias"
-    )
+    if args.image_size == 1024:
+        # Resolution.
+        converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.weight"] = state_dict.pop(
+            "csize_embedder.mlp.0.weight"
+        )
+        converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.bias"] = state_dict.pop(
+            "csize_embedder.mlp.0.bias"
+        )
+        converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.weight"] = state_dict.pop(
+            "csize_embedder.mlp.2.weight"
+        )
+        converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.bias"] = state_dict.pop(
+            "csize_embedder.mlp.2.bias"
+        )
+        # Aspect ratio.
+        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict.pop(
+            "ar_embedder.mlp.0.weight"
+        )
+        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.bias"] = state_dict.pop(
+            "ar_embedder.mlp.0.bias"
+        )
+        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict.pop(
+            "ar_embedder.mlp.2.weight"
+        )
+        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.bias"] = state_dict.pop(
+            "ar_embedder.mlp.2.bias"
+        )
     # Shared norm.
     converted_state_dict["adaln_single.linear.weight"] = state_dict.pop("t_block.1.weight")
     converted_state_dict["adaln_single.linear.bias"] = state_dict.pop("t_block.1.bias")
@@ -149,6 +150,7 @@ def main(args):
         output_type="pixart_dit",
         caption_channels=4096,
         interpolation_scale=interpolation_scale[args.image_size],
+        use_additional_conditions=args.image_size == 1024,
     )
     transformer.load_state_dict(converted_state_dict, strict=True)
 

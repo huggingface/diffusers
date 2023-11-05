@@ -85,12 +85,15 @@ class AdaLayerNormSingle(nn.Module):
 
     Parameters:
         embedding_dim (`int`): The size of each embedding vector.
+        use_additional_conditions (`bool`): To use additional conditions for normalization or not.
     """
 
-    def __init__(self, embedding_dim: int):
+    def __init__(self, embedding_dim: int, use_additional_conditions: bool = False):
         super().__init__()
 
-        self.emb = CombinedTimestepSizeEmbeddings(embedding_dim, size_emb_dim=embedding_dim // 3)
+        self.emb = CombinedTimestepSizeEmbeddings(
+            embedding_dim, size_emb_dim=embedding_dim // 3, use_additional_conditions=use_additional_conditions
+        )
 
         self.silu = nn.SiLU()
         self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)

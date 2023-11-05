@@ -763,21 +763,28 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
     https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L164C9-L168C29
     """
 
-    def __init__(self, embedding_dim, size_emb_dim):
+    def __init__(self, embedding_dim, size_emb_dim, use_additional_conditions: bool = False):
         super().__init__()
 
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
-        self.resolution_embedder = SizeEmbedder(size_emb_dim)
-        self.aspect_ratio_embedder = SizeEmbedder(size_emb_dim)
+
+        self.use_additional_conditions = use_additional_conditions
+        if use_additional_conditions:
+            self.use_additional_conditions = True
+            self.resolution_embedder = SizeEmbedder(size_emb_dim)
+            self.aspect_ratio_embedder = SizeEmbedder(size_emb_dim)
 
     def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
-        resolution = self.resolution_embedder(resolution, batch_size=batch_size)
-        aspect_ratio = self.aspect_ratio_embedder(aspect_ratio, batch_size=batch_size)
-        conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
+        if self.use_additional_conditions:
+            resolution = self.resolution_embedder(resolution, batch_size=batch_size)
+            aspect_ratio = self.aspect_ratio_embedder(aspect_ratio, batch_size=batch_size)
+            conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
+        else:
+            conditioning = timesteps_emb
 
         return conditioning
 
