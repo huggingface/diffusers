@@ -1141,7 +1141,7 @@ def main(args):
 
         if args.train_text_encoder:
             text_encoder_one = accelerator.unwrap_model(text_encoder_one)
-            text_encoder_lora_layers = text_encoder_lora_state_dict(text_encoder_one)
+            text_encoder_two = accelerator.unwrap_model(text_encoder_two)
 
             text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_one)
             text_encoder_2_lora_layers = get_peft_model_state_dict(text_encoder_two)
