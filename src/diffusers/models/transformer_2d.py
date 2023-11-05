@@ -93,10 +93,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         upcast_attention: bool = False,
         norm_type: str = "layer_norm",
         norm_elementwise_affine: bool = True,
+        norm_eps: float = 1e-5,
         attention_type: str = "default",
         caption_channels: int = None,
         output_type: str = "vanilla_dit",
-        interpolation_scale: int = 1,
         use_additional_conditions=False,
     ):
         super().__init__()
@@ -175,7 +175,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 patch_size=patch_size,
                 in_channels=in_channels,
                 embed_dim=inner_dim,
-                interpolation_scale=interpolation_scale,
+                interpolation_scale=self.config.sample_size // 64, # => 64 (= 512 pixart) has interpolation scale 1
             )
 
         # 3. Define transformers blocks
@@ -195,8 +195,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     upcast_attention=upcast_attention,
                     norm_type=norm_type,
                     norm_elementwise_affine=norm_elementwise_affine,
+                    norm_eps=norm_eps,
                     attention_type=attention_type,
-                    caption_channels=caption_channels,
                 )
                 for d in range(num_layers)
             ]
@@ -225,13 +225,14 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # 5. PixArt-Alpha blocks.
         self.caption_projection = None
         self.adaln_single = None
-        if caption_channels is not None:
+        if norm_type == "ada_norm_single":
             self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=use_additional_conditions)
+
+        if caption_channels is not None:
             self.caption_projection = CaptionProjection(
                 in_features=caption_channels, hidden_size=inner_dim, class_dropout_prob=dropout
             )
 
-        self.interpolation_scale = interpolation_scale
 
         self.gradient_checkpointing = False
 
