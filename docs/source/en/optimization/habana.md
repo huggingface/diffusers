@@ -10,25 +10,22 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# How to use Stable Diffusion on Habana Gaudi
+# Habana Gaudi
 
-🤗 Diffusers is compatible with Habana Gaudi through 🤗 [Optimum Habana](https://huggingface.co/docs/optimum/habana/usage_guides/stable_diffusion).
+🤗 Diffusers is compatible with Habana Gaudi through 🤗 [Optimum](https://huggingface.co/docs/optimum/habana/usage_guides/stable_diffusion). Follow the [installation](https://docs.habana.ai/en/latest/Installation_Guide/index.html) guide to install the SynapseAI and Gaudi drivers, and then install Optimum Habana:
 
-## Requirements
-
-- Optimum Habana 1.6 or later, [here](https://huggingface.co/docs/optimum/habana/installation) is how to install it.
-- SynapseAI 1.10.
-
-
-## Inference Pipeline
+```bash
+python -m pip install --upgrade-strategy eager optimum[habana]
+```
 
 To generate images with Stable Diffusion 1 and 2 on Gaudi, you need to instantiate two instances:
-- A pipeline with [`GaudiStableDiffusionPipeline`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline). This pipeline supports *text-to-image generation*.
-- A scheduler with [`GaudiDDIMScheduler`](https://huggingface.co/docs/optimum/habana/package_reference/stable_diffusion_pipeline#optimum.habana.diffusers.GaudiDDIMScheduler). This scheduler has been optimized for Habana Gaudi.
 
-When initializing the pipeline, you have to specify `use_habana=True` to deploy it on HPUs.
-Furthermore, in order to get the fastest possible generations you should enable **HPU graphs** with `use_hpu_graphs=True`.
-Finally, you will need to specify a [Gaudi configuration](https://huggingface.co/docs/optimum/habana/package_reference/gaudi_config) which can be downloaded from the [Hugging Face Hub](https://huggingface.co/Habana).
+- [`~optimum.habana.diffusers.GaudiStableDiffusionPipeline`], a pipeline for text-to-image generation.
+- [`~optimum.habana.diffusers.GaudiDDIMScheduler`], a Gaudi-optimized scheduler.
+
+When you initialize the pipeline, you have to specify `use_habana=True` to deploy it on HPUs and to get the fastest possible generation, you should enable **HPU graphs** with `use_hpu_graphs=True`.
+
+Finally, specify a [`~optimum.habana.GaudiConfig`] which can be downloaded from the [Habana](https://huggingface.co/Habana) organization on the Hub.
 
 ```python
 from optimum.habana import GaudiConfig
@@ -45,7 +42,8 @@ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
 )
 ```
 
-You can then call the pipeline to generate images by batches from one or several prompts:
+Now you can call the pipeline to generate images by batches from one or several prompts:
+
 ```python
 outputs = pipeline(
     prompt=[
@@ -57,21 +55,21 @@ outputs = pipeline(
 )
 ```
 
-For more information, check out Optimum Habana's [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/stable_diffusion) and the [example](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion) provided in the official Github repository.
+For more information, check out 🤗 Optimum Habana's [documentation](https://huggingface.co/docs/optimum/habana/usage_guides/stable_diffusion) and the [example](https://github.com/huggingface/optimum-habana/tree/main/examples/stable-diffusion) provided in the official Github repository.
 
 
 ## Benchmark
 
-Here are the latencies for Habana first-generation Gaudi and Gaudi2 with the [Habana/stable-diffusion](https://huggingface.co/Habana/stable-diffusion) and [Habana/stable-diffusion-2](https://huggingface.co/Habana/stable-diffusion-2) Gaudi configurations (mixed precision bf16/fp32):
+We benchmarked Habana's first-generation Gaudi and Gaudi2 with the [Habana/stable-diffusion](https://huggingface.co/Habana/stable-diffusion) and [Habana/stable-diffusion-2](https://huggingface.co/Habana/stable-diffusion-2) Gaudi configurations (mixed precision bf16/fp32) to demonstrate their performance.
 
-- [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5) (512x512 resolution):
+For [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5) on 512x512 images:
 
-|                        | Latency (batch size = 1) | Throughput (batch size = 8) |
+|                        | Latency (batch size = 1) | Throughput  |
 | ---------------------- |:------------------------:|:---------------------------:|
-| first-generation Gaudi | 3.80s                    | 0.308 images/s              |
-| Gaudi2                 | 1.33s                    | 1.081 images/s              |
+| first-generation Gaudi | 3.80s                    | 0.308 images/s (batch size = 8)             |
+| Gaudi2                 | 1.33s                    | 1.081 images/s (batch size = 8)             |
 
-- [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) (768x768 resolution):
+For [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) on 768x768 images:
 
 |                        | Latency (batch size = 1) | Throughput                      |
 | ---------------------- |:------------------------:|:-------------------------------:|

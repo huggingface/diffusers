@@ -18,7 +18,9 @@ import numpy as np
 import torch
 from torch import nn
 
+from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
+from .lora import LoRACompatibleLinear
 
 
 def get_timestep_embedding(
@@ -165,8 +167,9 @@ class TimestepEmbedding(nn.Module):
         cond_proj_dim=None,
     ):
         super().__init__()
+        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        self.linear_1 = nn.Linear(in_channels, time_embed_dim)
+        self.linear_1 = linear_cls(in_channels, time_embed_dim)
 
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
@@ -179,7 +182,7 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = out_dim
         else:
             time_embed_dim_out = time_embed_dim
-        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out)
+        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out)
 
         if post_act_fn is None:
             self.post_act = None
@@ -246,6 +249,33 @@ class GaussianFourierProjection(nn.Module):
         else:
             out = torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
         return out
+
+
+class SinusoidalPositionalEmbedding(nn.Module):
+    """Apply positional information to a sequence of embeddings.
+
+    Takes in a sequence of embeddings with shape (batch_size, seq_length, embed_dim) and adds positional embeddings to
+    them
+
+    Args:
+        embed_dim: (int): Dimension of the positional embedding.
+        max_seq_length: Maximum sequence length to apply positional embeddings
+
+    """
+
+    def __init__(self, embed_dim: int, max_seq_length: int = 32):
+        super().__init__()
+        position = torch.arange(max_seq_length).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / embed_dim))
+        pe = torch.zeros(1, max_seq_length, embed_dim)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        _, seq_length, _ = x.shape
+        x = x + self.pe[:, :seq_length]
+        return x
 
 
 class ImagePositionalEmbeddings(nn.Module):

@@ -19,9 +19,8 @@ import unittest
 import torch
 
 from diffusers import IFInpaintingSuperResolutionPipeline
-from diffusers.utils import floats_tensor
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import skip_mps, torch_device
+from diffusers.utils.testing_utils import floats_tensor, skip_mps, torch_device
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,

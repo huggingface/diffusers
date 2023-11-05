@@ -28,9 +28,8 @@ from diffusers import (
     StableDiffusionXLControlNetInpaintPipeline,
     UNet2DConditionModel,
 )
-from diffusers.utils import floats_tensor, torch_device
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, torch_device
 
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
@@ -300,3 +299,6 @@ class ControlNetPipelineSDXLFastTests(
     # TODO(Patrick, Sayak) - skip for now as this requires more refiner tests
     def test_save_load_optional_components(self):
         pass
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=5e-1)

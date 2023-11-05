@@ -21,7 +21,7 @@ The abstract from the paper is:
 
 <Tip>
 
-Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](/using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 </Tip>
 
@@ -31,5 +31,5 @@ Make sure to check out the Schedulers [guide](/using-diffusers/schedulers) to le
 	- __call__
 
 ## StableDiffusionSafePipelineOutput
-[[autodoc]] pipelines.semantic_stable_diffusion.SemanticStableDiffusionPipelineOutput
+[[autodoc]] pipelines.semantic_stable_diffusion.pipeline_output.SemanticStableDiffusionPipelineOutput
 	- all

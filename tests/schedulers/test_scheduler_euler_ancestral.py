@@ -1,7 +1,7 @@
 import torch
 
 from diffusers import EulerAncestralDiscreteScheduler
-from diffusers.utils import torch_device
+from diffusers.utils.testing_utils import torch_device
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -116,3 +116,37 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 152.3192) < 1e-2
         assert abs(result_mean.item() - 0.1983) < 1e-3
+
+    def test_full_loop_with_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        t_start = self.num_inference_steps - 2
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        generator = torch.manual_seed(0)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+
+        # add noise
+        noise = self.dummy_noise_deter
+        noise = noise.to(sample.device)
+        timesteps = scheduler.timesteps[t_start * scheduler.order :]
+        sample = scheduler.add_noise(sample, noise, timesteps[:1])
+
+        for i, t in enumerate(timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample, generator=generator)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 56163.0508) < 1e-2, f" expected result sum 56163.0508, but get {result_sum}"
+        assert abs(result_mean.item() - 73.1290) < 1e-3, f" expected result mean  73.1290, but get {result_mean}"

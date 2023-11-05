@@ -5,7 +5,7 @@ import urllib.parse as ul
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
-import PIL
+import PIL.Image
 import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
@@ -16,15 +16,14 @@ from ...schedulers import DDPMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
     is_accelerate_available,
-    is_accelerate_version,
     is_bs4_available,
     is_ftfy_available,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import IFPipelineOutput
+from .pipeline_output import IFPipelineOutput
 from .safety_checker import IFSafetyChecker
 from .watermark import IFWatermarker
 
@@ -89,6 +88,7 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
+    model_cpu_offload_seq = "text_encoder->unet"
 
     def __init__(
         self,
@@ -136,48 +136,6 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             watermarker=watermarker,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.enable_model_cpu_offload
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-
-        if self.text_encoder is not None:
-            _, hook = cpu_offload_with_hook(self.text_encoder, device, prev_module_hook=hook)
-
-            # Accelerate will move the next model to the device _before_ calling the offload hook of the
-            # previous model. This will cause both models to be present on the device at the same time.
-            # IF uses T5 for its text encoder which is really large. We can manually call the offload
-            # hook for the text encoder to ensure it's moved to the cpu before the unet is moved to
-            # the GPU.
-            self.text_encoder_offload_hook = hook
-
-        _, hook = cpu_offload_with_hook(self.unet, device, prev_module_hook=hook)
-
-        # if the safety checker isn't called, `unet_offload_hook` will have to be called to manually offload the unet
-        self.unet_offload_hook = hook
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.remove_all_hooks
     def remove_all_hooks(self):
@@ -338,11 +296,11 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt,
-        do_classifier_free_guidance=True,
-        num_images_per_prompt=1,
-        device=None,
-        negative_prompt=None,
+        prompt: Union[str, List[str]],
+        do_classifier_free_guidance: bool = True,
+        num_images_per_prompt: int = 1,
+        device: Optional[torch.device] = None,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
@@ -351,14 +309,14 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
-            device: (`torch.device`, *optional*):
-                torch device to place the resulting embeddings on
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 whether to use classifier free guidance or not
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                number of images that should be generated per prompt
+            device: (`torch.device`, *optional*):
+                torch device to place the resulting embeddings on
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
@@ -370,6 +328,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            clean_caption (bool, defaults to `False`):
+                If `True`, the function will preprocess and clean the provided caption before encoding.
         """
         if prompt is not None and negative_prompt is not None:
             if type(prompt) is not type(negative_prompt):
@@ -679,19 +639,19 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size):
+            height (`int`, *optional*, defaults to None):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size):
+            width (`int`, *optional*, defaults to None):
                 The width in pixels of the generated image.
             image (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`):
                 The image to be upscaled.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
+            timesteps (`List[int]`, *optional*, defaults to None):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
+            guidance_scale (`float`, *optional*, defaults to 4.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -904,9 +864,8 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             # 10. Run safety checker
             image, nsfw_detected, watermark_detected = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        # Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image, nsfw_detected, watermark_detected)

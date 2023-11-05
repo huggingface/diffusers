@@ -1,0 +1,10 @@
+- sections:
+  - local: index
+    title: 🧨 Diffusers
+  - local: quicktour
+    title: 簡単な案内
+  - local: stable_diffusion
+    title: 効果的で効率的な拡散モデル
+  - local: installation
+    title: インストール
+  title: はじめに

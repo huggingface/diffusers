@@ -71,7 +71,7 @@ The `preview` command only works with existing doc files. When you add a complet
 Accepted files are Markdown (.md).
 
 Create a file with its extension and put it in the source directory. You can then link it to the toc-tree by putting
-the filename without the extension in the [`_toctree.yml`](https://github.com/huggingface/diffusers/blob/main/docs/source/_toctree.yml) file.
+the filename without the extension in the [`_toctree.yml`](https://github.com/huggingface/diffusers/blob/main/docs/source/en/_toctree.yml) file.
 
 ## Renaming section headers and moving sections
 
@@ -81,14 +81,14 @@ Therefore, we simply keep a little map of moved sections at the end of the docum
 
 So if you renamed a section from: "Section A" to "Section B", then you can add at the end of the file:
 
-```
+```md
 Sections that were moved:
 
 [ <a href="#section-b">Section A</a><a id="section-a"></a> ]
 ```
 and of course, if you moved it to another file, then:
 
-```
+```md
 Sections that were moved:
 
 [ <a href="../new-file#section-b">Section A</a><a id="section-a"></a> ]
@@ -109,8 +109,8 @@ although we can write them directly in Markdown.
 
 Adding a new tutorial or section is done in two steps:
 
-- Add a new file under `docs/source`. This file can either be ReStructuredText (.rst) or Markdown (.md).
-- Link that file in `docs/source/_toctree.yml` on the correct toc-tree.
+- Add a new Markdown (.md) file under `docs/source/<languageCode>`.
+- Link that file in `docs/source/<languageCode>/_toctree.yml` on the correct toc-tree.
 
 Make sure to put your new file under the proper section. It's unlikely to go in the first section (*Get Started*), so
 depending on the intended targets (beginners, more advanced users, or researchers) it should go in sections two, three, or four.
@@ -119,7 +119,7 @@ depending on the intended targets (beginners, more advanced users, or researcher
 
 When adding a new pipeline:
 
-- create a file `xxx.md` under `docs/source/api/pipelines` (don't hesitate to copy an existing file as template).
+- Create a file `xxx.md` under `docs/source/<languageCode>/api/pipelines` (don't hesitate to copy an existing file as template).
 - Link that file in (*Diffusers Summary*) section in `docs/source/api/pipelines/overview.md`, along with the link to the paper, and a colab notebook (if available).
 - Write a short overview of the diffusion model:
     - Overview with paper & authors
@@ -129,8 +129,6 @@ When adding a new pipeline:
 - Add all the pipeline classes that should be linked in the diffusion model. These classes should be added using our Markdown syntax. By default as follows:
 
 ```
-## XXXPipeline
-
 [[autodoc]] XXXPipeline
     - all
 	- __call__
@@ -148,7 +146,7 @@ This will include every public method of the pipeline that is documented, as wel
     - disable_xformers_memory_efficient_attention
 ```
 
-You can follow the same process to create a new scheduler under the `docs/source/api/schedulers` folder
+You can follow the same process to create a new scheduler under the `docs/source/<languageCode>/api/schedulers` folder.
 
 ### Writing source documentation
 
@@ -164,7 +162,7 @@ provide its path. For instance: \[\`pipelines.ImagePipelineOutput\`\]. This will
 `pipelines.ImagePipelineOutput` in the description. To get rid of the path and only keep the name of the object you are
 linking to in the description, add a ~: \[\`~pipelines.ImagePipelineOutput\`\] will generate a link with `ImagePipelineOutput` in the description.
 
-The same works for methods so you can either use \[\`XXXClass.method\`\] or \[~\`XXXClass.method\`\].
+The same works for methods so you can either use \[\`XXXClass.method\`\] or \[\`~XXXClass.method\`\].
 
 #### Defining arguments in a method
 
@@ -196,8 +194,8 @@ Here's an example showcasing everything so far:
 For optional arguments or arguments with defaults we follow the following syntax: imagine we have a function with the
 following signature:
 
-```
-def my_function(x: str = None, a: float = 1):
+```py
+def my_function(x: str=None, a: float=3.14):
 ```
 
 then its documentation should look like this:
@@ -206,7 +204,7 @@ then its documentation should look like this:
     Args:
         x (`str`, *optional*):
             This argument controls ...
-        a (`float`, *optional*, defaults to 1):
+        a (`float`, *optional*, defaults to `3.14`):
             This argument is used to ...
 ```
 
@@ -268,4 +266,3 @@ We have an automatic script running with the `make style` command that will make
 This script may have some weird failures if you made a syntax mistake or if you uncover a bug. Therefore, it's
 recommended to commit your changes before running `make style`, so you can revert the changes done by that script
 easily.
-
