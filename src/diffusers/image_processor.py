@@ -219,7 +219,7 @@ class VaeImageProcessor(ConfigMixin):
         Resize image.
         """
         if isinstance(image, PIL.Image.Image):
-            image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+            image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample]) 
         elif isinstance(image, torch.Tensor):
             image = torch.nn.functional.interpolate(
                 image,
@@ -410,7 +410,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             # special case for grayscale (single channel) images
             pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
         else:
-            pil_images = [Image.fromarray(image[:, :, :3][:,:,::-1]) for image in images]  #TODO Estelle [:,:,::-1]
+            pil_images = [Image.fromarray(image[:, :, :3]) for image in images]  #TODO Estelle [:,:,::-1]
 
         return pil_images
 

@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2023 The Intel Labs Team Authors and the HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,65 +13,89 @@
 # limitations under the License.
 
 import inspect
-import warnings
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
+import warnings
 
 import numpy as np
 import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import PipelineImageInput, PipelineDepthInput, VaeImageProcessorLDM3D
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...image_processor import VaeImageProcessorLDM3D, PipelineImageInput, PipelineDepthInput
+
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention_processor import (
-    AttnProcessor2_0,
-    LoRAAttnProcessor2_0,
-    LoRAXFormersAttnProcessor,
-    XFormersAttnProcessor,
-)
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from ...utils import deprecate, is_accelerate_available, is_accelerate_version, logging, randn_tensor
+from ...schedulers import KarrasDiffusionSchedulers, DDPMScheduler
+
+from ...utils import (
+    BaseOutput,
+    deprecate,
+    is_accelerate_available,
+    is_accelerate_version,
+    logging,
+    randn_tensor,
+    replace_example_docstring,
+)
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_stable_diffusion_ldm3d import LDM3DPipelineOutput
+from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```python
+        >>> from diffusers import StableDiffusionLDM3DPipeline
 
-def preprocess(image):
-    warnings.warn(
-        "The preprocess method is deprecated and will be removed in a future version. Please"
-        " use VaeImageProcessor.preprocess instead",
-        FutureWarning,
-    )
-    if isinstance(image, torch.Tensor):
-        return image
-    elif isinstance(image, PIL.Image.Image):
-        image = [image]
+        >>> pipe = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d-4c")
+        >>> pipe = pipe.to("cuda")
 
-    if isinstance(image[0], PIL.Image.Image):
-        w, h = image[0].size
-        w, h = (x - x % 64 for x in (w, h))  # resize to integer multiple of 64
-
-        image = [np.array(i.resize((w, h)))[None, :] for i in image]
-        image = np.concatenate(image, axis=0)
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = 2.0 * image - 1.0
-        image = torch.from_numpy(image)
-    elif isinstance(image[0], torch.Tensor):
-        image = torch.cat(image, dim=0)
-    return image
+        >>> prompt = "a photo of an astronaut riding a horse on mars"
+        >>> output = pipe(prompt)
+        >>> rgb_image, depth_image = output.rgb, output.depth
+        >>> rgb_image[0].save("astronaut_ldm3d_rgb.jpg")
+        >>> depth_image[0].save("astronaut_ldm3d_depth.png")
+        ```
+"""
 
 
-class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+@dataclass
+class LDM3DPipelineOutput(BaseOutput):
+    """
+    Output class for Stable Diffusion pipelines.
+
+    Args:
+        rgb (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
+        depth (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
+            num_channels)`.
+        nsfw_content_detected (`List[bool]`)
+            List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
+            `None` if safety checking could not be performed.
+    """
+
+    rgb: Union[List[PIL.Image.Image], np.ndarray]
+    depth: Union[List[PIL.Image.Image], np.ndarray]
+    nsfw_content_detected: Optional[List[bool]]
+
+class StableDiffusionUpscaleLDM3DPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+):
     r"""
-    Pipeline for text-guided image super-resolution using Stable Diffusion 2.
+    Pipeline for text-to-image and 3D generation using LDM3D.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
+        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -88,8 +112,14 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        safety_checker ([`StableDiffusionSafetyChecker`]):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
+            about a model's potential harms.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
-    _optional_components = ["watermarker", "safety_checker", "feature_extractor"]
+    _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -99,30 +129,31 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
         unet: UNet2DConditionModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: KarrasDiffusionSchedulers,
-        safety_checker: Optional[Any] = None,
-        feature_extractor: Optional[CLIPImageProcessor] = None,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPImageProcessor,
+        requires_safety_checker: bool = True,
         watermarker: Optional[Any] = None,
         max_noise_level: int = 350,
+
+
     ):
         super().__init__()
 
-        if hasattr(
-            vae, "config"
-        ):  # check if vae has a config attribute `scaling_factor` and if it is set to 0.08333, else set it to 0.08333 and deprecate
-            is_vae_scaling_factor_set_to_0_08333 = (
-                hasattr(vae.config, "scaling_factor") and vae.config.scaling_factor == 0.08333
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
-            if not is_vae_scaling_factor_set_to_0_08333:
-                deprecation_message = (
-                    "The configuration file of the vae does not contain `scaling_factor` or it is set to"
-                    f" {vae.config.scaling_factor}, which seems highly unlikely. If your checkpoint is a fine-tuned"
-                    " version of `stabilityai/stable-diffusion-x4-upscaler` you should change 'scaling_factor' to"
-                    " 0.08333 Please make sure to update the config accordingly, as not doing so might lead to"
-                    " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging"
-                    " Face Hub, it would be very nice if you could open a Pull Request for the `vae/config.json` file"
-                )
-                deprecate("wrong scaling_factor", "1.0.0", deprecation_message, standard_warn=False)
-                vae.register_to_config(scaling_factor=0.08333)
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
 
         self.register_modules(
             vae=vae,
@@ -136,9 +167,13 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             feature_extractor=feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessorLDM3D(vae_scale_factor=self.vae_scale_factor, resample="bicubic")
+        self.image_processor = VaeImageProcessorLDM3D(vae_scale_factor=self.vae_scale_factor, resample="bilinear")
+        # self.register_to_config(requires_safety_checker=requires_safety_checker)
         self.register_to_config(max_noise_level=max_noise_level)
 
+
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_model_cpu_offload
     def enable_model_cpu_offload(self, gpu_id=0):
         r"""
         Offload all models to CPU to reduce memory usage with a low impact on performance. Moves one whole model at a
@@ -158,29 +193,14 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         hook = None
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            if cpu_offloaded_model is not None:
-                _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
+            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
+
+        if self.safety_checker is not None:
+            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
 
         # We'll offload the last model manually.
         self.final_offload_hook = hook
-
-    def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
-            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
-            image, nsfw_detected, watermark_detected = self.safety_checker(
-                images=image,
-                clip_input=safety_checker_input.pixel_values.to(dtype=dtype),
-            )
-        else:
-            nsfw_detected = None
-            watermark_detected = None
-
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
-
-        return image, nsfw_detected, watermark_detected
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -373,6 +393,21 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
 
         return prompt_embeds, negative_prompt_embeds
 
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            rgb_feature_extractor_input = feature_extractor_input[0]
+            safety_checker_input = self.feature_extractor(rgb_feature_extractor_input, return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
+        return image, has_nsfw_concept
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -391,18 +426,7 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    def decode_latents(self, latents):
-        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
-        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
-
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
-
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -412,6 +436,7 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        target_res=None
     ):
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -501,24 +526,24 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
-            ),
-        )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
+    # def upcast_vae(self):
+    #     dtype = self.vae.dtype
+    #     self.vae.to(dtype=torch.float32)
+    #     use_torch_2_0_or_xformers = isinstance(
+    #         self.vae.decoder.mid_block.attentions[0].processor,
+    #         (
+    #             AttnProcessor2_0,
+    #             XFormersAttnProcessor,
+    #             LoRAXFormersAttnProcessor,
+    #             LoRAAttnProcessor2_0,
+    #         ),
+    #     )
+    #     # if xformers or torch_2_0 is used attention block does not need
+    #     # to be in float32 which can save lots of memory
+    #     if use_torch_2_0_or_xformers:
+    #         self.vae.post_quant_conv.to(dtype)
+    #         self.vae.decoder.conv_in.to(dtype)
+    #         self.vae.decoder.mid_block.to(dtype)
 
     @torch.no_grad()
     def __call__(
@@ -541,6 +566,7 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        target_res: Optional[ List[int]] = [1024, 1024],
     ):
         r"""
         The call function to the pipeline for generation.
@@ -553,7 +579,7 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
+            guidance_scale (`float`, *optional*, defaults to 5.0):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -593,30 +619,6 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
 
         Examples:
-        ```py
-        >>> import requests
-        >>> from PIL import Image
-        >>> from io import BytesIO
-        >>> from diffusers import StableDiffusionUpscalePipeline
-        >>> import torch
-
-        >>> # load model and scheduler
-        >>> model_id = "stabilityai/stable-diffusion-x4-upscaler"
-        >>> pipeline = StableDiffusionUpscalePipeline.from_pretrained(
-        ...     model_id, revision="fp16", torch_dtype=torch.float16
-        ... )
-        >>> pipeline = pipeline.to("cuda")
-
-        >>> # let's download an  image
-        >>> url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
-        >>> response = requests.get(url)
-        >>> low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
-        >>> low_res_img = low_res_img.resize((128, 128))
-        >>> prompt = "a white cat"
-
-        >>> upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
-        >>> upscaled_image.save("upsampled_cat.png")
-        ```
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -625,8 +627,7 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
-
-        # 1. Check inputs
+        # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             rgb,
@@ -636,10 +637,6 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             prompt_embeds,
             negative_prompt_embeds,
         )
-
-        if rgb is None:
-            raise ValueError("`rgb` input cannot be undefined.")
-
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -655,9 +652,6 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
@@ -666,7 +660,6 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
         )
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -675,7 +668,7 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Preprocess image
-        rgb, depth = self.image_processor.preprocess(rgb, depth)
+        rgb, depth = self.image_processor.preprocess(rgb, depth, target_res=target_res)
         rgb = rgb.to(dtype=prompt_embeds.dtype, device=device)
         depth = depth.to(dtype=prompt_embeds.dtype, device=device)
 
@@ -683,22 +676,25 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 5. Add noise to image
-        noise_level = torch.tensor([noise_level], dtype=torch.long, device=device) #TODO check with gabi
-        noise_rgb = randn_tensor(rgb.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
-        rgb = self.low_res_scheduler.add_noise(rgb, noise_rgb, noise_level)
-
-        noise_depth = randn_tensor(depth.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
-        depth = self.low_res_scheduler.add_noise(depth, noise_depth, noise_level)
+        # 6. Encode low resolutiom image to latent space
+        image = torch.cat([rgb, depth], axis=1)
+        latent_space_image = self.vae.encode(image).latent_dist.sample(generator)
+        latent_space_image *= self.vae.scaling_factor
+        noise_level = torch.tensor([noise_level], dtype=torch.long, device=device)
+        # noise_rgb = randn_tensor(rgb.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
+        # rgb = self.low_res_scheduler.add_noise(rgb, noise_rgb, noise_level)
+        # noise_depth = randn_tensor(depth.shape, generator=generator, device=device, dtype=prompt_embeds.dtype)
+        # depth = self.low_res_scheduler.add_noise(depth, noise_depth, noise_level)
+        
 
         batch_multiplier = 2 if do_classifier_free_guidance else 1
-        image = torch.cat([rgb, depth], axis=1)
-        image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
-        noise_level = torch.cat([noise_level] * image.shape[0])
+        latent_space_image = torch.cat([latent_space_image] * batch_multiplier * num_images_per_prompt)
+        noise_level = torch.cat([noise_level] * latent_space_image.shape[0])
 
-        # 6. Prepare latent variables
-        height, width = image.shape[2:]
+        # 7. Prepare latent variables
+        height, width = latent_space_image.shape[2:]
         num_channels_latents = self.vae.config.latent_channels
+
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -709,9 +705,9 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             generator,
             latents,
         )
-
-        # 7. Check that sizes of image and latents match
-        num_channels_image = image.shape[1]
+        
+        # 8. Check that sizes of image and latents match
+        num_channels_image = latent_space_image.shape[1]
         if num_channels_latents + num_channels_image != self.unet.config.in_channels:
             raise ValueError(
                 f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
@@ -721,19 +717,19 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
                 " `pipeline.unet` or your `image` input."
             )
 
-        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 9. Denoising loop
+        # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-
+                
                 # concat latents, mask, masked_image_latents in the channel dimension
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                latent_model_input = torch.cat([latent_model_input, image], dim=1)
+                latent_model_input = torch.cat([latent_model_input, latent_space_image], dim=1)
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -767,24 +763,24 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
                 self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            rgb = image[:,:3]
-            depth = image[:,-1:]
+            image = self.vae.decode(latents / self.vae.scaling_factor, return_dict=False)[0]
+
             # cast back to fp16 if needed
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
 
-            rgb, has_nsfw_concept, _ = self.run_safety_checker(rgb, device, prompt_embeds.dtype)
+            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+
         else:
             image = latents
             has_nsfw_concept = None
 
         if has_nsfw_concept is None:
-            do_denormalize = [True] * rgb.shape[0]
+            do_denormalize = [True] * image.shape[0]
         else:
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
-        rgb, depth = self.image_processor.postprocess(image=torch.cat([rgb, depth], axis=1), output_type=output_type, do_denormalize=do_denormalize)
+        rgb, depth = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         # 11. Apply watermark
         if output_type == "pil" and self.watermarker is not None:
@@ -795,6 +791,6 @@ class StableDiffusionUpscaleLDM3DPipeline(DiffusionPipeline, TextualInversionLoa
             self.final_offload_hook.offload()
 
         if not return_dict:
-            return (rgb, depth, has_nsfw_concept)
+            return ((rgb, depth), has_nsfw_concept)
 
         return LDM3DPipelineOutput(rgb=rgb, depth=depth, nsfw_content_detected=has_nsfw_concept)
