@@ -116,24 +116,21 @@ def convert_vae_weights(ldm3d_vae, sd_hf_vae, new_path):
                         new_k = new_k.replace("nin", "conv")
                     if new_k in sd_hf_vae:
                         new_ldm3d_vae[new_k] = v
-                    # if new_ldm3d_vae[new_k].shape != sd_hf_vae[new_k].shape and "coder" in new_k:
-                        # assert new_ldm3d_vae[new_k].numel() == sd_hf_vae[new_k].numel()
-                            #sd_hf_vae[new_k].shape
-                            # new_v = v.squeeze()
-                            # new_ldm3d_vae[new_k] = new_v
+                        if new_ldm3d_vae[new_k].shape != sd_hf_vae[new_k].shape:
+                            assert new_ldm3d_vae[new_k].numel() == sd_hf_vae[new_k].numel()
+                            sd_hf_vae[new_k].shape
+                            new_v = v.squeeze()
+                            new_ldm3d_vae[new_k] = new_v
                         #    new_ldm3d_vae_ema[new_k] = v_ema.squeeze()
-                        # assert new_ldm3d_vae[new_k].shape == sd_hf_vae[new_k].shape
+                        assert new_ldm3d_vae[new_k].shape == sd_hf_vae[new_k].shape
                     else:
                         if "loss" not in new_k:
-                            if "decoder" in new_k or "encoder" in new_k:
-                                new_ldm3d_vae[new_k] = v
-                            else:
-                                checker.append((k,new_k))
-                # else:
-                #     new_ldm3d_vae[new_k] = v
+                            checker.append(k)
+                else:
+                    new_ldm3d_vae[new_k] = v
               #  new_ldm3d_vae_ema[new_k] = v_ema
     # assert len(checker) == 0
-  #  assert len(new_ldm3d_vae) == len(sd_hf_vae), f"Size new: {len(new_ldm3d_vae)}, size to be: {len(sd_hf_vae)}"
+    assert len(new_ldm3d_vae) == len(sd_hf_vae), f"Size new: {len(new_ldm3d_vae)}, size to be: {len(sd_hf_vae)}"
     torch.save(new_ldm3d_vae, new_path)
     print(f"Model successfully saved on {new_path}")
     return new_ldm3d_vae
@@ -176,7 +173,7 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                     new_k = replace_digits(new_k, "resnets")
                     new_k = new_k.replace("proj.1", "proj")
                 if "transformer_blocks" in new_k:
-                    new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_q=1)
+                    new_k = replace_digits(new_k, "attentions", num_fix=1)
                 elif "layer" in new_k or "time_emb" in new_k or "skip" in new_k:
                     new_k = replace_digits(new_k, "resnets", num_fix=0, reduce_r=False)
                     new_k = new_k.replace("skip_connection", "conv_shortcut")
@@ -190,7 +187,7 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                     new_k = new_k.replace("5.2", "1.upsamplers.0")
                     new_k = new_k.replace("8.2", "2.upsamplers.0")
                 else:
-                    new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_q=1)
+                    new_k = replace_digits(new_k, "attentions", num_fix=1)
             elif "mid" in new_k:
                 if "transformer_blocks" in new_k:
                     new_k = new_k.replace(".1.transformer_blocks.0", ".attentions.0.transformer_blocks.0")
@@ -207,11 +204,10 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                     new_k = new_k.replace(".1.", ".attentions.0.")
             elif "down" in new_k:
                 if "transformer_blocks" in new_k:
-                    new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_r=1, reduce_q=-1)
+                    new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_r=1)
                 if "layer" in new_k or "time_emb" in new_k or "skip" in new_k:
                     new_k = replace_digits(new_k, "resnets", num_fix=0, reduce_r=1)
                     new_k = new_k.replace("skip_connection", "conv_shortcut")
-                    new_k = new_k.replace("down_blocks.2.resnets.0.conv_shortcut", "down_blocks.3.resnets.0.conv_shortcut")
                     new_k = new_k.replace("time_emb_proj.1", "time_emb_proj")
                     new_k = new_k.replace("in_layers.0", "norm1")
                     new_k = new_k.replace("out_layers.0", "norm2")
@@ -226,28 +222,29 @@ def convert_unet_weights(ldm3d_unet, sd_hf_unet, new_path):
                     elif new_k == "down_blocks.0.0.bias":
                         new_k = "conv_in.bias"
                     else:
-                        new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_r=1, reduce_q=-1)
+                        new_k = replace_digits(new_k, "attentions", num_fix=1, reduce_r=1)
             else:
                 new_k = new_k.replace("time_embed.0", "time_embedding.linear_1")
                 new_k = new_k.replace("time_embed.2", "time_embedding.linear_2")
                 new_k = new_k.replace("out.0", "conv_norm_out")
                 new_k = new_k.replace("out.2", "conv_out")
-                new_k = new_k.replace("label_emb.weight", "class_embedding.weight")
             if new_k in sd_hf_unet:
                 if sd_hf_unet[new_k].shape != v.shape:
                     print(f"Warning: {new_k} - HF:  {sd_hf_unet[new_k].shape} , ldm3d: {v.shape}  ")
                 v_ema = ldm3d_unet[f"model_ema.{k.replace('model.diff', 'diff').replace('.', '')}"]
-                if  v.numel() == sd_hf_unet[new_k].numel():
-                    if v.shape != sd_hf_unet[new_k].shape:
-                        v = v.squeeze()
-                        v_ema = v_ema.squeeze()
                 new_ldm3d_unet[new_k] = v
                 new_ldm3d_unet_ema[new_k] = v_ema
 
             else:
-                checker.append((new_k, v.shape))
-    # assert len(checker) == 0
-    assert len(new_ldm3d_unet) == len(sd_hf_unet)
+                if new_k == 'label_emb.weight':
+                    new_k = 'class_embedding.weight'
+                    v_ema = ldm3d_unet[f"model_ema.{k.replace('model.diff', 'diff').replace('.', '')}"]
+                    new_ldm3d_unet[new_k] = v
+                    new_ldm3d_unet_ema[new_k] = v_ema
+                else:
+                    checker.append((new_k, v.shape))
+    assert len(checker) == 0
+    # assert len(new_ldm3d_unet) == len(sd_hf_unet)
     assert len(new_ldm3d_unet_ema) == len(new_ldm3d_unet)
     torch.save(new_ldm3d_unet, new_path)
     torch.save(new_ldm3d_unet_ema, new_path_ema)
@@ -335,4 +332,4 @@ if __name__ == "__main__":
 #python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr_v1_lr_depth/logs/2023-09-06T01-47-29_upscaling_512_ldm3d_test/checkpoints/epoch=000000.ckpt --diffusers_like_checkpoint_path /home/estellea/LDM3D_checkpoint/ldm3d-hr --new_folder_name /home/estellea/LDM3D_checkpoint/ldm3d-hr --use_ema
 
 
-#python -m debugpy --listen 0.0.0.0:25566 --wait-for-client convert_original_upscale_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr/v1/img_deg_depth_deg/logs/2023-09-06T09-05-45_upscaling_512_ldm3d/checkpoints/epoch=000014.ckpt --diffusers_like_checkpoint_path /export/share/projects/mcai/ldm3d/hf_ckpt/stable-diffusion-x4-upscaler --new_folder_name /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr-updated
+# python convert_original_ldm3d_to_diffusers.py --checkpoint_path /export/share/projects/mcai/ldm3d/ldm3d_hr/v1/img_deg_depth_bicubic/logs/2023-09-22T03-12-56_upscaling_512_ldm3d_img_lr_depth_bicubic/checkpoints/epoch=000030.ckpt --diffusers_like_checkpoint_path /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-4c --new_folder_name /export/share/projects/mcai/ldm3d/hf_ckpt/ldm3d-hr-fs-updated 
