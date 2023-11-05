@@ -112,6 +112,7 @@ _deps = [
     "numpy",
     "omegaconf",
     "parameterized",
+    "pretty-midi",
     "protobuf>=3.20.3,<4",
     "pytest",
     "pytest-timeout",
