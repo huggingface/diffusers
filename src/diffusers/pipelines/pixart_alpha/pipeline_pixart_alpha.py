@@ -50,7 +50,10 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import PixArtAlphaPipeline
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained("pixart-alpha", torch_dtype=torch.float16)
+        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
+        ...     "PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16
+        ... )
+        >>> # Enable memory optimizations.
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A small cactus with a happy face in the Sahara desert."
