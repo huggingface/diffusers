@@ -204,9 +204,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.to(dtype=dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(1, num_images_per_prompt)
+        prompt_embeds_attention_mask = prompt_embeds_attention_mask.view(bs_embed * num_images_per_prompt, -1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -247,11 +249,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         # Perform additional masking.
         if mask_feature:
-            print(f"Starting mask feature with: prompt_embeds: {prompt_embeds.shape} prompt_embeds_attention_mask: {prompt_embeds_attention_mask.shape}")
-            prompt_embeds = prompt_embeds.unsqueeze(1)
-            masked_prompt_embeds, keep_indices = self.mask_text_embeddings(
-                prompt_embeds, prompt_embeds_attention_mask
+            print(
+                f"Starting mask feature with: prompt_embeds: {prompt_embeds.shape} prompt_embeds_attention_mask: {prompt_embeds_attention_mask.shape}"
             )
+            prompt_embeds = prompt_embeds.unsqueeze(1)
+            masked_prompt_embeds, keep_indices = self.mask_text_embeddings(prompt_embeds, prompt_embeds_attention_mask)
             masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
             masked_negative_prompt_embeds = negative_prompt_embeds[:, :keep_indices, :]
             return masked_prompt_embeds, masked_negative_prompt_embeds

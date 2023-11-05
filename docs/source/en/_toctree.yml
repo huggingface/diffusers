@@ -266,6 +266,8 @@
       title: Parallel Sampling of Diffusion Models
     - local: api/pipelines/pix2pix_zero
       title: Pix2Pix Zero
+    - local: api/pipelines/pixart
+      title: PixArt
     - local: api/pipelines/pndm
       title: PNDM
     - local: api/pipelines/repaint
@@ -334,8 +336,6 @@
       title: VQ Diffusion
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
-    - local: api/pipelines/pixart
-      title: PixArt
     title: Pipelines
   - sections:
     - local: api/schedulers/overview

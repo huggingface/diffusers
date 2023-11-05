@@ -24,11 +24,10 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DPMSolverMultistepScheduler,
     PixArtAlphaPipeline,
     Transformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, load_numpy, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -194,7 +193,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
         pipe.to("cuda")
 
-        images = pipe("hey", generator=generator, num_inference_steps=2, output_type="np").images
+        pipe("hey", generator=generator, num_inference_steps=2, output_type="np").images
 
         # TODO update
 
@@ -204,6 +203,6 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-512x512", torch_dtype=torch.float16)
         pipe.to("cuda")
 
-        images = pipe("hey", generator=generator, num_inference_steps=2, output_type="np").images
+        pipe("hey", generator=generator, num_inference_steps=2, output_type="np").images
 
         # TODO update
