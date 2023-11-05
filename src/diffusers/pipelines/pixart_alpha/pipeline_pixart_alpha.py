@@ -111,11 +111,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
     # Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/utils.py
     def mask_text_embeddings(self, emb, mask):
+        print(f"embeddings: {emb.shape} mask: {mask.shape}")
         if emb.shape[0] == 1:
             keep_index = mask.sum().item()
             return emb[:, :, :keep_index, :], keep_index
         else:
-            print(f"embeddings: {emb.shape} mask: {mask.shape}")
             masked_feature = emb * mask[:, None, :, None]
             return masked_feature, emb.shape[2]
 
