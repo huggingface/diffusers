@@ -51,7 +51,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Kandinsky](kandinsky) | text2image, image2image, inpainting, interpolation |
 | [Kandinsky 2.2](kandinsky_v22) | text2image, image2image, inpainting |
 | [Latent Diffusion](latent_diffusion) | text2image, super-resolution |
-| [LDM3D](ldm3d_diffusion) | text2image, text-to-3D |
+| [LDM3D](stable_diffusion/ldm3d_diffusion) | text2image, text-to-3D, text-to-pano, upscaling |
 | [MultiDiffusion](panorama) | text2image |
 | [MusicLDM](musicldm) | text2audio |
 | [PaintByExample](paint_by_example) | inpainting |
