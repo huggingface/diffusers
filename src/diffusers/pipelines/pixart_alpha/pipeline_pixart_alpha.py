@@ -50,6 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import PixArtAlphaPipeline
 
+        >>> # You can replace the checkpoint id with "PixArt-alpha/PixArt-XL-2-512x512" too.
         >>> pipe = StableDiffusionXLPipeline.from_pretrained(
         ...     "PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16
         ... )

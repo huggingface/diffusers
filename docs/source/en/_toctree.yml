@@ -334,6 +334,8 @@
       title: VQ Diffusion
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
+    - local: api/pipelines/pixart
+      title: PixArt
     title: Pipelines
   - sections:
     - local: api/schedulers/overview
