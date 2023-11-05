@@ -582,7 +582,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         if rgb.min() < 0 and do_normalize:
             warnings.warn(
                 "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "
-                f"when passing as pytorch tensor or numpy Array. You passed `image` with value range [{image.min()},{image.max()}]",
+                f"when passing as pytorch tensor or numpy Array. You passed `image` with value range [{rgb.min()},{rgb.max()}]",
                 FutureWarning,
             )
             do_normalize = False
