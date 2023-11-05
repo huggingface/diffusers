@@ -35,9 +35,9 @@ from ...utils import (
     is_accelerate_available,
     is_accelerate_version,
     logging,
-    randn_tensor,
     replace_example_docstring,
 )
+from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -47,16 +47,18 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```python
-        >>> from diffusers import StableDiffusionLDM3DPipeline
+        >>> from diffusers import StableDiffusionUpscaleLDM3DPipeline
 
-        >>> pipe = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d-4c")
+        >>> pipe = StableDiffusionUpscaleLDM3DPipeline.from_pretrained("Intel/ldm3d-sr")
         >>> pipe = pipe.to("cuda")
-
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> output = pipe(prompt)
+        >>> rgb_path = "https://huggingface.co/Intel/ldm3d-4c/resolve/main/ldm3d_4c_rgb.png"
+        >>> depth_path = "https://huggingface.co/Intel/ldm3d-4c/resolve/main/ldm3d_4c_depth.png"
+        >>> low_res_rgb = Image.open(BytesIO(requests.get(rgb_path).content)).convert("RGB")
+        >>> low_res_depth = Image.open(BytesIO(requests.get(depth_path).content)).convert("L")
+        >>> output = pipe(prompt="high quality high resolution uhd 4k image", rgb=low_res_rgb, depth=low_res_depth, num_inference_steps=50, target_res= [1024, 1024])
         >>> rgb_image, depth_image = output.rgb, output.depth
-        >>> rgb_image[0].save("astronaut_ldm3d_rgb.jpg")
-        >>> depth_image[0].save("astronaut_ldm3d_depth.png")
+        >>> rgb_image[0].save("hr_ldm3d_rgb.jpg")
+        >>> depth_image[0].save("hr_ldm3d_depth.png")
         ```
 """
 
