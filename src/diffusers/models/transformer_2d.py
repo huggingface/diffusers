@@ -96,7 +96,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         attention_type: str = "default",
         caption_channels: int = None,
-        output_type: str = "vanilla_dit",
         use_additional_conditions=False,
     ):
         super().__init__()
@@ -213,12 +212,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
-        elif self.is_input_patches:
+        elif self.is_input_patches and norm_type != "ada_norm_single":
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            if output_type == "vanilla_dit":
-                self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-                self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
-            elif output_type == "pixart_dit":
+            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
+            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels
+        elif self.is_input_patched and norm_type == "ada_norm_single":
                 self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
                 self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
@@ -344,7 +342,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
                 batch_size = hidden_states.shape[0]
                 timestep, embedded_timestep = self.adaln_single(
-                    timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
+                    timestep, added_cond_kwargs, hidden_dtype=hidden_states.dtype
                 )
 
         # 2. Blocks
@@ -352,7 +350,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
 
-        for i, block in enumerate(self.transformer_blocks):
+        for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     block,
