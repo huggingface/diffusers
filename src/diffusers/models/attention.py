@@ -118,6 +118,7 @@ class BasicTransformerBlock(nn.Module):
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
         norm_type: str = "layer_norm",   # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single'
+        norm_eps: float = 1e-5,
         final_dropout: bool = False,
         attention_type: str = "default",
         positional_embeddings: Optional[str] = None,
