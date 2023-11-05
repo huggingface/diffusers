@@ -27,7 +27,7 @@ from diffusers import (
     PixArtAlphaPipeline,
     Transformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, slow, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -62,6 +62,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_embeds_ada_norm=1000,
             norm_type="ada_norm_single",
             norm_elementwise_affine=False,
+            norm_eps=1e-6,
             output_type="pixart_dit",
         )
         vae = AutoencoderKL()
@@ -179,7 +180,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 # TODO: needs to be updated.
-@nightly
+@slow
 @require_torch_gpu
 class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
@@ -187,22 +188,65 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
+    def test_pixart_1024_fast(self):
+        generator = torch.manual_seed(0)
+
+        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+        pipe.enable_model_cpu_offload()
+
+        prompt = "A small cactus with a happy face in the Sahara desert."
+
+        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        expected_slice = np.array([0.0027, 0.0000, 0.0000, 0.0000, 0.0000, 0.0369, 0.0000, 0.0413, 0.2068])
+
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-3)
+
+    def test_pixart_512_fast(self):
+        generator = torch.manual_seed(0)
+
+        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-512x512", torch_dtype=torch.float16)
+        pipe.enable_model_cpu_offload()
+
+        prompt = "A small cactus with a happy face in the Sahara desert."
+
+        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
+
+        image_slice = image[0, -3:, -3:, -1]
+        print(torch.from_numpy(image_slice).flatten())
+
+        expected_slice = np.array([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0469])
+
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-3)
+
     def test_pixart_1024(self):
         generator = torch.manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
-        pipe.to("cuda")
+        pipe.enable_model_cpu_offload()
+        prompt = "A small cactus with a happy face in the Sahara desert."
 
-        pipe("hey", generator=generator, num_inference_steps=2, output_type="np").images
+        image = pipe(prompt, generator=generator).images[0]
 
-        # TODO update
+        import hf_image_uploader as hiu
+
+        hiu.upload(image, "patrickvonplaten/images")
 
     def test_pixart_512(self):
         generator = torch.manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-512x512", torch_dtype=torch.float16)
-        pipe.to("cuda")
+        pipe.enable_model_cpu_offload()
 
-        pipe("hey", generator=generator, num_inference_steps=2, output_type="np").images
+        prompt = "A small cactus with a happy face in the Sahara desert."
 
-        # TODO update
+        image = pipe(prompt, generator=generator).images[0]
+
+        import hf_image_uploader as hiu
+
+        hiu.upload(image, "patrickvonplaten/images")
+

@@ -215,10 +215,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_patches and norm_type != "ada_norm_single":
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
             self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels
-        elif self.is_input_patched and norm_type == "ada_norm_single":
-                self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
-                self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+        elif self.is_input_patches and norm_type == "ada_norm_single":
+            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
+            self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
+            self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
         # 5. PixArt-Alpha blocks.
         self.caption_projection = None
@@ -400,16 +401,16 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             # log(p(x_0))
             output = F.log_softmax(logits.double(), dim=1).float()
-        elif self.is_input_patches:
-            # TODO: cleanup!
-            if self.config.output_type == "vanilla_dit":
+
+        if self.is_input_patches:
+            if self.config.norm_type != "ada_norm_single":
                 conditioning = self.transformer_blocks[0].norm1.emb(
                     timestep, class_labels, hidden_dtype=hidden_states.dtype
                 )
                 shift, scale = self.proj_out_1(F.silu(conditioning)).chunk(2, dim=1)
                 hidden_states = self.norm_out(hidden_states) * (1 + scale[:, None]) + shift[:, None]
                 hidden_states = self.proj_out_2(hidden_states)
-            elif self.config.output_type == "pixart_dit":
+            elif self.config.norm_type == "ada_norm_single":
                 shift, scale = (self.scale_shift_table[None] + embedded_timestep[:, None]).chunk(2, dim=1)
                 hidden_states = self.norm_out(hidden_states)
                 # Modulation
