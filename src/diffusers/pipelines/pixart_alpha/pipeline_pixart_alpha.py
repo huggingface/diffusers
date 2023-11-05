@@ -110,11 +110,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/utils.py
-    def mask_text_eembeddings(self, emb, mask):
+    def mask_text_embeddings(self, emb, mask):
         if emb.shape[0] == 1:
             keep_index = mask.sum().item()
             return emb[:, :, :keep_index, :], keep_index
         else:
+            print(f"embeddings: {emb.shape} mask: {mask.shape}")
             masked_feature = emb * mask[:, None, :, None]
             return masked_feature, emb.shape[2]
 
@@ -247,7 +248,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # Perform additional masking.
         if mask_feature:
             prompt_embeds = prompt_embeds.unsqueeze(1)
-            masked_prompt_embeds, keep_indices = self.mask_text_eembeddings(
+            masked_prompt_embeds, keep_indices = self.mask_text_embeddings(
                 prompt_embeds, prompt_embeds_attention_mask
             )
             masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
