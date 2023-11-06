@@ -29,6 +29,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 ```
 
@@ -80,6 +81,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
@@ -117,6 +119,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
@@ -156,6 +159,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
@@ -202,6 +206,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
@@ -245,6 +250,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
@@ -286,6 +292,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
@@ -330,6 +337,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 text2image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k").images[0]
@@ -343,6 +351,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 image2image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=text2image).images[0]
@@ -364,6 +373,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
@@ -389,6 +399,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "ogkalu/Comic-Diffusion", torch_dtype=torch.float16
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # need to include the token "charliebo artstyle" in the prompt to use this checkpoint
@@ -402,6 +413,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kohbanye/pixel-art-style", torch_dtype=torch.float16
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # need to include the token "pixelartstyle" in the prompt to use this checkpoint
@@ -424,6 +436,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 # prepare image
@@ -489,6 +502,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 image = pipeline(prompt_embeds=prompt_embeds, # generated from Compel
@@ -525,6 +539,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 ```
 
@@ -558,6 +573,7 @@ pipeline = AutoPipelineForImage2Image.from_pretrained(
     "nitrosocke/elden-ring-diffusion", torch_dtype=torch.float16,
 ).to("cuda")
 pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
 
 prompt = "elden ring style astronaut in a jungle" # include the token "elden ring style" in the prompt
