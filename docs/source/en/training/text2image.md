@@ -10,7 +10,6 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-
 # Text-to-image
 
 <Tip warning={true}>
@@ -38,11 +37,11 @@ If you have already cloned the repo, then you won't need to go through these ste
 
 ## Hardware requirements
 
-Using `gradient_checkpointing` and `mixed_precision`, it should be possible to finetune the model on a single 24GB GPU. For higher `batch_size`'s and faster training, it's better to use GPUs with more than 30GB of GPU memory. You can also use JAX/Flax for fine-tuning on TPUs or GPUs, which will be covered [below](#flax-jax-finetuning).
+Using `gradient_checkpointing` and `mixed_precision`, it should be possible to finetune the model on a single 24GB GPU. For higher `batch_size`s and faster training, it's better to use GPUs with more than 30GB of GPU memory. You can also use JAX/Flax for fine-tuning on TPUs or GPUs, which will be covered below.
 
-You can reduce your memory footprint even more by enabling memory efficient attention with xFormers. Make sure you have [xFormers installed](./optimization/xformers) and pass the `--enable_xformers_memory_efficient_attention` flag to the training script.
+You can reduce your memory footprint even more by enabling memory efficient attention with xFormers. Make sure you have [xFormers installed](../optimization/xformers) and pass the `--enable_xformers_memory_efficient_attention` flag to the training script.
 
-xFormers is not available for Flax.
+If have PyTorch 2.0 or higher installed, you don't need to install xFormers as it is already included in PyTorch's native attention. xFormers is not available for Flax.
 
 ## Upload model to Hub
 
@@ -98,7 +97,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
 
 To finetune on your own dataset, prepare the dataset according to the format required by 🤗 [Datasets](https://huggingface.co/docs/datasets/index). You can [upload your dataset to the Hub](https://huggingface.co/docs/datasets/image_dataset#upload-dataset-to-the-hub), or you can [prepare a local folder with your files](https://huggingface.co/docs/datasets/image_dataset#imagefolder).
 
-Modify the script if you want to use custom loading logic. We left pointers in the code in the appropriate places to help you. 🤗 The example script below shows how to finetune on a local dataset in `TRAIN_DIR` and where to save the model to in `OUTPUT_DIR`:
+Modify the script if you want to use custom loading logic. We left pointers in the code in the appropriate places to help you. The example script below shows how to finetune on a local dataset in `TRAIN_DIR` and where to save the model in `OUTPUT_DIR`:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -181,7 +180,7 @@ python train_text_to_image_flax.py \
 
 To finetune on your own dataset, prepare the dataset according to the format required by 🤗 [Datasets](https://huggingface.co/docs/datasets/index). You can [upload your dataset to the Hub](https://huggingface.co/docs/datasets/image_dataset#upload-dataset-to-the-hub), or you can [prepare a local folder with your files](https://huggingface.co/docs/datasets/image_dataset#imagefolder).
 
-Modify the script if you want to use custom loading logic. We left pointers in the code in the appropriate places to help you. 🤗 The example script below shows how to finetune on a local dataset in `TRAIN_DIR`:
+Modify the script if you want to use custom loading logic. We left pointers in the code in the appropriate places to help you. The example script below shows how to finetune on a local dataset in `TRAIN_DIR`:
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
@@ -214,7 +213,7 @@ You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/tex
 * Training with the Min-SNR weighting strategy (`snr_gamma` set to 5.0)
 * Training with the Min-SNR weighting strategy (`snr_gamma` set to 1.0)
 
-For our small Pokemons dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
+For our small Pokémon dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
 
 Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds. 
 
@@ -236,6 +235,7 @@ Now you can load the fine-tuned model for inference by passing the model path or
 <pt>
 ```python
 from diffusers import StableDiffusionPipeline
+import torch
 
 model_path = "path_to_saved_model"
 pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16, use_safetensors=True)
@@ -276,13 +276,11 @@ image.save("yoda-pokemon.png")
 </jax>
 </frameworkcontent>
 
-
 ## Stable Diffusion XL
 
-* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
-* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
-
+* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](../../../../examples/text_to_image/README_sdxl). 
+* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](../../../../examples/text_to_image/README_sdxl). 
 
 ## Kandinsky 2.2
 
-* We support fine-tuning both the decoder and prior in Kandinsky2.2 with the `train_text_to_image_prior.py` and `train_text_to_image_decoder.py` scripts. LoRA support is also included. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/README_sdxl.md).
+* We support fine-tuning both the decoder and prior in Kandinsky2.2 with the `train_text_to_image_prior.py` and `train_text_to_image_decoder.py` scripts. LoRA support is also included. Please refer to the docs [here](../../../../examples/kandinsky2_2/text_to_image/README).

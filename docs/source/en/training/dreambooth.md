@@ -14,8 +14,8 @@ specific language governing permissions and limitations under the License.
 
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text-to-image models like Stable Diffusion given just a few (3-5) images of a subject. It allows the model to generate contextualized images of the subject in different scenes, poses, and views.
 
-![Dreambooth examples from the project's blog](https://dreambooth.github.io/DreamBooth_files/teaser_static.jpg)
-<small>Dreambooth examples from the <a href="https://dreambooth.github.io">project's blog.</a></small>
+![DreamBooth examples from the project's blog](https://dreambooth.github.io/DreamBooth_files/teaser_static.jpg)
+<small>DreamBooth examples from the <a href="https://dreambooth.github.io">project's blog</a>.</small>
 
 This guide will show you how to finetune DreamBooth with the [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) model for various GPU sizes, and with Flax. All the training scripts for DreamBooth used in this guide can be found [here](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) if you're interested in digging deeper and seeing how things work.
 
@@ -26,7 +26,7 @@ pip install git+https://github.com/huggingface/diffusers
 pip install -U -r diffusers/examples/dreambooth/requirements.txt
 ```
 
-xFormers is not part of the training requirements, but we recommend you [install](../optimization/xformers) it if you can because it could make your training faster and less memory intensive.
+xFormers is not part of the training requirements, but we recommend you [install](../optimization/xformers) it if you can because it could make your training faster and less memory intensive. If have PyTorch 2.0 or higher installed, you don't need to install xFormers as it is already included in PyTorch's native attention.
 
 After all the dependencies have been set up, initialize a [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
@@ -47,6 +47,8 @@ from accelerate.utils import write_basic_config
 
 write_basic_config()
 ```
+
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 
 Finally, download a [few images of a dog](https://huggingface.co/datasets/diffusers/dog-example) to DreamBooth with:
 
@@ -308,7 +310,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 )
 pipeline.to("cuda")
 
-# Perform inference, or save, or push to the hub
+# Perform inference, or save, or push to the Hub
 pipeline.save_pretrained("dreambooth-pipeline")
 ```
 
@@ -338,7 +340,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     use_safetensors=True,
 )
 
-# Perform inference, or save, or push to the hub
+# Perform inference, or save, or push to the Hub
 pipeline.save_pretrained("dreambooth-pipeline")
 ```
 
@@ -348,13 +350,13 @@ Depending on your hardware, there are a few different ways to optimize DreamBoot
 
 ### xFormers
 
-[xFormers](https://github.com/facebookresearch/xformers) is a toolbox for optimizing Transformers, and it includes a [memory-efficient attention](https://facebookresearch.github.io/xformers/components/ops.html#module-xformers.ops) mechanism that is used in 🧨 Diffusers. You'll need to [install xFormers](./optimization/xformers) and then add the following argument to your training script:
+[xFormers](https://github.com/facebookresearch/xformers) is a toolbox for optimizing Transformers, and it includes a [memory-efficient attention](https://facebookresearch.github.io/xformers/components/ops.html#module-xformers.ops) mechanism that is used in 🧨 Diffusers. You'll need to [install xFormers](../optimization/xformers) and then add the following argument to your training script:
 
 ```bash
   --enable_xformers_memory_efficient_attention
 ```
 
-xFormers is not available in Flax.
+If you have PyTorch 2.0 or higher, you don't need to install xFormers as it is already included in PyTorch's native attention. xFormers is not available in Flax.
 
 ### Set gradients to none
 
@@ -503,8 +505,7 @@ You may also run inference from any of the [saved training checkpoints](#inferen
 
 ## IF
 
-You can use the lora and full dreambooth scripts to train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0) and the stage II upscaler 
-[IF model](https://huggingface.co/DeepFloyd/IF-II-L-v1.0).
+You can use the LoRA and full DreamBooth scripts to train [the text to image IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0) and [the stage II upscaler IF model](https://huggingface.co/DeepFloyd/IF-II-L-v1.0).
 
 Note that IF has a predicted variance, and our finetuning scripts only train the models predicted error, so for finetuned IF models we switch to a fixed
 variance schedule. The full finetuning scripts will update the scheduler config for the full saved model. However, when loading saved LoRA weights, you
@@ -525,8 +526,7 @@ Additionally, a few alternative cli flags are needed for IF.
 
 `--resolution=64`: IF is a pixel space diffusion model. In order to operate on un-compressed pixels, the input images are of a much smaller resolution. 
 
-`--pre_compute_text_embeddings`: IF uses [T5](https://huggingface.co/docs/transformers/model_doc/t5) for its text encoder. In order to save GPU memory, we pre compute all text embeddings and then de-allocate
-T5.
+`--pre_compute_text_embeddings`: IF uses [T5](https://huggingface.co/docs/transformers/model_doc/t5) for its text encoder. In order to save GPU memory, we pre compute all text embeddings and then de-allocate T5.
 
 `--tokenizer_max_length=77`: T5 has a longer default text length, but the default IF encoding procedure uses a smaller number.
 
@@ -564,7 +564,7 @@ snapshot_download(
 )
 ```
 
-### IF stage I LoRA Dreambooth
+### IF stage I LoRA DreamBooth
 This training configuration requires ~28 GB VRAM.
 
 ```sh
@@ -592,7 +592,7 @@ accelerate launch train_dreambooth_lora.py \
   --text_encoder_use_attention_mask
 ```
 
-### IF stage II LoRA Dreambooth
+### IF stage II LoRA DreamBooth
 
 `--validation_images`: These images are upscaled during validation steps.
 
@@ -600,7 +600,7 @@ accelerate launch train_dreambooth_lora.py \
 
 `--learning_rate=1e-6`: Lower learning rate than stage I.
 
-`--resolution=256`: The upscaler expects higher resolution inputs
+`--resolution=256`: The upscaler expects higher resolution inputs.
 
 ```sh
 export MODEL_NAME="DeepFloyd/IF-II-L-v1.0"
@@ -629,20 +629,19 @@ python train_dreambooth_lora.py \
     --class_labels_conditioning=timesteps
 ```
 
-### IF Stage I Full Dreambooth
+### IF Stage I Full DreamBooth
 `--skip_save_text_encoder`: When training the full model, this will skip saving the entire T5 with the finetuned model. You can still load the pipeline
 with a T5 loaded from the original model.
 
-`use_8bit_adam`: Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
+`--use_8bit_adam`: Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
 
-`--learning_rate=1e-7`: For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade. Note that it is 
+`--learning_rate=1e-7`: For full DreamBooth, IF requires very low learning rates. With higher learning rates model quality will degrade. Note that it is 
 likely the learning rate can be increased with larger batch sizes.
 
 Using 8bit adam and a batch size of 4, the model can be trained in ~48 GB VRAM.
 
 ```sh
 export MODEL_NAME="DeepFloyd/IF-I-XL-v1.0"
-
 export INSTANCE_DIR="dog"
 export OUTPUT_DIR="dreambooth_if"
 
@@ -667,12 +666,11 @@ accelerate launch train_dreambooth.py \
   --push_to_hub
 ```
 
-### IF Stage II Full Dreambooth
+### IF Stage II Full DreamBooth
 
-`--learning_rate=5e-6`: With a smaller effective batch size of 4, we found that we required learning rates as low as
-1e-8.
+`--learning_rate=5e-6`: With a smaller effective batch size of 4, we found that we required learning rates as low as 1e-8.
 
-`--resolution=256`: The upscaler expects higher resolution inputs
+`--resolution=256`: The upscaler expects higher resolution inputs.
 
 `--train_batch_size=2` and `--gradient_accumulation_steps=6`: We found that full training of stage II particularly with
 faces required large effective batch sizes.
@@ -707,4 +705,4 @@ accelerate launch train_dreambooth.py \
 
 ## Stable Diffusion XL
 
-We support fine-tuning of the UNet and text encoders shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md). 
+We support fine-tuning of the UNet and text encoders shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](../../../../examples/dreambooth/README_sdxl.md).

@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# InstructPix2Pix 
+# InstructPix2Pix
 
 [InstructPix2Pix](https://arxiv.org/abs/2211.09800) is a method to fine-tune text-conditioned diffusion models such that they can follow an edit instruction for an input image. Models fine-tuned using this method take the following as inputs:
 
@@ -24,7 +24,7 @@ The output is an "edited" image that reflects the edit instruction applied on th
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/output-gs%407-igs%401-steps%4050.png" alt="instructpix2pix-output" width=600/>
 </p>
 
-The `train_instruct_pix2pix.py` script (you can find the it [here](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py)) shows how to implement the training procedure and adapt it for Stable Diffusion.
+The `train_instruct_pix2pix.py` script (you can find it [here](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py)) shows how to implement the training procedure and adapt it for Stable Diffusion.
 
 ***Disclaimer: Even though `train_instruct_pix2pix.py` implements the InstructPix2Pix
 training procedure while being faithful to the [original implementation](https://github.com/timothybrooks/instruct-pix2pix) we have only tested it on a [small-scale dataset](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples). This can impact the end results. For better results, we recommend longer training runs with a larger dataset. [Here](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered) you can find a large dataset for InstructPix2Pix training.***
@@ -33,7 +33,7 @@ training procedure while being faithful to the [original implementation](https:/
 
 ### Installing the dependencies
 
-Before running the scripts, make sure to install the library's training dependencies:
+Before running the scripts, make sure to install the library's training dependencies.
 
 **Important**
 
@@ -44,35 +44,37 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd in the example folder
+Then cd in the [examples folder](https://github.com/huggingface/diffusers/tree/main/examples/instruct_pix2pix):
 ```bash
 cd examples/instruct_pix2pix
 ```
 
-Now run
+Now run:
 ```bash
 pip install -r requirements.txt
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
 ```
 
-Or for a default accelerate configuration without answering questions about your environment
+Or for a default accelerate configuration without answering questions about your environment:
 
 ```bash
 accelerate config default
 ```
 
-Or if your environment doesn't support an interactive shell e.g. a notebook
+Or if your environment doesn't support an interactive shell e.g. a notebook:
 
 ```python
 from accelerate.utils import write_basic_config
 
 write_basic_config()
 ```
+
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 
 ### Toy example
 
@@ -99,7 +101,6 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --checkpointing_steps=5000 --checkpoints_total_limit=1 \
     --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \
-    --mixed_precision=fp16 \
     --seed=42 \
     --push_to_hub
 ```
@@ -118,7 +119,6 @@ accelerate launch --mixed_precision="fp16" train_instruct_pix2pix.py \
     --checkpointing_steps=5000 --checkpoints_total_limit=1 \
     --learning_rate=5e-05 --max_grad_norm=1 --lr_warmup_steps=0 \
     --conditioning_dropout_prob=0.05 \
-    --mixed_precision=fp16 \
     --val_image_url="https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png" \
     --validation_prompt="make the mountains snowy" \
     --seed=42 \
@@ -149,7 +149,6 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
  --checkpointing_steps=5000 --checkpoints_total_limit=1 \
  --learning_rate=5e-05 --lr_warmup_steps=0 \
  --conditioning_dropout_prob=0.05 \
- --mixed_precision=fp16 \
  --seed=42 \
  --push_to_hub
 ```
@@ -159,10 +158,9 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_instruct_pix2pix.py
  Once training is complete, we can perform inference:
 
  ```python
-import PIL
-import requests
 import torch
 from diffusers import StableDiffusionInstructPix2PixPipeline
+from diffusers.utils import load_image, make_image_grid
 
 model_id = "your_model_id"  # <- replace this
 pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
@@ -171,16 +169,7 @@ pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(
 generator = torch.Generator("cuda").manual_seed(0)
 
 url = "https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/test_pix2pix_4.png"
-
-
-def download_image(url):
-    image = PIL.Image.open(requests.get(url, stream=True).raw)
-    image = PIL.ImageOps.exif_transpose(image)
-    image = image.convert("RGB")
-    return image
-
-
-image = download_image(url)
+image = load_image(url)
 prompt = "wipe out the lake"
 num_inference_steps = 20
 image_guidance_scale = 1.5
@@ -194,7 +183,8 @@ edited_image = pipe(
     guidance_scale=guidance_scale,
     generator=generator,
 ).images[0]
-edited_image.save("edited_image.png")
+make_image_grid([image, edited_image], rows=1, cols=2)
+#edited_image.save("edited_image.png")
 ```
 
 An example model repo obtained using this training script can be found
@@ -214,4 +204,4 @@ If you're looking for some interesting ways to use the InstructPix2Pix training 
 
 ## Stable Diffusion XL
 
-Training with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) is also supported via the `train_instruct_pix2pix_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/README_sdxl.md). 
+Training with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) is also supported via the `train_instruct_pix2pix_sdxl.py` script. Please refer to the docs [here](../../../../examples/instruct_pix2pix/README_sdxl).

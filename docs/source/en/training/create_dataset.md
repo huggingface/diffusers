@@ -1,6 +1,18 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Create a dataset for training
 
-There are many datasets on the [Hub](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads) to train a model on, but if you can't find one you're interested in or want to use your own, you can create a dataset with the 🤗 [Datasets](hf.co/docs/datasets) library. The dataset structure depends on the task you want to train your model on. The most basic dataset structure is a directory of images for tasks like unconditional image generation. Another dataset structure may be a directory of images and a text file containing their corresponding text captions for tasks like text-to-image generation.
+There are many datasets on the [Hub](https://huggingface.co/datasets?task_categories=task_categories:text-to-image&sort=downloads) to train a model on, but if you can't find one you're interested in or want to use your own, you can create a dataset with the 🤗 [Datasets](https://hf.co/docs/datasets) library. The dataset structure depends on the task you want to train your model on. The most basic dataset structure is a directory of images for tasks like unconditional image generation. Another dataset structure may be a directory of images and a text file containing their corresponding text captions for tasks like text-to-image generation.
 
 This guide will show you two ways to create a dataset to finetune on:
 
@@ -23,7 +35,7 @@ data_dir/xxy.png
 data_dir/[...]/xxz.png
 ```
 
-Pass the path to the dataset directory to the `--train_data_dir` argument, and then you can start training:
+Pass the path of the dataset directory to the `--train_data_dir` argument, and then you can start training:
 
 ```bash
 accelerate launch train_unconditional.py \
@@ -55,7 +67,7 @@ dataset = load_dataset("imagefolder", data_files="path_to_zip_file")
 # example 3: remote files (supported formats are tar, gzip, zip, xz, rar, zstd)
 dataset = load_dataset(
     "imagefolder",
-    data_files="https://download.microsoft.com/download/3/E/1/3E1C3F21-ECDB-4869-8368-6DEBA77B919F/kagglecatsanddogs_3367a.zip",
+    data_files="https://download.microsoft.com/download/3/E/1/3E1C3F21-ECDB-4869-8368-6DEBA77B919F/kagglecatsanddogs_5340.zip",
 )
 
 # example 4: providing several splits
@@ -67,7 +79,7 @@ dataset = load_dataset(
 Then use the [`~datasets.Dataset.push_to_hub`] method to upload the dataset to the Hub:
 
 ```python
-# assuming you have ran the huggingface-cli login command in a terminal
+# assuming you have run the huggingface-cli login command in a terminal
 dataset.push_to_hub("name_of_your_dataset")
 
 # if you want to push to a private repo, simply pass private=True:
@@ -77,7 +89,7 @@ dataset.push_to_hub("name_of_your_dataset", private=True)
 Now the dataset is available for training by passing the dataset name to the `--dataset_name` argument:
 
 ```bash
-accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
+accelerate launch --mixed_precision="fp16" train_text_to_image.py \
   --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
   --dataset_name="name_of_your_dataset" \
   <other-arguments>

@@ -10,11 +10,9 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-
-
 # Textual Inversion
 
-[Textual Inversion](https://arxiv.org/abs/2208.01618) is a technique for capturing novel concepts from a small number of example images. While the technique was originally demonstrated with a [latent diffusion model](https://github.com/CompVis/latent-diffusion), it has since been applied to other model variants like [Stable Diffusion](https://huggingface.co/docs/diffusers/main/en/conceptual/stable_diffusion). The learned concepts can be used to better control the images generated from text-to-image pipelines. It learns new "words" in the text encoder's embedding space, which are used within text prompts for personalized image generation.
+[Textual Inversion](https://arxiv.org/abs/2208.01618) is a technique for capturing novel concepts from a small number of example images. While the technique was originally demonstrated with a [latent diffusion model](https://github.com/CompVis/latent-diffusion), it has since been applied to other model variants like [Stable Diffusion](https://huggingface.co/docs/diffusers/main/en/stable_diffusion). The learned concepts can be used to better control the images generated from text-to-image pipelines. It learns new "words" in the text encoder's embedding space, which are used within text prompts for personalized image generation.
 
 ![Textual Inversion example](https://textual-inversion.github.io/static/images/editing/colorful_teapot.JPG)
 <small>By using just 3-5 images you can teach new concepts to a model such as Stable Diffusion for personalized image generation <a href="https://github.com/rinongal/textual_inversion">(image source)</a>.</small>
@@ -27,10 +25,11 @@ There is a community-created collection of trained Textual Inversion models in t
 
 </Tip>
 
-Before you begin, make sure you install the library's training dependencies:
+Before you begin, make sure you install the library's training dependencies. We also recommend installing 🧨 Diffusers from the main GitHub branch:
 
 ```bash
-pip install diffusers accelerate transformers
+pip install git+https://github.com/huggingface/diffusers
+pip install -U -r diffusers/examples/textual_inversion/requirements.txt
 ```
 
 After all the dependencies have been set up, initialize a [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -47,13 +46,15 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell like a notebook, you can use:
 
-```bash
+```python
 from accelerate.utils import write_basic_config
 
 write_basic_config()
 ```
 
-Finally, you try and [install xFormers](https://huggingface.co/docs/diffusers/main/en/training/optimization/xformers) to reduce your memory footprint with xFormers memory-efficient attention. Once you have xFormers installed, add the `--enable_xformers_memory_efficient_attention` argument to the training script. xFormers is not supported for Flax.
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
+
+Finally, you try and [install xFormers](../optimization/xformers) to reduce your memory footprint with xFormers memory-efficient attention. Once you have xFormers installed, add the `--enable_xformers_memory_efficient_attention` argument to the training script. If have PyTorch 2.0 or higher, you don't need to install xFormers as it is already included in PyTorch's native attention. xFormers is not supported for Flax.
 
 ## Upload model to Hub
 
@@ -207,7 +208,7 @@ model_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 ```
 
-Next, we need to load the textual inversion embedding vector which can be done via the [`TextualInversionLoaderMixin.load_textual_inversion`]
+Next, we need to load the textual inversion embedding vector which can be done via the [`~TextualInversionLoaderMixin.load_textual_inversion`]
 function. Here we'll load the embeddings of the "<cat-toy>" example from before.
 ```python
 pipe.load_textual_inversion("sd-concepts-library/cat-toy")
@@ -219,10 +220,11 @@ Now we can run the pipeline making sure that the placeholder token `<cat-toy>` i
 prompt = "A <cat-toy> backpack"
 
 image = pipe(prompt, num_inference_steps=50).images[0]
-image.save("cat-backpack.png")
+image
+#image.save("cat-backpack.png")
 ```
 
-The function [`TextualInversionLoaderMixin.load_textual_inversion`] can not only 
+The function [`~TextualInversionLoaderMixin.load_textual_inversion`] cannot only 
 load textual embedding vectors saved in Diffusers' format, but also embedding vectors
 saved in [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) format.
 To do so, you can first download an embedding vector from [civitAI](https://civitai.com/models/3036?modelVersionId=8387)
@@ -262,7 +264,7 @@ prompt_ids = shard(prompt_ids)
 
 images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
-image.save("cat-backpack.png")
+images.save("cat-backpack.png")
 ```
 </jax>
 </frameworkcontent>
@@ -270,7 +272,7 @@ image.save("cat-backpack.png")
 ## How it works
 
 ![Diagram from the paper showing overview](https://textual-inversion.github.io/static/images/training/training.JPG)
-<small>Architecture overview from the Textual Inversion <a href="https://textual-inversion.github.io/">blog post.</a></small>
+<small>Architecture overview from the Textual Inversion <a href="https://textual-inversion.github.io/">blog post</a>.</small>
 
 Usually, text prompts are tokenized into an embedding before being passed to a model, which is often a transformer. Textual Inversion does something similar, but it learns a new token embedding, `v*`, from a special token `S*` in the diagram above. The model output is used to condition the diffusion model, which helps the diffusion model understand the prompt and new concepts from just a few example images.
 

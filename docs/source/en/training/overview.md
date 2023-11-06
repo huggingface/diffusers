@@ -16,7 +16,7 @@ Diffusers training examples are a collection of scripts to demonstrate how to ef
 for a variety of use cases.
 
 **Note**: If you are looking for **official** examples on how to use `diffusers` for inference, 
-please have a look at [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)
+please have a look at [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
 
 Our examples aspire to be **self-contained**, **easy-to-tweak**, **beginner-friendly** and for **one-purpose-only**.
 More specifically, this means:
@@ -35,7 +35,7 @@ Training examples show how to pretrain or fine-tune diffusion models for a varie
 
 - [Unconditional Training](./unconditional_training)
 - [Text-to-Image Training](./text2image)<sup>*</sup>
-- [Text Inversion](./text_inversion)
+- [Textual Inversion](./text_inversion)
 - [Dreambooth](./dreambooth)<sup>*</sup>
 - [LoRA Support](./lora)<sup>*</sup>
 - [ControlNet](./controlnet)<sup>*</sup>
@@ -43,9 +43,15 @@ Training examples show how to pretrain or fine-tune diffusion models for a varie
 - [Custom Diffusion](./custom_diffusion)
 - [T2I-Adapters](./t2i_adapters)<sup>*</sup>
 
+<style>
+    sup {
+        font-size:xx-small;
+        vertical-align:super;
+    }
+</style>
 <sup>*</sup>: Supports [Stable Diffusion XL](../api/pipelines/stable_diffusion/stable_diffusion_xl).
 
-If possible, please [install xFormers](../optimization/xformers) for memory efficient attention. This could help make your training faster and less memory intensive.
+If possible, please [install xFormers](../optimization/xformers) for memory efficient attention. This could help make your training faster and less memory intensive. If have PyTorch 2.0 or higher, you don't need to install xFormers as it is already included in PyTorch's native attention.
 
 | Task | 🤗 Accelerate | 🤗 Datasets | Colab
 |---|---|:---:|:---:|
@@ -57,7 +63,7 @@ If possible, please [install xFormers](../optimization/xformers) for memory effi
 | [**ControlNet**](./controlnet) | ✅ | ✅ | - |
 | [**InstructPix2Pix**](./instructpix2pix) | ✅ | ✅ | - |
 | [**Custom Diffusion**](./custom_diffusion) | ✅ | ✅ | - |
-| [**T2I Adapters**](./t2i_adapters) | ✅ | ✅ | - |
+| [**T2I-Adapters**](./t2i_adapters) | ✅ | ✅ | - |
 
 ## Community
 
@@ -65,7 +71,8 @@ In addition, we provide **community** examples, which are examples added and mai
 Community examples can consist of both *training* examples or *inference* pipelines.
 For such examples, we are more lenient regarding the philosophy defined above and also cannot guarantee to provide maintenance for every issue.
 Examples that are useful for the community, but are either not yet deemed popular or not yet following our above philosophy should go into the [community examples](https://github.com/huggingface/diffusers/tree/main/examples/community) folder. The community folder therefore includes training examples and inference pipelines.
-**Note**: Community examples can be a [great first contribution](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) to show to the community how you like to use `diffusers` 🪄.
+
+**Note**: Community examples can be a [great first contribution](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) to show the community how you like to use `diffusers` 🪄.
 
 ## Important note
 
@@ -77,7 +84,7 @@ cd diffusers
 pip install .
 ```
 
-Then cd in the example folder of your choice and run
+Then cd in the example folder of your choice and run:
 
 ```bash
 pip install -r requirements.txt

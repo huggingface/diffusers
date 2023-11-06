@@ -21,13 +21,12 @@ Unconditional image generation is not conditioned on any text or images, unlike 
 	height="550"
 ></iframe>
 
-
 This guide will show you how to train an unconditional image generation model on existing datasets as well as your own custom dataset. All the training scripts for unconditional image generation can be found [here](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation) if you're interested in learning more about the training details.
 
 Before running the script, make sure you install the library's training dependencies:
 
 ```bash
-pip install diffusers[training] accelerate datasets
+pip install -q diffusers[training] accelerate datasets
 ```
 
 Next, initialize an 🤗 [Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -49,6 +48,8 @@ from accelerate.utils import write_basic_config
 
 write_basic_config()
 ```
+
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 
 ## Upload model to Hub
 

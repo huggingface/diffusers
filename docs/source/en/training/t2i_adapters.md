@@ -18,7 +18,7 @@ The `train_t2i_adapter_sdxl.py` script (as shown below) shows how to implement t
 
 ### Installing the dependencies
 
-Before running the scripts, make sure to install the library's training dependencies:
+Before running the scripts, make sure to install the library's training dependencies.
 
 **Important**
 
@@ -30,31 +30,32 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd in the `examples/t2i_adapter` folder and run
+Then cd in the `examples/t2i_adapter` folder and run:
 ```bash
 pip install -r requirements_sdxl.txt
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
 ```
 
-Or for a default accelerate configuration without answering questions about your environment
+Or for a default accelerate configuration without answering questions about your environment:
 
 ```bash
 accelerate config default
 ```
 
-Or if your environment doesn't support an interactive shell (e.g., a notebook)
+Or if your environment doesn't support an interactive shell (e.g., a notebook):
 
 ```python
 from accelerate.utils import write_basic_config
+
 write_basic_config()
 ```
 
-When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 
 ## Circle filling dataset
 
@@ -70,7 +71,7 @@ wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/ma
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
-Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained T2IAdapter parameters to Hugging Face Hub.
+Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained T2I-Adapter parameters to Hugging Face Hub.
 
 ```bash
 export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
@@ -106,7 +107,7 @@ Our experiments were conducted on a single 40GB A100 GPU.
 Once training is done, we can perform inference like so:
 
 ```python
-from diffusers import StableDiffusionXLAdapterPipeline, T2IAdapter, EulerAncestralDiscreteSchedulerTest
+from diffusers import StableDiffusionXLAdapterPipeline, T2IAdapter, EulerAncestralDiscreteScheduler
 from diffusers.utils import load_image
 import torch
 
@@ -119,10 +120,10 @@ pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
 )
 
 # speed up diffusion process with faster scheduler and memory optimization
-pipe.scheduler = EulerAncestralDiscreteSchedulerTest.from_config(pipe.scheduler.config)
-# remove following line if xformers is not installed or when using Torch 2.0.
+pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipe.enable_xformers_memory_efficient_attention()
-# memory optimization.
+# memory optimization
 pipe.enable_model_cpu_offload()
 
 control_image = load_image("./conditioning_image_1.png")
@@ -133,7 +134,8 @@ generator = torch.manual_seed(0)
 image = pipe(
     prompt, num_inference_steps=20, generator=generator, image=control_image
 ).images[0]
-image.save("./output.png")
+image
+#image.save("./output.png")
 ```
 
 ## Notes

@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # ControlNet
 
-[Adding Conditional Control to Text-to-Image Diffusion Models](https://arxiv.org/abs/2302.05543) (ControlNet) by Lvmin Zhang and Maneesh Agrawala.
+[Adding Conditional Control to Text-to-Image Diffusion Models](https://arxiv.org/abs/2302.05543) (ControlNet) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala.
 
 This example is based on the [training example in the original ControlNet repository](https://github.com/lllyasviel/ControlNet/blob/main/docs/train.md). It trains a ControlNet to fill circles using a [small synthetic dataset](https://huggingface.co/datasets/fusing/fill50k).
 
@@ -33,7 +33,7 @@ cd diffusers
 pip install -e .
 ```
 
-Then navigate into the [example folder](https://github.com/huggingface/diffusers/tree/main/examples/controlnet)
+Then navigate into the [example folder](https://github.com/huggingface/diffusers/tree/main/examples/controlnet):
 ```bash
 cd examples/controlnet
 ```
@@ -43,13 +43,13 @@ Now run:
 pip install -r requirements.txt
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
 ```
 
-Or for a default 🤗Accelerate configuration without answering questions about your environment:
+Or for a default 🤗 Accelerate configuration without answering questions about your environment:
 
 ```bash
 accelerate config default
@@ -63,11 +63,13 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
+
 ## Circle filling dataset
 
 The original dataset is hosted in the ControlNet [repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip), but we re-uploaded it [here](https://huggingface.co/datasets/fusing/fill50k) to be compatible with 🤗 Datasets so that it can handle the data loading within the training script.
 
-Our training examples use [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) because that is what the original set of ControlNet models was trained on. However, ControlNet can be trained to augment any compatible Stable Diffusion model (such as [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4)) or [`stabilityai/stable-diffusion-2-1`](https://huggingface.co/stabilityai/stable-diffusion-2-1).
+Our training examples use [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) because that is what the original set of ControlNet models were trained on. However, ControlNet can be trained to augment any compatible Stable Diffusion model (such as [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4)) or [`stabilityai/stable-diffusion-2-1`](https://huggingface.co/stabilityai/stable-diffusion-2-1).
 
 To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
@@ -122,7 +124,7 @@ accelerate launch train_controlnet.py \
  --validation_prompt "red circle with blue background" "cyan circle with brown floral background" \
  --train_batch_size=1 \
  --gradient_accumulation_steps=4 \
-  --push_to_hub
+ --push_to_hub
 ```
 
 ## Training with multiple GPUs
@@ -146,7 +148,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
  --mixed_precision="fp16" \
  --tracker_project_name="controlnet-demo" \
  --report_to=wandb \
-  --push_to_hub
+ --push_to_hub
 ```
 
 ## Example results
@@ -175,7 +177,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
 Enable the following optimizations to train on a 16GB GPU:
 
 - Gradient checkpointing
-- bitsandbyte's 8-bit optimizer (take a look at the [installation]((https://github.com/TimDettmers/bitsandbytes#requirements--installation) instructions if you don't already have it installed)
+- bitsandbytes' 8-bit optimizer (take a look at the [installation instructions](https://github.com/TimDettmers/bitsandbytes#requirements--installation) if you don't already have it installed)
 
 Now you can launch the training script:
 
@@ -195,15 +197,15 @@ accelerate launch train_controlnet.py \
  --gradient_accumulation_steps=4 \
  --gradient_checkpointing \
  --use_8bit_adam \
-  --push_to_hub
+ --push_to_hub
 ```
 
 ## Training on a 12 GB GPU
 
 Enable the following optimizations to train on a 12GB GPU:
 - Gradient checkpointing
-- bitsandbyte's 8-bit optimizer (take a look at the [installation]((https://github.com/TimDettmers/bitsandbytes#requirements--installation) instructions if you don't already have it installed)
-- xFormers (take a look at the [installation](https://huggingface.co/docs/diffusers/training/optimization/xformers) instructions if you don't already have it installed)
+- bitsandbytes' 8-bit optimizer (take a look at the [installation instructions](https://github.com/TimDettmers/bitsandbytes#requirements--installation) if you don't already have it installed)
+- xFormers (take a look at the [installation instructions](../optimization/xformers) if you don't already have it installed)
 - set gradients to `None`
 
 ```bash
@@ -224,10 +226,10 @@ accelerate launch train_controlnet.py \
  --use_8bit_adam \
  --enable_xformers_memory_efficient_attention \
  --set_grads_to_none \
-  --push_to_hub
+ --push_to_hub
 ```
 
-When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`. 
+When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`. If you have PyTorch 2.0 or higher installed, you don't need to install xFormers as it is already included in PyTorch's native attention.
 
 ## Training on an 8 GB GPU
 
@@ -237,8 +239,8 @@ have to make changes to the config to have a successful training run.
 
 Enable the following optimizations to train on a 8GB GPU:
 - Gradient checkpointing
-- bitsandbyte's 8-bit optimizer (take a look at the [installation]((https://github.com/TimDettmers/bitsandbytes#requirements--installation) instructions if you don't already have it installed)
-- xFormers (take a look at the [installation](https://huggingface.co/docs/diffusers/training/optimization/xformers) instructions if you don't already have it installed)
+- bitsandbytes' 8-bit optimizer (take a look at the [installation instructions](https://github.com/TimDettmers/bitsandbytes#requirements--installation) if you don't already have it installed)
+- xFormers (take a look at the [installation instructions](https://huggingface.co/docs/diffusers/training/optimization/xformers) if you don't already have it installed)
 - set gradients to `None`
 - DeepSpeed stage 2 with parameter and optimizer offloading
 - fp16 mixed precision
@@ -313,7 +315,7 @@ pipe = StableDiffusionControlNetPipeline.from_pretrained(
 
 # speed up diffusion process with faster scheduler and memory optimization
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-# remove following line if xformers is not installed
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipe.enable_xformers_memory_efficient_attention()
 
 pipe.enable_model_cpu_offload()
@@ -324,10 +326,10 @@ prompt = "pale golden rod circle with old lace background"
 # generate image
 generator = torch.manual_seed(0)
 image = pipe(prompt, num_inference_steps=20, generator=generator, image=control_image).images[0]
-
-image.save("./output.png")
+image
+#image.save("./output.png")
 ```
 
 ## Stable Diffusion XL
 
-Training with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) is also supported via the `train_controlnet_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md). 
+Training with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) is also supported via the `train_controlnet_sdxl.py` script. Please refer to the docs [here](../../../../examples/controlnet/README_sdxl). 

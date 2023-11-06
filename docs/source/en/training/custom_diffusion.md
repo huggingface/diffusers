@@ -10,10 +10,10 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Custom Diffusion training example 
+# Custom Diffusion training example
 
 [Custom Diffusion](https://arxiv.org/abs/2212.04488) is a method to customize text-to-image models like Stable Diffusion given just a few (4~5) images of a subject.
-The `train_custom_diffusion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
+The `train_custom_diffusion.py` script shows how to implement the training procedure and adapt it for Stable Diffusion.
 
 This training example was contributed by [Nupur Kumari](https://nupurkmr9.github.io/) (one of the authors of Custom Diffusion). 
 
@@ -21,7 +21,7 @@ This training example was contributed by [Nupur Kumari](https://nupurkmr9.github
 
 ### Installing the dependencies
 
-Before running the scripts, make sure to install the library's training dependencies:
+Before running the scripts, make sure to install the library's training dependencies.
 
 **Important**
 
@@ -33,17 +33,17 @@ cd diffusers
 pip install -e .
 ```
 
-Then cd into the [example folder](https://github.com/huggingface/diffusers/tree/main/examples/custom_diffusion)
+Then cd into the [examples folder](https://github.com/huggingface/diffusers/tree/main/examples/custom_diffusion):
 
-```
+```bash
 cd examples/custom_diffusion
 ```
 
-Now run
+Now run:
 
 ```bash
 pip install -r requirements.txt
-pip install clip-retrieval 
+pip install clip-retrieval
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -52,28 +52,30 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 accelerate config
 ```
 
-Or for a default accelerate configuration without answering questions about your environment
+Or for a default accelerate configuration without answering questions about your environment:
 
 ```bash
 accelerate config default
 ```
 
-Or if your environment doesn't support an interactive shell e.g. a notebook
+Or if your environment doesn't support an interactive shell e.g. a notebook:
 
 ```python
 from accelerate.utils import write_basic_config
 
 write_basic_config()
 ```
+
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
+
 ### Cat example 😺
 
 Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and unzip it. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
-We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset as a regularization. This prevents overfitting to the given target image. The following flags enable the regularization `with_prior_preservation`, `real_prior` with `prior_loss_weight=1.`. 
-The `class_prompt` should be the category name same as target image. The collected real images are with text captions similar to the `class_prompt`. The retrieved image are saved in `class_data_dir`. You can disable `real_prior` to use generated images as regularization. To collect the real images use this command first before training. 
+We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset as a regularization. This prevents overfitting to the given target image. The following flags enable the regularization `with_prior_preservation`, `real_prior` with `prior_loss_weight=1.0`. 
+The `class_prompt` should be the category name same as target image. The collected real images are with text captions similar to the `class_prompt`. The retrieved images are saved in `class_data_dir`. You can disable `real_prior` to use generated images as regularization. To collect the real images, use this command first before training. 
 
 ```bash
-pip install clip-retrieval
 python retrieve.py --class_prompt cat --class_data_dir real_reg/samples_cat --num_class_images 200
 ```
 
@@ -104,7 +106,7 @@ accelerate launch train_custom_diffusion.py \
   --push_to_hub
 ```
 
-**Use `--enable_xformers_memory_efficient_attention` for faster training with lower VRAM requirement (16GB per GPU). Follow [this guide](https://github.com/facebookresearch/xformers) for installation instructions.**
+**Use `--enable_xformers_memory_efficient_attention` for faster training with lower VRAM requirement (16GB per GPU). Follow [this guide](https://github.com/facebookresearch/xformers) for installation instructions. If you have PyTorch 2.0 or higher installed, you don't need to install xFormers as it is already included in PyTorch's native attention.**
 
 To track your experiments using Weights and Biases (`wandb`) and to save intermediate results (which we HIGHLY recommend), follow these steps:
 
@@ -148,7 +150,6 @@ Provide a [json](https://github.com/adobe-research/custom-diffusion/blob/main/as
 To collect the real images run this command for each concept in the json file. 
 
 ```bash
-pip install clip-retrieval
 python retrieve.py --class_prompt {} --class_data_dir {} --num_class_images 200
 ```
 
@@ -183,7 +184,6 @@ For fine-tuning on human faces we found the following configuration to work bett
 To collect the real images use this command first before training. 
 
 ```bash
-pip install clip-retrieval
 python retrieve.py --class_prompt person --class_data_dir real_reg/samples_person --num_class_images 200
 ```
 
@@ -216,7 +216,7 @@ accelerate launch train_custom_diffusion.py \
 
 ## Inference
 
-Once you have trained a model using the above command, you can run inference using the below command. Make sure to include the `modifier token` (e.g. \<new1\> in above example) in your prompt.
+Once you have trained a model using the above command, you can run inference using the below command. Make sure to include the `modifier token` (e.g. <new1\> in above example) in your prompt.
 
 ```python
 import torch
@@ -234,7 +234,8 @@ image = pipe(
     guidance_scale=6.0,
     eta=1.0,
 ).images[0]
-image.save("cat.png")
+image
+#image.save("cat.png")
 ```
 
 It's possible to directly load these parameters from a Hub repository:
@@ -258,7 +259,8 @@ image = pipe(
     guidance_scale=6.0,
     eta=1.0,
 ).images[0]
-image.save("cat.png")
+image
+#image.save("cat.png")
 ```
 
 Here is an example of performing inference with multiple concepts:
@@ -283,7 +285,8 @@ image = pipe(
     guidance_scale=6.0,
     eta=1.0,
 ).images[0]
-image.save("multi-subject.png")
+image
+#image.save("multi-subject.png")
 ```
 
 Here, `cat` and `wooden pot` refer to the multiple concepts.
@@ -292,13 +295,13 @@ Here, `cat` and `wooden pot` refer to the multiple concepts.
 
 You can also perform inference from one of the complete checkpoint saved during the training process, if you used the `--checkpointing_steps` argument. 
 
-TODO.
+`TODO`.
 
-## Set grads to none
+## Set grads to None
 
 To save even more memory, pass the `--set_grads_to_none` argument to the script. This will set grads to None instead of zero. However, be aware that it changes certain behaviors, so if you start experiencing any problems, remove this argument.
 
-More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html
+More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html.
 
 ## Experimental results
 

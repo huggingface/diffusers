@@ -1,3 +1,15 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Adapt a model to a new task
 
 Many diffusion systems share the same components, allowing you to adapt a pretrained model for one task to an entirely different task.
@@ -6,14 +18,14 @@ This guide will show you how to adapt a pretrained text-to-image model for inpai
 
 ## Configure UNet2DConditionModel parameters
 
-A [`UNet2DConditionModel`] by default accepts 4 channels in the [input sample](https://huggingface.co/docs/diffusers/v0.16.0/en/api/models#diffusers.UNet2DConditionModel.in_channels). For example, load a pretrained text-to-image model like [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) and take a look at the number of `in_channels`:
+A [`UNet2DConditionModel`] by default accepts 4 channels in the [input sample](https://huggingface.co/docs/diffusers/main/en/api/models/unet2d-cond#diffusers.UNet2DConditionModel.in_channels). For example, load a pretrained text-to-image model like [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) and take a look at the number of `in_channels`:
 
 ```py
 from diffusers import StableDiffusionPipeline
 
 pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_safetensors=True)
 pipeline.unet.config["in_channels"]
-4
+# 4
 ```
 
 Inpainting requires 9 channels in the input sample. You can check this value in a pretrained inpainting model like [`runwayml/stable-diffusion-inpainting`](https://huggingface.co/runwayml/stable-diffusion-inpainting):
@@ -21,9 +33,9 @@ Inpainting requires 9 channels in the input sample. You can check this value in 
 ```py
 from diffusers import StableDiffusionPipeline
 
-pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", use_safetensors=True)
+pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
 pipeline.unet.config["in_channels"]
-9
+# 9
 ```
 
 To adapt your text-to-image model for inpainting, you'll need to change the number of `in_channels` from 4 to 9. 

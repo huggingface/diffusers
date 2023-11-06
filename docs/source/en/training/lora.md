@@ -28,11 +28,11 @@ This is an experimental feature. Its APIs can change in future.
 <Tip>
 
 💡 LoRA is not only limited to attention layers. The authors found that amending
-the attention layers of a language model is sufficient to obtain good downstream performance with great efficiency. This is why it's common to just add the LoRA weights to the attention layers of a model. Check out the [Using LoRA for efficient Stable Diffusion fine-tuning](https://huggingface.co/blog/lora) blog for more information about how LoRA works!
+the attention layers of a language model is sufficient to obtain good downstream performance with great efficiency. This is why it's common to just add the LoRA weights to the attention layers of a model. Check out the [Using LoRA for Efficient Stable Diffusion Fine-Tuning](https://huggingface.co/blog/lora) blog for more information about how LoRA works!
 
 </Tip>
 
-[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository. 🧨 Diffusers now supports finetuning with LoRA for [text-to-image generation](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image#training-with-lora) and [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth#training-with-low-rank-adaptation-of-large-language-models-lora). This guide will show you how to do both.
+[cloneofsimo](https://github.com/cloneofsimo) was the first to try out LoRA training for Stable Diffusion in the popular [lora](https://github.com/cloneofsimo/lora) GitHub repository. 🧨 Diffusers now supports finetuning with LoRA for [text-to-image generation](../../../../examples/text_to_image/README.md#training-with-lora) and [DreamBooth](../../../../examples/dreambooth/README.md#training-with-low-rank-adaptation-of-large-language-models-lora). This guide will show you how to do both.
 
 If you'd like to store or share your model with the community, login to your Hugging Face account (create [one](https://hf.co/join) if you don't have one already):
 
@@ -42,7 +42,7 @@ huggingface-cli login
 
 ## Text-to-image
 
-Finetuning a model like Stable Diffusion, which has billions of parameters, can be slow and difficult. With LoRA, it is much easier and faster to finetune a diffusion model. It can run on hardware with as little as 11GB of GPU RAM without resorting to tricks such as 8-bit optimizers.
+Finetuning a model like Stable Diffusion, which has billions of parameters, can be slow and difficult. With LoRA, it is much easier and faster to finetune a diffusion model. It can run on hardware with as little as 11GB of GPU vRAM without resorting to tricks such as 8-bit optimizers.
 
 ### Training[[text-to-image-training]]
 
@@ -50,7 +50,7 @@ Let's finetune [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-
 
 Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument. You'll also need to set the `DATASET_NAME` environment variable to the name of the dataset you want to train on. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
-The `OUTPUT_DIR` and `HUB_MODEL_ID` variables are optional and specify where to save the model to on the Hub:
+The `OUTPUT_DIR` and `HUB_MODEL_ID` variables are optional and specify where to save the model on the Hub:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
@@ -93,13 +93,12 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_lora.py \
 Now you can use the model for inference by loading the base model in the [`StableDiffusionPipeline`] and then the [`DPMSolverMultistepScheduler`]:
 
 ```py
->>> import torch
->>> from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
+import torch
+from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
->>> model_base = "runwayml/stable-diffusion-v1-5"
-
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
->>> pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+model_base = "runwayml/stable-diffusion-v1-5"
+pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
+pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 ```
 
 Load the LoRA weights from your finetuned model *on top of the base model weights*, and then move the pipeline to a GPU for faster inference. When you merge the LoRA weights with the frozen pretrained model weights, you can optionally adjust how much of the weights to merge with the `scale` parameter:
@@ -111,17 +110,20 @@ Load the LoRA weights from your finetuned model *on top of the base model weight
 </Tip>
 
 ```py
->>> pipe.unet.load_attn_procs(lora_model_path)
->>> pipe.to("cuda")
+from diffusers.utils import make_image_grid
+
+pipe.unet.load_attn_procs(lora_model_path)
+pipe.to("cuda")
+
 # use half the weights from the LoRA finetuned model and half the weights from the base model
+image1 = pipe(
+  "A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5, cross_attention_kwargs={"scale": 0.5}
+).images[0]
 
->>> image = pipe(
-...     "A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5, cross_attention_kwargs={"scale": 0.5}
-... ).images[0]
 # use the weights from the fully finetuned LoRA model
-
->>> image = pipe("A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5).images[0]
->>> image.save("blue_pokemon.png")
+image2 = pipe("A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5).images[0]
+make_image_grid([image1, image2], rows=1, cols=2)
+#image2.save("blue_pokemon.png")
 ```
 
 <Tip>
@@ -143,7 +145,6 @@ pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.
 
 </Tip>
 
-
 ## DreamBooth
 
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a finetuning technique for personalizing a text-to-image model like Stable Diffusion to generate photorealistic images of a subject in different contexts, given a few images of the subject. However, DreamBooth is very sensitive to hyperparameters and it is easy to overfit. Some important hyperparameters to consider include those that affect the training time (learning rate, number of training steps), and inference time (number of steps, scheduler type).
@@ -160,12 +161,13 @@ Let's finetune [`stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-
 
 To start, specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument. You'll also need to set `INSTANCE_DIR` to the path of the directory containing the images. 
 
-The `OUTPUT_DIR` variables is optional and specifies where to save the model to on the Hub:
+The `OUTPUT_DIR` and `HUB_MODEL_ID` variables are optional and specify where to save the model on the Hub:
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export INSTANCE_DIR="path-to-instance-images"
 export OUTPUT_DIR="path-to-save-model"
+export HUB_MODEL_ID="dreambooth-lora"
 ```
 
 There are some flags to be aware of before you start training:
@@ -197,6 +199,7 @@ accelerate launch train_dreambooth_lora.py \
   --max_train_steps=500 \
   --validation_prompt="A photo of sks dog in a bucket" \
   --validation_epochs=50 \
+  --hub_model_id=${HUB_MODEL_ID} \
   --seed="0" \
   --push_to_hub
 ``` 
@@ -206,12 +209,11 @@ accelerate launch train_dreambooth_lora.py \
 Now you can use the model for inference by loading the base model in the [`StableDiffusionPipeline`]:
 
 ```py
->>> import torch
->>> from diffusers import StableDiffusionPipeline
+import torch
+from diffusers import StableDiffusionPipeline
 
->>> model_base = "runwayml/stable-diffusion-v1-5"
-
->>> pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
+model_base = "runwayml/stable-diffusion-v1-5"
+pipe = StableDiffusionPipeline.from_pretrained(model_base, torch_dtype=torch.float16, use_safetensors=True)
 ```
 
 Load the LoRA weights from your finetuned DreamBooth model *on top of the base model weights*, and then move the pipeline to a GPU for faster inference. When you merge the LoRA weights with the frozen pretrained model weights, you can optionally adjust how much of the weights to merge with the `scale` parameter:
@@ -223,20 +225,23 @@ Load the LoRA weights from your finetuned DreamBooth model *on top of the base m
 </Tip>
 
 ```py
->>> pipe.unet.load_attn_procs(lora_model_path)
->>> pipe.to("cuda")
+from diffusers.utils import make_image_grid
+
+pipe.unet.load_attn_procs(lora_model_path)
+pipe.to("cuda")
+
 # use half the weights from the LoRA finetuned model and half the weights from the base model
+image1 = pipe(
+    "A picture of a sks dog in a bucket.",
+    num_inference_steps=25,
+    guidance_scale=7.5,
+    cross_attention_kwargs={"scale": 0.5},
+).images[0]
 
->>> image = pipe(
-...     "A picture of a sks dog in a bucket.",
-...     num_inference_steps=25,
-...     guidance_scale=7.5,
-...     cross_attention_kwargs={"scale": 0.5},
-... ).images[0]
 # use the weights from the fully finetuned LoRA model
-
->>> image = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25, guidance_scale=7.5).images[0]
->>> image.save("bucket-dog.png")
+image2 = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25, guidance_scale=7.5).images[0]
+make_image_grid([image1, image2], rows=1, cols=2)
+#image2.save("bucket-dog.png")
 ```
 
 If you used `--train_text_encoder` during training, then use `pipe.load_lora_weights()` to load the LoRA
@@ -254,7 +259,8 @@ base_model_id = card.data.to_dict()["base_model"]
 pipe = StableDiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16, use_safetensors=True)
 pipe = pipe.to("cuda")
 pipe.load_lora_weights(lora_model_id)
-image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
+image = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25).images[0]
+image
 ```
 
 <Tip>
@@ -286,8 +292,8 @@ You can also provide a local directory path to [`~diffusers.loaders.LoraLoaderMi
 
 We support fine-tuning with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the following docs:
 
-* [text_to_image/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md)
-* [dreambooth/README_sdxl.md](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md)
+* [Stable Diffusion XL text-to-image fine-tuning](../../../../examples/text_to_image/README_sdxl)
+* [DreamBooth training example for Stable Diffusion XL (SDXL)](../../../../examples/dreambooth/README_sdxl)
 
 ## Unloading LoRA parameters
 
@@ -309,7 +315,8 @@ To use a different `lora_scale` with `fuse_lora()`, you should first call `unfus
 
 ```python
 from diffusers import DiffusionPipeline
-import torch 
+from diffusers.utils import make_image_grid
+import torch
 
 pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
 lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
@@ -320,9 +327,9 @@ pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 pipe.fuse_lora()
 
 generator = torch.manual_seed(0)
-images_fusion = pipe(
-    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
-).images
+image_fusion1 = pipe(
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=40
+).images[0]
 
 # To work with a different `lora_scale`, first reverse the effects of `fuse_lora()`.
 pipe.unfuse_lora()
@@ -332,9 +339,10 @@ pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
 pipe.fuse_lora(lora_scale=0.5)
 
 generator = torch.manual_seed(0)
-images_fusion = pipe(
-    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
-).images
+image_fusion2 = pipe(
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=40
+).images[0]
+make_image_grid([image_fusion1, image_fusion2], rows=1, cols=2)
 ```
 
 ## Serializing pipelines with fused LoRA parameters
@@ -374,7 +382,7 @@ pipe = DiffusionPipeline.from_pretrained("my-pipeline-with-fused-lora", torch_dt
 
 generator = torch.manual_seed(0)
 images_fusion = pipe(
-    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=2
+    "masterpiece, best quality, mountain", generator=generator, num_inference_steps=40
 ).images
 ```
 
@@ -395,7 +403,7 @@ pipe = StableDiffusionXLPipeline.from_pretrained(
 pipe.to("cuda")
 ```
 
-Then let's two LoRA checkpoints and fuse them with specific `lora_scale` values:
+Then let's choose two LoRA checkpoints and fuse them with specific `lora_scale` values:
 
 ```python
 # LoRA one.
@@ -418,6 +426,7 @@ Let's see them in action:
 ```python
 prompt = "cyborg style pikachu"
 image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
+image
 ```
 
 ![cyborg_pikachu](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/cyborg_pikachu.png)
@@ -446,11 +455,10 @@ First, download a checkpoint. We'll use
 wget https://civitai.com/api/download/models/15603 -O light_and_shadow.safetensors
 ```
 
-Next, we initialize a [`~DiffusionPipeline`]:
+Next, we initialize a [`DiffusionPipeline`]:
 
-```python 
+```python
 import torch
-
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
 
 pipeline = StableDiffusionPipeline.from_pretrained(
@@ -461,9 +469,9 @@ pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
 )
 ```
 
-We then load the checkpoint downloaded from CivitAI: 
+We then load the checkpoint downloaded from CivitAI:
 
-```python 
+```python
 pipeline.load_lora_weights(".", weight_name="light_and_shadow.safetensors")
 ```
 
@@ -473,28 +481,31 @@ If you're loading a checkpoint in the `safetensors` format, please ensure you ha
 
 </Tip>
 
-And then it's time for running inference: 
+And then it's time for running inference:
 
-```python 
+```python
+from diffusers import make_image_grid
+
 prompt = "masterpiece, best quality, 1girl, at dusk"
 negative_prompt = ("(low quality, worst quality:1.4), (bad anatomy), (inaccurate limb:1.2), "
                    "bad composition, inaccurate eyes, extra digit, fewer digits, (extra arms:1.2), large breasts")
 
-images = pipeline(prompt=prompt, 
-    negative_prompt=negative_prompt, 
-    width=512, 
-    height=768, 
-    num_inference_steps=15, 
+images = pipeline(prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=512,
+    height=768,
+    num_inference_steps=15,
     num_images_per_prompt=4,
     generator=torch.manual_seed(0)
 ).images
+make_image_grid(images, rows=2, cols=2)
 ```
 
 Below is a comparison between the LoRA and the non-LoRA results:
 
 ![lora_non_lora](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lora_non_lora_comparison.png)
 
-You have a similar checkpoint stored on the Hugging Face Hub, you can load it
+If you have a similar checkpoint stored on the Hugging Face Hub, you can load it
 directly with [`~diffusers.loaders.LoraLoaderMixin.load_lora_weights`] like so: 
 
 ```python 
@@ -513,11 +524,14 @@ Here are some example checkpoints we tried out:
   * https://civitai.com/models/22279?modelVersionId=118556 
   * https://civitai.com/models/104515/sdxlor30costumesrevue-starlight-saijoclaudine-lora 
   * https://civitai.com/models/108448/daiton-sdxl-test 
-  * https://filebin.net/2ntfqqnapiu9q3zx/pixelbuildings128-v1.safetensors
 * SDXL 1.0:
   * https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_offset_example-lora_1.0.safetensors
 
 Here is an example of how to perform inference with these checkpoints in `diffusers`:
+
+```bash
+wget https://civitai.com/api/download/models/118556 -O Kamepan.safetensors
+```
 
 ```python
 from diffusers import DiffusionPipeline
@@ -537,10 +551,9 @@ image = pipeline(
     prompt=prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps,
     generator=generator, guidance_scale=guidance_scale
 ).images[0]
-image.save("Kamepan.png")
+image
+#image.save("Kamepan.png")
 ```
-
-`Kamepan.safetensors` comes from https://civitai.com/models/22279?modelVersionId=118556 . 
 
 If you notice carefully, the inference UX is exactly identical to what we presented in the sections above. 
 
