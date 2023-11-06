@@ -2128,7 +2128,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             pipeline_config_name_or_path = None
         workflow["_name_or_path"] = pipeline_config_name_or_path
         workflow["scheduler_config"] = self.scheduler.config
-
+        print(f"Final workflow: {workflow}")
         return workflow
 
     def load_workflow(
