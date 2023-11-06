@@ -2189,7 +2189,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             scheduler_cls_name = workflow_copy["scheduler_config"]["_class_name"]
             scheduler_cls = getattr(importlib.import_module("diffusers"), scheduler_cls_name)
             scheduler = scheduler_cls.from_config(workflow_copy["scheduler_config"])
-            setattr(self.scheduler, "scheduler", scheduler)
+            setattr(self, "scheduler", scheduler)
 
         # Handle the call here.
         partial_call = partial(self.__call__, **final_call_args)
