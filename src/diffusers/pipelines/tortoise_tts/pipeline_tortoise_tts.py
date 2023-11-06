@@ -171,10 +171,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         text_inputs = self.tokenizer(
             prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
+            padding="longest",
             truncation=True,
             return_tensors="pt",
+            return_attention_mask=True,
         ).to(device)
 
         # text_input_ids = text_inputs.input_ids
@@ -194,35 +194,27 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             else:
                 negative_text_inputs = self.tokenizer(
                     negative_prompt,
-                    padding="max_length",
-                    max_length=self.tokenizer.model_max_length,
+                    padding="longest",
                     truncation=True,
                     return_tensors="pt",
+                    return_attention_mask=True,
                 ).to(device)
 
-                # negative_text_input_ids = negative_text_inputs.input_ids
-                # negative_prompt_embeds = self.text_encoder(negative_text_input_ids)
+                # check shapes of prompt and negative prompt embeds
+                # if length of prompt embeds is 1 and negative_prompt_embeds is N or vice versa then we repeat
+                # otherwise if length of prompt embeds is N and negative_prompt_embeds is M or vice versa then we return error.
+                if text_inputs.input_ids.shape[0]==1 and negative_text_inputs.input_ids.shape[0]!=1:
+                    text_inputs.input_ids = text_inputs.input_ids.repeat(negative_text_inputs.input_ids.shape[0], 1)
+                    text_inputs.attention_mask = text_inputs.attention_mask.repeat(negative_text_inputs.input_ids.shape[0], 1)
+                elif text_inputs.input_ids.shape[0]!=1 and negative_text_inputs.input_ids.shape[0]==1:
+                    negative_text_inputs.input_ids = negative_text_inputs.input_ids.repeat(text_inputs.input_ids.shape[0], 1)
+                    negative_text_inputs.attention_mask = negative_text_inputs.attention_mask.repeat(text_inputs.input_ids.shape[0], 1)
+                elif text_inputs.input_ids.shape[0]!=1 and negative_text_inputs.input_ids.shape[0]!=1:
+                    raise ValueError(f"Found {text_inputs.input_ids.shape[0]} number of prompts and {negative_text_inputs.input_ids.shape[0]} "
+                                     f"number of negative prompts. There must be same number of prompts and negative prompts,"
+                                     f"otherwise length of one of them must be 1.")
 
-            # if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-            #     negative_attention_mask = negative_text_inputs.attention_mask
-            # else:
-            #     negative_attention_mask = None
-
-            # check shapes of prompt and negative prompt embeds
-            # if length of prompt embeds is 1 and negative_prompt_embeds is N or vice versa then we repeat
-            # otherwise if length of prompt embeds is N and negative_prompt_embeds is M or vice versa then we return error.
-            if text_inputs.input_ids.shape[0]==1 and negative_text_inputs.input_ids.shape[0]!=1:
-                text_inputs.input_ids = text_inputs.input_ids.repeat(negative_text_inputs.input_ids.shape[0], 1)
-                text_inputs.attention_mask = text_inputs.attention_mask.repeat(negative_text_inputs.input_ids.shape[0], 1)
-            elif text_inputs.input_ids.shape[0]!=1 and negative_text_inputs.input_ids.shape[0]==1:
-                negative_text_inputs.input_ids = negative_text_inputs.input_ids.repeat(text_inputs.input_ids.shape[0], 1)
-                negative_text_inputs.attention_mask = negative_text_inputs.attention_mask.repeat(text_inputs.input_ids.shape[0], 1)
-            elif text_inputs.input_ids.shape[0]!=1 and negative_text_inputs.input_ids.shape[0]!=1:
-                raise ValueError(f"Found {text_inputs.input_ids.shape[0]} number of prompts and {negative_text_inputs.input_ids.shape[0]} "
-                                 f"number of negative prompts. There must be same number of prompts and negative prompts,"
-                                 f"otherwise length of one of them must be 1.")
-
-            return text_inputs, negative_text_inputs
+                return text_inputs, negative_text_inputs
 
         return text_inputs, None
 
@@ -246,11 +238,9 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         audio,
         audio_sampling_rate,
         device,
-        max_length,
     ):
         audio_features = self.audio_processor(raw_speech=audio,
                                               sampling_rate=audio_sampling_rate,
-                                              max_length=max_length,
                                               return_tensors="pt",
                                               )
         audio_features = audio_features.to(device)
@@ -634,7 +624,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             audio,
             audio_sampling_rate,
             device,
-            output_seq_length,
         )
 
         # 4. Encode input prompt
@@ -695,6 +684,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         diffusion_attention_mask = torch.ones_like(top_k_audio_candidates)
         diffusion_attention_mask = torch.masked_fill(diffusion_attention_mask,
                                                      (top_k_audio_candidates == self.calm_token_id).bool(), 0)
+        diffusion_attention_mask = torch.cumprod(diffusion_attention_mask, -1)
 
 
         if do_classifier_free_guidance and has_negative_prompts:
@@ -702,10 +692,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             neg_top_k_audio_candidates = neg_audio_candidates[neg_top_k_indices]
             neg_top_k_autoregressive_latents = neg_autoregressive_latents[neg_top_k_indices]
 
-        # prepare negative attention_mask from audio_candidates to be used in diffusion model
-        diffusion_neg_attention_mask = torch.ones_like(neg_top_k_audio_candidates)
-        diffusion_neg_attention_mask = torch.masked_fill(diffusion_neg_attention_mask,
-                                                     (neg_top_k_audio_candidates == self.calm_token_id).bool(), 0)
+            # prepare negative attention_mask from audio_candidates to be used in diffusion model
+            diffusion_neg_attention_mask = torch.ones_like(neg_top_k_audio_candidates)
+            diffusion_neg_attention_mask = torch.masked_fill(diffusion_neg_attention_mask,
+                                                         (neg_top_k_audio_candidates == self.calm_token_id).bool(), 0)
+            diffusion_neg_attention_mask = torch.cumprod(diffusion_neg_attention_mask, -1)
 
 
         # # 7. Trim audio candidates
@@ -718,11 +709,14 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         #         neg_top_k_audio_candidates, neg_top_k_autoregressive_latents
         #     )
 
-
-
         # 8. Prepare timesteps for diffusion scheduler
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
+
+
+
+
+
 
         # 9. Prepare noisy latent variables for diffusion denoising loop
         diffusion_seq_len = self.diffusion_output_sequence_length(top_k_autoregressive_latents)
