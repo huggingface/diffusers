@@ -20,7 +20,8 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from packaging import version
-from sis_dataset import CELEBAHQ_DICT, SISDataset
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
@@ -42,7 +43,9 @@ logger = get_logger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset_name_or_path", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/hf/")
-parser.add_argument("--dataset_img_size", type=int, default=256)
+parser.add_argument("--dataset_img_height", type=int, default=288)
+parser.add_argument("--dataset_img_width", type=int, default=384)
+parser.add_argument("--dataset_img_depth", type=int, default=3)
 parser.add_argument("--dataset_cls_count",type=int, default=19)
 parser.add_argument(
     "--vae_name_or_path",
@@ -148,7 +151,9 @@ parser.add_argument("--debug", action="store_true", default=False)
 
 def main(
     dataset_name_or_path: str,
-    dataset_img_size: int,
+    dataset_img_height: int,
+    dataset_img_width:int,
+    dataset_img_depth:int,
     dataset_cls_count: str,
     vae_name_or_path: str,
     output_dir: str,
@@ -222,16 +227,21 @@ def main(
     test_indices = np.arange(min(len(train_dataset),val_num_samples))
 
     def transform(examples):
-        transforms_img = Compose([
-            Resize(dataset_img_size),
-            ToTensor(),
-            Normalize(0.5,0.5)
+        transforms_img = A.Compose([
+            A.Resize(dataset_img_height,dataset_img_width),
+            A.Normalize(0.5,0.5),
+            ToTensorV2()
         ])
-        transform_msk = Compose([
-            Resize(dataset_img_size, interpolation=InterpolationMode.NEAREST)
-        ])
-        examples["image"] = [transforms_img(image.convert("RGB")) for image in examples["image"]]
-        examples["annotation"] = [np.array(transform_msk(image)) for image in examples["annotation"]]
+        # First, we convert to multilayered images
+        if 'video_img' in examples:
+            examples["image"]=[np.stack((np.array(s),np.array(v)),axis=-1) for v,s in zip(examples["video_img"],examples['shearo_img'])]
+            del examples["video_img"],examples["shearo_img"]
+        else:
+            examples['image']=[np.array(image.convert('RGB')) for image in examples['image']]
+        examples["augmented"] = [transforms_img(image=image,mask=np.array(mask)) for image,mask in zip(examples['image'],examples['annotation'])]
+        examples["annotation"] = [aug['mask'] for aug in examples["augmented"]]
+        examples["image"] = [aug['image'] for aug in examples["augmented"]]
+        del examples["augmented"]
         return examples
     train_dataset.set_transform(transform)
     test_dataset.set_transform(transform)
@@ -262,7 +272,7 @@ def main(
         learned_variance = False
         output_channels = input_channels
     config = UNet2DSISModel.get_config(
-        dataset_img_size // vae.config.compression, input_channels, output_channels, dataset_cls_count
+        max(dataset_img_width,dataset_img_height) // vae.config.compression, input_channels, output_channels, dataset_cls_count
     )
     unet = UNet2DSISModel(**config)
     if use_ema:

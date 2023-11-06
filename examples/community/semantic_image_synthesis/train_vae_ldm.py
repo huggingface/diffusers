@@ -17,9 +17,10 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from PIL import Image as PIL_Image
 from datasets import load_dataset,load_from_disk
-from torchvision.transforms import Resize,Compose,ToTensor,Normalize,RandomResizedCrop
 from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 from diffusers.optimization import get_scheduler
 from diffusers.utils import is_wandb_available
@@ -29,7 +30,7 @@ from src.models import AutoencoderSIS
 
 if is_wandb_available():
     import wandb
-
+    os.environ['WANDB_START_METHOD']="thread"
 
 def parse_bool(str: str):
     return str.upper() == "TRUE"
@@ -38,8 +39,10 @@ def parse_bool(str: str):
 logger = get_logger(__name__, log_level="INFO")
 parser = argparse.ArgumentParser(description="VAE training script.")
 # Data Management
-parser.add_argument("--dataset_name_or_path", type=str, default="/mnt/c/BUSDATA/Datasets/CelebAMask-HQ/hf/")
-parser.add_argument("--dataset_img_size", type=int, default=128)
+parser.add_argument("--dataset_name_or_path", type=str, default="/mnt/c/BUSDATA/Datasets/ShearoIA/hf_all/")
+parser.add_argument("--dataset_img_height", type=int, default=64)
+parser.add_argument("--dataset_img_width", type=int, default=128)
+parser.add_argument("--dataset_img_depth", type=int, default=2)
 parser.add_argument("--vae_spacial_compression", type=int, default=4, help="Should be a power of 2")
 parser.add_argument(
     "--output_dir",
@@ -48,6 +51,7 @@ parser.add_argument(
     help="The output directory where the model predictions and checkpoints will be written.",
 )
 # Training Management
+parser.add_argument("--train_tiling_ratio", type=int, default=1)
 parser.add_argument("--train_batch_size", type=int, default=2)
 parser.add_argument("--max_train_steps", type=int, default=10)
 parser.add_argument("--vae_train_sampling", type=parse_bool, default="True")
@@ -143,9 +147,12 @@ parser.add_argument("--debug", action="store_true", default=False)
 
 def main(
     dataset_name_or_path: str,
-    dataset_img_size: str,
+    dataset_img_height: int,
+    dataset_img_width:int,
+    dataset_img_depth:int,
     vae_spacial_compression: int,
     output_dir: str,
+    train_tiling_ratio:int,
     train_batch_size: int,
     max_train_steps: int,
     vae_train_sampling: bool,
@@ -206,28 +213,54 @@ def main(
     # We create train / val dataset...
     train_dataset = dataset['train']
     if NMAX:
-        train_indices = np.arange(min(len(train_dataset),NMAX))
+        train_indices = list(range(min(len(train_dataset),NMAX)))
+    else:
+        train_indices = list(range(len(train_dataset)))
     test_dataset = dataset['test']
-    test_indices = np.arange(min(len(train_dataset),val_num_samples))
-
+    test_indices = list(range(min(len(train_dataset),val_num_samples)))
+    # We crop with respect to tiling ratio... 
+    crop_ratio = 1.0/train_tiling_ratio
+    train_height = dataset_img_height//train_tiling_ratio
+    train_width = dataset_img_width//train_tiling_ratio
     def train_transform(examples):
-        transforms_img = Compose([
-            RandomResizedCrop(dataset_img_size,scale=(0.125,1)),
-            ToTensor(),
-            Normalize(0.5,0.5)
+        transforms_img = A.Compose([
+            A.RandomResizedCrop(
+                height=train_height,
+                width=train_width,
+                scale=(crop_ratio/2,crop_ratio)),
+            A.Normalize(0.5,0.5),
+            ToTensorV2()
         ])
-        examples["image"] = [transforms_img(image.convert("RGB")) for image in examples["image"]]
-        examples["annotation"] = [np.array(image) for image in examples["annotation"]]
+        # First, we convert to multilayered images
+        if 'video_img' in examples:
+            examples["image"]=[np.stack((np.array(s),np.array(v)),axis=-1) for v,s in zip(examples["video_img"],examples['shearo_img'])]
+            del examples["video_img"],examples["shearo_img"]
+        else:
+            examples['image']=[np.array(image.convert('RGB')) for image in examples['image']]
+        examples["augmented"] = [transforms_img(image=image,mask=np.array(mask)) for image,mask in zip(examples['image'],examples['annotation'])]
+        examples["annotation"] = [aug['mask'] for aug in examples["augmented"]]
+        examples["image"] = [aug['image'] for aug in examples["augmented"]]
+        del examples["augmented"]
         return examples
+
     def test_transform(examples):
-        transforms_img = Compose([
-            Resize(dataset_img_size),
-            ToTensor(),
-            Normalize(0.5,0.5)
+        transforms_img = A.Compose([
+            A.Resize(dataset_img_height,dataset_img_width),
+            A.Normalize(0.5,0.5),
+            ToTensorV2()
         ])
-        examples["image"] = [transforms_img(image.convert("RGB")) for image in examples["image"]]
-        examples["annotation"] = [np.array(image) for image in examples["annotation"]]
+        # First, we convert to multilayered images
+        if 'video_img' in examples:
+            examples["image"]=[np.stack((np.array(s),np.array(v)),axis=-1) for v,s in zip(examples["video_img"],examples['shearo_img'])]
+            del examples["video_img"],examples["shearo_img"]
+        else:
+            examples['image']=[np.array(image.convert('RGB')) for image in examples['image']]
+        examples["augmented"] = [transforms_img(image=image,mask=np.array(mask)) for image,mask in zip(examples['image'],examples['annotation'])]
+        examples["annotation"] = [aug['mask'] for aug in examples["augmented"]]
+        examples["image"] = [aug['image'] for aug in examples["augmented"]]
+        del examples["augmented"]
         return examples
+
     train_dataset.set_transform(train_transform)
     test_dataset.set_transform(test_transform)
 
@@ -243,13 +276,11 @@ def main(
         shuffle=False,
         num_workers=1,
     )
-    # Load Model
-    input_channels = 3
     config = AutoencoderSIS.get_config(
-        sample_size=dataset_img_size,
+        sample_size=max(dataset_img_height,dataset_img_width),
         compression=vae_spacial_compression,
-        in_channels=input_channels,
-        out_channels=input_channels,
+        in_channels=dataset_img_depth,
+        out_channels=dataset_img_depth,
     )
     vae = AutoencoderSIS(**config)
     vae: AutoencoderSIS
@@ -361,7 +392,17 @@ def main(
                 pred = vae.forward(z, decode=True).sample
                 kl_loss_batch = posterior.kl().mean()
                 mse_loss_batch = F.mse_loss(pred, x, reduction="mean")
-                lpips_loss_batch = lpips_loss_fn(pred, x).mean()
+                if x.shape[1]<3:
+                    # We'll put zeros in the third channel...
+                    n_to_add = 3-x.shape[1]
+                    x_pad = torch.nn.functional.pad(x,(0,0,0,0,0,n_to_add),mode='constant',value=0)
+                    pred_pad = torch.nn.functional.pad(pred,(0,0,0,0,0,n_to_add),mode='constant',value=0)
+                    lpips_loss_batch = lpips_loss_fn(pred_pad, x_pad).mean()
+                elif x.shape[1]>3:
+                    lpips_loss_batch = lpips_loss_fn(pred[:,:3,:,:], x[:,:3,:,:]).mean()
+                else:
+                    lpips_loss_batch = lpips_loss_fn(pred, x).mean()
+
 
                 total_loss_batch = mse_loss_batch + lambda_lpips * lpips_loss_batch + lambda_kl * kl_loss_batch
 
@@ -438,7 +479,7 @@ def main(
                     logger.info("Running validation... ")
                     vae_model = accelerator.unwrap_model(vae)
                     vae_model.eval()
-                    images = []
+                    images = {'images':[],'images_shearo':[],'images_video':[]}
                     image_ids = []
                     for _, batch in enumerate(val_dataloader):
                         ids = batch['image_id']
@@ -446,22 +487,30 @@ def main(
                         reconstructions = vae_model(x).sample
                         th_arr = torch.cat([x.cpu(), reconstructions.cpu()], axis=-1).squeeze(0)  # Last dim = Width
                         np_img = (127.5 * (th_arr + 1)).permute(1, 2, 0).numpy().astype(np.uint8)
-                        images.append(PIL_Image.fromarray(np_img, mode="RGB"))
+                        if dataset_img_depth<3:
+                            images['images_video'].append(PIL_Image.fromarray(np_img[:,:,0], mode="L")) # Layer 0 => Video
+                            images['images_shearo'].append(PIL_Image.fromarray(np_img[:,:,1], mode="L")) # Layer 1 => Shearo
+                        else:
+                            images['images'].append(PIL_Image.fromarray(np_img.convert("RGB"))) 
                         image_ids.append(ids)
 
                     for tracker in accelerator.trackers:
                         if tracker.name == "tensorboard":
-                            np_images = np.stack([np.asarray(img) for img in images])
-                            tracker.writer.add_images("Original (left) / Reconstruction (right)", np_images, epoch, dataformats="NHWC")
+                            for key,values in images.items():
+                                if len(values)>0:
+                                    th_images = torch.stack([torch.tensor(np.array(img)) for img in values])
+                                    while th_images.ndim<4:
+                                        th_images = th_images.unsqueeze(-1)
+                                    tracker.writer.add_images(f"Original (left) / Reconstruction (right) {key}", th_images, epoch, dataformats="NHWC")
                         elif tracker.name == "wandb":
-                            tracker.log(
-                                {
-                                    "validation": [
-                                        wandb.Image(image, caption=f"{i}: {image_ids[i]}")
-                                        for i, image in enumerate(images)
-                                    ]
-                                }
-                            )
+                            wandb_images = []
+                            for key,values in images.items():
+                                if len(values)>0:
+                                    wandb_images.extend([
+                                            wandb.Image(image, caption=f"{i}: {key}{image_ids[i]}")
+                                            for i, image in enumerate(values)
+                                        ])
+                            tracker.log({"validation": wandb_images})
                     del vae_model
                     torch.cuda.empty_cache()
 
