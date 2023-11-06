@@ -353,13 +353,18 @@ def _get_pipeline_class(
         else:
             file_name = CUSTOM_PIPELINE_FILE_NAME
 
+        if repo_id is not None and hub_revision is not None:
+            # if we load the pipeline code from the Hub
+            # make sure to overwrite the `revison`
+            revision = hub_revision
+
         return get_class_from_dynamic_module(
             custom_pipeline,
             module_file=file_name,
             class_name=class_name,
             repo_id=repo_id,
             cache_dir=cache_dir,
-            revision=revision if hub_revision is None else hub_revision,
+            revision=revision,
         )
 
     if class_obj != DiffusionPipeline:
