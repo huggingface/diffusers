@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import fnmatch
 import importlib
 import inspect
@@ -2174,7 +2173,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             workflow = workflow_id_or_path
 
         # We make a copy of the original workflow and operate on it.
-        workflow_copy = {k: v for k, v in workflow.items()}
+        workflow_copy = dict(workflow.items())
 
         # Handle generator.
         seed = workflow_copy.pop("generator_seed")
@@ -2182,11 +2181,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         last_known_state = workflow_copy.pop("generator_state")
         if isinstance(seed, list):
             generator = [
-                torch.Generator(device=d).manual_seed(s).set_state(torch.from_numpy(np.array(lst)))
+                torch.Generator(device=d).manual_seed(s).set_state(torch.from_numpy(np.array(lst)).byte())
                 for s, d, lst in zip(seed, device, last_known_state)
             ]
         else:
-            last_known_state = torch.from_numpy(np.array(last_known_state))
+            last_known_state = torch.from_numpy(np.array(last_known_state)).byte()
             generator = torch.Generator(device=device).manual_seed(seed).set_state(last_known_state)
         workflow_copy.update({"generator": generator})
 
