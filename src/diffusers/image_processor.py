@@ -380,7 +380,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             Whether to downscale the image's (height, width) dimensions to multiples of `vae_scale_factor`.
         vae_scale_factor (`int`, *optional*, defaults to `8`):
             VAE scale factor. If `do_resize` is `True`, the image is automatically resized to multiples of this factor.
-        resample (`str`, *optional*, defaults to `bilinear`):
+        resample (`str`, *optional*, defaults to `lanczos`):
             Resampling filter to use when resizing the image.
         do_normalize (`bool`, *optional*, defaults to `True`):
             Whether to normalize the image to [-1,1].
@@ -393,7 +393,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         self,
         do_resize: bool = True,
         vae_scale_factor: int = 8,
-        resample: str = "bilinear",
+        resample: str = "lanczos",
         do_normalize: bool = True,
     ):
         super().__init__()
