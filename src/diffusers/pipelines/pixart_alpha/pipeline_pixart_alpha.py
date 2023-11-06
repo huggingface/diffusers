@@ -123,6 +123,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         do_classifier_free_guidance: bool = True,
+        negative_prompt: str = "",
         num_images_per_prompt: int = 1,
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -208,12 +209,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(1, num_images_per_prompt)
-        prompt_embeds_attention_mask = prompt_embeds_attention_mask.view(bs_embed * num_images_per_prompt, -1)
+        prompt_embeds_attention_mask = prompt_embeds_attention_mask.view(bs_embed, -1)
+        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(num_images_per_prompt, 1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
-            uncond_tokens = [""] * batch_size
+            uncond_tokens = [negative_prompt] * batch_size
             uncond_tokens = self._text_preprocessing(uncond_tokens, clean_caption=clean_caption)
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
@@ -481,6 +482,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]] = None,
         num_inference_steps: int = 20,
+        negative_prompt: str = "",
         timesteps: List[int] = None,
         guidance_scale: float = 4.5,
         num_images_per_prompt: Optional[int] = 1,
@@ -587,6 +589,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
             num_images_per_prompt=num_images_per_prompt,
             device=device,
             prompt_embeds=prompt_embeds,
