@@ -640,7 +640,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Prepare micro-conditions.
-        added_cond_kwargs = None
+        added_cond_kwargs = {"resolution": None, "aspect_ratio": None}
         if self.transformer.config.sample_size == 128:
             resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
             aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_images_per_prompt, 1)
