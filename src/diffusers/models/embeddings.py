@@ -734,21 +734,25 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
         self.use_additional_conditions = use_additional_conditions
         if use_additional_conditions:
             self.use_additional_conditions = True
+            self.additional_condition_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
             self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
             self.aspect_ratio_embedder  = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
 
-    def apply_condition(self, size: torch.Tensor, batch_size: int, embedder: Any):
+    def apply_condition(self, size: torch.Tensor, batch_size: int, embedder: nn.Module):
         if size.ndim == 1:
             size = size[:, None]
 
         if size.shape[0] != batch_size:
-            size = size.repeat(batch_size // size.shape[0], 1)
-            assert size.shape[0] == batch_size
+            size = size.repeat(batch_size // size.shape[0], 1) 
+            if size.shape[0] != batch_size:
+                raise ValueError(f"`batch_size` should be {size.shape[0]} but found {batch_size}.")
+        
         current_batch_size, dims = size.shape[0], size.shape[1]
         size = size.reshape(-1)
-        size_freq = get_timestep_embedding(
-            size, 256, downscale_freq_shift=0, flip_sin_to_cos=True
-        ).to(size.dtype)
+        size_freq = self.additional_condition_proj(size)
+        # size_freq = get_timestep_embedding(
+        #     size, 256, downscale_freq_shift=0, flip_sin_to_cos=True
+        # ).to(size.dtype)
 
         size_emb = embedder(size_freq)
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
