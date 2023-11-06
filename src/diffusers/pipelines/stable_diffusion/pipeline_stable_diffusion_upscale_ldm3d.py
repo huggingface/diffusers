@@ -36,6 +36,7 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
+from .pipeline_stable_diffusion_ldm3d import LDM3DPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -44,11 +45,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```python
         >>> from diffusers import StableDiffusionUpscaleLDM3DPipeline
-
+        >>> from PIL import Image
+        >>> from io import BytesIO
+        >>> import requests
         >>> pipe = StableDiffusionUpscaleLDM3DPipeline.from_pretrained("Intel/ldm3d-sr")
         >>> pipe = pipe.to("cuda")
-        >>> rgb_path = "https://huggingface.co/Intel/ldm3d-4c/resolve/main/ldm3d_4c_rgb.png"
-        >>> depth_path = "https://huggingface.co/Intel/ldm3d-4c/resolve/main/ldm3d_4c_depth.png"
+        >>> rgb_path = "https://huggingface.co/Intel/ldm3d-sr/resolve/main/lemons_ldm3d_rgb.jpg"
+        >>> depth_path = "https://huggingface.co/Intel/ldm3d-sr/resolve/main/lemons_ldm3d_depth.png"
         >>> low_res_rgb = Image.open(BytesIO(requests.get(rgb_path).content)).convert("RGB")
         >>> low_res_depth = Image.open(BytesIO(requests.get(depth_path).content)).convert("L")
         >>> output = pipe(
@@ -63,29 +66,6 @@ EXAMPLE_DOC_STRING = """
         >>> depth_image[0].save("hr_ldm3d_depth.png")
         ```
 """
-
-
-@dataclass
-class LDM3DPipelineOutput(BaseOutput):
-    """
-    Output class for Stable Diffusion pipelines.
-
-    Args:
-        rgb (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
-            num_channels)`.
-        depth (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
-            num_channels)`.
-        nsfw_content_detected (`List[bool]`)
-            List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
-            `None` if safety checking could not be performed.
-    """
-
-    rgb: Union[List[PIL.Image.Image], np.ndarray]
-    depth: Union[List[PIL.Image.Image], np.ndarray]
-    nsfw_content_detected: Optional[List[bool]]
-
 
 class StableDiffusionUpscaleLDM3DPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin

@@ -410,7 +410,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             # special case for grayscale (single channel) images
             pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
         else:
-            pil_images = [Image.fromarray(image[:, :, :3]) for image in images]  # TODO Estelle [:,:,::-1]
+            pil_images = [Image.fromarray(image[:, :, :3]) for image in images]
 
         return pil_images
 
