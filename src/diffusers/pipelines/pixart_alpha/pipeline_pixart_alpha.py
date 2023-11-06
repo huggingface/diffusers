@@ -138,9 +138,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`). For PixArt-Alpha, this should be "".
+                The prompt not to guide the image generation. If not defined, one has to pass `negative_prompt_embeds`
+                instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`). For
+                PixArt-Alpha, this should be "".
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 whether to use classifier free guidance or not
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -151,7 +151,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the "" string.
+                Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the ""
+                string.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             mask_feature: (bool, defaults to `True`):
@@ -258,7 +259,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds = prompt_embeds.unsqueeze(1)
             masked_prompt_embeds, keep_indices = self.mask_text_embeddings(prompt_embeds, prompt_embeds_attention_mask)
             masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
-            masked_negative_prompt_embeds = negative_prompt_embeds[:, :keep_indices, :] if negative_prompt_embeds is not None else None
+            masked_negative_prompt_embeds = (
+                negative_prompt_embeds[:, :keep_indices, :] if negative_prompt_embeds is not None else None
+            )
             return masked_prompt_embeds, masked_negative_prompt_embeds
 
         return prompt_embeds, negative_prompt_embeds
@@ -554,8 +557,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt should be "". If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
-                argument.
+                Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt should be "". If not
+                provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.

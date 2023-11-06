@@ -167,7 +167,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.width = sample_size
 
             self.patch_size = patch_size
-            interpolation_scale = self.config.sample_size // 64 # => 64 (= 512 pixart) has interpolation scale 1
+            interpolation_scale = self.config.sample_size // 64  # => 64 (= 512 pixart) has interpolation scale 1
             interpolation_scale = max(interpolation_scale, 1)
             self.pos_embed = PatchEmbed(
                 height=sample_size,
@@ -225,16 +225,14 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # 5. PixArt-Alpha blocks.
         self.adaln_single = None
         if norm_type == "ada_norm_single":
-            use_additional_conditions = self.config.sample_size == 128  
+            use_additional_conditions = self.config.sample_size == 128
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
             self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=use_additional_conditions)
 
         self.caption_projection = None
         if caption_channels is not None:
-            self.caption_projection = CaptionProjection(
-                in_features=caption_channels, hidden_size=inner_dim
-            )
+            self.caption_projection = CaptionProjection(in_features=caption_channels, hidden_size=inner_dim)
 
         self.gradient_checkpointing = False
 

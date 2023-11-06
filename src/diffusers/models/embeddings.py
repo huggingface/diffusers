@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional, Any
+from typing import Optional
 
 import numpy as np
 import torch
@@ -736,17 +736,17 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
             self.use_additional_conditions = True
             self.additional_condition_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
             self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
-            self.aspect_ratio_embedder  = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
+            self.aspect_ratio_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
 
     def apply_condition(self, size: torch.Tensor, batch_size: int, embedder: nn.Module):
         if size.ndim == 1:
             size = size[:, None]
 
         if size.shape[0] != batch_size:
-            size = size.repeat(batch_size // size.shape[0], 1) 
+            size = size.repeat(batch_size // size.shape[0], 1)
             if size.shape[0] != batch_size:
                 raise ValueError(f"`batch_size` should be {size.shape[0]} but found {batch_size}.")
-        
+
         current_batch_size, dims = size.shape[0], size.shape[1]
         size = size.reshape(-1)
         size_freq = self.additional_condition_proj(size)
@@ -764,7 +764,9 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
 
         if self.use_additional_conditions:
             resolution = self.apply_condition(resolution, batch_size=batch_size, embedder=self.resolution_embedder)
-            aspect_ratio = self.apply_condition(aspect_ratio, batch_size=batch_size, embedder=self.aspect_ratio_embedder)
+            aspect_ratio = self.apply_condition(
+                aspect_ratio, batch_size=batch_size, embedder=self.aspect_ratio_embedder
+            )
             conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
         else:
             conditioning = timesteps_emb

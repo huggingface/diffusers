@@ -117,7 +117,7 @@ class BasicTransformerBlock(nn.Module):
         double_self_attention: bool = False,
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",   # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single'
+        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single'
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
         attention_type: str = "default",
@@ -278,7 +278,7 @@ class BasicTransformerBlock(nn.Module):
         if self.attn2 is not None:
             if self.use_ada_layer_norm:
                 norm_hidden_states = self.norm2(hidden_states, timestep)
-            elif (self.use_ada_layer_norm_zero or self.use_layer_norm):
+            elif self.use_ada_layer_norm_zero or self.use_layer_norm:
                 norm_hidden_states = self.norm2(hidden_states)
             elif self.use_ada_layer_norm_single:
                 # For PixArt norm2 isn't applied here:

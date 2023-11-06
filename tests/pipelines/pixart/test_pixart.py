@@ -27,7 +27,7 @@ from diffusers import (
     PixArtAlphaPipeline,
     Transformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, slow, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -119,7 +119,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
-            "mask_feature": False
+            "mask_feature": False,
         }
 
         # set all optional components to None
@@ -153,7 +153,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
-            "mask_feature": False
+            "mask_feature": False,
         }
 
         output_loaded = pipe_loaded(**inputs)[0]
@@ -253,4 +253,3 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         import hf_image_uploader as hiu
 
         hiu.upload(image, "patrickvonplaten/images")
-
