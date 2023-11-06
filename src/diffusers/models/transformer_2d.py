@@ -167,13 +167,15 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.width = sample_size
 
             self.patch_size = patch_size
+            interpolation_scale = self.config.sample_size // 64 # => 64 (= 512 pixart) has interpolation scale 1
+            interpolation_scale = max(interpolation_scale, 1)
             self.pos_embed = PatchEmbed(
                 height=sample_size,
                 width=sample_size,
                 patch_size=patch_size,
                 in_channels=in_channels,
                 embed_dim=inner_dim,
-                interpolation_scale=self.config.sample_size // 64, # => 64 (= 512 pixart) has interpolation scale 1
+                interpolation_scale=interpolation_scale,
             )
 
         # 3. Define transformers blocks
@@ -340,6 +342,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
             hidden_states = self.pos_embed(hidden_states)
+
             if self.adaln_single is not None:
                 if added_cond_kwargs is None:
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
@@ -350,6 +353,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         if self.caption_projection is not None:
+            batch_size = hidden_states.shape[0]
             encoder_hidden_states = self.caption_projection(encoder_hidden_states)
             encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
 

@@ -192,6 +192,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
             prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
             prompt_embeds = prompt_embeds[0]
+        else:
+            prompt_embeds_attention_mask = torch.ones_like(prompt_embeds)
 
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
@@ -251,7 +253,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds = prompt_embeds.unsqueeze(1)
             masked_prompt_embeds, keep_indices = self.mask_text_embeddings(prompt_embeds, prompt_embeds_attention_mask)
             masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
-            masked_negative_prompt_embeds = negative_prompt_embeds[:, :keep_indices, :]
+            masked_negative_prompt_embeds = negative_prompt_embeds[:, :keep_indices, :] if negative_prompt_embeds is not None else None
             return masked_prompt_embeds, masked_negative_prompt_embeds
 
         return prompt_embeds, negative_prompt_embeds

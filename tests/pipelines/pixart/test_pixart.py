@@ -48,7 +48,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         transformer = Transformer2DModel(
-            sample_size=16,
+            sample_size=8,
             num_layers=2,
             patch_size=2,
             attention_head_dim=8,
@@ -88,10 +88,8 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
-            "guidance_scale": 6.0,
+            "guidance_scale": 5.0,
             "output_type": "numpy",
-            "height": 32,
-            "width": 32,
         }
         return inputs
 
@@ -168,9 +166,10 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
+        print(torch.from_numpy(image_slice.flatten()))
 
-        self.assertEqual(image.shape, (1, 32, 32, 3))
-        expected_slice = np.array([0.3726, 0.385, 0.5178, 0.3283, 0.5043, 0.3872, 0.2736, 0.5152, 0.4391])
+        self.assertEqual(image.shape, (1, 8, 8, 3))
+        expected_slice = np.array([0.5303, 0.2658, 0.7979, 0.1182, 0.3304, 0.4608, 0.5195, 0.4261, 0.4675])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
