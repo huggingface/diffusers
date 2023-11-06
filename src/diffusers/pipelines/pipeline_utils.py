@@ -2122,7 +2122,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             workflow.update({"generator_device": str(generator.device)})
             workflow.update({"generator_state": generator.get_state().numpy().tolist()})
 
-        del workflow["generator"]
+        workflow.pop("generator")
 
         # Handle pipeline-level things.
         if hasattr(self, "config") and hasattr(self.config, "_name_or_path"):

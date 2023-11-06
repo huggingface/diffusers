@@ -49,9 +49,9 @@ class Workflow(dict, PushToHubMixin):
         self._internal_dict.update(__m, **kwargs)
         super().update(__m, **kwargs)
 
-    # def pop(self, __key):
-    #     self._internal_dict.pop(__key)
-    #     super().pop(__key)
+    def pop(self, key, *args):
+        self._internal_dict.pop(key, *args)
+        return super().pop(key, *args)
 
     # Copied from diffusers.configuration_utils.ConfigMixin.to_json_string
     def to_json_string(self) -> str:
