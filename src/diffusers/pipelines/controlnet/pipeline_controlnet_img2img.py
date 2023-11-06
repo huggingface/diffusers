@@ -996,7 +996,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare image
-        image = self.image_processor.preprocess(image).to(dtype=torch.float32)
+        image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
 
         # 5. Prepare controlnet_conditioning_image
         if isinstance(controlnet, ControlNetModel):
