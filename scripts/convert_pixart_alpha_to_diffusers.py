@@ -160,7 +160,6 @@ def main(args):
     num_model_params = sum(p.numel() for p in transformer.parameters())
     print(f"Total number of transformer parameters: {num_model_params}")
 
-    # TODO: To be configured?
     if args.only_transformer:
         transformer.save_pretrained(os.path.join(args.dump_path, "transformer"))
     else:
