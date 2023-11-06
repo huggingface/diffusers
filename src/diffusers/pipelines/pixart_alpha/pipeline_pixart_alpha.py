@@ -287,11 +287,16 @@ class PixArtAlphaPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
+        height,
+        width,
         negative_prompt,
         callback_steps,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -584,12 +589,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 returned where the first element is a list with the generated images
         """
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, negative_prompt, callback_steps, prompt_embeds, negative_prompt_embeds)
-
-        # 2. Default height and width to transformer
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
+        self.check_inputs(
+            prompt, height, width, negative_prompt, callback_steps, prompt_embeds, negative_prompt_embeds
+        )
 
+        # 2. Default height and width to transformer
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):

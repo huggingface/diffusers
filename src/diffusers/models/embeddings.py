@@ -750,9 +750,6 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
         current_batch_size, dims = size.shape[0], size.shape[1]
         size = size.reshape(-1)
         size_freq = self.additional_condition_proj(size).to(size.dtype)
-        # size_freq = get_timestep_embedding(
-        #     size, 256, downscale_freq_shift=0, flip_sin_to_cos=True
-        # ).to(size.dtype)
 
         size_emb = embedder(size_freq)
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
