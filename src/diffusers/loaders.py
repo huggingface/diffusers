@@ -428,7 +428,7 @@ class UNet2DConditionLoadersMixin:
                     out_features = attn_processor.out_channels
                     kernel_size = attn_processor.kernel_size
 
-                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+                    ctx = init_empty_weights if (low_cpu_mem_usage and is_accelerate_available()) else nullcontext
                     with ctx():
                         lora = LoRAConv2dLayer(
                             in_features=in_features,
@@ -440,7 +440,7 @@ class UNet2DConditionLoadersMixin:
                             network_alpha=mapped_network_alphas.get(key),
                         )
                 elif isinstance(attn_processor, LoRACompatibleLinear):
-                    ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+                    ctx = init_empty_weights if (low_cpu_mem_usage and is_accelerate_available()) else nullcontext
                     with ctx():
                         lora = LoRALinearLayer(
                             attn_processor.in_features,
@@ -1560,7 +1560,7 @@ class LoraLoaderMixin:
 
         def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
             linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
-            ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+            ctx = init_empty_weights if (low_cpu_mem_usage and is_accelerate_available()) else nullcontext
             with ctx():
                 model = PatchedLoraProjection(linear_layer, lora_scale, network_alpha, rank, dtype=dtype)
 
