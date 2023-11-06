@@ -150,6 +150,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # inputs with prompt converted to embeddings
         inputs = {
             "prompt_embeds": prompt_embeds,
+            "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
             "generator": generator,
             "num_inference_steps": num_inference_steps,
