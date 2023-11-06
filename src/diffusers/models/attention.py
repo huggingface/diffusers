@@ -244,7 +244,8 @@ class BasicTransformerBlock(nn.Module):
             UMER_DEBUG_CACHE.append(('norm2', norm_hidden_states))
             UMER_DEBUG_CACHE.append(('context', encoder_hidden_states))
             if encoder_attention_mask is not None: print('encoder_attention_mask is not None. Shape = '+str(list(encoder_attention_mask.shape)+'\tvals = '+str(encoder_attention_mask.flatten[:10])))
-            if cross_attention_kwargs is not None: print('cross_attention_kwargs is not None. Keys = '+str(cross_attention_kwargs.keys()))
+            if cross_attention_kwargs is not None:
+                if len(cross_attention_kwargs.keys()) > 0: print('cross_attention_kwargs is not None. Keys = '+str(cross_attention_kwargs.keys()))
             attn_output = self.attn2(
                 norm_hidden_states,
                 encoder_hidden_states=encoder_hidden_states,

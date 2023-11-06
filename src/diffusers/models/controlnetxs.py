@@ -381,6 +381,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # this is for a detail view, ie below subblock level
         more_detailled_debug_log = []
 
+        any_debug = self.DEBUG_LOG_by_Umer or self.DETAILLED_DEBUG_LOG_by_Umer
+
         # Cross Control
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
@@ -395,18 +397,18 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
         # 1 - input blocks (encoder)
-        print('------ enc ------')
+        if any_debug: print('------ enc ------')
         for i, (m_base, m_ctrl)  in enumerate(zip(base_down_subblocks, ctrl_down_subblocks)):
             # A - concat base -> ctrl
             cat_to_ctrl = next(it_enc_convs_in)(h_base)
             h_ctrl = torch.cat([h_ctrl, cat_to_ctrl], dim=1)
             debug_by_umer('enc', 'h_ctr', h_ctrl)
             # B - apply base subblock
-            print('>> Applying base block\t', end='')
+            if any_debug: print('>> Applying base block\t', end='')
             h_base, debug_cache_i_dont_care_about_sry_mr_debug_cache = m_base(h_base, temb, cemb)
             debug_by_umer('enc', 'h_base', h_base)
             # C - apply ctrl subblock
-            print('>> Applying ctrl block\t', end='')
+            if any_debug: print('>> Applying ctrl block\t', end='')
             h_ctrl, another_debug_cache = m_ctrl(h_ctrl, temb, cemb)
             debug_by_umer('enc', 'h_ctrl', h_ctrl)
             more_detailled_debug_log += another_debug_cache # We only record details for the application of ctrl blocks
@@ -421,14 +423,14 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         h_ctrl = torch.concat([h_ctrl, h_base], dim=1)
         debug_by_umer('enc', 'h_ctrl', h_ctrl)
         # 2 - mid blocks (bottleneck)
-        print('------ mid ------')
+        if any_debug: print('------ mid ------')
         for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
-            print('>> Applying base block\t', end='')
+            if any_debug: print('>> Applying base block\t', end='')
             h_base, debug_cache_i_dont_care_about_sry_mr_debug_cache = m_base(h_base, temb, cemb)
-            print('>> Applying ctrl block\t', end='')
+            if any_debug: print('>> Applying ctrl block\t', end='')
             h_ctrl, another_debug_cache = m_ctrl(h_ctrl, temb, cemb)
             more_detailled_debug_log += another_debug_cache # We only record details for the application of ctrl blocks
-            print()
+            if any_debug: print()
         # Heidelberg treats the R/A/R as one block, while I treat is as 2 subblocks
         # Let's therefore only log after the mid section
         debug_by_umer('mid', 'h_base', h_base)
@@ -438,13 +440,13 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         debug_by_umer('mid', 'h_base', h_base)
 
         # 3 - output blocks (decoder)
-        print('------ dec ------')
+        if any_debug: print('------ dec ------')
         for m_base in base_up_subblocks:
             h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales) # add info from ctrl encoder 
             debug_by_umer('dec', 'h_base', h_base)
             h_base = torch.cat([h_base, hs_base.pop()], dim=1) # concat info from base encoder+ctrl encoder
             debug_by_umer('dec', 'h_base', h_base)
-            print('>> Applying base block\t', end='')
+            if any_debug: print('>> Applying base block\t', end='')
             h_base, debug_cache_i_dont_care_about_sry_mr_debug_cache = m_base(h_base, temb, cemb)
             debug_by_umer('dec', 'h_base', h_base)
             print()
