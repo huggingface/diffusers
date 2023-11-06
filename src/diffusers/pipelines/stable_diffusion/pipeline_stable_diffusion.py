@@ -709,7 +709,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             if generator is None:
                 raise ValueError(f"`generator` cannot be None when `return_workflow` is {return_workflow}.")
             workflow = self.populate_workflow_from_pipeline()
-            print(f'Has generator: {"generator" in workflow}')
 
         callback = kwargs.pop("callback", None)
         callback_steps = kwargs.pop("callback_steps", None)
@@ -869,7 +868,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             outputs = (image, has_nsfw_concept)
 
             if return_workflow:
-                print(f'Has generator: {"generator" in workflow}')
                 outputs += (workflow,)
 
             return outputs

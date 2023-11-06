@@ -2113,12 +2113,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if "generator_seed" not in workflow:
                     workflow.update({"generator_seed": [g.initial_seed()]})
                     workflow.update({"generator_device": [str(g.device)]})
+                    workflow.update({"generator_state": g.get_state().numpy().tolist()})
                 else:
                     workflow["generator_seed"].append(g.initial_seed())
                     workflow["generator_device"].append(g.device)
+                    workflow["generator_state"].append(g.get_state().numpy().tolist())
         else:
             workflow.update({"generator_seed": generator.initial_seed()})
             workflow.update({"generator_device": str(generator.device)})
+            workflow.update({"generator_state": g.get_state().numpy().tolist()})
 
         del workflow["generator"]
 
@@ -2176,10 +2179,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # Handle generator.
         seed = workflow_copy.pop("generator_seed")
         device = workflow_copy.pop("generator_device", "cpu")
+        last_known_state = workflow_copy.pop("generator_state")
         if isinstance(seed, list):
-            generator = [torch.Generator(device=d).manual_seed(s) for s, d in zip(seed, device)]
+            generator = [
+                torch.Generator(device=d).manual_seed(s).set_state(torch.from_numpy(np.array(lst)))
+                for s, d, lst in zip(seed, device, last_known_state)
+            ]
         else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+            last_known_state = torch.from_numpy(np.array(last_known_state))
+            generator = torch.Generator(device=device).manual_seed(seed).set_state(last_known_state)
         workflow_copy.update({"generator": generator})
 
         # Handle non-call arguments.
