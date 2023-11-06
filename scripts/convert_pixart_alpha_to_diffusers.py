@@ -23,10 +23,10 @@ def main(args):
 
     # Caption projection.
     converted_state_dict["caption_projection.y_embedding"] = state_dict.pop("y_embedder.y_embedding")
-    converted_state_dict["caption_projection.mlp.0.weight"] = state_dict.pop("y_embedder.y_proj.fc1.weight")
-    converted_state_dict["caption_projection.mlp.0.bias"] = state_dict.pop("y_embedder.y_proj.fc1.bias")
-    converted_state_dict["caption_projection.mlp.2.weight"] = state_dict.pop("y_embedder.y_proj.fc2.weight")
-    converted_state_dict["caption_projection.mlp.2.bias"] = state_dict.pop("y_embedder.y_proj.fc2.bias")
+    converted_state_dict["caption_projection.linear_1.weight"] = state_dict.pop("y_embedder.y_proj.fc1.weight")
+    converted_state_dict["caption_projection.linear_1.bias"] = state_dict.pop("y_embedder.y_proj.fc1.bias")
+    converted_state_dict["caption_projection.linear_2.weight"] = state_dict.pop("y_embedder.y_proj.fc2.weight")
+    converted_state_dict["caption_projection.linear_2.bias"] = state_dict.pop("y_embedder.y_proj.fc2.bias")
 
     # AdaLN-single LN
     converted_state_dict["adaln_single.emb.timestep_embedder.linear_1.weight"] = state_dict.pop(

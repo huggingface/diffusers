@@ -777,15 +777,13 @@ class CaptionProjection(nn.Module):
 
     def __init__(self, in_features, hidden_size, class_dropout_prob, num_tokens=120):
         super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(in_features=in_features, out_features=hidden_size, bias=True),
-            nn.GELU(approximate="tanh"),
-            nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True),
-        )
-        # TODO(PVP, Sayak) for now unused
+        self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
+        self.act_1 = nn.GELU(approximate="tanh")
+        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
         self.register_buffer("y_embedding", nn.Parameter(torch.randn(num_tokens, in_features) / in_features**0.5))
-        
 
     def forward(self, caption, force_drop_ids=None):
-        caption = self.mlp(caption)
-        return caption
+        hidden_states = self.linear_1(caption)
+        hidden_states = self.act_1(hidden_states)
+        hidden_states = self.linear_2(hidden_states)
+        return hidden_states
