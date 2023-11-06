@@ -43,6 +43,7 @@ from ..utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     SAFETENSORS_WEIGHTS_NAME,
+    USE_PEFT_BACKEND,
     WEIGHTS_NAME,
     BaseOutput,
     deprecate,
@@ -288,9 +289,15 @@ def maybe_raise_or_warn(
         # Dynamo wraps the original model in a private class.
         # I didn't find a public API to get the original class.
         sub_model = passed_class_obj[name]
-        model_cls = sub_model.__class__
         if is_compiled_module(sub_model):
-            model_cls = sub_model._orig_mod.__class__
+            sub_model = sub_model._orig_mod
+
+        model_cls = sub_model.__class__
+        if USE_PEFT_BACKEND:
+            from peft import PeftModel
+
+            if isinstance(sub_model, PeftModel):
+                model_cls = sub_model.base_model.model.__class__
 
         if not issubclass(model_cls, expected_class_obj):
             raise ValueError(
