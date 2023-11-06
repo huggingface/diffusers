@@ -7,16 +7,6 @@ from safetensors.torch import save_file
 from tqdm import tqdm
 
 
-def ema_scope(model):
-    model_ema = LitEma(model)
-    model_ema.store(model.parameters())
-    model_ema.copy_to(model)
-    try:
-        yield None
-    finally:
-        model_ema.restore(model.parameters())
-
-
 def replace1_string_ldm3d2sd(input_string):
     # Define the regular expression pattern
     pattern = r"\.(\d+)\.block"

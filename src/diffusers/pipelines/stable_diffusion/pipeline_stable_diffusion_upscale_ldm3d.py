@@ -51,7 +51,13 @@ EXAMPLE_DOC_STRING = """
         >>> depth_path = "https://huggingface.co/Intel/ldm3d-4c/resolve/main/ldm3d_4c_depth.png"
         >>> low_res_rgb = Image.open(BytesIO(requests.get(rgb_path).content)).convert("RGB")
         >>> low_res_depth = Image.open(BytesIO(requests.get(depth_path).content)).convert("L")
-        >>> output = pipe(prompt="high quality high resolution uhd 4k image", rgb=low_res_rgb, depth=low_res_depth, num_inference_steps=50, target_res= [1024, 1024])
+        >>> output = pipe(
+        ...     prompt="high quality high resolution uhd 4k image",
+        ...     rgb=low_res_rgb,
+        ...     depth=low_res_depth,
+        ...     num_inference_steps=50,
+        ...     target_res=[1024, 1024],
+        ... )
         >>> rgb_image, depth_image = output.rgb, output.depth
         >>> rgb_image[0].save("hr_ldm3d_rgb.jpg")
         >>> depth_image[0].save("hr_ldm3d_depth.png")
