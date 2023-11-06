@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import fnmatch
 import importlib
 import inspect
@@ -2128,7 +2129,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             pipeline_config_name_or_path = None
         workflow["_name_or_path"] = pipeline_config_name_or_path
         workflow["scheduler_config"] = self.scheduler.config
-        
+
         return workflow
 
     def load_workflow(
@@ -2169,24 +2170,25 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             workflow = workflow_id_or_path
 
+        # We make a copy of the original workflow and operate on it.
+        workflow_copy = copy.deepcopy(workflow)
+
         # Handle generator.
-        seed = workflow.pop("generator_seed")
-        device = workflow.pop("generator_device", "cpu")
+        seed = workflow_copy.pop("generator_seed")
+        device = workflow_copy.pop("generator_device", "cpu")
         if isinstance(seed, list):
             generator = [torch.Generator(device=d).manual_seed(s) for s, d in zip(seed, device)]
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
-        workflow.update({"generator": generator})
+        workflow_copy.update({"generator": generator})
 
         # Handle non-call arguments.
-        # Note: Instead of popping the non-call arguments off, it's better to keep them in
-        # the workflow object should it be reused.
-        final_call_args = {k: v for k, v in workflow.items() if k not in _NON_CALL_ARGUMENTS}
+        final_call_args = {k: v for k, v in workflow_copy.items() if k not in _NON_CALL_ARGUMENTS}
 
         if load_scheduler:
-            scheduler_cls_name = workflow["scheduler_config"]["_class_name"]
+            scheduler_cls_name = workflow_copy["scheduler_config"]["_class_name"]
             scheduler_cls = getattr(importlib.import_module("diffusers"), scheduler_cls_name)
-            scheduler = scheduler_cls.from_config(workflow["scheduler_config"])
+            scheduler = scheduler_cls.from_config(workflow_copy["scheduler_config"])
             setattr(self.scheduler, "scheduler", scheduler)
 
         # Handle the call here.
