@@ -13,10 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Module for managing workflows."""
+import json
 import os
+from pathlib import PosixPath
 from typing import Union
 
-from .configuration_utils import ConfigMixin
+import numpy as np
+from huggingface_hub import create_repo
+
+from . import __version__
 from .utils import PushToHubMixin, logging
 from .utils.constants import WORKFLOW_NAME
 
@@ -26,7 +31,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 _NON_CALL_ARGUMENTS = {"_name_or_path", "scheduler_config", "_class_name", "_diffusers_version"}
 
 
-class Workflow(dict, ConfigMixin, PushToHubMixin):
+class Workflow(dict, PushToHubMixin):
     """Class sub-classing from native Python dict to have support for interacting with the Hub."""
 
     config_name = None
@@ -48,8 +53,39 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
         self._internal_dict.pop(__key)
         super().pop(__key)
 
+    # Copied from diffusers.configuration_utils.ConfigMixin.to_json_string
+    def to_json_string(self) -> str:
+        """
+        Serializes the configuration instance to a JSON string.
+
+        Returns:
+            `str`:
+                String containing all the attributes that make up the configuration instance in JSON format.
+        """
+        config_dict = self._internal_dict if hasattr(self, "_internal_dict") else {}
+        config_dict["_class_name"] = self.__class__.__name__
+        config_dict["_diffusers_version"] = __version__
+
+        def to_json_saveable(value):
+            if isinstance(value, np.ndarray):
+                value = value.tolist()
+            elif isinstance(value, PosixPath):
+                value = str(value)
+            return value
+
+        config_dict = {k: to_json_saveable(v) for k, v in config_dict.items()}
+        # Don't save "_ignore_files" or "_use_default_values"
+        config_dict.pop("_ignore_files", None)
+        config_dict.pop("_use_default_values", None)
+
+        return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
+
     def save_workflow(
-        self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, filename: str = WORKFLOW_NAME
+        self,
+        save_directory: Union[str, os.PathLike],
+        push_to_hub: bool = False,
+        filename: str = WORKFLOW_NAME,
+        **kwargs,
     ):
         """
         Saves a workflow to a directory.
@@ -63,9 +99,36 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
                 namespace).
             filename (`str`, *optional*, defaults to `workflow.json`):
                 Optional filename to use to serialize the workflow JSON.
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         self.config_name = filename
-        self.save_config(save_directory=save_directory, push_to_hub=push_to_hub)
+
+        if os.path.isfile(save_directory):
+            raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
+
+        os.makedirs(save_directory, exist_ok=True)
+
+        output_config_file = os.path.join(save_directory, self.config_name)
+        with open(output_config_file, "w", encoding="utf-8") as writer:
+            writer.write(self.to_json_string())
+        logger.info(f"Configuration saved in {output_config_file}")
+
+        if push_to_hub:
+            commit_message = kwargs.pop("commit_message", None)
+            private = kwargs.pop("private", False)
+            create_pr = kwargs.pop("create_pr", False)
+            token = kwargs.pop("token", None)
+            repo_id = kwargs.pop("repo_id", save_directory.split(os.path.sep)[-1])
+            repo_id = create_repo(repo_id, exist_ok=True, private=private, token=token).repo_id
+
+            self._upload_folder(
+                save_directory,
+                repo_id,
+                token=token,
+                commit_message=commit_message,
+                create_pr=create_pr,
+            )
 
     def save_pretrained(
         self,
@@ -87,5 +150,12 @@ class Workflow(dict, ConfigMixin, PushToHubMixin):
                 namespace).
             filename (`str`, *optional*, defaults to `workflow.json`):
                 Optional filename to use to serialize the workflow JSON.
+            kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
-        self.save_workflow(save_directory=save_directory, push_to_hub=push_to_hub, filename=filename)
+        self.save_workflow(
+            save_directory=save_directory,
+            push_to_hub=push_to_hub,
+            filename=filename,
+            **kwargs,
+        )
