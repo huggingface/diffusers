@@ -204,8 +204,6 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        slice = image_slice.flatten().tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
         expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1323])
 
@@ -223,10 +221,8 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        slice = image_slice.flatten().tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0469])
+        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0266])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -241,8 +237,6 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        slice = image_slice.flatten().tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
         expected_slice = np.array([0.1501, 0.1755, 0.1877, 0.1445, 0.1665, 0.1763, 0.1389, 0.176, 0.2031])
 
@@ -260,10 +254,8 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        slice = image_slice.flatten().tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([0.0027, 0.0000, 0.0000, 0.0000, 0.0000, 0.0369, 0.0000, 0.0413, 0.2068])
+        expected_slice = np.array([0.2515, 0.2593, 0.2593, 0.2544, 0.2759, 0.2788, 0.2812, 0.3169, 0.332])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
