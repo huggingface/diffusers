@@ -90,7 +90,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder"]
-    model_cpu_offload_seq = "text_encoder->transformer-vae"
+    model_cpu_offload_seq = "text_encoder->transformer->vae"
 
     def __init__(
         self,
@@ -137,6 +137,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`). For PixArt-Alpha, this should be "".
             do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
                 whether to use classifier free guidance or not
             num_images_per_prompt (`int`, *optional*, defaults to 1):
@@ -147,7 +151,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha, it's just the "" string.
+                Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the "" string.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
             mask_feature: (bool, defaults to `True`):
@@ -280,6 +284,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
     def check_inputs(
         self,
         prompt,
+        negative_prompt,
         callback_steps,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -307,6 +312,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         if prompt is not None and negative_prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
 
@@ -481,8 +492,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        num_inference_steps: int = 20,
         negative_prompt: str = "",
+        num_inference_steps: int = 20,
         timesteps: List[int] = None,
         guidance_scale: float = 4.5,
         num_images_per_prompt: Optional[int] = 1,
@@ -507,6 +518,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
             num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -539,7 +554,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt is "".
+                Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt should be "". If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -565,7 +581,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 returned where the first element is a list with the generated images
         """
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, callback_steps, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(prompt, negative_prompt, callback_steps, prompt_embeds, negative_prompt_embeds)
 
         # 2. Default height and width to transformer
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
@@ -621,11 +637,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Prepare micro-conditions.
-        resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
-        aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_images_per_prompt, 1)
-        resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
-        aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
-        added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
+        added_cond_kwargs = None
+        if self.transformer.config.sample_size == 128:
+            resolution = torch.tensor([height, width]).repeat(batch_size * num_images_per_prompt, 1)
+            aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_images_per_prompt, 1)
+            resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
+            aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
+            added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
 
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
