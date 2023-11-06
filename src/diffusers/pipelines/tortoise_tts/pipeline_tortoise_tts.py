@@ -323,6 +323,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     def prepare_diffusion_cond_embedding(
         self,
         audio,
+        audio_sr,
         autoregressive_latents,
         attention_mask,
         dtype,
@@ -342,7 +343,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         if not unconditional:
             if audio is not None:
                 diffusion_audio_emb = self.diffusion_conditioning_encoder.diffusion_cond_audio_embedding(
-                    audio, latent_averaging_mode, chunk_size
+                    audio, audio_sr, self.output_sampling_rate, latent_averaging_mode, chunk_size
                 )
             else:
                 # Get conditional audio embedding from diffusion_random_latent_converter
@@ -743,6 +744,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # 11. Get conditioning embeddings for the diffusion model
         diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
             audio,
+            audio_sampling_rate,
             top_k_autoregressive_latents,
             diffusion_attention_mask,
             autoregressive_latents.dtype,
@@ -758,6 +760,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             if has_negative_prompts:
                 neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
                     audio,
+                    audio_sampling_rate,
                     neg_top_k_autoregressive_latents,
                     diffusion_neg_attention_mask,
                     autoregressive_latents.dtype,
@@ -772,6 +775,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 # Fall back to self.diffusion_conditioning_encoder.unconditional_embedding
                 # NOTE: this does not depend on either conditional audio nor autoregressive latents
                 neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
+                    None,
                     None,
                     None,
                     None,

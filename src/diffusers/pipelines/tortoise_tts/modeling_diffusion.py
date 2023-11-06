@@ -4,10 +4,14 @@ from dataclasses import dataclass
 from typing import Optional, Union
 
 import numpy
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import librosa
+import torchaudio
 
+from transformers.audio_utils import spectrogram, mel_filter_bank, optimal_fft_length, window_function
 from transformers import UnivNetFeatureExtractor
 
 from ...configuration_utils import ConfigMixin, register_to_config
@@ -16,27 +20,32 @@ from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.resnet import AdaGroupNorm, Downsample2D, Upsample2D, downsample_2d, partial, upsample_2d
 from ...utils import BaseOutput, logging
 
-from .modeling_common import TortoiseTTSAttention, TortoiseTTSSelfAttention
+from .modeling_common import TortoiseTTSAttention, TortoiseTTSSelfAttention, TacotronSTFT
+
+from scipy.signal import get_window
+import librosa.util as librosa_util
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+
+
 def pad_or_truncate(t, length: int, random_start: bool = False):
     t = torch.from_numpy(t) if isinstance(t, numpy.ndarray) else t
 
-    gap = length - t.shape[-1]
-    if gap < 0:
-        return F.pad(t, (0, abs(gap)))
-    elif gap > 0:
-        start = 0
-        if random_start:
-            # TODO: use generator/seed to make this reproducible?
-            start = random.randint(0, gap)
-        return t[:, start : start + length]
-    else:
+    if t.shape[-1] == length:
         return t
+    elif t.shape[-1] < length:
+        return F.pad(t, (0, length - t.shape[-1]))
+    else:
+        return t[..., :length]
 
+def check_and_resample(audio, audio_sr, target_sr):
+    if audio_sr!=target_sr:
+        audio = torchaudio.functional.resample(audio, audio_sr, target_sr)
+
+    return audio
 
 def compute_groupnorm_groups(channels: int, groups: int = 32):
     """
@@ -138,6 +147,12 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         # The unconditional embedding used for Tortoise TTS spectrogram diffusion classifier-free guidance.
         self.unconditional_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
 
+    def get_mel_spectrogram(self, audio):
+        stft = TacotronSTFT(1024, 256, 1024, 100, 24000, 0, 12000)
+        mel_spectrogram = stft.mel_spectrogram(torch.from_numpy(audio).reshape(1, -1))
+
+        return mel_spectrogram
+
     def convert_and_average_audio_samples(
         self,
         audio,
@@ -151,16 +166,16 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         for audio_sample in audio:
             if latent_averaging_mode == 0:
                 # Average across all samples (original Tortoise TTS behavior)
-                audio_sample = pad_or_truncate(audio_sample, chunk_size)
-                spectrogram = torch.from_numpy(self.stft.mel_spectrogram(audio_sample))
+                audio_sample = pad_or_truncate(audio_sample, chunk_size).numpy()
+                spectrogram = self.get_mel_spectrogram(audio_sample)
                 audio_spectrograms.append(spectrogram)
             else:
                 if latent_averaging_mode == 2:
                     sample_audio_spectrograms = []
                 for chunk in range(math.ceil(audio_sample.shape[1] / chunk_size)):
                     current_chunk = audio_sample[:, chunk * chunk_size : (chunk + 1) * chunk_size]
-                    current_chunk = pad_or_truncate(current_chunk, chunk_size)
-                    chunk_spectrogram = torch.from_numpy(self.stft.mel_spectrogram(current_chunk, chunk_size))
+                    current_chunk = pad_or_truncate(current_chunk, chunk_size).numpy()
+                    chunk_spectrogram = self.get_mel_spectrogram(current_chunk, chunk_size)
 
                     if latent_averaging_mode == 1:
                         # Average across all chunks of all samples
@@ -175,18 +190,19 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         audio_spectrograms = audio_spectrograms.type(torch.float32)
         return audio_spectrograms
 
-    def diffusion_cond_audio_embedding(self, audio, latent_averaging_mode: int = 0, chunk_size: Optional[int] = None):
+    def diffusion_cond_audio_embedding(self, audio, audio_sr, target_sr, latent_averaging_mode: int = 0, chunk_size: Optional[int] = None):
+        # the diffusion model expects the audio to be at 24 kHz so resample it.
+        audio = check_and_resample(torch.from_numpy(audio), audio_sr, target_sr)
         audio_spectrograms = self.convert_and_average_audio_samples(audio, latent_averaging_mode, chunk_size)
-        audio_spectrograms = audio_spectrograms.unsqueeze(1) if len(audio_spectrograms.shape) == 3 else audio_spectrograms
-        # TODO: better name?
+
         conds = []
         for j in range(audio_spectrograms.shape[1]):
-            conv_opt = self.contextual_embedder_conv(audio_spectrograms[:, j].transpose(1, 2))
+            conv_opt = self.contextual_embedder_conv(audio_spectrograms[:, j])
             attn_opt = self.contextual_embedder_attention(conv_opt.transpose(1, 2))
-            conds.append(attn_opt)
+            conds.append(attn_opt.transpose(1, 2))
 
         audio_embedding = torch.cat(conds, dim=-1)
-        audio_embedding = audio_embedding.mean(dim=0)
+        audio_embedding = audio_embedding.mean(dim=-1)
         return audio_embedding
 
     def diffusion_cond_embedding(
