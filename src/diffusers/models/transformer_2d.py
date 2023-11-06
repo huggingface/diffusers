@@ -96,7 +96,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         attention_type: str = "default",
         caption_channels: int = None,
-        use_additional_conditions=False,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -225,6 +224,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.caption_projection = None
         self.adaln_single = None
         if norm_type == "ada_norm_single":
+            use_additional_conditions = self.config.sample_size == 128  
+            # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
+            # additional conditions until we find better name
             self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=use_additional_conditions)
 
         if caption_channels is not None:
@@ -343,7 +345,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
                 batch_size = hidden_states.shape[0]
                 timestep, embedded_timestep = self.adaln_single(
-                    timestep, added_cond_kwargs, hidden_dtype=hidden_states.dtype
+                    timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
                 )
 
         # 2. Blocks

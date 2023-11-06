@@ -63,7 +63,6 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             norm_type="ada_norm_single",
             norm_elementwise_affine=False,
             norm_eps=1e-6,
-            output_type="pixart_dit",
         )
         vae = AutoencoderKL()
         scheduler = DDIMScheduler()
