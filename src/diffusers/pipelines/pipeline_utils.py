@@ -2174,6 +2174,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             workflow = workflow_id_or_path
 
         # We make a copy of the original workflow and operate on it.
+        print(f"Has generator: {'generator' in workflow}")
         workflow_copy = copy.deepcopy(workflow)
 
         # Handle generator.
