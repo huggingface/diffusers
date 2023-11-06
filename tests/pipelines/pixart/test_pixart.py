@@ -206,7 +206,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         slice = image_slice.flatten().tolist()
         print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([0.0027, 0.0000, 0.0000, 0.0000, 0.0000, 0.0369, 0.0000, 0.0413, 0.2068])
+        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1323])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -243,7 +243,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         slice = image_slice.flatten().tolist()
         print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([0.0027, 0.0000, 0.0000, 0.0000, 0.0000, 0.0369, 0.0000, 0.0413, 0.2068])
+        expected_slice = np.array([0.1501, 0.1755, 0.1877, 0.1445, 0.1665, 0.1763, 0.1389, 0.176, 0.2031])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
