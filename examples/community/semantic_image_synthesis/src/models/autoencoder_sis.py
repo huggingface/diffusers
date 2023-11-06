@@ -33,6 +33,7 @@ class AutoencoderSIS(AutoencoderKL):
             "block_out_channels": block_out_channels,
             "latent_channels": latent_channels,
             "layers_per_block": 2,
+            "force_upcast":False
         }
         # Inspired from here :
         # https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/vae/config.json
@@ -46,6 +47,7 @@ class AutoencoderSIS(AutoencoderKL):
             "block_out_channels": block_out_channels,
             "latent_channels": latent_channels,
             "layers_per_block": 2,
+            "force_upcast":False
         }
         # Inspired from here :
         # https://huggingface.co/CompVis/stable-diffusion-v1-4/blob/main/vae/config.json
@@ -59,6 +61,7 @@ class AutoencoderSIS(AutoencoderKL):
             "block_out_channels": block_out_channels,
             "latent_channels": latent_channels,
             "layers_per_block": 2,
+            "force_upcast":False
         }
         SIS_CONFIG_384 = {
             "sample_size": 384,
@@ -70,6 +73,7 @@ class AutoencoderSIS(AutoencoderKL):
             "block_out_channels": block_out_channels,
             "latent_channels": latent_channels,
             "layers_per_block": 2,
+            "force_upcast":False
         }
         SIS_CONFIG_256 = {
             "sample_size": 256,
@@ -81,6 +85,19 @@ class AutoencoderSIS(AutoencoderKL):
             "block_out_channels": block_out_channels,
             "latent_channels": latent_channels,
             "layers_per_block": 2,
+            "force_upcast":False
+        }
+        SIS_CONFIG_192 = {
+            "sample_size": 192,
+            "scaling_factor": 0.18215,
+            "in_channels": in_channels,
+            "out_channels": out_channels,
+            "down_block_types": down_block_types,
+            "up_block_types": up_block_types,
+            "block_out_channels": block_out_channels,
+            "latent_channels": latent_channels,
+            "layers_per_block": 2,
+            "force_upcast":False
         }
         SIS_CONFIG_128 = {
             "sample_size": 128,
@@ -92,9 +109,11 @@ class AutoencoderSIS(AutoencoderKL):
             "block_out_channels": block_out_channels,
             "latent_channels": latent_channels,
             "layers_per_block": 1,
+            "force_upcast":False
         }
         CONFIG_DICT = {
             128: SIS_CONFIG_128,
+            192: SIS_CONFIG_192,
             256: SIS_CONFIG_256,
             384: SIS_CONFIG_384,
             512: SIS_CONFIG_512,
