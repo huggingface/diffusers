@@ -20,7 +20,7 @@ The text-to-image script is experimental, and it's easy to overfit and run into 
 
 Text-to-image models like Stable Diffusion are conditioned to generate images given a text prompt.
 
-Training a model can be taxing on your hardware, but if you enable `gradient_checkpoint` and `mixed_precision`, it is possible to train a model on a single 24GB GPU. If you're training with larger batch sizes or want to train faster, it's better to use GPUs with more than 30GB of memory. You can reduce your memory footprint by enabling memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing, gradient accumulation or xFormers. A GPU with at least 30GB of memory or a TPU v3 is recommended for training with Flax.
+Training a model can be taxing on your hardware, but if you enable `gradient_checkpointing` and `mixed_precision`, it is possible to train a model on a single 24GB GPU. If you're training with larger batch sizes or want to train faster, it's better to use GPUs with more than 30GB of memory. You can reduce your memory footprint by enabling memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing, gradient accumulation or xFormers. A GPU with at least 30GB of memory or a TPU v3 is recommended for training with Flax.
 
 This guide will explore the [train_text_to_image.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) training script to help you become familiar with it and how you can adapt it for your own use-case.
 
@@ -288,5 +288,5 @@ We'll discuss training SDXL in more detail in the [SDXL training]() guide.
 
 Congratulations on training your own text-to-image model! To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [load LoRA weights]() for inference if you trained your model with LoRA.
+- Learn how to [load LoRA weights](../using-diffusers/loading_adapters#LoRA) for inference if you trained your model with LoRA.
 - Learn more about how certain parameters like guidance scale or techniques such as prompt weighting can help you control inference in the [Text-to-image](../using-diffusers/conditional_image_generation) guide.
