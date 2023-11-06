@@ -2121,7 +2121,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             workflow.update({"generator_seed": generator.initial_seed()})
             workflow.update({"generator_device": str(generator.device)})
-            workflow.update({"generator_state": g.get_state().numpy().tolist()})
+            workflow.update({"generator_state": generator.get_state().numpy().tolist()})
 
         del workflow["generator"]
 
