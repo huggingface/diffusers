@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -39,29 +40,29 @@ def main(args):
 
     if args.image_size == 1024:
         # Resolution.
-        converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.weight"] = state_dict.pop(
+        converted_state_dict["adaln_single.emb.resolution_embedder.linear_1.weight"] = state_dict.pop(
             "csize_embedder.mlp.0.weight"
         )
-        converted_state_dict["adaln_single.emb.resolution_embedder.mlp.0.bias"] = state_dict.pop(
+        converted_state_dict["adaln_single.emb.resolution_embedder.linear_1.bias"] = state_dict.pop(
             "csize_embedder.mlp.0.bias"
         )
-        converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.weight"] = state_dict.pop(
+        converted_state_dict["adaln_single.emb.resolution_embedder.linear_2.weight"] = state_dict.pop(
             "csize_embedder.mlp.2.weight"
         )
-        converted_state_dict["adaln_single.emb.resolution_embedder.mlp.2.bias"] = state_dict.pop(
+        converted_state_dict["adaln_single.emb.resolution_embedder.linear_2.bias"] = state_dict.pop(
             "csize_embedder.mlp.2.bias"
         )
         # Aspect ratio.
-        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.weight"] = state_dict.pop(
+        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.linear_1.weight"] = state_dict.pop(
             "ar_embedder.mlp.0.weight"
         )
-        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.0.bias"] = state_dict.pop(
+        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.linear_1.bias"] = state_dict.pop(
             "ar_embedder.mlp.0.bias"
         )
-        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.weight"] = state_dict.pop(
+        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.linear_2.weight"] = state_dict.pop(
             "ar_embedder.mlp.2.weight"
         )
-        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.mlp.2.bias"] = state_dict.pop(
+        converted_state_dict["adaln_single.emb.aspect_ratio_embedder.linear_2.bias"] = state_dict.pop(
             "ar_embedder.mlp.2.bias"
         )
     # Shared norm.
@@ -147,34 +148,34 @@ def main(args):
         num_embeds_ada_norm=1000,
         norm_type="ada_norm_single",
         norm_elementwise_affine=False,
-        output_type="pixart_dit",
+        norm_eps=1e-6,
         caption_channels=4096,
-        interpolation_scale=interpolation_scale[args.image_size],
-        use_additional_conditions=args.image_size == 1024,
     )
     transformer.load_state_dict(converted_state_dict, strict=True)
 
     assert transformer.pos_embed.pos_embed is not None
     state_dict.pop("pos_embed")
-
     assert len(state_dict) == 0, f"State dict is not empty, {state_dict.keys()}"
 
     num_model_params = sum(p.numel() for p in transformer.parameters())
     print(f"Total number of transformer parameters: {num_model_params}")
 
     # TODO: To be configured?
-    scheduler = DPMSolverMultistepScheduler()
+    if args.only_transformer:
+        transformer.save_pretrained(os.path.join(args.dump_path, "transformer"))
+    else:
+        scheduler = DPMSolverMultistepScheduler()
 
-    vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="sd-vae-ft-ema")
+        vae = AutoencoderKL.from_pretrained(ckpt_id, subfolder="sd-vae-ft-ema")
 
-    tokenizer = T5Tokenizer.from_pretrained(ckpt_id, subfolder="t5-v1_1-xxl")
-    text_encoder = T5EncoderModel.from_pretrained(ckpt_id, subfolder="t5-v1_1-xxl")
+        tokenizer = T5Tokenizer.from_pretrained(ckpt_id, subfolder="t5-v1_1-xxl")
+        text_encoder = T5EncoderModel.from_pretrained(ckpt_id, subfolder="t5-v1_1-xxl")
 
-    pipeline = PixArtAlphaPipeline(
-        tokenizer=tokenizer, text_encoder=text_encoder, transformer=transformer, vae=vae, scheduler=scheduler
-    )
+        pipeline = PixArtAlphaPipeline(
+            tokenizer=tokenizer, text_encoder=text_encoder, transformer=transformer, vae=vae, scheduler=scheduler
+        )
 
-    pipeline.save_pretrained(args.dump_path)
+        pipeline.save_pretrained(args.dump_path)
 
 
 if __name__ == "__main__":
@@ -192,6 +193,7 @@ if __name__ == "__main__":
         help="Image size of pretrained model, either 512 or 1024.",
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output pipeline.")
+    parser.add_argument("--only_transformer", default=True, type=bool, required=True)
 
     args = parser.parse_args()
     main(args)

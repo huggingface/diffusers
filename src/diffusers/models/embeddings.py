@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
+from typing import Optional, Any
 
 import numpy as np
 import torch
@@ -716,41 +716,6 @@ class PositionNet(nn.Module):
         return objs
 
 
-class SizeEmbedder(nn.Module):
-    """
-    Embeds scalar timesteps into vector representations.
-
-    Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py.
-    """
-
-    def __init__(self, hidden_size, frequency_embedding_size=256):
-        super().__init__()
-        self.mlp = nn.Sequential(
-            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
-            nn.SiLU(),
-            nn.Linear(hidden_size, hidden_size, bias=True),
-        )
-        self.frequency_embedding_size = frequency_embedding_size
-        self.outdim = hidden_size
-
-    def forward(self, size: torch.Tensor, batch_size: int):
-        if size.ndim == 1:
-            size = size[:, None]
-
-        if size.shape[0] != batch_size:
-            size = size.repeat(batch_size // size.shape[0], 1)
-            assert size.shape[0] == batch_size
-        current_batch_size, dims = size.shape[0], size.shape[1]
-        size = size.reshape(-1)
-        size_freq = get_timestep_embedding(
-            size, self.frequency_embedding_size, downscale_freq_shift=0, flip_sin_to_cos=True
-        ).to(size.dtype)
-
-        size_emb = self.mlp(size_freq)
-        size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
-        return size_emb
-
-
 class CombinedTimestepSizeEmbeddings(nn.Module):
     """
     For PixArt-Alpha.
@@ -762,22 +727,40 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
     def __init__(self, embedding_dim, size_emb_dim, use_additional_conditions: bool = False):
         super().__init__()
 
+        self.outdim = size_emb_dim
         self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
         self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
 
         self.use_additional_conditions = use_additional_conditions
         if use_additional_conditions:
             self.use_additional_conditions = True
-            self.resolution_embedder = SizeEmbedder(size_emb_dim)
-            self.aspect_ratio_embedder = SizeEmbedder(size_emb_dim)
+            self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
+            self.aspect_ratio_embedder  = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
+
+    def apply_condition(self, size: torch.Tensor, batch_size: int, embedder: Any):
+        if size.ndim == 1:
+            size = size[:, None]
+
+        if size.shape[0] != batch_size:
+            size = size.repeat(batch_size // size.shape[0], 1)
+            assert size.shape[0] == batch_size
+        current_batch_size, dims = size.shape[0], size.shape[1]
+        size = size.reshape(-1)
+        size_freq = get_timestep_embedding(
+            size, 256, downscale_freq_shift=0, flip_sin_to_cos=True
+        ).to(size.dtype)
+
+        size_emb = embedder(size_freq)
+        size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
+        return size_emb
 
     def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
         if self.use_additional_conditions:
-            resolution = self.resolution_embedder(resolution, batch_size=batch_size)
-            aspect_ratio = self.aspect_ratio_embedder(aspect_ratio, batch_size=batch_size)
+            resolution = self.apply_condition(resolution, batch_size=batch_size, embedder=self.resolution_embedder)
+            aspect_ratio = self.apply_condition(aspect_ratio, batch_size=batch_size, embedder=self.aspect_ratio_embedder)
             conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
         else:
             conditioning = timesteps_emb
@@ -799,25 +782,10 @@ class CaptionProjection(nn.Module):
             nn.GELU(approximate="tanh"),
             nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True),
         )
+        # TODO(PVP, Sayak) for now unused
         self.register_buffer("y_embedding", nn.Parameter(torch.randn(num_tokens, in_features) / in_features**0.5))
-        self.class_dropout_prob = class_dropout_prob
-
-    def token_drop(self, caption, force_drop_ids=None):
-        """
-        Drops labels to enable classifier-free guidance.
-        """
-        if force_drop_ids is None:
-            drop_ids = torch.rand(caption.shape[0], device=caption.device) < self.class_dropout_prob
-        else:
-            drop_ids = torch.tensor(force_drop_ids == 1)
-        caption = torch.where(drop_ids[:, None, None, None], self.y_embedding, caption)
-        return caption
+        
 
     def forward(self, caption, force_drop_ids=None):
-        if self.training:
-            assert caption.shape[2:] == self.y_embedding.shape
-        use_dropout = self.class_dropout_prob > 0
-        if (self.training and use_dropout) or (force_drop_ids is not None):
-            caption = self.token_drop(caption, force_drop_ids)
         caption = self.mlp(caption)
         return caption

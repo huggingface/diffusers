@@ -223,7 +223,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
         # 5. PixArt-Alpha blocks.
-        self.caption_projection = None
         self.adaln_single = None
         if norm_type == "ada_norm_single":
             use_additional_conditions = self.config.sample_size == 128  
@@ -231,6 +230,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             # additional conditions until we find better name
             self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=use_additional_conditions)
 
+        self.caption_projection = None
         if caption_channels is not None:
             self.caption_projection = CaptionProjection(
                 in_features=caption_channels, hidden_size=inner_dim, class_dropout_prob=dropout
