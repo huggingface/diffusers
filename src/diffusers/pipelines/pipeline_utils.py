@@ -2135,7 +2135,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         return workflow
 
     def load_workflow(
-        self, workflow_id_or_path: Union[str, dict], filename: Optional[str] = None, load_scheduler: bool = False
+        self,
+        workflow_id_or_path: Union[str, dict],
+        filename: Optional[str] = None,
     ):
         r"""Loads a workflow from the Hub or from a local path. Also patches the pipeline call arguments with values from the
         workflow.
@@ -2153,10 +2155,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             filename (`str`, *optional*):
                 Optional name of the workflow file to load. Especially useful when working with multiple workflow
                 files.
-
-            load_scheduler (`bool`):
-                If set to True, extracts the scheduler config from the loaded workflow and sets scheduler in the
-                pipeline accordingly.
         """
         filename = filename or WORKFLOW_NAME
 
@@ -2191,12 +2189,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # Handle non-call arguments.
         final_call_args = {k: v for k, v in workflow_copy.items() if k not in _NON_CALL_ARGUMENTS}
-
-        if load_scheduler:
-            scheduler_cls_name = workflow_copy["scheduler_config"]["_class_name"]
-            scheduler_cls = getattr(importlib.import_module("diffusers"), scheduler_cls_name)
-            scheduler = scheduler_cls.from_config(workflow_copy["scheduler_config"])
-            setattr(self.__class__, "scheduler", scheduler)
 
         # Handle the call here.
         partial_call = partial(self.__call__, **final_call_args)
