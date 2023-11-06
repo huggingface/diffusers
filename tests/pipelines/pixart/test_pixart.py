@@ -203,6 +203,8 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
+        slice = image_slice.flatten().tolist()
+        print(", ".join([str(round(x, 4)) for x in slice]))
 
         expected_slice = np.array([0.0027, 0.0000, 0.0000, 0.0000, 0.0000, 0.0369, 0.0000, 0.0413, 0.2068])
 
@@ -220,7 +222,8 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        print(torch.from_numpy(image_slice).flatten())
+        slice = image_slice.flatten().tolist()
+        print(", ".join([str(round(x, 4)) for x in slice]))
 
         expected_slice = np.array([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0469])
 
@@ -234,11 +237,16 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_model_cpu_offload()
         prompt = "A small cactus with a happy face in the Sahara desert."
 
-        image = pipe(prompt, generator=generator).images[0]
+        image = pipe(prompt, generator=generator, output_type="np").images
 
-        import hf_image_uploader as hiu
+        image_slice = image[0, -3:, -3:, -1]
+        slice = image_slice.flatten().tolist()
+        print(", ".join([str(round(x, 4)) for x in slice]))
 
-        hiu.upload(image, "patrickvonplaten/images")
+        expected_slice = np.array([0.0027, 0.0000, 0.0000, 0.0000, 0.0000, 0.0369, 0.0000, 0.0413, 0.2068])
+
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-3)
 
     def test_pixart_512(self):
         generator = torch.manual_seed(0)
@@ -248,8 +256,13 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         prompt = "A small cactus with a happy face in the Sahara desert."
 
-        image = pipe(prompt, generator=generator).images[0]
+        image = pipe(prompt, generator=generator, output_type="np").images
 
-        import hf_image_uploader as hiu
+        image_slice = image[0, -3:, -3:, -1]
+        slice = image_slice.flatten().tolist()
+        print(", ".join([str(round(x, 4)) for x in slice]))
 
-        hiu.upload(image, "patrickvonplaten/images")
+        expected_slice = np.array([0.0027, 0.0000, 0.0000, 0.0000, 0.0000, 0.0369, 0.0000, 0.0413, 0.2068])
+
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-3)
