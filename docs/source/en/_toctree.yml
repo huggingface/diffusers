@@ -76,6 +76,8 @@
       title: Kandinsky
     - local: using-diffusers/controlnet
       title: ControlNet
+    - local: using-diffusers/callback
+      title: Callback
     - local: using-diffusers/shap-e
       title: Shap-E
     - local: using-diffusers/diffedit
