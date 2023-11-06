@@ -779,7 +779,7 @@ class CaptionProjection(nn.Module):
     Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
     """
 
-    def __init__(self, in_features, hidden_size, class_dropout_prob, num_tokens=120):
+    def __init__(self, in_features, hidden_size, num_tokens=120):
         super().__init__()
         self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
         self.act_1 = nn.GELU(approximate="tanh")

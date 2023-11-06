@@ -233,9 +233,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.caption_projection = None
         if caption_channels is not None:
             self.caption_projection = CaptionProjection(
-                in_features=caption_channels, hidden_size=inner_dim, class_dropout_prob=dropout
+                in_features=caption_channels, hidden_size=inner_dim
             )
-
 
         self.gradient_checkpointing = False
 
