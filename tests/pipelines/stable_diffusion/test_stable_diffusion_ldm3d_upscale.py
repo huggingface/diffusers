@@ -16,12 +16,17 @@
 
 import gc
 import unittest
-import requests
-import numpy as np
-import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
-from PIL import Image
 from io import BytesIO
+
+import numpy as np
+import requests
+import torch
+from PIL import Image
+
+# from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
@@ -31,10 +36,9 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
-# from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 
 enable_full_determinism()
+
 
 def load_image(res=64):
     rgb_path = "https://huggingface.co/Intel/ldm3d-sr/resolve/main/lemons_ldm3d_rgb.jpg"
@@ -42,6 +46,7 @@ def load_image(res=64):
     low_res_rgb = Image.open(BytesIO(requests.get(rgb_path).content)).convert("RGB").resize((res, res))
     low_res_depth = Image.open(BytesIO(requests.get(depth_path).content)).convert("L").resize((res, res))
     return low_res_rgb, low_res_depth
+
 
 class StableDiffusionUpscaleLDM3DPipelineFastTests(unittest.TestCase):
     pipeline_class = StableDiffusionUpscaleLDM3DPipeline
@@ -103,7 +108,7 @@ class StableDiffusionUpscaleLDM3DPipelineFastTests(unittest.TestCase):
             "low_res_scheduler": DDPMScheduler,
         }
         return components
-    
+
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -119,8 +124,7 @@ class StableDiffusionUpscaleLDM3DPipelineFastTests(unittest.TestCase):
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "numpy",
-            "target_res": [target_res, target_res]
-            
+            "target_res": [target_res, target_res],
         }
         return inputs
 
@@ -133,7 +137,7 @@ class StableDiffusionUpscaleLDM3DPipelineFastTests(unittest.TestCase):
         ldm3d_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        target_res, target_res = inputs['target_res']
+        target_res, target_res = inputs["target_res"]
         output = ldm3d_pipe(**inputs)
         rgb, depth = output.rgb, output.depth
 
@@ -144,9 +148,9 @@ class StableDiffusionUpscaleLDM3DPipelineFastTests(unittest.TestCase):
         assert depth.shape == (1, target_res, target_res, 1)
 
         expected_slice_rgb = np.array(
-            [0.66053814, 0.74662584, 0.6431943,  0.74867487, 0.71609235, 0.5595806, 0.5559061,  0.54281414, 0.58524626]
+            [0.66053814, 0.74662584, 0.6431943, 0.74867487, 0.71609235, 0.5595806, 0.5559061, 0.54281414, 0.58524626]
         )
-        expected_slice_depth = np.array([0.30766925, 0.4785453,  0.5751028 ])
+        expected_slice_depth = np.array([0.30766925, 0.4785453, 0.5751028])
 
         assert np.abs(image_slice_rgb.flatten() - expected_slice_rgb).max() < 1e-2
         assert np.abs(image_slice_depth.flatten() - expected_slice_depth).max() < 1e-2
@@ -163,7 +167,7 @@ class StableDiffusionUpscaleLDM3DPipelineSlowTests(unittest.TestCase):
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         res = 128
-        latents = np.random.RandomState(seed).standard_normal((1, 4, int(res/8), int(res/8)))
+        latents = np.random.RandomState(seed).standard_normal((1, 4, int(res / 8), int(res / 8)))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         rgb, depth = load_image(res=64)
         inputs = {
@@ -175,8 +179,8 @@ class StableDiffusionUpscaleLDM3DPipelineSlowTests(unittest.TestCase):
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
             "output_type": "numpy",
-            "target_res": [res, res]
-            }
+            "target_res": [res, res],
+        }
         return inputs
 
     def test_ldm3d_stable_diffusion(self):
@@ -194,10 +198,10 @@ class StableDiffusionUpscaleLDM3DPipelineSlowTests(unittest.TestCase):
         assert depth.shape == (1, res, res, 1)
 
         expected_slice_rgb = np.array(
-            [0.70745385, 0.7183809,  0.6794662,  0.6393902 , 0.64071167, 0.6380512,0.5901599,  0.5722568,  0.56403804]
+            [0.70745385, 0.7183809, 0.6794662, 0.6393902, 0.64071167, 0.6380512, 0.5901599, 0.5722568, 0.56403804]
         )
         expected_slice_depth = np.array(
-            [0.68841934, 0.6916517,  0.6794662,  0.64727414, 0.65219307, 0.6380512, 0.58779067, 0.5852662,  0.56403804]
+            [0.68841934, 0.6916517, 0.6794662, 0.64727414, 0.65219307, 0.6380512, 0.58779067, 0.5852662, 0.56403804]
         )
         assert np.abs(rgb_slice - expected_slice_rgb).max() < 3e-3
         assert np.abs(depth_slice - expected_slice_depth).max() < 3e-3
@@ -214,7 +218,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         target_res = 128
-        latents = np.random.RandomState(seed).standard_normal((1, 4, int(target_res/8), int(target_res/8)))
+        latents = np.random.RandomState(seed).standard_normal((1, 4, int(target_res / 8), int(target_res / 8)))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         rgb, depth = load_image(res=64)
         inputs = {
@@ -226,7 +230,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "num_inference_steps": 50,
             "guidance_scale": 7.5,
             "output_type": "numpy",
-            "target_res": [target_res, target_res]
+            "target_res": [target_res, target_res],
         }
         return inputs
 
@@ -254,7 +258,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
 
         inputs = self.get_inputs(torch_device)
         output = ldm3d_pipe(**inputs)
-        res, res = inputs['target_res']
+        res, res = inputs["target_res"]
         rgb, depth = output.rgb, output.depth
 
         expected_rgb_mean = 0.53158706

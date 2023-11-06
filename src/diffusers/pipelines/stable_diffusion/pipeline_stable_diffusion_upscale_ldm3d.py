@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -27,7 +26,6 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import (
-    BaseOutput,
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
@@ -35,8 +33,8 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .safety_checker import StableDiffusionSafetyChecker
 from .pipeline_stable_diffusion_ldm3d import LDM3DPipelineOutput
+from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -48,6 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> from PIL import Image
         >>> from io import BytesIO
         >>> import requests
+
         >>> pipe = StableDiffusionUpscaleLDM3DPipeline.from_pretrained("Intel/ldm3d-sr")
         >>> pipe = pipe.to("cuda")
         >>> rgb_path = "https://huggingface.co/Intel/ldm3d-sr/resolve/main/lemons_ldm3d_rgb.jpg"
@@ -66,6 +65,7 @@ EXAMPLE_DOC_STRING = """
         >>> depth_image[0].save("hr_ldm3d_depth.png")
         ```
 """
+
 
 class StableDiffusionUpscaleLDM3DPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
