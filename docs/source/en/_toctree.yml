@@ -268,6 +268,8 @@
       title: Parallel Sampling of Diffusion Models
     - local: api/pipelines/pix2pix_zero
       title: Pix2Pix Zero
+    - local: api/pipelines/pixart
+      title: PixArt
     - local: api/pipelines/pndm
       title: PNDM
     - local: api/pipelines/repaint
