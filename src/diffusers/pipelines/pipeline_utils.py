@@ -2119,7 +2119,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             workflow.update({"generator_seed": generator.initial_seed()})
             workflow.update({"generator_device": str(generator.device)})
 
-        workflow.pop("generator")
+        del workflow["generator"]
 
         # Handle pipeline-level things.
         if hasattr(self, "config") and hasattr(self.config, "_name_or_path"):
@@ -2128,7 +2128,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             pipeline_config_name_or_path = None
         workflow["_name_or_path"] = pipeline_config_name_or_path
         workflow["scheduler_config"] = self.scheduler.config
-        print(f"Final workflow: {workflow}")
+        
         return workflow
 
     def load_workflow(
