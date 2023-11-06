@@ -673,9 +673,6 @@ class StableDiffusionXLControlNetXSPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        if latents is not None: print("Passed in latents: ", latents.flatten()[:5])
-        else: print("No latents passed in")
-
         num_channels_latents = self.unet.config.in_channels
         latents, initial_unscaled_latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -687,12 +684,9 @@ class StableDiffusionXLControlNetXSPipeline(
             generator,
             latents,
         )
-        print("initial_unscaled_latents: ", initial_unscaled_latents.flatten()[:5])
-        print("latents: ", latents.flatten()[:5])
         # # DEBUG
         if callback is not None: callback(-1, -1, initial_unscaled_latents)
         # # 
-
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -736,8 +730,6 @@ class StableDiffusionXLControlNetXSPipeline(
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
-
-        print('add_time_ids =', add_time_ids)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order

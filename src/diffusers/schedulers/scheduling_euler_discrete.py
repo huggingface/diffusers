@@ -256,11 +256,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
             )
 
-        print(f'timestep_spacing = "leading" and timesteps={timesteps[:5]} ...')
-
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        print(f'sigmas before interpolation: {sigmas[:5]} ...')
-
         log_sigmas = np.log(sigmas)
 
         if self.config.interpolation_type == "linear":
@@ -283,10 +279,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device=device)
         self._step_index = None
-
-        print(f'At end of `set_timesteps`:')
-        print(f'sigmas =  {self.sigmas[:5]} ...')
-        print(f'timesteps = {self.timesteps[:5]} ...')
 
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma

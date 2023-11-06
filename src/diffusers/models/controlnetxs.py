@@ -256,6 +256,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     DEBUG_LOG_by_Umer = False
     DEBUG_LOG_by_Umer_file = 'debug_log.pkl'
+    DETAILLED_DEBUG_LOG_by_Umer = False
     def forward(
         self,
         x: torch.Tensor,
@@ -357,6 +358,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         base_up_subblocks = to_sub_blocks(self.base_model.up_blocks)
 
         # Debug Umer -- to delete later on
+        # this is for a global view, ie on subblock level
         debug_log = []
         def debug_by_umer(stage, msg, obj):
             if not self.DEBUG_LOG_by_Umer: return
@@ -375,6 +377,10 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         debug_by_umer('prep', 'raw hint', hint)
         debug_by_umer('prep', 'guided_hint', guided_hint)
 
+        # Debug Umer - another one!
+        # this is for a detail view, ie below subblock level
+        more_detailled_debug_log = []
+
         # Cross Control
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
@@ -389,17 +395,22 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
         # 1 - input blocks (encoder)
+        print('------ enc ------')
         for i, (m_base, m_ctrl)  in enumerate(zip(base_down_subblocks, ctrl_down_subblocks)):
             # A - concat base -> ctrl
             cat_to_ctrl = next(it_enc_convs_in)(h_base)
             h_ctrl = torch.cat([h_ctrl, cat_to_ctrl], dim=1)
             debug_by_umer('enc', 'h_ctr', h_ctrl)
             # B - apply base subblock
-            h_base = m_base(h_base, temb, cemb)
+            print('>> Applying base block\t', end='')
+            h_base, debug_cache_i_dont_care_about_sry_mr_debug_cache = m_base(h_base, temb, cemb)
             debug_by_umer('enc', 'h_base', h_base)
             # C - apply ctrl subblock
-            h_ctrl = m_ctrl(h_ctrl, temb, cemb)
+            print('>> Applying ctrl block\t', end='')
+            h_ctrl, another_debug_cache = m_ctrl(h_ctrl, temb, cemb)
             debug_by_umer('enc', 'h_ctrl', h_ctrl)
+            more_detailled_debug_log += another_debug_cache # We only record details for the application of ctrl blocks
+            print()
             # D - add ctrl -> base
             add_to_base = next(it_enc_convs_out)(h_ctrl)
             scale = next(scales)
@@ -410,9 +421,14 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         h_ctrl = torch.concat([h_ctrl, h_base], dim=1)
         debug_by_umer('enc', 'h_ctrl', h_ctrl)
         # 2 - mid blocks (bottleneck)
+        print('------ mid ------')
         for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
-            h_base = m_base(h_base, temb, cemb)
-            h_ctrl = m_ctrl(h_ctrl, temb, cemb)
+            print('>> Applying base block\t', end='')
+            h_base, debug_cache_i_dont_care_about_sry_mr_debug_cache = m_base(h_base, temb, cemb)
+            print('>> Applying ctrl block\t', end='')
+            h_ctrl, another_debug_cache = m_ctrl(h_ctrl, temb, cemb)
+            more_detailled_debug_log += another_debug_cache # We only record details for the application of ctrl blocks
+            print()
         # Heidelberg treats the R/A/R as one block, while I treat is as 2 subblocks
         # Let's therefore only log after the mid section
         debug_by_umer('mid', 'h_base', h_base)
@@ -422,15 +438,24 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         debug_by_umer('mid', 'h_base', h_base)
 
         # 3 - output blocks (decoder)
+        print('------ dec ------')
         for m_base in base_up_subblocks:
             h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales) # add info from ctrl encoder 
             debug_by_umer('dec', 'h_base', h_base)
             h_base = torch.cat([h_base, hs_base.pop()], dim=1) # concat info from base encoder+ctrl encoder
             debug_by_umer('dec', 'h_base', h_base)
-            h_base = m_base(h_base, temb, cemb)
+            print('>> Applying base block\t', end='')
+            h_base, debug_cache_i_dont_care_about_sry_mr_debug_cache = m_base(h_base, temb, cemb)
             debug_by_umer('dec', 'h_base', h_base)
+            print()
 
         debug_save()
+        if self.DETAILLED_DEBUG_LOG_by_Umer:
+            more_detailled_debug_log = [(txt, t.cpu().detach()) for txt,t in more_detailled_debug_log]
+            import pickle
+            pickle.dump(more_detailled_debug_log, open('intermediate_output/detailled_debug_log.pkl', 'wb'))
+            print('Alright captain. Look at all these tensors we caught. Time to do some real analysis.')
+            raise ValueError('stop right here')
 
         return UNet2DConditionOutput(sample=self.base_model.conv_out(h_base))
 
@@ -538,13 +563,27 @@ class EmbedSequential(nn.ModuleList):
         super().__init__(ms,*args,**kwargs)
     
     def forward(self,x,temb,cemb):
+        def cls_name(x): return str(type(x)).split('.')[-1].replace("'>",'')
+        content = ' '.join(cls_name(m) for m in self)
+        print(f'EmbedSequential.forward with content {content}')
+        UMER_DEBUG_CACHE = []
         for m in self:
-            if isinstance(m,ResnetBlock2D): x=m(x,temb)
-            elif isinstance(m,Transformer2DModel): x=m(x,cemb).sample # Q: Include temp also?
-            elif isinstance(m,Downsample2D): x=m(x)
-            elif isinstance(m,Upsample2D): x=m(x)
-            else: raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D`, `Upsample2D`')
-        return x
+            if isinstance(m,ResnetBlock2D):
+                x, debug_cache = m(x,temb)
+                UMER_DEBUG_CACHE += debug_cache
+            elif isinstance(m,Transformer2DModel):
+                result = m(x,cemb)
+                x = result.sample
+                UMER_DEBUG_CACHE += result.debug_cache
+            elif isinstance(m,Downsample2D):
+                x = m(x)
+                UMER_DEBUG_CACHE += [('conv',x)] # Downsample2D only has 1 operation, so {intermediate results} = {final result}
+            elif isinstance(m,Upsample2D):
+                x = m(x)
+                UMER_DEBUG_CACHE += [('conv',x)] # Upsample2D only has 1 operation, so {intermediate results} = {final result}
+            else: raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D` or `Upsample2D`')
+
+        return x, UMER_DEBUG_CACHE
 
 
 def is_iterable(o):

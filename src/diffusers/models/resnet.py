@@ -682,36 +682,18 @@ class ResnetBlock2D(nn.Module):
                 in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )
 
-    @classmethod
-    def toggle_DO_UMER_CACHE(cls, b): cls.DO_UMER_CACHE = b
-
-    DO_UMER_CACHE = False
     def forward(self, input_tensor, temb, scale: float = 1.0):
 
         UMER_DEBUG_CACHE = []
-        umer_cache_i = 0 
-        def append_to_umer_cache(msg,obj,comment):
-            nonlocal umer_cache_i
-            if not self.DO_UMER_CACHE: return
-            if hasattr(obj,'cpu'): obj = obj.cpu()
-            UMER_DEBUG_CACHE.append((umer_cache_i, msg,comment,obj))
-            umer_cache_i += 1
-
 
         hidden_states = input_tensor
-
-        append_to_umer_cache('hidden_states', hidden_states, 'start')
-        append_to_umer_cache('temb', temb, 'start')
-        append_to_umer_cache('scale', scale, 'start')
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm1(hidden_states, temb)
         else:
             hidden_states = self.norm1(hidden_states)
-        append_to_umer_cache('hidden_states', hidden_states, 'after norm1')
 
         hidden_states = self.nonlinearity(hidden_states)
-        append_to_umer_cache('hidden_states', hidden_states, 'after silu')
 
         if self.upsample is not None:
             # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
@@ -741,42 +723,34 @@ class ResnetBlock2D(nn.Module):
             )
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
-        append_to_umer_cache('hidden_states', hidden_states, 'after conv1')
+        UMER_DEBUG_CACHE.append(('conv1', hidden_states))
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
                 temb = self.nonlinearity(temb)
-                append_to_umer_cache('temb', temb, 'after silu')
             temb = (
                 self.time_emb_proj(temb, scale)[:, :, None, None]
                 if not USE_PEFT_BACKEND
                 else self.time_emb_proj(temb)[:, :, None, None]
-            )        
-            append_to_umer_cache('temb', temb, 'after linear')
-
+            )
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
-            append_to_umer_cache('hidden_states', hidden_states, 'after time add')
-
+            UMER_DEBUG_CACHE.append(('add time_emb_proj', hidden_states))
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm2(hidden_states, temb)
         else:
             hidden_states = self.norm2(hidden_states)
-            append_to_umer_cache('hidden_states', hidden_states, 'after norm2')
 
         if temb is not None and self.time_embedding_norm == "scale_shift":
             scale, shift = torch.chunk(temb, 2, dim=1)
             hidden_states = hidden_states * (1 + scale) + shift
 
         hidden_states = self.nonlinearity(hidden_states)
-        append_to_umer_cache('hidden_states', hidden_states, 'after silu')
-
         hidden_states = self.dropout(hidden_states)
-        append_to_umer_cache('hidden_states', hidden_states, 'after dropout')
         hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
-        append_to_umer_cache('hidden_states', hidden_states, 'after conv2')
+        UMER_DEBUG_CACHE.append(('conv2', hidden_states))
 
         if self.conv_shortcut is not None:
             input_tensor = (
@@ -784,19 +758,9 @@ class ResnetBlock2D(nn.Module):
             )
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
-        append_to_umer_cache('hidden_states', output_tensor, 'after skip + scale')
+        UMER_DEBUG_CACHE.append(('add conv_shortcut', output_tensor))
 
-        if self.DO_UMER_CACHE:
-            import pickle
-            with open('intermediate_output/local_resnet.pkl','wb') as f:
-                pickle.dump(UMER_DEBUG_CACHE, f)
-
-            msg = "End of 1st ResNet reached."
-            msg += "\nLet's analyze the intermediate steps, my man. Don't be intimidated, you can do it. Believe in the you that believes in yourself."
-            msg += "\n\nBtw, results are saved to file 'intermediate_output/local_resnet.pkl'."
-            raise ValueError(msg)
-
-        return output_tensor
+        return output_tensor, UMER_DEBUG_CACHE
 
 
 # unet_rl.py
