@@ -868,6 +868,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             outputs = (image, has_nsfw_concept)
 
             if return_workflow:
+                print(f'Has generator: {"generator" in workflow}')
                 outputs += (workflow,)
 
             return outputs
