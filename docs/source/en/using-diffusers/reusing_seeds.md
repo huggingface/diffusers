@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 A common way to improve the quality of generated images is with *deterministic batch generation*, generate a batch of images and select one image to improve with a more detailed prompt in a second round of inference. The key is to pass a list of [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html#generator)'s to the pipeline for batched image generation, and tie each `Generator` to a seed so you can reuse it for an image.
 
-Let's use [`runwayml/stable-diffusion-v1-5`](runwayml/stable-diffusion-v1-5) for example, and generate several versions of the following prompt:
+Let's use [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) for example, and generate several versions of the following prompt:
 
 ```py
 prompt = "Labrador in the style of Vermeer"
@@ -25,27 +25,27 @@ prompt = "Labrador in the style of Vermeer"
 Instantiate a pipeline with [`DiffusionPipeline.from_pretrained`] and place it on a GPU (if available):
 
 ```python
->>> from diffusers import DiffusionPipeline
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.utils import make_image_grid
 
->>> pipe = DiffusionPipeline.from_pretrained(
-...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
-... )
->>> pipe = pipe.to("cuda")
+pipe = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
+)
+pipe = pipe.to("cuda")
 ```
 
-Now, define four different `Generator`'s and assign each `Generator` a seed (`0` to `3`) so you can reuse a `Generator` later for a specific image:
+Now, define four different `Generator`s and assign each `Generator` a seed (`0` to `3`) so you can reuse a `Generator` later for a specific image:
 
 ```python
->>> import torch
-
->>> generator = [torch.Generator(device="cuda").manual_seed(i) for i in range(4)]
+generator = [torch.Generator(device="cuda").manual_seed(i) for i in range(4)]
 ```
 
 Generate the images and have a look:
 
 ```python
->>> images = pipe(prompt, generator=generator, num_images_per_prompt=4).images
->>> images
+images = pipe(prompt, generator=generator, num_images_per_prompt=4).images
+make_image_grid(images, rows=2, cols=2)
 ```
 
 ![img](https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/reusabe_seeds.jpg)
@@ -60,8 +60,8 @@ generator = [torch.Generator(device="cuda").manual_seed(0) for i in range(4)]
 Create four generators with seed `0`, and generate another batch of images, all of which should look like the first image from the previous round!
 
 ```python
->>> images = pipe(prompt, generator=generator).images
->>> images
+images = pipe(prompt, generator=generator).images
+make_image_grid(images, rows=2, cols=2)
 ```
 
 ![img](https://huggingface.co/datasets/diffusers/diffusers-images-docs/resolve/main/reusabe_seeds_2.jpg)

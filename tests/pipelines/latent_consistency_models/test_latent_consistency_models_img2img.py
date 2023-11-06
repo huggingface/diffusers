@@ -1,5 +1,6 @@
 import gc
 import inspect
+import random
 import unittest
 
 import numpy as np
@@ -8,30 +9,39 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    LatentConsistencyModelPipeline,
+    LatentConsistencyModelImg2ImgPipeline,
     LCMScheduler,
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
+    load_image,
     require_torch_gpu,
     slow,
     torch_device,
 )
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..pipeline_params import (
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+)
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class LatentConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = LatentConsistencyModelPipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"negative_prompt", "negative_prompt_embeds"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS - {"negative_prompt"}
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+class LatentConsistencyModelImg2ImgPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
+    pipeline_class = LatentConsistencyModelImg2ImgPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "negative_prompt", "negative_prompt_embeds"}
+    required_optional_params = PipelineTesterMixin.required_optional_params - {"latents", "negative_prompt"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -92,12 +102,15 @@ class LatentConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = image / 2 + 0.5
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "image": image,
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
@@ -109,7 +122,7 @@ class LatentConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        pipe = LatentConsistencyModelPipeline(**components)
+        pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -117,35 +130,31 @@ class LatentConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, Pipelin
         inputs["num_inference_steps"] = 1
         output = pipe(**inputs)
         image = output.images
-        assert image.shape == (1, 64, 64, 3)
+        assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.1441, 0.5304, 0.5452, 0.1361, 0.4011, 0.4370, 0.5326, 0.3492, 0.3637])
+        expected_slice = np.array([0.5865, 0.2854, 0.2828, 0.7473, 0.6006, 0.4580, 0.4397, 0.6415, 0.6069])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
         components = self.get_dummy_components()
-        pipe = LatentConsistencyModelPipeline(**components)
+        pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
         output = pipe(**inputs)
         image = output.images
-        assert image.shape == (1, 64, 64, 3)
+        assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.1403, 0.5072, 0.5316, 0.1202, 0.3865, 0.4211, 0.5363, 0.3557, 0.3645])
+        expected_slice = np.array([0.4903, 0.3304, 0.3503, 0.5241, 0.5153, 0.4585, 0.3222, 0.4764, 0.4891])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
-
-    # skip because lcm pipeline apply cfg differently
-    def test_callback_cfg(self):
-        pass
 
     # override default test because the final latent variable is "denoised" instead of "latents"
     def test_callback_inputs(self):
@@ -188,7 +197,7 @@ class LatentConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, Pipelin
 
 @slow
 @require_torch_gpu
-class LatentConsistencyModelPipelineSlowTests(unittest.TestCase):
+class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
     def setUp(self):
         gc.collect()
         torch.cuda.empty_cache()
@@ -197,6 +206,12 @@ class LatentConsistencyModelPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/sketch-mountains-input.png"
+        )
+        init_image = init_image.resize((512, 512))
+
         inputs = {
             "prompt": "a photograph of an astronaut riding a horse",
             "latents": latents,
@@ -204,11 +219,14 @@ class LatentConsistencyModelPipelineSlowTests(unittest.TestCase):
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
             "output_type": "np",
+            "image": init_image,
         }
         return inputs
 
     def test_lcm_onestep(self):
-        pipe = LatentConsistencyModelPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", safety_checker=None)
+        pipe = LatentConsistencyModelImg2ImgPipeline.from_pretrained(
+            "SimianLuo/LCM_Dreamshaper_v7", safety_checker=None
+        )
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -223,7 +241,9 @@ class LatentConsistencyModelPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
-        pipe = LatentConsistencyModelPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", safety_checker=None)
+        pipe = LatentConsistencyModelImg2ImgPipeline.from_pretrained(
+            "SimianLuo/LCM_Dreamshaper_v7", safety_checker=None
+        )
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
