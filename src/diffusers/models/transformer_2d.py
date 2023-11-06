@@ -224,11 +224,12 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 5. PixArt-Alpha blocks.
         self.adaln_single = None
+        self.use_additional_conditions = False
         if norm_type == "ada_norm_single":
-            use_additional_conditions = self.config.sample_size == 128
+            self.use_additional_conditions = self.config.sample_size == 128
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
-            self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=use_additional_conditions)
+            self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=self.use_additional_conditions)
 
         self.caption_projection = None
         if caption_channels is not None:
@@ -341,8 +342,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states = self.pos_embed(hidden_states)
 
             if self.adaln_single is not None:
-                if added_cond_kwargs is None:
-                    raise ValueError("`added_cond_kwargs` cannot be None when using `adaln_single`.")
+                if self.use_additional_conditions and added_cond_kwargs is None:
+                    raise ValueError(
+                        "`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`."
+                    )
                 batch_size = hidden_states.shape[0]
                 timestep, embedded_timestep = self.adaln_single(
                     timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
