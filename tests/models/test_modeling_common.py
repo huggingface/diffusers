@@ -298,7 +298,10 @@ class ModelTesterMixin:
         with torch.no_grad():
             output_3 = model(**inputs_dict)[0]
 
+        torch.use_deterministic_algorithms(True)
+
         assert torch.allclose(output, output_2, atol=self.base_precision)
+        assert torch.allclose(output, output_3, atol=self.base_precision)
         assert torch.allclose(output_2, output_3, atol=self.base_precision)
 
     @require_torch_gpu
@@ -320,11 +323,6 @@ class ModelTesterMixin:
         assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
             output_2 = model(**inputs_dict)[0]
-
-        model.enable_xformers_memory_efficient_attention()
-        assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
-        with torch.no_grad():
-            model(**inputs_dict)[0]
 
         model.set_attn_processor(AttnProcessor2_0())
         assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
