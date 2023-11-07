@@ -185,7 +185,6 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
 
-# TODO: needs to be updated.
 @slow
 @require_torch_gpu
 class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
