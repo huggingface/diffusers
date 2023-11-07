@@ -344,7 +344,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('add_input',time_ids.flatten())
             time_embeds = self.base_model.add_time_proj(time_ids.flatten())
             time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
-            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('add_emb',time_ids.flatten())
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('add_emb',time_embeds)
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
             add_embeds = add_embeds.to(temb.dtype)
             aug_emb = self.base_model.add_embedding(add_embeds)
