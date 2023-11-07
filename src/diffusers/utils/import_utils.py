@@ -208,6 +208,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _note_seq_available = False
 
+_pretty_midi_available = importlib.util.find_spec("pretty_midi") is not None
+try:
+    _pretty_midi_version = importlib_metadata.version("pretty_midi")
+    logger.debug(f"Successfully imported pretty-midi version {_pretty_midi_version}")
+except importlib_metadata.PackageNotFoundError:
+    _pretty_midi_available = False
+
 _wandb_available = importlib.util.find_spec("wandb") is not None
 try:
     _wandb_version = importlib_metadata.version("wandb")
@@ -329,6 +336,10 @@ def is_note_seq_available():
     return _note_seq_available
 
 
+def is_pretty_midi_available():
+    return _pretty_midi_available
+
+
 def is_wandb_available():
     return _wandb_available
 
@@ -432,6 +443,12 @@ install note-seq`
 """
 
 # docstyle-ignore
+PRETTY_MIDI_IMPORT_ERROR = """
+{0} requires the pretty_midi library but it was not found in your environment. You can install it with pip: `pip
+install pretty-midi`
+"""
+
+# docstyle-ignore
 WANDB_IMPORT_ERROR = """
 {0} requires the wandb library but it was not found in your environment. You can install it with pip: `pip
 install wandb`
@@ -493,6 +510,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("librosa", (is_librosa_available, LIBROSA_IMPORT_ERROR)),
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
+        ("pretty_midi", (is_pretty_midi_available, PRETTY_MIDI_IMPORT_ERROR))
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
         ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
         ("tensorboard", (is_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),

@@ -211,7 +211,6 @@ extras["test"] = deps_list(
     "librosa",
     "omegaconf",
     "parameterized",
-    "pretty-midi",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",

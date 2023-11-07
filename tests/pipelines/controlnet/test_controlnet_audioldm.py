@@ -13,12 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gc
-import tempfile
-import traceback
 import unittest
 
-import numpy as np
 import torch
 from transformers import (
     ClapTextConfig,
@@ -32,36 +28,23 @@ from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     DDIMScheduler,
-    EulerDiscreteScheduler,
     AudioLDMControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
-from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    enable_full_determinism,
-    load_image,
-    load_numpy,
-    require_python39_or_higher,
-    require_torch_2,
-    require_torch_gpu,
-    run_test_in_subprocess,
-    slow,
-    torch_device,
+    enable_full_determinism, 
+    require_pretty_midi,
 )
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import TEXT_TO_AUDIO_BATCH_PARAMS, TEXT_TO_AUDIO_PARAMS
-from ..test_pipelines_common import (
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineTesterMixin,
-)
+from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
+@require_pretty_midi
 class AudioLDMControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AudioLDMControlNetPipeline
     params = TEXT_TO_AUDIO_PARAMS
@@ -176,7 +159,7 @@ class AudioLDMControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         )
 
         inputs = {
-            "prompt": "A painting of a squirrel eating a burger",
+            "prompt": "Piano",
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,

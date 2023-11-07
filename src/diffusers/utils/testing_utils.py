@@ -31,6 +31,7 @@ from .import_utils import (
     is_compel_available,
     is_flax_available,
     is_note_seq_available,
+    is_pretty_midi_available,
     is_onnx_available,
     is_opencv_available,
     is_peft_available,
@@ -242,6 +243,13 @@ def require_note_seq(test_case):
     Decorator marking a test that requires note_seq. These tests are skipped when note_seq isn't installed.
     """
     return unittest.skipUnless(is_note_seq_available(), "test requires note_seq")(test_case)
+
+
+def require_pretty_midi(test_case):
+    """
+    Decorator marking a test that requires pretty_midi. These tests are skipped when note_seq isn't installed.
+    """
+    return unittest.skipUnless(is_pretty_midi_available(), "test requires pretty_midi")(test_case)
 
 
 def require_torchsde(test_case):

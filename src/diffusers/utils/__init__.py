@@ -66,6 +66,7 @@ from .import_utils import (
     is_k_diffusion_version,
     is_librosa_available,
     is_note_seq_available,
+    is_pretty_midi_available,
     is_omegaconf_available,
     is_onnx_available,
     is_peft_available,
