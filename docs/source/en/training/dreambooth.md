@@ -287,7 +287,7 @@ This is a good opportunity to tweak some of your hyperparameters if you wish.
 
 Saved checkpoints are stored in a format suitable for resuming training. They not only include the model weights, but also the state of the optimizer, data loaders, and learning rate.
 
-If you have **`"accelerate>=0.16.0"`** installed, use the following code to run 
+If you have **`"accelerate>=0.16.0"`** installed, use the following code to run
 inference from an intermediate checkpoint.
 
 ```python
@@ -344,7 +344,7 @@ pipeline.save_pretrained("dreambooth-pipeline")
 
 ## Optimizations for different GPU sizes
 
-Depending on your hardware, there are a few different ways to optimize DreamBooth on GPUs from 16GB to just 8GB! 
+Depending on your hardware, there are a few different ways to optimize DreamBooth on GPUs from 16GB to just 8GB!
 
 ### xFormers
 
@@ -402,7 +402,7 @@ accelerate launch train_dreambooth.py \
 
 ### 12GB GPU
 
-To run DreamBooth on a 12GB GPU, you'll need to enable gradient checkpointing, the 8-bit optimizer, xFormers, and set the gradients to `None`: 
+To run DreamBooth on a 12GB GPU, you'll need to enable gradient checkpointing, the 8-bit optimizer, xFormers, and set the gradients to `None`:
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -446,7 +446,7 @@ accelerate config
 During configuration, confirm that you want to use DeepSpeed. Now it's possible to train on under 8GB VRAM by combining DeepSpeed stage 2, fp16 mixed precision, and offloading the model parameters and the optimizer state to the CPU. The drawback is that this requires more system RAM, about 25 GB. See [the DeepSpeed documentation](https://huggingface.co/docs/accelerate/usage_guides/deepspeed) for more configuration options.
 
 You should also change the default Adam optimizer to DeepSpeed's optimized version of Adam
-[`deepspeed.ops.adam.DeepSpeedCPUAdam`](https://deepspeed.readthedocs.io/en/latest/optimizers.html#adam-cpu) for a substantial speedup. Enabling `DeepSpeedCPUAdam` requires your system's CUDA toolchain version to be the same as the one installed with PyTorch. 
+[`deepspeed.ops.adam.DeepSpeedCPUAdam`](https://deepspeed.readthedocs.io/en/latest/optimizers.html#adam-cpu) for a substantial speedup. Enabling `DeepSpeedCPUAdam` requires your system's CUDA toolchain version to be the same as the one installed with PyTorch.
 
 8-bit optimizers don't seem to be compatible with DeepSpeed at the moment.
 
@@ -483,7 +483,7 @@ accelerate launch train_dreambooth.py \
 
 Once you have trained a model, specify the path to where the model is saved, and use it for inference in the [`StableDiffusionPipeline`]. Make sure your prompts include the special `identifier` used during training (`sks` in the previous examples).
 
-If you have **`"accelerate>=0.16.0"`** installed, you can use the following code to run 
+If you have **`"accelerate>=0.16.0"`** installed, you can use the following code to run
 inference from an intermediate checkpoint:
 
 ```python
@@ -503,7 +503,7 @@ You may also run inference from any of the [saved training checkpoints](#inferen
 
 ## IF
 
-You can use the lora and full dreambooth scripts to train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0) and the stage II upscaler 
+You can use the lora and full dreambooth scripts to train the text to image [IF model](https://huggingface.co/DeepFloyd/IF-I-XL-v1.0) and the stage II upscaler
 [IF model](https://huggingface.co/DeepFloyd/IF-II-L-v1.0).
 
 Note that IF has a predicted variance, and our finetuning scripts only train the models predicted error, so for finetuned IF models we switch to a fixed
@@ -523,7 +523,7 @@ pipe.scheduler = pipe.scheduler.__class__.from_config(pipe.scheduler.config, var
 
 Additionally, a few alternative cli flags are needed for IF.
 
-`--resolution=64`: IF is a pixel space diffusion model. In order to operate on un-compressed pixels, the input images are of a much smaller resolution. 
+`--resolution=64`: IF is a pixel space diffusion model. In order to operate on un-compressed pixels, the input images are of a much smaller resolution.
 
 `--pre_compute_text_embeddings`: IF uses [T5](https://huggingface.co/docs/transformers/model_doc/t5) for its text encoder. In order to save GPU memory, we pre compute all text embeddings and then de-allocate
 T5.
@@ -538,7 +538,7 @@ We find LoRA to be sufficient for finetuning the stage I model as the low resolu
 For common and/or not-visually complex object concepts, you can get away with not-finetuning the upscaler. Just be sure to adjust the prompt passed to the
 upscaler to remove the new token from the instance prompt. I.e. if your stage I prompt is "a sks dog", use "a dog" for your stage II prompt.
 
-For finegrained detail like faces that aren't present in the original training set, we find that full finetuning of the stage II upscaler is better than 
+For finegrained detail like faces that aren't present in the original training set, we find that full finetuning of the stage II upscaler is better than
 LoRA finetuning stage II.
 
 For finegrained detail like faces, we find that lower learning rates along with larger batch sizes work best.
@@ -617,7 +617,7 @@ python train_dreambooth_lora.py \
     --resolution=256 \
     --train_batch_size=4 \
     --gradient_accumulation_steps=1 \
-    --learning_rate=1e-6 \ 
+    --learning_rate=1e-6 \
     --max_train_steps=2000 \
     --validation_prompt="a sks dog" \
     --validation_epochs=100 \
@@ -633,9 +633,9 @@ python train_dreambooth_lora.py \
 `--skip_save_text_encoder`: When training the full model, this will skip saving the entire T5 with the finetuned model. You can still load the pipeline
 with a T5 loaded from the original model.
 
-`use_8bit_adam`: Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam. 
+`use_8bit_adam`: Due to the size of the optimizer states, we recommend training the full XL IF model with 8bit adam.
 
-`--learning_rate=1e-7`: For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade. Note that it is 
+`--learning_rate=1e-7`: For full dreambooth, IF requires very low learning rates. With higher learning rates model quality will degrade. Note that it is
 likely the learning rate can be increased with larger batch sizes.
 
 Using 8bit adam and a batch size of 4, the model can be trained in ~48 GB VRAM.
@@ -707,4 +707,4 @@ accelerate launch train_dreambooth.py \
 
 ## Stable Diffusion XL
 
-We support fine-tuning of the UNet and text encoders shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md). 
+We support fine-tuning of the UNet and text encoders shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with DreamBooth and LoRA via the `train_dreambooth_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/README_sdxl.md).

@@ -117,7 +117,7 @@ accelerate launch train_text_to_image.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --lr_scheduler="constant" 
+  --lr_scheduler="constant"
   --lr_warmup_steps=0 \
   --output_dir=${OUTPUT_DIR} \
   --push_to_hub
@@ -140,7 +140,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
   --gradient_checkpointing \
-  --max_train_steps=15000 \ 
+  --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" \
@@ -206,7 +206,7 @@ python train_text_to_image_flax.py \
 
 We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence
 by rebalancing the loss. In order to use it, one needs to set the `--snr_gamma` argument. The recommended
-value when using it is 5.0. 
+value when using it is 5.0.
 
 You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/text2image-finetune-minsnr) that compares the loss surfaces of the following setups:
 
@@ -216,7 +216,7 @@ You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/tex
 
 For our small Pokemons dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
 
-Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds. 
+Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds.
 
 <Tip warning={true}>
 
@@ -279,8 +279,8 @@ image.save("yoda-pokemon.png")
 
 ## Stable Diffusion XL
 
-* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
-* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
+* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md).
+* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md).
 
 
 ## Kandinsky 2.2
