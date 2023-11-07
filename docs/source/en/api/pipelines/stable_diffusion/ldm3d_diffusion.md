@@ -54,8 +54,6 @@ Two checkpoints are available for use:
 - [ldm3d-sr](https://huggingface.co/Intel/ldm3d-sr). This checkpoint enables the upscaling of RGB and depth images. Can be used in cascade after the original LDM3D pipeline using the StableDiffusionUpscaleLDM3DPipeline pipeline.
 
 
-</Tip>
-
 ## StableDiffusionUpscaleLDM3DPipeline
 
 [[autodoc]] pipelines.stable_diffusion.pipeline_stable_diffusion_upscale_ldm3d.StableDiffusionUpscaleLDM3DPipeline
