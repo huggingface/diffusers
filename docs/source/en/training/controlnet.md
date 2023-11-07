@@ -196,7 +196,7 @@ down_block_res_samples, mid_block_res_sample = controlnet(
 )
 ```
 
-## Launch training
+## Launch the script
 
 Now you're ready to launch the training script! 🚀
 

@@ -102,10 +102,10 @@
       title: LoRA
     - local: training/controlnet
       title: ControlNet
-    - local: training/instructpix2pix
-      title: InstructPix2Pix Training
     - local: training/custom_diffusion
       title: Custom Diffusion
+    - local: training/instructpix2pix
+      title: InstructPix2Pix Training
     - local: training/t2i_adapters
       title: T2I-Adapters
     - local: training/ddpo

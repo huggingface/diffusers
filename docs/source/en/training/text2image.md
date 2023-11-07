@@ -272,12 +272,6 @@ image.save("yoda-pokemon.png")
 </hfoption>
 </hfoptions>
 
-## LoRA
-
-LoRA is a training technique for significantly reducing the number of trainable parameters. As a result, training is faster and it is easier to store the resulting weights because they are a lot smaller (~100MBs). Use the [`train_text_to_image_lora.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py) script to train with LoRA.
-
-We'll discuss LoRA in more detail in the [LoRA training](lora) guide.
-
 ## Stable Diffusion XL
 
 Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the [`train_text_to_image_sdxl.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_sdxl.py) script to train a SDXL model, and you can also train SDXL with LoRA using the [`train_text_to_image_lora_sdxl.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py) script.
