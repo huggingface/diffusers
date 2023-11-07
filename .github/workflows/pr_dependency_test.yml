@@ -29,5 +29,5 @@ jobs:
       - name: Check for soft dependencies
         run: |
           python utils/print_env.py
-          python -c "from diffusers import UNet2DCondtionModel; print(type(UNet2DCondtionModel))"
+          python -c "from diffusers import UNet2DConditionModel; print(type(UNet2DConditionModel))"
           pytest tests/others/test_dependencies.py
