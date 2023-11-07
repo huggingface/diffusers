@@ -182,6 +182,9 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing (`str`, defaults to `"leading"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
+        timestep_scaling (`float`, defaults to `0.1`):
+            The factor the timesteps will be divided by when calculating the consistency model boundary conditions
+            `c_skip` and `c_out`.
         rescale_betas_zero_snr (`bool`, defaults to `False`):
             Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
             dark samples instead of limiting it to samples with medium brightness. Loosely related to
@@ -208,6 +211,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
         timestep_spacing: str = "leading",
+        timestep_scaling: float = 0.1,
         rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
@@ -380,12 +384,13 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = None
 
-    def get_scalings_for_boundary_condition_discrete(self, t):
+    def get_scalings_for_boundary_condition_discrete(self, timestep):
         self.sigma_data = 0.5  # Default: 0.5
+        scaled_timestep = timestep / self.config.timestep_scaling
 
         # By dividing 0.1: This is almost a delta function at t=0.
-        c_skip = self.sigma_data**2 / ((t / 0.1) ** 2 + self.sigma_data**2)
-        c_out = (t / 0.1) / ((t / 0.1) ** 2 + self.sigma_data**2) ** 0.5
+        c_skip = self.sigma_data**2 / (scaled_timestep ** 2 + self.sigma_data**2)
+        c_out = scaled_timestep / (scaled_timestep ** 2 + self.sigma_data**2) ** 0.5
         return c_skip, c_out
 
     def step(
