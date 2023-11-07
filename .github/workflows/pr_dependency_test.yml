@@ -28,5 +28,5 @@ jobs:
           pip install pytest
       - name: Check for soft dependencies
         run: |
+          python utils/print_env.py
           pytest tests/others/test_dependencies.py
-      
