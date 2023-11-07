@@ -426,6 +426,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             # unpatchify
             height = width = int(hidden_states.shape[1] ** 0.5)
+            print(f"height: {height}, width: {width}")
             hidden_states = hidden_states.reshape(
                 shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
             )
