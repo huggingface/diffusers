@@ -44,7 +44,7 @@ Make sure to check out the Stable Diffusion [Tips](overview#tips) section to lea
 
 # Upscaler
 
-LDM3D-VR is an extended version of LDM3D.
+[LDM3D-VR](https://arxiv.org/pdf/2311.03226.pdf) is an extended version of LDM3D. 
 
 The abstract from the paper is:
 *Latent diffusion models have proven to be state-of-the-art in the creation and manipulation of visual outputs. However, as far as we know, the generation of depth maps jointly with RGB is still limited. We introduce LDM3D-VR, a suite of diffusion models targeting virtual reality development that includes LDM3D-pano and LDM3D-SR. These models enable the generation of panoramic RGBD based on textual prompts and the upscaling of low-resolution inputs to high-resolution RGBD, respectively. Our models are fine-tuned from existing pretrained models on datasets containing panoramic/high-resolution RGB images, depth maps and captions. Both models are evaluated in comparison to existing related methods*
