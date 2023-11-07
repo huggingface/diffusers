@@ -474,7 +474,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # Noise is not used on the final timestep of the timestep schedule.
         # This also means that noise is not used for one-step sampling.
         if self.step_index != self.num_inference_steps - 1:
-            noise = randn_tensor(model_output.shape, generator=generator, device=model_output.device)
+            noise = randn_tensor(model_output.shape, generator=generator, device=model_output.device, dtype=denoised.dtype)
             prev_sample = alpha_prod_t_prev.sqrt() * denoised + beta_prod_t_prev.sqrt() * noise
         else:
             prev_sample = denoised
