@@ -257,6 +257,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     DEBUG_LOG_by_Umer = False
     DEBUG_LOG_by_Umer_file = 'debug_log.pkl'
     DETAILLED_DEBUG_LOG_by_Umer = False
+    TIME_DEBUG_LOG_by_Umer = False
     def forward(
         self,
         x: torch.Tensor,
@@ -267,6 +268,12 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         no_control=False,
     ):
+        def time_debug_log(txt,t):
+            if not hasattr(t,'shape'): t = torch.tensor(t)
+            t = t.cpu().detach()
+            print(f'{txt:<20}{t.flatten()[:10]}')
+            torch.save(t,'time__'+txt+'.pt')
+
         if self.base_model is None:
             raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel by `cnxs_model.base_model = the_base_model`")
 
@@ -296,6 +303,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # time embeddings
         timesteps = timesteps[None]
+        if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('timestep',timesteps)
         t_emb = get_timestep_embedding(
             timesteps, 
             self.model_channels,
@@ -303,10 +311,13 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.freq_shift,
         )
+        if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('time_emb',t_emb)
         if self.learn_embedding:
             temb = self.control_model.time_embedding(t_emb) * self.config.control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.config.control_scale ** 0.3)
         else:
             temb = self.base_model.time_embedding(t_emb)
+        if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('time_proj',temb)
+
         aug_emb = None
 
         # text embeddings
@@ -324,16 +335,20 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
                 )
             text_embeds = added_cond_kwargs.get("text_embeds")
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('text_embeds',text_embeds)
             if "time_ids" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
                 )
             time_ids = added_cond_kwargs.get("time_ids")
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('add_input',time_ids.flatten())
             time_embeds = self.base_model.add_time_proj(time_ids.flatten())
             time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('add_emb',time_ids.flatten())
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
             add_embeds = add_embeds.to(temb.dtype)
             aug_emb = self.base_model.add_embedding(add_embeds)
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('add_proj',aug_emb)
 
         elif self.config.addition_embed_type == "image":
             raise NotImplementedError()
@@ -341,7 +356,11 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             raise NotImplementedError()
 
         temb = temb + aug_emb if aug_emb is not None else temb
-     
+        if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('final_temb',temb)
+
+        if self.TIME_DEBUG_LOG_by_Umer:
+            print('Time to analyze time!')
+            raise ValueError('Time to analyze time!')
 
         ###
         guided_hint = self.input_hint_block(hint)
@@ -449,7 +468,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             if any_debug: print('>> Applying base block\t', end='')
             h_base, debug_cache_i_dont_care_about_sry_mr_debug_cache = m_base(h_base, temb, cemb)
             debug_by_umer('dec', 'h_base', h_base)
-            print()
+            if any_debug: print()
 
         debug_save()
         if self.DETAILLED_DEBUG_LOG_by_Umer:
