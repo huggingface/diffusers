@@ -174,7 +174,7 @@ pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetens
 pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
 
 pipe.set_adapters(["pixel", "toy"], adapter_weights=[0.5, 1.0])
-#Fuses the LoRAs into the Unet
+# Fuses the LoRAs into the Unet
 pipe.fuse_lora()
 
 prompt = "toy_face of a hacker with a hoodie, pixel art"
