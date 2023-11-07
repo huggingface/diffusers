@@ -26,9 +26,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install "jax[cpu]>=0.2.16,!=0.3.2"
-          pip install --upgrade clu
-          git clone https://github.com/google/flax.git
-          pip install --user -e flax
+          pip install "flax>=0.4.1"
+          pip install "jaxlib>=0.1.65"
           pip install pytest
       - name: Check for soft dependencies
         run: |
