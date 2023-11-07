@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   check_flax_dependencies:
-    runs-on: diffusers-pytorch-dependency-cpu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
