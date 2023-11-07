@@ -253,7 +253,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             negative_prompt_embeds = None
 
         # Perform additional masking.
-        if mask_feature:
+        if mask_feature and prompt_embeds is None and negative_prompt_embeds is None:
             prompt_embeds = prompt_embeds.unsqueeze(1)
             masked_prompt_embeds, keep_indices = self.mask_text_embeddings(prompt_embeds, prompt_embeds_attention_mask)
             masked_prompt_embeds = masked_prompt_embeds.squeeze(1)

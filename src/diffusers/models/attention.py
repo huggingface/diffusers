@@ -287,7 +287,7 @@ class BasicTransformerBlock(nn.Module):
             else:
                 raise ValueError("Incorrect norm")
 
-            if self.pos_embed is not None and self.use_ada_layer_norm_single is None:
+            if self.pos_embed is not None and self.use_ada_layer_norm_single is False:
                 norm_hidden_states = self.pos_embed(norm_hidden_states)
 
             attn_output = self.attn2(
