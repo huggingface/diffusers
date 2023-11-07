@@ -148,7 +148,7 @@ class VQModel(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec)
 
-    def forward(self, x: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def forward(self, sample: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         The [`VQModel`] forward method.
 
@@ -163,7 +163,7 @@ class VQModel(ModelMixin, ConfigMixin):
                 is returned.
         """
 
-        h = self.encode(x).latents
+        h = self.encode(sample).latents
         dec = self.decode(h).sample
 
         if not return_dict:
