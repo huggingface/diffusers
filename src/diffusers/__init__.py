@@ -77,6 +77,7 @@ else:
             "AsymmetricAutoencoderKL",
             "AutoencoderKL",
             "AutoencoderTiny",
+            "ConsistencyDecoderVae",
             "ControlNetModel",
             "ModelMixin",
             "MotionAdapter",
@@ -127,6 +128,7 @@ else:
     _import_structure["schedulers"].extend(
         [
             "CMStochasticIterativeScheduler",
+            "ConsistencyDecoderScheduler",
             "DDIMInverseScheduler",
             "DDIMParallelScheduler",
             "DDIMScheduler",
@@ -443,6 +445,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AutoencoderKL,
             AutoencoderTiny,
+            ConsistencyDecoderVae,
             ControlNetModel,
             ModelMixin,
             MotionAdapter,
@@ -491,6 +494,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .schedulers import (
             CMStochasticIterativeScheduler,
+            ConsistencyDecoderScheduler,
             DDIMInverseScheduler,
             DDIMParallelScheduler,
             DDIMScheduler,
