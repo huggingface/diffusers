@@ -311,7 +311,7 @@ Once training is finished, you can use your new Custom Diffusion model for infer
 
 <Tip>
 
-<hfoption id="training-inference">
+<hfoptions id="training-inference">
 <hfoption id="single concept">
 
 ```py
