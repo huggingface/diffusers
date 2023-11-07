@@ -180,6 +180,6 @@ pipe.fuse_lora()
 prompt = "toy_face of a hacker with a hoodie, pixel art"
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 
-#Gets the Unet back to the original state
+# Gets the Unet back to the original state
 pipe.unfuse_lora()
 ```
