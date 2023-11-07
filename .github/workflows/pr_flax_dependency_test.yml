@@ -1,4 +1,4 @@
-name: Run Torch dependency tests
+name: Run Flax dependency tests
 
 on:
   pull_request:
@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check_torch_dependencies:
-    runs-on: ubuntu-latest
+  check_flax_dependencies:
+    runs-on: diffusers-pytorch-dependency-cpu
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
@@ -25,7 +25,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install torch torchvision torchaudio
+          pip install "jax[cpu]>=0.2.16,!=0.3.2"
+          pip install --upgrade clu
+          git clone https://github.com/google/flax.git
+          pip install --user -e flax
           pip install pytest
       - name: Check for soft dependencies
         run: |
