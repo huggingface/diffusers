@@ -442,6 +442,8 @@ class AudioLDMControlNetPipeline(DiffusionPipeline):
 
             piano_roll = np.concatenate(piano_roll, axis=0)
             piano_roll = torch.from_numpy(piano_roll)
+        else:
+            piano_roll = midi
 
         piano_roll_batch_size = piano_roll.shape[0]
 
