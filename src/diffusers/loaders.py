@@ -2390,7 +2390,7 @@ class LoraLoaderMixin:
     def set_adapters_for_text_encoder(
         self,
         adapter_names: Union[List[str], str],
-        text_encoder: Optional[PreTrainedModel] = None,
+        text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
         text_encoder_weights: List[float] = None,
     ):
         """
