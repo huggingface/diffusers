@@ -22,9 +22,6 @@ import numpy as np
 import requests
 import torch
 from PIL import Image
-
-# from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
@@ -35,6 +32,8 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
+
+from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 
 
 enable_full_determinism()
