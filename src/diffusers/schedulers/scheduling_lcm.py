@@ -389,9 +389,8 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self.sigma_data = 0.5  # Default: 0.5
         scaled_timestep = timestep * self.config.timestep_scaling
 
-        # By dividing 0.1: This is almost a delta function at t=0.
-        c_skip = self.sigma_data**2 / (scaled_timestep ** 2 + self.sigma_data**2)
-        c_out = scaled_timestep / (scaled_timestep ** 2 + self.sigma_data**2) ** 0.5
+        c_skip = self.sigma_data**2 / (scaled_timestep**2 + self.sigma_data**2)
+        c_out = scaled_timestep / (scaled_timestep**2 + self.sigma_data**2) ** 0.5
         return c_skip, c_out
 
     def step(
