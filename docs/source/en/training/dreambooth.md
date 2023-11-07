@@ -438,7 +438,7 @@ We’ll discuss LoRA in more detail in the [LoRA training](lora) guide.
 
 Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the train_dreambooth_lora_sdxl.py script to train a SDXL model with LoRA.
 
-We’ll discuss training SDXL in more detail in the [SDXL training]() guide.
+We’ll discuss training SDXL in more detail in the [SDXL training](sdxl) guide.
 
 ## Next steps
 

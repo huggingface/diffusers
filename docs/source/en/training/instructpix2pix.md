@@ -19,7 +19,6 @@ This guide will explore the [train_instruct_pix2pix.py](https://github.com/huggi
 Before running the script, make sure you install the library from source:
 
 ```bash
-```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
 pip install .
@@ -27,20 +26,10 @@ pip install .
 
 Then navigate to the example folder containing the training script and install the required dependencies for the script you're using:
 
-<hfoptions id="installation">
-<hfoption id="PyTorch">
 ```bash
 cd examples/instruct_pix2pix
 pip install -r requirements.txt
 ```
-</hfoption>
-<hfoption id="SDXL">
-```bash
-cd examples/instruct_pix2pix
-pip install -r requirements_sdxl.txt
-```
-</hfoption>
-</hfoptions>
 
 <Tip>
 
@@ -254,7 +243,7 @@ You should experiment with different `num_inference_steps`, `image_guidance_scal
 
 Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the [`train_instruct_pix2pix_sdxl.py`](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix_sdxl.py) script to train a SDXL model to follow image editing instructions.
 
-We'll discuss training SDXL in more detail in the [SDXL training]() guide.
+We'll discuss training SDXL in more detail in the [SDXL training](sdxl) guide.
 
 ## Next steps
 

@@ -47,12 +47,6 @@ cd examples/text_to_image
 pip install -r requirements_flax.txt
 ```
 </hfoption>
-<hfoption id="SDXL">
-```bash
-cd examples/text_to_image
-pip install -r requirements_sdxl.txt
-```
-</hfoption>
 </hfoptions>
 
 <Tip>
@@ -271,12 +265,6 @@ image.save("yoda-pokemon.png")
 
 </hfoption>
 </hfoptions>
-
-## Stable Diffusion XL
-
-Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the [`train_text_to_image_sdxl.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_sdxl.py) script to train a SDXL model, and you can also train SDXL with LoRA using the [`train_text_to_image_lora_sdxl.py`](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py) script.
-
-We'll discuss training SDXL in more detail in the [SDXL training]() guide.
 
 ## Next steps
 
