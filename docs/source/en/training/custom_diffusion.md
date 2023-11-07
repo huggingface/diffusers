@@ -309,8 +309,6 @@ accelerate launch train_custom_diffusion.py \
 
 Once training is finished, you can use your new Custom Diffusion model for inference.
 
-<Tip>
-
 <hfoptions id="training-inference">
 <hfoption id="single concept">
 
