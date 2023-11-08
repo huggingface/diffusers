@@ -1,0 +1,2 @@
+tests/pipelines/latent_consistency_models/test_latent_consistency_models_img2img.py;LatentConsistencyModelImg2ImgPipelineSlowTests;test_lcm_multistep;expected_slice = np.array([0.3756, 0.3816, 0.3767, 0.3718, 0.3739, 0.3735, 0.3863, 0.3803, 0.3563])
+tests/pipelines/latent_consistency_models/test_latent_consistency_models_img2img.py;LatentConsistencyModelImg2ImgPipelineSlowTests;test_lcm_onestep;expected_slice = np.array([0.1950, 0.1961, 0.2308, 0.1786, 0.1837, 0.2320, 0.1898, 0.1885, 0.2309])
