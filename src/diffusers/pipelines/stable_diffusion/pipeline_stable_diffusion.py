@@ -126,11 +126,11 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        image_encoder: CLIPVisionModelWithProjection,
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
