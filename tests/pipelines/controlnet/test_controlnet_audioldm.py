@@ -162,9 +162,8 @@ class AudioLDMControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         inputs = {
             "prompt": "Piano",
             "generator": generator,
-            "num_inference_steps": 2,
-            "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "num_inference_steps": 3,
+            "guidance_scale": 2.5,
             "midi": midi,
         }
 
