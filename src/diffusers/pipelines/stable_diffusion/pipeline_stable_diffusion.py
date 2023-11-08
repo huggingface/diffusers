@@ -458,12 +458,14 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
     # Note (sayakpaul): Name it this way to not mess up with other functions like _encode_image()
     # common in imag2image pipelines.
     def encode_image_ip_adapter(self, image, device, num_images_per_prompt):
+        print(f"Inside encode_image_ip_adapter: {self.image_encoder.device}, {self.image_encoder.dtype}")
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
+        print(f"Inside encode_image_ip_adapter: {image.device}, {image.dtype}")
         image_embeds = self.image_encoder(image).image_embeds
         uncond_image_prompt_embeds = self.image_projection(torch.zeros_like(image_embeds))
 
