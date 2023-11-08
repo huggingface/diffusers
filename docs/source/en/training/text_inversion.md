@@ -90,7 +90,7 @@ snapshot_download(
 )
 ```
 
-Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument, and the `DATA_DIR` environment variable to the path of the directory containing the images.
+Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument, and the `DATA_DIR` environment variable to the path of the directory containing the images. 
 
 Now you can launch the [training script](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py). The script creates and saves the following files to your repository: `learned_embeds.bin`, `token_identifier.txt`, and `type_of_concept.txt`.
 
@@ -124,8 +124,8 @@ accelerate launch textual_inversion.py \
 
 <Tip>
 
-💡 If you want to increase the trainable capacity, you can associate your placeholder token, *e.g.* `<cat-toy>` to
-multiple embedding vectors. This can help the model to better capture the style of more (complex) images.
+💡 If you want to increase the trainable capacity, you can associate your placeholder token, *e.g.* `<cat-toy>` to 
+multiple embedding vectors. This can help the model to better capture the style of more (complex) images. 
 To enable training multiple embedding vectors, simply pass:
 
 ```bash
@@ -184,7 +184,7 @@ If you're interested in following along with your model training progress, you c
 
 Once you have trained a model, you can use it for inference with the [`StableDiffusionPipeline`].
 
-The textual inversion script will by default only save the textual inversion embedding vector(s) that have
+The textual inversion script will by default only save the textual inversion embedding vector(s) that have 
 been added to the text encoder embedding matrix and consequently been trained.
 
 <frameworkcontent>
@@ -196,7 +196,7 @@ Instead of training textual inversion embeddings from scratch you can also see w
 
 </Tip>
 
-To load the textual inversion embeddings you first need to load the base model that was used when training
+To load the textual inversion embeddings you first need to load the base model that was used when training 
 your textual inversion embedding vectors. Here we assume that [`runwayml/stable-diffusion-v1-5`](runwayml/stable-diffusion-v1-5)
 was used as a base model so we load it first:
 ```python
@@ -222,7 +222,7 @@ image = pipe(prompt, num_inference_steps=50).images[0]
 image.save("cat-backpack.png")
 ```
 
-The function [`TextualInversionLoaderMixin.load_textual_inversion`] can not only
+The function [`TextualInversionLoaderMixin.load_textual_inversion`] can not only 
 load textual embedding vectors saved in Diffusers' format, but also embedding vectors
 saved in [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) format.
 To do so, you can first download an embedding vector from [civitAI](https://civitai.com/models/3036?modelVersionId=8387)
