@@ -28,14 +28,6 @@ from packaging import version
 from torch import nn
 
 from . import __version__
-from .models.attention_processor import (
-    AttnProcessor,
-    AttnProcessor2_0,
-    IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
-    IPAdapterControlNetAttnProcessor,
-    IPAdapterControlNetAttnProcessor2_0,
-)
 from .models.embeddings import ImageProjection
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from .utils import (
@@ -3348,6 +3340,15 @@ class IPAdapterMixin:
     """Mixin for handling IP Adapters."""
 
     def set_ip_adapter(self):
+        from .models.attention_processor import (
+            AttnProcessor,
+            AttnProcessor2_0,
+            IPAdapterAttnProcessor,
+            IPAdapterAttnProcessor2_0,
+            IPAdapterControlNetAttnProcessor,
+            IPAdapterControlNetAttnProcessor2_0,
+        )
+
         unet = self.unet
         attn_procs = {}
         for name in unet.attn_processors.keys():
@@ -3501,6 +3502,8 @@ class IPAdapterMixin:
         ip_layers.load_state_dict(state_dict["ip_adapter"])
 
     def set_ip_adapter_scale(self, scale):
+        from .models.attention_processor import IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0
+
         for attn_processor in self.unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = scale
