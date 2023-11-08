@@ -81,12 +81,6 @@ Upload a base image to inpaint on and use the sketch tool to draw a mask. Once y
 
 [Stable Diffusion Inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting), [Stable Diffusion XL (SDXL) Inpainting](https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1), and [Kandinsky 2.2](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) are among the most popular models for inpainting. SDXL typically produces higher resolution images than Stable Diffusion v1.5, and Kandinsky 2.2 is also capable of generating high-quality images.
 
-<Tip>
-
-This guide uses inpaint-specific checkpoints like [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting) and [kandinsky-community/kandinsky-2-2-decoder-inpaint](https://huggingface.co/kandinsky-community/kandinsky-2-2-decoder-inpaint) for the best results. However, you can also use non inpaint-specific checkpoints like [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more basic inpaint tasks like erasing an object from an image.
-
-</Tip>
-
 ### Stable Diffusion Inpainting
 
 Stable Diffusion Inpainting is a latent diffusion model finetuned on 512x512 images on inpainting. It is a good starting point because it is relatively fast and generates good quality images. To use this model for inpainting, you'll need to pass a prompt, base and mask image to the pipeline:
@@ -175,6 +169,138 @@ image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generat
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-kandinsky.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">Kandinsky 2.2 Inpainting</figcaption>
+  </div>
+</div>
+
+## Non-inpaint specific checkpoints
+
+So far, this guide has used inpaint specific checkpoints such as [runwayml/stable-diffusion-inpainting](https://huggingface.co/runwayml/stable-diffusion-inpainting). But you can also use regular checkpoints like [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5). Let's compare the results of the two checkpoints.
+
+The image on the left is generated from a regular checkpoint, and the image on the right is from an inpaint checkpoint. You'll immediately notice the image on the left is not as clean, and you can still see the outline of the area the model is supposed to inpaint. The image on the right is much cleaner and the inpainted area appears more natural.
+
+<hfoptions id="regular-specific">
+<hfoption id="runwayml/stable-diffusion-v1-5">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
+pipeline.enable_xformers_memory_efficient_attention()
+
+# load base and mask image
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+generator = torch.Generator("cuda").manual_seed(92)
+prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
+make_image_grid([init_image, image], rows=1, cols=2)
+```
+
+</hfoption>
+<hfoption id="runwayml/stable-diffusion-inpainting">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
+pipeline.enable_xformers_memory_efficient_attention()
+
+# load base and mask image
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint_mask.png")
+
+generator = torch.Generator("cuda").manual_seed(92)
+prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
+image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image, generator=generator).images[0]
+make_image_grid([init_image, image], rows=1, cols=2)
+```
+
+</hfoption>
+</hfoptions>
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/non-inpaint-specific.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-v1-5</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint-specific.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-inpainting</figcaption>
+  </div>
+</div>
+
+However, for more basic tasks like erasing an object from an image (like the rocks in the road for example), a regular checkpoint yields pretty good results. There isn't as noticeable of difference between the regular and inpaint checkpoint.
+
+<hfoptions id="inpaint">
+<hfoption id="runwayml/stable-diffusion-v1-5">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
+pipeline.enable_xformers_memory_efficient_attention()
+
+# load base and mask image
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/road-mask.png")
+
+image = pipeline(prompt="road", image=init_image, mask_image=mask_image).images[0]
+make_image_grid([init_image, image], rows=1, cols=2)
+```
+
+</hfoption>
+<hfoption id="runwayml/stable-diffusion-inpaint">
+
+```py
+import torch
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16, variant="fp16"
+).to("cuda")
+pipeline.enable_model_cpu_offload()
+# remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
+pipeline.enable_xformers_memory_efficient_attention()
+
+# load base and mask image
+init_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/inpaint.png")
+mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/road-mask.png")
+
+image = pipeline(prompt="road", image=init_image, mask_image=mask_image).images[0]
+make_image_grid([init_image, image], rows=1, cols=2)
+```
+
+</hfoption>
+</hfoptions>
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/regular-inpaint-basic.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-v1-5</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/specific-inpaint-basic.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">runwayml/stable-diffusion-inpainting</figcaption>
   </div>
 </div>
 
