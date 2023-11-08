@@ -1535,13 +1535,11 @@ class DownBlockFlat(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
-                [
-                    LinearMultiDim(
-                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
-                    )
-                ]
-            )
+            self.downsamplers = nn.ModuleList([
+                LinearMultiDim(
+                    out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                )
+            ])
         else:
             self.downsamplers = None
 
@@ -1664,13 +1662,11 @@ class CrossAttnDownBlockFlat(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList(
-                [
-                    LinearMultiDim(
-                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
-                    )
-                ]
-            )
+            self.downsamplers = nn.ModuleList([
+                LinearMultiDim(
+                    out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                )
+            ])
         else:
             self.downsamplers = None
 
