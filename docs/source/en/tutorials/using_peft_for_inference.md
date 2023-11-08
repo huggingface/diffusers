@@ -165,7 +165,7 @@ list_adapters_component_wise
 {"text_encoder": ["toy", "pixel"], "unet": ["toy", "pixel"], "text_encoder_2": ["toy", "pixel"]}
 ```
 
-## Fusing multiple adapters into the model
+## Fusing adapters into the model
 
 You can use PEFT to easily fuse/unfuse multiple adapters directly into the model weights (both UNet and text encoder) using the [`~diffusers.loaders.LoraLoaderMixin.fuse_lora`] method, which can lead to a speed-up in inference and lower VRAM usage.
 
