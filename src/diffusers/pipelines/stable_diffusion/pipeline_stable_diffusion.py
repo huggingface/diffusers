@@ -211,7 +211,6 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
-        self.image_projection = None
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def enable_vae_slicing(self):
@@ -459,15 +458,14 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
     # Note (sayakpaul): Name it this way to not mess up with other functions like _encode_image()
     # common in imag2image pipelines.
     def encode_image_ip_adapter(self, image, device, num_images_per_prompt):
-        print(f"Inside encode_image_ip_adapter: {self.image_encoder.device}, {self.image_encoder.dtype}")
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        print(f"Inside encode_image_ip_adapter: {image.device}, {image.dtype}")
         image_embeds = self.image_encoder(image).image_embeds
+        image_embeds = self.image_projection(image_embeds)
         uncond_image_prompt_embeds = self.image_projection(torch.zeros_like(image_embeds))
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
