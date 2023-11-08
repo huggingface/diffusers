@@ -60,7 +60,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import PIL
 
-        >>> pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
+        >>> pipe = AutoPipelineForImage2Image.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
         >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
         >>> pipe.to(torch_device="cuda", torch_dtype=torch.float32)
 
