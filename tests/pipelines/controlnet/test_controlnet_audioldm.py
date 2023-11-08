@@ -178,7 +178,7 @@ class AudioLDMControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_dummy_inputs(device))[0]
+        output = pipe(**self.get_dummy_inputs(device))
         audio = output.audios[0]
 
         assert audio.ndim == 1
