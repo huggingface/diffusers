@@ -20,6 +20,7 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
+from torchvision import transforms as T
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
@@ -59,6 +60,20 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt).images[0]
         ```
 """
+
+
+ASPECT_RATIO_1024_TEST = {
+    '0.25': [512., 2048.], '0.28': [512., 1856.],
+    '0.32': [576., 1792.], '0.33': [576., 1728.], '0.35': [576., 1664.], '0.4':  [640., 1600.],
+    '0.42':  [640., 1536.], '0.48': [704., 1472.], '0.5': [704., 1408.], '0.52': [704., 1344.],
+    '0.57': [768., 1344.], '0.6': [768., 1280.], '0.68': [832., 1216.], '0.72': [832., 1152.],
+    '0.78': [896., 1152.], '0.82': [896., 1088.], '0.88': [960., 1088.], '0.94': [960., 1024.],
+    '1.0':  [1024., 1024.], '1.07': [1024.,  960.], '1.13': [1088.,  960.], '1.21': [1088.,  896.],
+    '1.29': [1152.,  896.], '1.38': [1152.,  832.], '1.46': [1216.,  832.], '1.67': [1280.,  768.],
+    '1.75': [1344.,  768.], '2.0':  [1408.,  704.], '2.09':  [1472.,  704.], '2.4':  [1536.,  640.],
+    '2.5':  [1600.,  640.], '3.0':  [1728.,  576.],
+    '4.0':  [2048.,  512.],
+}
 
 
 class PixArtAlphaPipeline(DiffusionPipeline):
@@ -115,6 +130,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         else:
             masked_feature = emb * mask[:, None, :, None]
             return masked_feature, emb.shape[2]
+
+    @staticmethod
+    def classify_height_width_bin(height: int, width: int, ratios: dict):
+        ar = float(height / width)
+        closest_ratio = min(ratios.keys(), key=lambda ratio: abs(float(ratio) - ar))
+        default_hw = ratios[closest_ratio]
+        return int(default_hw[0]), int(default_hw[1])
 
     # Adapted from diffusers.pipelines.deepfloyd_if.pipeline_if.encode_prompt
     def encode_prompt(
@@ -495,6 +517,24 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    @staticmethod
+    def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int):
+        orig_hw = torch.tensor([samples.shape[2], samples.shape[3]])
+        custom_hw = torch.tensor([new_height, new_width])
+
+        if (orig_hw != custom_hw).all():
+            ratio = max(custom_hw[0] / orig_hw[0], custom_hw[1] / orig_hw[1])
+            resized_width = int(orig_hw[1] * ratio)
+            resized_height = int(orig_hw[0] * ratio)
+
+            transform = T.Compose([
+                T.Resize((resized_height, resized_width)),
+                T.CenterCrop(custom_hw.tolist())
+            ])
+            return transform(samples)
+        else:
+            return samples
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -518,6 +558,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         clean_caption: bool = True,
         mask_feature: bool = True,
+        use_bin_classifier: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -591,6 +632,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
+        if use_bin_classifier:
+            orig_height, orig_width = height, width
+            height, width = self.classify_height_width_bin(height, width, ratios=ASPECT_RATIO_1024_TEST)
         self.check_inputs(
             prompt, height, width, negative_prompt, callback_steps, prompt_embeds, negative_prompt_embeds
         )
@@ -709,6 +753,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            if use_bin_classifier:
+                image = self.resize_and_crop_tensor(image, orig_width, orig_height)
         else:
             image = latents
 
