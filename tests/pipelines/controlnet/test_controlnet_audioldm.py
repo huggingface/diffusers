@@ -182,3 +182,9 @@ class AudioLDMControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         audio = output.audios[0]
 
         assert audio.ndim == 1
+
+    def test_attention_slicing_forward_pass(self):
+        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False)
+
+    def test_inference_batch_single_identical(self):
+        self._test_inference_batch_single_identical()
