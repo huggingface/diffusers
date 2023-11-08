@@ -1608,6 +1608,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
             generator = torch.Generator().manual_seed(0)
 
             lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
+            lora_model_id = "/home/patrick/lcm-sdxl-lora-huber"
         
             pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
 
@@ -1616,6 +1617,9 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
             expected_image = load_image(
                 "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
             )
+
+            # import hf_image_uploader as hui
+            # hui.upload(image, "patrickvonplaten/images")
 
             image_np = pipe.image_processor.pil_to_numpy(image)
             expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
