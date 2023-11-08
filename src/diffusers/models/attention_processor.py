@@ -1361,6 +1361,7 @@ class CustomDiffusionXFormersAttnProcessor(nn.Module):
             hidden_states = attn.to_out[0](hidden_states)
             # dropout
             hidden_states = attn.to_out[1](hidden_states)
+
         return hidden_states
 
 
@@ -1433,8 +1434,11 @@ class CustomDiffusionAttnProcessor2_0(nn.Module):
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         if self.train_kv:
-            key = self.to_k_custom_diffusion(encoder_hidden_states)
-            value = self.to_v_custom_diffusion(encoder_hidden_states)
+            key = self.to_k_custom_diffusion(encoder_hidden_states.to(self.to_k_custom_diffusion.weight.dtype))
+            value = self.to_v_custom_diffusion(encoder_hidden_states.to(self.to_v_custom_diffusion.weight.dtype))
+            key = key.to(attn.to_q.weight.dtype)
+            value = value.to(attn.to_q.weight.dtype)
+
         else:
             key = attn.to_k(encoder_hidden_states)
             value = attn.to_v(encoder_hidden_states)
