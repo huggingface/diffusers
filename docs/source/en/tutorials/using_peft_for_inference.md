@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-# Loading adapters (LoRAs) on diffusers with PEFT for inference
+# Load LoRAs for inference
 
 There are many adapters (commonly known as LoRAs) trained in different styles to achieve different effects. You can even combine multiple adapters to create new and unique images. With the 🤗 [PEFT](https://huggingface.co/docs/peft/index) integration in 🤗 Diffusers, it is really easy to load and manage adapters for inference. In this guide, you'll learn how to use different adapters with [Stable Diffusion XL (SDXL)](../api/pipelines/stable_diffusion/stable_diffusion_xl) for inference.
 
