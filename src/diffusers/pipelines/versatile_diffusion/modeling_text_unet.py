@@ -1582,7 +1582,6 @@ class DownBlockFlat(nn.Module):
         return hidden_states, output_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.CrossAttnDownBlock2D with CrossAttnDownBlock2D->CrossAttnDownBlockFlat, ResnetBlock2D->ResnetBlockFlat, Downsample2D->LinearMultiDim
 class CrossAttnDownBlockFlat(nn.Module):
     def __init__(
         self,
