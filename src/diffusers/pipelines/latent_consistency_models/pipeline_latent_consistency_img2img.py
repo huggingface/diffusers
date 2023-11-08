@@ -60,7 +60,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import PIL
 
-        >>> pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
+        >>> pipe = AutoPipelineForImage2Image.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
         >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
         >>> pipe.to(torch_device="cuda", torch_dtype=torch.float32)
 
@@ -738,7 +738,7 @@ class LatentConsistencyModelImg2ImgPipeline(
             if original_inference_steps is not None
             else self.scheduler.config.original_inference_steps
         )
-        latent_timestep = torch.tensor(int(strength * original_inference_steps))
+        latent_timestep = timesteps[:1]
         latents = self.prepare_latents(
             image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )

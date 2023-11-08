@@ -220,6 +220,17 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
+    def test_prompt_embeds(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs.pop("prompt")
+        inputs["prompt_embeds"] = torch.randn((1, 4, 32), device=torch_device)
+        pipe(**inputs)
+
 
 @slow
 @require_torch_gpu
