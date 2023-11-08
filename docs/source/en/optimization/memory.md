@@ -32,7 +32,7 @@ The results below are obtained from generating a single 512x512 image from the p
 
 ## Sliced VAE
 
-Sliced VAE enables decoding large batches of images with limited VRAM or batches with 32 images or more by decoding the batches of latents one image at a time. You'll likely want to couple this with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to further reduce memory use if you have PyTorch < 2.0 installed. Because PyTorch 2.0 has this attention natively.
+Sliced VAE enables decoding large batches of images with limited VRAM or batches with 32 images or more by decoding the batches of latents one image at a time. You'll likely want to couple this with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to reduce memory use further if you have xFormers installed.
 
 To use sliced VAE, call [`~StableDiffusionPipeline.enable_vae_slicing`] on your pipeline before inference:
 
