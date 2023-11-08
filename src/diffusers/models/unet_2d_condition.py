@@ -1026,7 +1026,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             if any("to_k_ip" in k for k in self.state_dict().keys()):
                 encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
             else:
-            # Kandinsky 2.2 - style
+                # Kandinsky 2.2 - style
                 encoder_hidden_states = image_embeds
 
         # 2. pre-process
