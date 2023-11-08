@@ -10,12 +10,12 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Custom Diffusion training example
+# Custom Diffusion training example 
 
 [Custom Diffusion](https://arxiv.org/abs/2212.04488) is a method to customize text-to-image models like Stable Diffusion given just a few (4~5) images of a subject.
 The `train_custom_diffusion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
-This training example was contributed by [Nupur Kumari](https://nupurkmr9.github.io/) (one of the authors of Custom Diffusion).
+This training example was contributed by [Nupur Kumari](https://nupurkmr9.github.io/) (one of the authors of Custom Diffusion). 
 
 ## Running locally with PyTorch
 
@@ -43,7 +43,7 @@ Now run
 
 ```bash
 pip install -r requirements.txt
-pip install clip-retrieval
+pip install clip-retrieval 
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -69,8 +69,8 @@ write_basic_config()
 
 Now let's get our dataset. Download dataset from [here](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and unzip it. To use your own dataset, take a look at the [Create a dataset for training](create_dataset) guide.
 
-We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset as a regularization. This prevents overfitting to the given target image. The following flags enable the regularization `with_prior_preservation`, `real_prior` with `prior_loss_weight=1.`.
-The `class_prompt` should be the category name same as target image. The collected real images are with text captions similar to the `class_prompt`. The retrieved image are saved in `class_data_dir`. You can disable `real_prior` to use generated images as regularization. To collect the real images use this command first before training.
+We also collect 200 real images using `clip-retrieval` which are combined with the target images in the training dataset as a regularization. This prevents overfitting to the given target image. The following flags enable the regularization `with_prior_preservation`, `real_prior` with `prior_loss_weight=1.`. 
+The `class_prompt` should be the category name same as target image. The collected real images are with text captions similar to the `class_prompt`. The retrieved image are saved in `class_data_dir`. You can disable `real_prior` to use generated images as regularization. To collect the real images use this command first before training. 
 
 ```bash
 pip install clip-retrieval
@@ -109,7 +109,7 @@ accelerate launch train_custom_diffusion.py \
 To track your experiments using Weights and Biases (`wandb`) and to save intermediate results (which we HIGHLY recommend), follow these steps:
 
 * Install `wandb`: `pip install wandb`.
-* Authorize: `wandb login`.
+* Authorize: `wandb login`. 
 * Then specify a `validation_prompt` and set `report_to` to `wandb` while launching training. You can also configure the following related arguments:
     * `num_validation_images`
     * `validation_steps`
@@ -137,7 +137,7 @@ accelerate launch train_custom_diffusion.py \
   --push_to_hub
 ```
 
-Here is an example [Weights and Biases page](https://wandb.ai/sayakpaul/custom-diffusion/runs/26ghrcau) where you can check out the intermediate results along with other training details.
+Here is an example [Weights and Biases page](https://wandb.ai/sayakpaul/custom-diffusion/runs/26ghrcau) where you can check out the intermediate results along with other training details.  
 
 If you specify `--push_to_hub`, the learned parameters will be pushed to a repository on the Hugging Face Hub. Here is an [example repository](https://huggingface.co/sayakpaul/custom-diffusion-cat).
 
@@ -145,7 +145,7 @@ If you specify `--push_to_hub`, the learned parameters will be pushed to a repos
 
 Provide a [json](https://github.com/adobe-research/custom-diffusion/blob/main/assets/concept_list.json) file with the info about each concept, similar to [this](https://github.com/ShivamShrirao/diffusers/blob/main/examples/dreambooth/train_dreambooth.py).
 
-To collect the real images run this command for each concept in the json file.
+To collect the real images run this command for each concept in the json file. 
 
 ```bash
 pip install clip-retrieval
@@ -174,13 +174,13 @@ accelerate launch train_custom_diffusion.py \
   --push_to_hub
 ```
 
-Here is an example [Weights and Biases page](https://wandb.ai/sayakpaul/custom-diffusion/runs/3990tzkg) where you can check out the intermediate results along with other training details.
+Here is an example [Weights and Biases page](https://wandb.ai/sayakpaul/custom-diffusion/runs/3990tzkg) where you can check out the intermediate results along with other training details.  
 
 ### Training on human faces
 
-For fine-tuning on human faces we found the following configuration to work better: `learning_rate=5e-6`, `max_train_steps=1000 to 2000`, and `freeze_model=crossattn` with at least 15-20 images.
+For fine-tuning on human faces we found the following configuration to work better: `learning_rate=5e-6`, `max_train_steps=1000 to 2000`, and `freeze_model=crossattn` with at least 15-20 images. 
 
-To collect the real images use this command first before training.
+To collect the real images use this command first before training. 
 
 ```bash
 pip install clip-retrieval
@@ -290,7 +290,7 @@ Here, `cat` and `wooden pot` refer to the multiple concepts.
 
 ### Inference from a training checkpoint
 
-You can also perform inference from one of the complete checkpoint saved during the training process, if you used the `--checkpointing_steps` argument.
+You can also perform inference from one of the complete checkpoint saved during the training process, if you used the `--checkpointing_steps` argument. 
 
 TODO.
 
@@ -302,4 +302,4 @@ More info: https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_
 
 ## Experimental results
 
-You can refer to [our webpage](https://www.cs.cmu.edu/~custom-diffusion/) that discusses our experiments in detail.
+You can refer to [our webpage](https://www.cs.cmu.edu/~custom-diffusion/) that discusses our experiments in detail. 
