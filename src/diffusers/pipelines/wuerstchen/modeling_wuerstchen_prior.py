@@ -59,7 +59,6 @@ class WuerstchenPrior(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         )
 
         self.gradient_checkpointing = False
-        self.set_default_attn_processor()
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
