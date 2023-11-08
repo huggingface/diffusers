@@ -837,15 +837,11 @@ class StableDiffusionPipeline(
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                if image_prompt is not None:
-                    added_cond_kwargs = {"image_embeds": image_embeds}
-
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    added_cond_kwargs=added_cond_kwargs,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     return_dict=False,
                 )[0]
