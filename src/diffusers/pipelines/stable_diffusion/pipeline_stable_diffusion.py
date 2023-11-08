@@ -119,7 +119,7 @@ class StableDiffusionPipeline(
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        image_encoder: CLIPVisionModelWithProjection = None,
+        image_encoder: CLIPVisionModelWithProjection,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
