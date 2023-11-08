@@ -79,6 +79,7 @@ class AudioLDMControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         )
         torch.manual_seed(0)
         controlnet = ControlNetModel(
+            conditioning_channels = 1,
             block_out_channels=(32, 64),
             layers_per_block=2,
             in_channels=4,

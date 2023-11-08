@@ -464,6 +464,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoPipelineForImage2Image,
             AutoPipelineForInpainting,
             AutoPipelineForText2Image,
+            AudioLDMControlNetPipeline,
             BlipDiffusionControlNetPipeline,
             BlipDiffusionPipeline,
             CLIPImageProjection,

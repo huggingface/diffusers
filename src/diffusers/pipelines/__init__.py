@@ -295,6 +295,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
         from .blip_diffusion import BlipDiffusionPipeline
         from .controlnet import (
+            AudioLDMControlNetPipeline,
             BlipDiffusionControlNetPipeline,
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,

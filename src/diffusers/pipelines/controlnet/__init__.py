@@ -52,6 +52,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .multicontrolnet import MultiControlNetModel
         from .pipeline_controlnet import StableDiffusionControlNetPipeline
+        from .pipeline_controlnet_audioldm import AudioLDMControlNetPipeline
         from .pipeline_controlnet_blip_diffusion import BlipDiffusionControlNetPipeline
         from .pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
         from .pipeline_controlnet_inpaint import StableDiffusionControlNetInpaintPipeline
