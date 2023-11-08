@@ -326,6 +326,8 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
+        self.maybe_free_model_hooks()
+
         return outputs
 
 
@@ -572,6 +574,8 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
+
+        self.maybe_free_model_hooks()
         return outputs
 
 
@@ -842,4 +846,6 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             **kwargs,
         )
+        self.maybe_free_model_hooks()
+
         return outputs
