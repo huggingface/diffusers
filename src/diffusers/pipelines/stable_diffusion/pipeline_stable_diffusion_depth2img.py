@@ -846,6 +846,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
             image = latents
 
         image = self.image_processor.postprocess(image, output_type=output_type)
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image,)
