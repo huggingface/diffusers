@@ -18,7 +18,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..loaders import PatchedLoraProjection, text_encoder_attn_modules, text_encoder_mlp_modules
 from ..utils import logging
 
 
@@ -26,6 +25,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
+    from ..loaders import PatchedLoraProjection, text_encoder_attn_modules, text_encoder_mlp_modules
+
     for _, attn_module in text_encoder_attn_modules(text_encoder):
         if isinstance(attn_module.q_proj, PatchedLoraProjection):
             attn_module.q_proj.lora_scale = lora_scale

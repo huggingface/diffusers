@@ -2009,7 +2009,7 @@ class IPAdapterAttnProcessor(nn.Module):
         scale=1.0,
     ):
         if scale != 1.0:
-            logger.warning("`scale` of IPAttnProcessor should be set with `IPAdapterPipeline.set_scale`.")
+            logger.warning("`scale` of IPAttnProcessor should be set with `set_ip_adapter_scale`.")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -2123,7 +2123,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         scale=1.0,
     ):
         if scale != 1.0:
-            logger.warning("`scale` of IPAttnProcessor should be set by " "`IPAdapterPipeline.set_scale`")
+            logger.warning("`scale` of IPAttnProcessor should be set by `set_ip_adapter_scale`.")
         residual = hidden_states
 
         if attn.spatial_norm is not None:
