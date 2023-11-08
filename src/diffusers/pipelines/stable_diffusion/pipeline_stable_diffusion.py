@@ -39,7 +39,7 @@ from .pipeline_output import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
-## ip-adapter related imports 
+## YiYi notes: ip-adapter related imports, will move to mixin file if needed 
 from ...models.embeddings import ImageProjection
 import torch.nn.functional as F
 
@@ -951,12 +951,13 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         # Handle image projection layers.
         clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
         cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
+
+        # yiyi notes: we use `ImageProjection` class in diffusers instead, and directly updated `unet.encoder_hid_proj`
         image_projection = ImageProjection(
             cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
         )
         image_projection.to(dtype=self.unet.dtype, device=self.unet.device)
         
-        # yiyi notes: move this section to conversion script!
         diffusers_state_dict = {}
 
         diffusers_state_dict.update(
@@ -969,7 +970,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         )
         
         image_projection.load_state_dict(diffusers_state_dict)
-        # yiyi notes: this actually changes the unet config, have to refactor! 
+        # yiyi notes: this actually changes the unet config, need to refactor! 
         self.unet.encoder_hid_proj = image_projection
         self.unet.encoder_hid_proj.to(self.unet.device, self.unet.dtype)
 
@@ -987,9 +988,3 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
         for attn_processor in self.unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = scale
-
-
-def assert_param_count(model_1, model_2):
-    count_1 = sum(p.numel() for p in model_1.parameters())
-    count_2 = sum(p.numel() for p in model_2.parameters())
-    assert count_1 == count_2, f"{model_1.__class__}: {count_1} != {model_2.__class__}: {count_2}"
