@@ -738,7 +738,7 @@ class LatentConsistencyModelImg2ImgPipeline(
             if original_inference_steps is not None
             else self.scheduler.config.original_inference_steps
         )
-        latent_timestep = torch.tensor(int(strength * original_inference_steps))
+        latent_timestep = timesteps[:1]
         latents = self.prepare_latents(
             image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )
