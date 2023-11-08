@@ -46,8 +46,6 @@ class TortoiseTTSAttention(nn.Module):
         self.scale_qk = scale_qk
         self.inner_dim = self.n_heads * self.key_value_proj_dim
 
-        # Mesh TensorFlow initialization to avoid scaling before softmax
-        # bias set to True for
         self.q = nn.Linear(self.query_dim, self.inner_dim, bias=bias)
         self.k = nn.Linear(self.query_dim, self.inner_dim, bias=bias)
         self.v = nn.Linear(self.query_dim, self.inner_dim, bias=bias)
@@ -76,52 +74,26 @@ class TortoiseTTSAttention(nn.Module):
         self.pruned_heads = self.pruned_heads.union(heads)
 
     @staticmethod
-    def _relative_position_bucket(relative_position, bidirectional=True, num_buckets=32, max_distance=128):
-        """
-        Adapted from Mesh Tensorflow:
-        https://github.com/tensorflow/mesh/blob/0cb87fe07da627bf0b7e60475d59f95ed6b5be3d/mesh_tensorflow/transformer/transformer_layers.py#L593
-
-        Translate relative position to a bucket number for relative attention. The relative position is defined as
-        memory_position - query_position, i.e. the distance in tokens from the attending position to the attended-to
-        position. If bidirectional=False, then positive relative positions are invalid. We use smaller buckets for
-        small absolute relative_position and larger buckets for larger absolute relative_positions. All relative
-        positions >=max_distance map to the same bucket. All relative positions <=-max_distance map to the same bucket.
-        This should allow for more graceful generalization to longer sequences than the model has been trained on
-
-        Args:
-            relative_position: an int32 Tensor
-            bidirectional: a boolean - whether the attention is bidirectional
-            num_buckets: an integer
-            max_distance: an integer
-
-        Returns:
-            a Tensor with the same shape as relative_position, containing int32 values in the range [0, num_buckets)
-        """
-        relative_buckets = 0
-        if bidirectional:
+    def _relative_position_bucket(relative_position, causal=True, num_buckets=32, max_distance=128):
+        ret = 0
+        n = -relative_position
+        if not causal:
             num_buckets //= 2
-            relative_buckets += (relative_position > 0).to(torch.long) * num_buckets
-            relative_position = torch.abs(relative_position)
+            ret += (n < 0).long() * num_buckets
+            n = torch.abs(n)
         else:
-            relative_position = -torch.min(relative_position, torch.zeros_like(relative_position))
-        # now relative_position is in the range [0, inf)
+            n = torch.max(n, torch.zeros_like(n))
 
-        # half of the buckets are for exact increments in positions
         max_exact = num_buckets // 2
-        is_small = relative_position < max_exact
+        is_small = n < max_exact
 
-        # The other half of the buckets are for logarithmically bigger bins in positions up to max_distance
-        relative_position_if_large = max_exact + (
-            torch.log(relative_position.float() / max_exact)
-            / math.log(max_distance / max_exact)
-            * (num_buckets - max_exact)
-        ).to(torch.long)
-        relative_position_if_large = torch.min(
-            relative_position_if_large, torch.full_like(relative_position_if_large, num_buckets - 1)
-        )
+        val_if_large = max_exact + (
+                torch.log(n.float() / max_exact) / math.log(max_distance / max_exact) * (num_buckets - max_exact)
+        ).long()
+        val_if_large = torch.min(val_if_large, torch.full_like(val_if_large, num_buckets - 1))
 
-        relative_buckets += torch.where(is_small, relative_position, relative_position_if_large)
-        return relative_buckets
+        ret += torch.where(is_small, n, val_if_large)
+        return ret
 
     def compute_bias(self, query_length, key_length, device=None):
         """Compute binned relative position bias"""
@@ -132,7 +104,7 @@ class TortoiseTTSAttention(nn.Module):
         relative_position = memory_position - context_position  # shape (query_length, key_length)
         relative_position_bucket = self._relative_position_bucket(
             relative_position,  # shape (query_length, key_length)
-            bidirectional=True,
+            causal=False,
             num_buckets=self.relative_attention_num_buckets,
             max_distance=self.relative_attention_max_distance,
         )
@@ -187,11 +159,11 @@ class TortoiseTTSAttention(nn.Module):
             if key_value_states is None:
                 # self-attn
                 # (batch_size, n_heads, seq_length, dim_per_head)
-                hidden_states = shape(proj_layer(hidden_states))
+                hidden_states = shape(do_conv(hidden_states, proj_layer))
             elif past_key_value is None:
                 # cross-attn
                 # (batch_size, n_heads, seq_length, dim_per_head)
-                hidden_states = shape(proj_layer(key_value_states))
+                hidden_states = shape(do_conv(hidden_states, proj_layer))
 
             if past_key_value is not None:
                 if key_value_states is None:
@@ -203,16 +175,21 @@ class TortoiseTTSAttention(nn.Module):
                     # the provided `key_value_states` to support prefix tuning
                     # cross-attn
                     # (batch_size, n_heads, seq_length, dim_per_head)
-                    hidden_states = shape(proj_layer(key_value_states))
+                    hidden_states = shape(do_conv(hidden_states, proj_layer))
                 else:
                     # cross-attn
                     hidden_states = past_key_value
             return hidden_states
 
+        # Because using nn.Linear gives lower precision(1e-1) so we are using torch.nn.functional.conv1d function,
+        # which gives a precision about 1e-3.
+        def do_conv(input, linear_layer):
+            return F.conv1d(input.transpose(1, 2), linear_layer.weight[..., None], linear_layer.bias.reshape(-1, ), stride=1).transpose(1, 2)
+
         scale = 1 / math.sqrt(self.query_dim // self.n_heads) if self.scale_qk else 1.0
 
         # get query states
-        query_states = shape(self.q(hidden_states))  # (batch_size, n_heads, seq_length, dim_per_head)
+        query_states = shape(do_conv(hidden_states, self.q))  # (batch_size, n_heads, seq_length, dim_per_head)
 
         # get key/value states
         key_states = project(
@@ -247,8 +224,8 @@ class TortoiseTTSAttention(nn.Module):
 
         # scores += position_bias_masked
         scores += (
-            position_bias_masked * 8
-        )  # its actually root under the dimension of each attn head will be updated in the final version
+            position_bias_masked * math.sqrt(self.query_dim // self.n_heads)
+        )
 
         attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(
             scores
@@ -262,7 +239,7 @@ class TortoiseTTSAttention(nn.Module):
             attn_weights = attn_weights * layer_head_mask
 
         attn_output = unshape(torch.matmul(attn_weights, value_states))  # (batch_size, seq_length, dim)
-        attn_output = self.o(attn_output)
+        attn_output = do_conv(attn_output, self.o)
 
         present_key_value_state = None
         outputs = (attn_output,) + (present_key_value_state,) + (position_bias,)
@@ -300,7 +277,6 @@ class TortoiseTTSSelfAttention(nn.Module):
             relative_attention_num_buckets=relative_attention_num_buckets,
             relative_attention_max_distance=relative_attention_max_distance,
         )
-        self.layer_norm = nn.GroupNorm(num_groups=norm_num_groups, num_channels=query_dim)
         self.dropout = nn.Dropout(dropout)
 
     def forward(
@@ -313,11 +289,8 @@ class TortoiseTTSSelfAttention(nn.Module):
         use_cache=False,
         output_attentions=False,
     ):
-        normed_hidden_states = self.layer_norm(hidden_states.transpose(1, 2))
-        normed_hidden_states = normed_hidden_states.transpose(1, 2)
-
         attention_output = self.attention(
-            normed_hidden_states,
+            hidden_states,
             mask=attention_mask,
             position_bias=position_bias,
             layer_head_mask=layer_head_mask,
