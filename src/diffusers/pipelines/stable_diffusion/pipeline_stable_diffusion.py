@@ -1059,8 +1059,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         image_projection.load_state_dict(diffusers_state_dict)
         # yiyi notes: this actually changes the unet config, need to refactor!
-        self.unet.encoder_hid_proj = image_projection
-        self.unet.encoder_hid_proj.to(self.unet.device, self.unet.dtype)
+        self.image_projection = image_projection.to(device=self.unet.device, dtype=self.unet.dtype)
 
         # Handle IP-Adapter cross-attention layers.
         ip_layers = torch.nn.ModuleList(
