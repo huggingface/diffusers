@@ -154,7 +154,7 @@ class AudioLDMControlNetPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             generator = torch.Generator(device=device).manual_seed(seed)
 
         midi = randn_tensor(
-            (1, 1, 20, 8),
+            (1, 1, 64, 8),
             generator=generator,
             device=torch.device(device),
         )
