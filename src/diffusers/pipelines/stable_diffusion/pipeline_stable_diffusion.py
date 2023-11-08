@@ -444,9 +444,7 @@ class StableDiffusionPipeline(
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Note (sayakpaul): Name it this way to not mess up with other functions like _encode_image()
-    # common in imag2image pipelines.
-    def encode_image_ip_adapter(self, image, device, num_images_per_prompt):
+    def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
@@ -454,19 +452,10 @@ class StableDiffusionPipeline(
 
         image = image.to(device=device, dtype=dtype)
         image_embeds = self.image_encoder(image).image_embeds
-        projected_image_embeds = self.image_projection(image_embeds)
-        uncond_projected_image_embeds = self.image_projection(torch.zeros_like(image_embeds))
+        image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
-        # duplicate image embeddings for each generation per prompt, using mps friendly method
-        bs_embed, seq_len, _ = projected_image_embeds.shape
-        projected_image_embeds = projected_image_embeds.repeat(1, num_images_per_prompt, 1)
-        projected_image_embeds = projected_image_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-        uncond_projected_image_embeds.repeat(1, num_images_per_prompt, 1)
-        uncond_projected_image_embeds = uncond_projected_image_embeds.view(
-            bs_embed * num_images_per_prompt, seq_len, -1
-        )
-
-        return projected_image_embeds, uncond_projected_image_embeds
+        uncond_image_embeds = torch.zeros_like(image_embeds)
+        return image_embeds, uncond_image_embeds
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -648,7 +637,7 @@ class StableDiffusionPipeline(
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        image_prompt: Optional[PipelineImageInput] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -695,7 +684,7 @@ class StableDiffusionPipeline(
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            image_prompt: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -796,18 +785,16 @@ class StableDiffusionPipeline(
             clip_skip=self.clip_skip,
         )
 
-        if image_prompt is not None:
-            image_embeds, negative_image_embeds = self.encode_image_ip_adapter(
-                image_prompt, device, num_images_per_prompt
-            )
-            prompt_embeds = torch.cat([prompt_embeds, image_embeds], dim=1)
-            negative_prompt_embeds = torch.cat([negative_prompt_embeds, negative_image_embeds], dim=1)
-
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+        
+        if ip_adapter_image is not None:
+            image_embeds, negative_image_embeds = self.encode_image(ip_adapter_image, device, num_images_per_prompt)
+            if self.do_classifier_free_guidance:
+                image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -838,12 +825,16 @@ class StableDiffusionPipeline(
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+                if ip_adapter_image is not None:
+                    added_cond_kwargs = {"image_embeds": image_embeds}
+
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=self.cross_attention_kwargs,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
 

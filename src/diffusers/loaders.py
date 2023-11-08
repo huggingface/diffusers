@@ -3489,7 +3489,10 @@ class IPAdapterMixin:
         )
 
         image_projection.load_state_dict(diffusers_state_dict)
-        self.image_projection = image_projection.to(device=self.unet.device, dtype=self.unet.dtype)
+
+        self.unet.encoder_hid_proj = image_projection.to(device=self.unet.device, dtype=self.unet.dtype)
+        self.unet.config.encoder_hid_dim_type = "image_proj"
+        self.unet.config.encoder_hid_dim = clip_embeddings_dim
 
         # Handle IP-Adapter cross-attention layers.
         ip_layers = torch.nn.ModuleList(
