@@ -355,7 +355,7 @@ class UnCLIPPipeline(DiffusionPipeline):
         text_enc_hid_states, additive_clip_time_embeddings = self.text_proj(
             image_embeddings=image_embeddings,
             prompt_embeds=prompt_embeds,
-            text_enc_hid_states=text_enc_hid_states,
+            text_encoder_hidden_states=text_enc_hid_states,
             do_classifier_free_guidance=do_classifier_free_guidance,
         )
 
