@@ -1215,8 +1215,8 @@ class AttnProcessor2_0:
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, *args) if not USE_PEFT_BACKEND else attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states, *args) if not USE_PEFT_BACKEND else attn.to_v(encoder_hidden_states)
+        key = attn.to_k(encoder_hidden_states, *args)
+        value = attn.to_v(encoder_hidden_states, *args)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -1236,7 +1236,7 @@ class AttnProcessor2_0:
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, *args) if not USE_PEFT_BACKEND else attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[0](hidden_states, *args)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
