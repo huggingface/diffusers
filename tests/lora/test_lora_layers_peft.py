@@ -1607,8 +1607,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         for weight_name in [None, "lcm_sdxl_lora.safetensors"]:
             generator = torch.Generator().manual_seed(0)
 
-            # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
-            lora_model_id = "/home/patrick/lcm-sdxl-base-1.0-lora/"
+            lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
         
             pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
 
@@ -1664,8 +1663,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         for weight_name in [None, "lcm_sd_lora.safetensors"]:
             generator = torch.Generator().manual_seed(0)
 
-            # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
-            lora_model_id = "/home/patrick/lcm-sd1.5-lora"
+            lora_model_id = "lcm-sd/lcm-sd1.5-lora"
             pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
 
             image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
