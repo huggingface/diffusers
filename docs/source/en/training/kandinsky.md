@@ -74,7 +74,7 @@ The training scripts provides many parameters to help you customize your trainin
 For example, to speedup training with mixed precision using the bf16 format, add the `--mixed_precision` flag to the training command:
 
 ```bash
-accelerate launch train_text_to_image_sdxl.py \
+accelerate launch train_text_to_image_prior.py \
   --mixed_precision="fp16"
 ```
 
@@ -87,7 +87,7 @@ The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can h
 Add the `--snr_gamma` parameter and set it to the recommended value of 5.0:
 
 ```bash
-accelerate launch train_text_to_image.py \
+accelerate launch train_text_to_image_prior.py \
   --snr_gamma=5.0
 ```
 
@@ -283,7 +283,7 @@ Replace kandinsky-community/kandinsky-2-2-decoder with your own trained decoder 
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained(output_dir, torch_dtype=torch.float16)
+pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt="A robot pokemon, 4k photo"
