@@ -39,6 +39,20 @@ from .pipeline_output import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
+## ip-adapter related imports 
+from ...models.embeddings import ImageProjection
+import torch.nn.functional as F
+
+from ...models.attention_processor import (
+    AttnProcessor,
+    AttnProcessor2_0,
+    IPAdapterAttnProcessor,
+    IPAdapterAttnProcessor2_0,
+)
+
+from ...utils import DIFFUSERS_CACHE, HF_HUB_OFFLINE, _get_model_file
+from torch import nn
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
@@ -723,7 +737,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
         
         if image_prompt is not None:
-            image_embeds, negative_image_embeds = self.image_encoder(image, device, num_images_per_prompt)
+            image_embeds, negative_image_embeds = self.encode_image(image_prompt, device, num_images_per_prompt)
             if do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
@@ -756,7 +770,7 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 if image_prompt is not None:
-                    added_cond_kwags = {"image_embeds": image_embeds}
+                    added_cond_kwargs = {"image_embeds": image_embeds}
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -808,3 +822,174 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+
+    # yiyi notes and todo: put here for testing for now, make it mixin later 
+    def _set_ip_adapter(self):
+        unet = self.unet
+        attn_procs = {}
+        for name in unet.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = unet.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = unet.config.block_out_channels[block_id]
+            if cross_attention_dim is None:
+                attn_processor_class = (
+                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                )
+                attn_procs[name] = attn_processor_class()
+            else:
+                attn_processor_class = (
+                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
+                )
+                attn_procs[name] = attn_processor_class(
+                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
+                ).to(dtype=unet.dtype, device=unet.device)
+
+        unet.set_attn_processor(attn_procs)
+
+        # TODO: create a separate pipeline for this: `StableDiffusionControlNetIPAdapterPipeline`.
+        # if hasattr(self.pipeline, "controlnet"):
+        #     attn_processor_class = (
+        #         CNAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else CNAttnProcessor
+        #     )
+        #     self.pipeline.controlnet.set_attn_processor(attn_processor_class())
+
+        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    # yiyi notes and todo: put here for testing for now, make it mixin later 
+    def load_ip_adapter(
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        **kwargs,
+    ):
+        """
+        Parameters:
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+                Can be either:
+
+                    - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
+                      the Hub.
+                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
+                      with [`ModelMixin.save_pretrained`].
+                    - A [torch state
+                      dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
+                incompletely downloaded files are deleted.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to `True`, the model
+                won't be downloaded from the Hub.
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            subfolder (`str`, *optional*, defaults to `""`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+        """
+        self._set_ip_adapter()
+
+        # Load the main state dict first/
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+
+        user_agent = {
+            "file_type": "attn_procs_weights",
+            "framework": "pytorch",
+        }
+
+        if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+            model_file = _get_model_file(
+                pretrained_model_name_or_path_or_dict,
+                weights_name=weight_name,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+            )
+            state_dict = torch.load(model_file, map_location="cpu")
+        else:
+            state_dict = pretrained_model_name_or_path_or_dict
+
+        keys = list(state_dict.keys())
+        if keys != ["image_proj", "ip_adapter"]:
+            raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing.")
+
+        # Handle image projection layers.
+        clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
+        cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
+        image_projection = ImageProjection(
+            cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
+        )
+        image_projection.to(dtype=self.unet.dtype, device=self.unet.device)
+        
+        # yiyi notes: move this section to conversion script!
+        diffusers_state_dict = {}
+
+        diffusers_state_dict.update(
+            {
+                "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
+                "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
+                "norm.weight": state_dict["image_proj"]["norm.weight"],
+                "norm.bias": state_dict["image_proj"]["norm.bias"],
+            }
+        )
+        
+        image_projection.load_state_dict(diffusers_state_dict)
+        # yiyi notes: this actually changes the unet config, have to refactor! 
+        self.unet.encoder_hid_proj = image_projection
+        self.unet.encoder_hid_proj.to(self.unet.device, self.unet.dtype)
+
+        # Handle IP-Adapter cross-attention layers.
+        ip_layers = torch.nn.ModuleList(
+            [
+                module if isinstance(module, nn.Module) else nn.Identity()
+                for module in self.unet.attn_processors.values()
+            ]
+        )
+        ip_layers.load_state_dict(state_dict["ip_adapter"])
+    
+    # yiyi notes and todo: put here for testing for now, make it mixin later 
+    def set_scale(self, scale):
+        for attn_processor in self.unet.attn_processors.values():
+            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                attn_processor.scale = scale
+
+
+def assert_param_count(model_1, model_2):
+    count_1 = sum(p.numel() for p in model_1.parameters())
+    count_2 = sum(p.numel() for p in model_2.parameters())
+    assert count_1 == count_2, f"{model_1.__class__}: {count_1} != {model_2.__class__}: {count_2}"
