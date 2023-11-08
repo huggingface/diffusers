@@ -13,6 +13,7 @@
 # limitations under the License.
 import os
 import re
+import copy
 from collections import defaultdict
 from contextlib import nullcontext
 from io import BytesIO
@@ -44,6 +45,7 @@ from .utils import (
     is_transformers_available,
     logging,
     recurse_remove_peft_layers,
+    find_adapter_config_file,
     scale_lora_layers,
     set_adapter_layers,
     set_weights_and_activate_adapters,
@@ -1196,8 +1198,18 @@ class LoraLoaderMixin:
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
         """
+        # let's copy the kwargs so that we can pass them to `load_lora_into_unet`
+        peft_kwargs = copy.deepcopy(kwargs)
+
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
-        state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
+        state_dict, network_alphas = self.lora_state_dict(
+            pretrained_model_name_or_path_or_dict,
+            **kwargs,
+        )
+
+        peft_config = None
+        if USE_PEFT_BACKEND and not isinstance(pretrained_model_name_or_path_or_dict, dict):
+            peft_config = self._load_peft_config(pretrained_model_name_or_path_or_dict, **peft_kwargs)
 
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
@@ -1211,6 +1223,7 @@ class LoraLoaderMixin:
             unet=getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet,
             low_cpu_mem_usage=low_cpu_mem_usage,
             adapter_name=adapter_name,
+            peft_config=peft_config,
             _pipeline=self,
         )
         self.load_lora_into_text_encoder(
@@ -1300,6 +1313,7 @@ class LoraLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
+        safe_loading = kwargs.pop("safe_loading", USE_PEFT_BACKEND)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1321,10 +1335,11 @@ class LoraLoaderMixin:
                     # Here we're relaxing the loading check to enable more Inference API
                     # friendliness where sometimes, it's not at all possible to automatically
                     # determine `weight_name`.
-                    if weight_name is None:
+                    if weight_name is None and not safe_loading:
                         weight_name = cls._best_guess_weight_name(
                             pretrained_model_name_or_path_or_dict, file_extension=".safetensors"
                         )
+                    print("weight_name", weight_name)
                     model_file = _get_model_file(
                         pretrained_model_name_or_path_or_dict,
                         weights_name=weight_name or LORA_WEIGHT_NAME_SAFE,
@@ -1347,7 +1362,7 @@ class LoraLoaderMixin:
                     pass
 
             if model_file is None:
-                if weight_name is None:
+                if weight_name is None and not safe_loading:
                     weight_name = cls._best_guess_weight_name(
                         pretrained_model_name_or_path_or_dict, file_extension=".bin"
                     )
@@ -1386,6 +1401,32 @@ class LoraLoaderMixin:
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
+
+    @classmethod
+    def _load_peft_config(cls, pretrained_model_name_or_path: Union[str, Dict[str, torch.Tensor]], **kwargs):
+       cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+       force_download = kwargs.pop("force_download", False)
+       resume_download = kwargs.pop("resume_download", False)
+       proxies = kwargs.pop("proxies", None)
+       local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+       use_auth_token = kwargs.pop("use_auth_token", None)
+       revision = kwargs.pop("revision", None)
+       subfolder = kwargs.pop("subfolder", None)
+
+       user_agent = {"library": "diffusers-peft"}
+       peft_config = find_adapter_config_file(
+           pretrained_model_name_or_path,
+           cache_dir=cache_dir,
+           force_download=force_download,
+           resume_download=resume_download,
+           proxies=proxies,
+           local_files_only=local_files_only,
+           use_auth_token=use_auth_token,
+           revision=revision,
+           subfolder=subfolder,
+           user_agent=user_agent,
+       )
+       return peft_config
 
     @classmethod
     def _best_guess_weight_name(cls, pretrained_model_name_or_path_or_dict, file_extension=".safetensors"):
@@ -1554,7 +1595,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def load_lora_into_unet(
-        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, adapter_name=None, _pipeline=None
+        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, adapter_name=None, peft_config=None, _pipeline=None
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
@@ -1622,7 +1663,11 @@ class LoraLoaderMixin:
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
+            if peft_config is not None:
+                lora_config_kwargs = LoraConfig.from_json_file(peft_config)
+            else:
+                lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
+
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
@@ -3211,6 +3256,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
         """
+        # let's copy the kwargs so that we can pass them to `load_lora_into_unet`
+        peft_kwargs = copy.deepcopy(kwargs)
+
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.
@@ -3221,12 +3269,17 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             unet_config=self.unet.config,
             **kwargs,
         )
+
+        peft_config = None
+        if USE_PEFT_BACKEND and not isinstance(pretrained_model_name_or_path_or_dict, dict):
+            peft_config = self._load_peft_config(pretrained_model_name_or_path_or_dict, **peft_kwargs)
+
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
 
         self.load_lora_into_unet(
-            state_dict, network_alphas=network_alphas, unet=self.unet, adapter_name=adapter_name, _pipeline=self
+            state_dict, network_alphas=network_alphas, unet=self.unet, adapter_name=adapter_name, peft_config=peft_config, _pipeline=self
         )
         text_encoder_state_dict = {k: v for k, v in state_dict.items() if "text_encoder." in k}
         if len(text_encoder_state_dict) > 0:

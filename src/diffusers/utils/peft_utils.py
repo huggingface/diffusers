@@ -16,11 +16,16 @@ PEFT utilities: Utilities related to peft library
 """
 import collections
 import importlib
-from typing import Optional
+import os
+from typing import Optional, Dict, Union
+from huggingface_hub import hf_hub_download
 
 from packaging import version
 
 from .import_utils import is_peft_available, is_torch_available
+
+
+ADAPTER_CONFIG_NAME = "adapter_config.json"
 
 
 def recurse_remove_peft_layers(model):
@@ -202,6 +207,81 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
                 module.set_adapter(adapter_names)
             else:
                 module.active_adapter = adapter_names
+
+
+def find_adapter_config_file(
+    model_id: str,
+    cache_dir: Optional[Union[str, os.PathLike]] = None,
+    force_download: bool = False,
+    resume_download: bool = False,
+    proxies: Optional[Dict[str, str]] = None,
+    use_auth_token: Optional[Union[bool, str]] = None,
+    revision: Optional[str] = None,
+    user_agent: Optional[Dict[str, str]] = None,
+    local_files_only: bool = False,
+    subfolder: str = "",
+) -> Optional[str]:
+    r"""
+    Simply checks if the model stored on the Hub or locally is an adapter model or not, return the path of the adapter
+    config file if it is, None otherwise.
+
+    Args:
+        model_id (`str`):
+            The identifier of the model to look for, can be either a local path or an id to the repository on the Hub.
+        cache_dir (`str` or `os.PathLike`, *optional*):
+            Path to a directory in which a downloaded pretrained model configuration should be cached if the standard
+            cache should not be used.
+        force_download (`bool`, *optional*, defaults to `False`):
+            Whether or not to force to (re-)download the configuration files and override the cached versions if they
+            exist.
+        resume_download (`bool`, *optional*, defaults to `False`):
+            Whether or not to delete incompletely received file. Attempts to resume the download if such a file exists.
+        proxies (`Dict[str, str]`, *optional*):
+            A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+            'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
+        use_auth_token (`str` or *bool*, *optional*):
+            The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+            when running `huggingface-cli login` (stored in `~/.huggingface`).
+        revision (`str`, *optional*, defaults to `"main"`):
+            The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+            git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+            identifier allowed by git.
+
+            <Tip>
+
+            To test a pull request you made on the Hub, you can pass `revision="refs/pr/<pr_number>".
+
+            </Tip>
+
+        local_files_only (`bool`, *optional*, defaults to `False`):
+            If `True`, will only try to load the tokenizer configuration from local files.
+        subfolder (`str`, *optional*, defaults to `""`):
+            In case the relevant files are located inside a subfolder of the model repo on huggingface.co, you can
+            specify the folder name here.
+    """
+    adapter_cached_filename = None
+    if model_id is None:
+        return None
+    elif os.path.isdir(model_id):
+        list_remote_files = os.listdir(model_id)
+        if ADAPTER_CONFIG_NAME in list_remote_files:
+            adapter_cached_filename = os.path.join(model_id, ADAPTER_CONFIG_NAME)
+    else:
+        adapter_cached_filename = hf_hub_download(
+            model_id,
+            ADAPTER_CONFIG_NAME,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            proxies=proxies,
+            resume_download=resume_download,
+            local_files_only=local_files_only,
+            use_auth_token=token,
+            subfolder=subfolder,
+            revision=revision,
+            user_agent=user_agent,
+        )
+
+    return adapter_cached_filename
 
 
 def check_peft_version(min_version: str) -> None:

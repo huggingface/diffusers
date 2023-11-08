@@ -1599,23 +1599,26 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
     def test_sdxl_lcm_lora(self):
         generator = torch.Generator().manual_seed(0)
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
-        lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
+        # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
+        lora_model_id = "/home/patrick/lcm-sdxl-base-1.0-lora/"
         # lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
-        lora_filename = "lcm_sdxl_lora.bin"
+        # lora_filename = "lcm_sdxl_lora.bin"
+        
+        lora_filename = None
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
-        import ipdb; ipdb.set_trace()
 
-        image = pipe(
-            # "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=4
-            "masterpiece, best quality, mountain", generator=generator, num_inference_steps=4
+        image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5
         ).images[0]
 
-        images = images[0, -3:, -3:, -1].flatten()
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_inv/winter_logo_style.npy"
+        import hf_image_uploader as hiu
+        hiu.upload(image, "patrickvonplaten/images")
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
         )
+
 
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
         release_memory(pipe)
