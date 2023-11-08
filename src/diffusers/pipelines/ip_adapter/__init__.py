@@ -1,2 +1,0 @@
-from .image_projection import ImageProjectionModel
-from .pipeline_ip_adapter import StableDiffusionIPAdapterPipeline

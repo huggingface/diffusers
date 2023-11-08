@@ -89,7 +89,6 @@ else:
         "IFPipeline",
         "IFSuperResolutionPipeline",
     ]
-    _import_structure["ip_adapter"] = ["StableDiffusionIPAdapterPipeline"]
     _import_structure["kandinsky"] = [
         "KandinskyCombinedPipeline",
         "KandinskyImg2ImgCombinedPipeline",
@@ -318,7 +317,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             IFPipeline,
             IFSuperResolutionPipeline,
         )
-        from .ip_adapter import StableDiffusionIPAdapterPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
