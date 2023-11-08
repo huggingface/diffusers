@@ -120,7 +120,6 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
-            "mask_feature": False,
         }
 
         # set all optional components to None
@@ -155,7 +154,6 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
-            "mask_feature": False,
         }
 
         output_loaded = pipe_loaded(**inputs)[0]

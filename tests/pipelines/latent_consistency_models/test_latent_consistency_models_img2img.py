@@ -133,7 +133,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.5865, 0.2854, 0.2828, 0.7473, 0.6006, 0.4580, 0.4397, 0.6415, 0.6069])
+        expected_slice = np.array([0.4388, 0.3717, 0.2202, 0.7213, 0.6370, 0.3664, 0.5815, 0.6080, 0.4977])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
@@ -150,7 +150,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
         assert image.shape == (1, 32, 32, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.4903, 0.3304, 0.3503, 0.5241, 0.5153, 0.4585, 0.3222, 0.4764, 0.4891])
+        expected_slice = np.array([0.4150, 0.3719, 0.2479, 0.6333, 0.6024, 0.3778, 0.5036, 0.5420, 0.4678])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_batch_single_identical(self):
@@ -237,7 +237,7 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.1025, 0.0911, 0.0984, 0.0981, 0.0901, 0.0918, 0.1055, 0.0940, 0.0730])
+        expected_slice = np.array([0.1950, 0.1961, 0.2308, 0.1786, 0.1837, 0.2320, 0.1898, 0.1885, 0.2309])
         assert np.abs(image_slice - expected_slice).max() < 1e-3
 
     def test_lcm_multistep(self):
@@ -253,5 +253,5 @@ class LatentConsistencyModelImg2ImgPipelineSlowTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
 
         image_slice = image[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.01855, 0.01855, 0.01489, 0.01392, 0.01782, 0.01465, 0.01831, 0.02539, 0.0])
+        expected_slice = np.array([0.3756, 0.3816, 0.3767, 0.3718, 0.3739, 0.3735, 0.3863, 0.3803, 0.3563])
         assert np.abs(image_slice - expected_slice).max() < 1e-3
