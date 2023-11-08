@@ -778,7 +778,7 @@ class Conv1dBlock(nn.Module):
         out_channels (`int`): Number of output channels.
         kernel_size (`int` or `tuple`): Size of the convolving kernel.
         n_groups (`int`, default `8`): Number of groups to separate the channels into.
-        activation (`str`, defaults `mish`): It is possible to choose the right activation function.
+        activation (`str`, defaults `mish`): Name of the activation function.
     """
 
     def __init__(
