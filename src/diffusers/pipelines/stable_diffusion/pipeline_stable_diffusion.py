@@ -465,17 +465,19 @@ class StableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
 
         image = image.to(device=device, dtype=dtype)
         image_embeds = self.image_encoder(image).image_embeds
-        image_embeds = self.image_projection(image_embeds)
-        uncond_image_prompt_embeds = self.image_projection(torch.zeros_like(image_embeds))
+        projected_image_embeds = self.image_projection(image_embeds)
+        uncond_projected_image_embeds = self.image_projection(torch.zeros_like(image_embeds))
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
-        bs_embed, seq_len, _ = image_embeds.shape
-        image_embeds = image_embeds.repeat(1, num_images_per_prompt, 1)
-        image_embeds = image_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-        uncond_image_prompt_embeds = uncond_image_prompt_embeds.repeat(1, num_images_per_prompt, 1)
-        uncond_image_prompt_embeds = uncond_image_prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        bs_embed, seq_len, _ = projected_image_embeds.shape
+        projected_image_embeds = projected_image_embeds.repeat(1, num_images_per_prompt, 1)
+        projected_image_embeds = projected_image_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
+        uncond_projected_image_embeds.repeat(1, num_images_per_prompt, 1)
+        uncond_projected_image_embeds = uncond_projected_image_embeds.view(
+            bs_embed * num_images_per_prompt, seq_len, -1
+        )
 
-        return image_embeds, uncond_image_prompt_embeds
+        return projected_image_embeds, uncond_projected_image_embeds
 
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
