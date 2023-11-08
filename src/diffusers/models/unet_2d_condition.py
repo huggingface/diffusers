@@ -1020,10 +1020,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                     f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
-            image_embeds = image_embeds.to(encoder_hidden_states.dtype)
             image_embeds = self.encoder_hid_proj(image_embeds)
             # IP-adapter
             if any("to_k_ip" in k for k in self.state_dict().keys()):
+                image_embeds = image_embeds.to(encoder_hidden_states.dtype)
                 encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
             else:
                 # Kandinsky 2.2 - style
