@@ -260,9 +260,9 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-            prior_text_encoder_hidden_states = torch.cat([
-                uncond_prior_text_encoder_hidden_states, prior_text_encoder_hidden_states
-            ])
+            prior_text_encoder_hidden_states = torch.cat(
+                [uncond_prior_text_encoder_hidden_states, prior_text_encoder_hidden_states]
+            )
 
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
