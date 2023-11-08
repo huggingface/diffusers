@@ -130,7 +130,7 @@ accelerate launch train_controlnet.py \
 `accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
 for running distributed training with `accelerate`. Here is an example command:
 
-```bash
+```bash 
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
 export OUTPUT_DIR="path to save model"
 
@@ -153,21 +153,21 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_controlnet.py \
 
 #### After 300 steps with batch size 8
 
-| |  |
+| |  | 
 |-------------------|:-------------------------:|
-| | red circle with blue background  |
+| | red circle with blue background  | 
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![red circle with blue background](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/red_circle_with_blue_background_300_steps.png) |
-| | cyan circle with brown floral background |
+| | cyan circle with brown floral background | 
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png) | ![cyan circle with brown floral background](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/cyan_circle_with_brown_floral_background_300_steps.png) |
 
 
 #### After 6000 steps with batch size 8:
 
-| |  |
+| |  | 
 |-------------------|:-------------------------:|
-| | red circle with blue background  |
+| | red circle with blue background  | 
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png) | ![red circle with blue background](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/red_circle_with_blue_background_6000_steps.png) |
-| | cyan circle with brown floral background |
+| | cyan circle with brown floral background | 
 ![conditioning image](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png) | ![cyan circle with brown floral background](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/cyan_circle_with_brown_floral_background_6000_steps.png) |
 
 ## Training on a 16 GB GPU
@@ -227,7 +227,7 @@ accelerate launch train_controlnet.py \
   --push_to_hub
 ```
 
-When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`.
+When using `enable_xformers_memory_efficient_attention`, please make sure to install `xformers` by `pip install xformers`. 
 
 ## Training on an 8 GB GPU
 
@@ -243,7 +243,7 @@ Enable the following optimizations to train on a 8GB GPU:
 - DeepSpeed stage 2 with parameter and optimizer offloading
 - fp16 mixed precision
 
-[DeepSpeed](https://www.deepspeed.ai/) can offload tensors from VRAM to either
+[DeepSpeed](https://www.deepspeed.ai/) can offload tensors from VRAM to either 
 CPU or NVME. This requires significantly more RAM (about 25 GB).
 
 You'll have to configure your environment with `accelerate config` to enable DeepSpeed stage 2.
@@ -295,7 +295,7 @@ accelerate launch train_controlnet.py \
 ## Inference
 
 The trained model can be run with the [`StableDiffusionControlNetPipeline`].
-Set `base_model_path` and `controlnet_path` to the values `--pretrained_model_name_or_path` and
+Set `base_model_path` and `controlnet_path` to the values `--pretrained_model_name_or_path` and 
 `--output_dir` were respectively set to in the training script.
 
 ```py
@@ -330,4 +330,4 @@ image.save("./output.png")
 
 ## Stable Diffusion XL
 
-Training with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) is also supported via the `train_controlnet_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md).
+Training with [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) is also supported via the `train_controlnet_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/README_sdxl.md). 
