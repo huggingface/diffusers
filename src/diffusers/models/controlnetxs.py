@@ -147,6 +147,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             },
             global_pool_conditions: bool = False, # Todo Umer: Needed by SDXL pipeline, but what is this?,
             control_scale=1,
+            time_control_scale=1,
             addition_embed_type: Optional[str] = None,
         ):
         super().__init__()
@@ -313,7 +314,11 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         )
         if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('time_emb',t_emb)
         if self.learn_embedding:
-            temb = self.control_model.time_embedding(t_emb) * self.config.control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.config.control_scale ** 0.3)
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('time_proj_ctrl',self.control_model.time_embedding(t_emb) )
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('time_proj_ctrl_scaled',self.control_model.time_embedding(t_emb) * self.config.time_control_scale ** 0.3)
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('time_proj_base',self.base_model.time_embedding(t_emb))
+            if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('time_proj_base_scaled',self.base_model.time_embedding(t_emb) * (1 - self.config.time_control_scale ** 0.3))
+            temb = self.control_model.time_embedding(t_emb) * self.config.time_control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.config.time_control_scale ** 0.3)
         else:
             temb = self.base_model.time_embedding(t_emb)
         if self.TIME_DEBUG_LOG_by_Umer: time_debug_log('time_proj',temb)
