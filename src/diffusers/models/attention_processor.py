@@ -378,7 +378,7 @@ class Attention(nn.Module):
             _remove_lora (`bool`, *optional*, defaults to `False`):
                 Set to `True` to remove LoRA layers from the model.
         """
-        if hasattr(self, "processor") and _remove_lora and self.to_q.lora_layer is not None:
+        if not USE_PEFT_BACKEND and hasattr(self, "processor") and _remove_lora and self.to_q.lora_layer is not None:
             deprecate(
                 "set_processor to offload LoRA",
                 "0.26.0",
