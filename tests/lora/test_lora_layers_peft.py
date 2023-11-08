@@ -31,6 +31,7 @@ from diffusers import (
     ControlNetModel,
     DDIMScheduler,
     LCMScheduler,
+    AutoPipelineForImage2Image,
     DiffusionPipeline,
     EulerDiscreteScheduler,
     StableDiffusionPipeline,
@@ -53,6 +54,8 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
+
+from diffusers.pipelines.auto_pipeline import AutoPipelineForText2Image
 
 
 if is_accelerate_available():
@@ -1597,30 +1600,118 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_lcm_lora(self):
-        generator = torch.Generator().manual_seed(0)
-
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
-        # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
-        lora_model_id = "/home/patrick/lcm-sdxl-base-1.0-lora/"
-        # lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
-        # lora_filename = "lcm_sdxl_lora.bin"
+
+        for weight_name in [None, "lcm_sdxl_lora.safetensors"]:
+            generator = torch.Generator().manual_seed(0)
+
+            # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
+            lora_model_id = "/home/patrick/lcm-sdxl-base-1.0-lora/"
         
-        lora_filename = None
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+            pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
 
-        image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5
-        ).images[0]
+            image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
 
-        import hf_image_uploader as hiu
-        hiu.upload(image, "patrickvonplaten/images")
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
+            expected_image = load_image(
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
+            )
+
+            image_np = pipe.image_processor.pil_to_numpy(image)
+            expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+
+            self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+
+            pipe.unload_lora_weights()
+
+        release_memory(pipe)
+
+    def test_ssd_lcm_lora(self):
+        pipe = DiffusionPipeline.from_pretrained("segmind/SSD-1B", torch_dtype=torch.float16)
+        return 
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+
+        for weight_name in [None, "lcm_sdxl_lora.safetensors"]:
+            generator = torch.Generator().manual_seed(0)
+
+            # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
+            lora_model_id = "/home/patrick/lcm-sdxl-base-1.0-lora/"
+        
+            pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
+
+            image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
+
+            expected_image = load_image(
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
+            )
+
+            image_np = pipe.image_processor.pil_to_numpy(image)
+            expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+
+            self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+
+            pipe.unload_lora_weights()
+
+        release_memory(pipe)
+
+    def test_sdv1_5_lcm_lora(self):
+        pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        pipe.to("cuda")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+
+        for weight_name in [None, "lcm_sd_lora.safetensors"]:
+            generator = torch.Generator().manual_seed(0)
+
+            # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
+            lora_model_id = "/home/patrick/lcm-sd1.5-lora"
+            pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
+
+            image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
+
+            expected_image = load_image(
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora.png"
+            )
+
+            image_np = pipe.image_processor.pil_to_numpy(image)
+            expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+
+            self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+
+            pipe.unload_lora_weights()
+
+        release_memory(pipe)
+
+    def test_sdv1_5_lcm_lora_img2img(self):
+        pipe = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+        pipe.to("cuda")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.png"
         )
 
+        for weight_name in [None, "lcm_sd_lora.safetensors"]:
+            generator = torch.Generator().manual_seed(0)
 
-        self.assertTrue(np.allclose(images, expected, atol=1e-4))
+            # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
+            lora_model_id = "/home/patrick/lcm-sd1.5-lora"
+            pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
+
+            image = pipe("snowy mountain", generator=generator, image=init_image, strength=0.5, num_inference_steps=4, guidance_scale=0.5).images[0]
+
+            expected_image = load_image(
+                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora_img2img.png"
+            )
+
+            image_np = pipe.image_processor.pil_to_numpy(image)
+            expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+
+            self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+
+            pipe.unload_lora_weights()
+
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_fusion(self):

@@ -1313,7 +1313,6 @@ class LoraLoaderMixin:
         weight_name = kwargs.pop("weight_name", None)
         unet_config = kwargs.pop("unet_config", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
-        safe_loading = kwargs.pop("safe_loading", USE_PEFT_BACKEND)
 
         allow_pickle = False
         if use_safetensors is None:
@@ -1335,7 +1334,7 @@ class LoraLoaderMixin:
                     # Here we're relaxing the loading check to enable more Inference API
                     # friendliness where sometimes, it's not at all possible to automatically
                     # determine `weight_name`.
-                    if weight_name is None and not safe_loading:
+                    if weight_name is None:
                         weight_name = cls._best_guess_weight_name(
                             pretrained_model_name_or_path_or_dict, file_extension=".safetensors"
                         )
@@ -1362,7 +1361,7 @@ class LoraLoaderMixin:
                     pass
 
             if model_file is None:
-                if weight_name is None and not safe_loading:
+                if weight_name is None:
                     weight_name = cls._best_guess_weight_name(
                         pretrained_model_name_or_path_or_dict, file_extension=".bin"
                     )
@@ -1451,6 +1450,15 @@ class LoraLoaderMixin:
         targeted_files = list(
             filter(lambda x: all(substring not in x for substring in unallowed_substrings), targeted_files)
         )
+
+        if any(f.endswith(LORA_WEIGHT_NAME) for f in targeted_files):
+            targeted_files = list(
+                filter(lambda x: x.endswith(LORA_WEIGHT_NAME), targeted_files)
+            )
+        elif any(f.endswith(LORA_WEIGHT_NAME_SAFE) for f in targeted_files):
+            targeted_files = list(
+                filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files)
+            )
 
         if len(targeted_files) > 1:
             raise ValueError(
