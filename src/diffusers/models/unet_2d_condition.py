@@ -1022,11 +1022,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
-        elif self.encoder_hid_proj is not None and any("to_k_ip" in k for k in self.state_dict().keys()):
-            image_embeds = added_cond_kwargs.get("image_embeds")
-            image_embeds = image_embeds.to(encoder_hidden_states.dtype)
-            image_embeds = self.encoder_hid_proj(image_embeds)
-            encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
 
         # 2. pre-process
         sample = self.conv_in(sample)
