@@ -31,6 +31,7 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
+    LCMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionPipeline,
@@ -43,6 +44,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_numpy,
     nightly,
+    print_tensor_test,
     numpy_cosine_similarity_distance,
     require_python39_or_higher,
     require_torch_2,
@@ -107,12 +109,13 @@ class StableDiffusionPipelineFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(4, 8),
             layers_per_block=1,
             sample_size=32,
+            time_cond_proj_dim=time_cond_proj_dim,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
@@ -193,6 +196,27 @@ class StableDiffusionPipelineFastTests(
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_lcm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(image_slice)
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.3454, 0.5349, 0.5185, 0.2808, 0.4509, 0.4612, 0.4655, 0.3601, 0.4315])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
