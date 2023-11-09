@@ -307,3 +307,74 @@ prompt = "a house by william eggleston, sunrays, beautiful, sunlight, sunrays, b
 image = pipeline(prompt=prompt).images[0]
 image
 ```
+
+### IP-Adapter 
+
+[IP-Adapter](https://ip-adapter.github.io/) is an effective and lightweight adapter to achieve image prompt capability for the pre-trained text-to-image diffusion models. It is now available to use with most of our Stable Diffusion and Stable Diffusion XL pipelines. You can also use the IP-Adapter with other custom models fine-tuned from the same base model, as well as ControlNet and T2I adapters. Moreover, the image prompt can also work well with the text prompt to accomplish multimodal image generation.
+
+Let's look at an example where we use IP-Adapter with the Stable Diffusion text-to-image pipeline.
+
+``` py
+from diffusers import AutoPipelineForText2Image
+import torch
+from diffusers.utils import load_image
+
+pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+```
+
+Now you can load the IP-Adapter with [`~loaders.IPAdapterMixin.load_ip_adapter`] method. 
+
+```py
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+```
+
+IP-Adapter allows you to use both image and text to condition the image generation process. In this example, let's take the cute bear eating pizza that we generated with Textual Inversion, and create a new bear that is similarly cute but wears sunglasses. We can pass the bear image as `ip_adapter_image`, along with a text prompt that mentions "sunglasses". 
+
+```py
+pipeline.set_ip_adapter_scale(0.6)
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_neg_embed.png")
+generator = torch.Generator(device="cpu").manual_seed(33)
+images = pipeline(
+    prompt='best quality, high quality, wearing sunglasses', 
+    ip_adapter_image=image,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=50,
+    generator=generator,
+).images
+images[0]
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip-bear.png" />
+</div>
+
+<Tip>
+
+You can use the `pipeline.set_ip_adapter_scale()` method to adjust the ratio of text prompt and image prompt condition.  If you only use the image prompt, you should set the scale to be `1.0`. You can lower the scale to get more diversity in the generation, at the cost of less prompt alignment.
+`scale=0.5` can achieve good results in most cases when you use both text and image prompts.
+</Tip>
+
+IP-Adapter also works great with Image-to-Image and Inpainting pipelines. Here is an example of how you can use it with Image-to-Image.
+
+```py
+from diffusers import AutoPipelineForImage2Image
+import torch
+from diffusers.utils import load_image
+
+pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+
+image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
+ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
+
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+generator = torch.Generator(device="cpu").manual_seed(33)
+images = pipeline(
+    prompt='best quality, high quality', 
+    image = image,
+    ip_adapter_image=ip_image,
+    num_inference_steps=50,
+    generator=generator,
+    strength=0.6,
+).images
+images[0]
+```
