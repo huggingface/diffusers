@@ -31,7 +31,7 @@ from diffusers import DiffusionPipeline, UNet2DConditionModel, LCMScheduler
 import torch
 
 unet = UNet2DConditionModel.from_pretrained(
-    "lcm-sd/lcm-sdxl-full-param-1k-huber-simian",
+    "latent-consistency/lcm-sdxl",
     torch_dtype=torch.float16,
     variant="fp16",
 )
@@ -44,7 +44,7 @@ prompt = "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
 
 generator = torch.manual_seed(0)
 image = pipe(
-    prompt=prompt, num_inference_steps=4, generator=generator, guidance_scale=1.0
+    prompt=prompt, num_inference_steps=4, generator=generator, guidance_scale=8.0
 ).images[0]
 ```
 
@@ -67,7 +67,7 @@ from diffusers.utils import load_image
 import torch
 
 unet = UNet2DConditionModel.from_pretrained(
-    "lcm-sd/lcm-sdxl-full-param-1k-huber-simian",
+    "latent-consistency/lcm-sdxl",
     torch_dtype=torch.float16,
     variant="fp16",
 )
@@ -87,7 +87,7 @@ image = pipe(
     image=image,
     num_inference_steps=4,
     generator=generator,
-    guidance_scale=1.0,
+    guidance_scale=8.0,
 ).images[0]
 ```
 
@@ -111,7 +111,7 @@ from diffusers import (AutoencoderKL, ControlNetModel, LCMScheduler,
                        UNet2DConditionModel)
 
 unet = UNet2DConditionModel.from_pretrained(
-    "lcm-sd/lcm-sdxl-full-param-1k-huber-simian",
+    "latent-consistency/lcm-sdxl",
     torch_dtype=torch.float16,
     variant="fp16",
 )
@@ -152,7 +152,7 @@ image = pipe(
     prompt=prompt,
     image=image,
     num_inference_steps=4,
-    guidance_scale=1,
+    guidance_scale=8.0,
     controlnet_conditioning_scale=0.5,  # recommended for good generalization
 ).images[0]
 ```
@@ -168,7 +168,7 @@ from diffusers import DiffusionPipeline, LCMScheduler
 import torch
 
 model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-lcm_lora_id = "lcm-sd/lcm-sdxl-lora-huber-final"
+lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
 
 pipe = DiffusionPipeline.from_pretrained(model_id, variant="fp16", torch_dtype=torch.float16).to("cuda")
 
@@ -189,4 +189,4 @@ For LoRA, some of the above-mentioned findings change:
 
 * By default, _no guidance is performed_ which enables faster inference. It works for most of the prompts. This means `guidance_scale` is set to 1 (as in the example above).
 * When `guidance_scale` > 1, regular classifier-free guidance is performed leading to slightly slower inference as this doubles the batch size. 
-* The recommended range for `guidance_scale` is [1., 2.].
+* If `guidance_scale` is not disabled, the recommended range for `guidance_scale` is [1., 2.].
