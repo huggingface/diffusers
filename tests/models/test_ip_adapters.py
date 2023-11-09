@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from diffusers import StableDiffusionImg2ImgPipeline, StableDiffusionPipeline
+from diffusers import StableDiffusionImg2ImgPipeline, StableDiffusionPipeline, StableDiffusionInpaintPipeline
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -111,9 +111,8 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     def test_inpainting(self):
-        StableDiffusionImg2ImgPipeline
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
-        pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+        pipeline = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
         )
         pipeline.to(torch_device)
@@ -122,7 +121,104 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         inputs = self.get_dummy_inputs(for_inpainting=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
+        slice = image_slice.tolist()
+        print(", ".join([str(round(x, 4)) for x in slice]))
 
         expected_slice = np.array([0.3618, 0.3313, 0.2983, 0.3708, 0.345, 0.311, 0.3608, 0.343, 0.3335])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+
+# @nightly
+# @require_torch_gpu
+# class IPAdapterSDXLIntegrationTests(unittest.TestCase):
+#     dtype = torch.float16
+
+#     def tearDown(self):
+#         super().tearDown()
+#         gc.collect()
+#         torch.cuda.empty_cache()
+
+#     def get_image_encoder(self, repo_id, subfolder):
+#         image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+#             repo_id, subfolder=subfolder, torch_dtype=self.dtype
+#         ).to(torch_device)
+#         return image_encoder
+
+#     def get_image_processor(self, repo_id):
+#         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
+#         return image_processor
+
+#     def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False):
+#         image = load_image(
+#             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
+#         )
+#         input_kwargs = {
+#             "prompt": "best quality, high quality",
+#             "negative_prompt": "monochrome, lowres, bad anatomy, worst quality, low quality",
+#             "num_inference_steps": 5,
+#             "generator": torch.Generator(device="cpu").manual_seed(33),
+#             "ip_adapter_image": image,
+#             "output_type": "np",
+#         }
+#         if for_image_to_image:
+#             image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
+#             ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
+#             input_kwargs.update({"image": image, "ip_adapter_image": ip_image})
+#         elif for_inpainting:
+#             image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/inpaint_image.png")
+#             mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/mask.png")
+#             ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/girl.png")
+#             input_kwargs.update({"image": image, "mask_image": mask, "ip_adapter_image": ip_image})
+
+#         return input_kwargs
+
+#     def test_text_to_image_sdxl(self):
+#         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+#         pipeline = StableDiffusionPipeline.from_pretrained(
+#             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+#         )
+#         pipeline.to(torch_device)
+#         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+#         inputs = self.get_dummy_inputs()
+#         images = pipeline(**inputs).images
+#         image_slice = images[0, :3, :3, -1].flatten()
+
+#         expected_slice = np.array([0.8047, 0.8774, 0.9248, 0.9155, 0.9814, 1.0, 0.9678, 1.0, 1.0])
+
+#         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+#     def test_image_to_image_sdxl(self):
+#         StableDiffusionImg2ImgPipeline
+#         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+#         pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+#             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+#         )
+#         pipeline.to(torch_device)
+#         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+#         inputs = self.get_dummy_inputs(for_image_to_image=True)
+#         images = pipeline(**inputs).images
+#         image_slice = images[0, :3, :3, -1].flatten()
+
+#         expected_slice = np.array([0.2307, 0.2341, 0.2305, 0.24, 0.2268, 0.25, 0.2322, 0.2588, 0.2935])
+
+#         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+#     def test_inpainting_sdxl(self):
+#         StableDiffusionImg2ImgPipeline
+#         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+#         pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+#             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+#         )
+#         pipeline.to(torch_device)
+#         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+#         inputs = self.get_dummy_inputs(for_inpainting=True)
+#         images = pipeline(**inputs).images
+#         image_slice = images[0, :3, :3, -1].flatten()
+
+#         expected_slice = np.array([0.3618, 0.3313, 0.2983, 0.3708, 0.345, 0.311, 0.3608, 0.343, 0.3335])
+
+#         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
