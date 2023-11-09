@@ -814,7 +814,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_encode_decode(self):
-        vae = ConsistencyDecoderVAE.from_pretrained("williamberman/consistency-decoder")  # TODO - update
+        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
         vae.to(torch_device)
 
         image = load_image(
@@ -835,7 +835,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
 
     def test_sd(self):
-        vae = ConsistencyDecoderVAE.from_pretrained("williamberman/consistency-decoder")  # TODO - update
+        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None)
         pipe.to(torch_device)
 
@@ -850,7 +850,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
     def test_encode_decode_f16(self):
         vae = ConsistencyDecoderVAE.from_pretrained(
-            "williamberman/consistency-decoder", torch_dtype=torch.float16
+            "openai/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         vae.to(torch_device)
 
@@ -877,7 +877,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
     def test_sd_f16(self):
         vae = ConsistencyDecoderVAE.from_pretrained(
-            "williamberman/consistency-decoder", torch_dtype=torch.float16
+            "openai/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, vae=vae, safety_checker=None
