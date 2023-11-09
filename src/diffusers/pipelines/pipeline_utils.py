@@ -551,12 +551,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 else:
                     not_compiled_module = module
 
-                try:
-                    library = not_compiled_module.__module__.split(".")[0]
-                except:
-                    import ipdb
-
-                    ipdb.set_trace()
+                library = not_compiled_module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
                 module_path_items = not_compiled_module.__module__.split(".")
