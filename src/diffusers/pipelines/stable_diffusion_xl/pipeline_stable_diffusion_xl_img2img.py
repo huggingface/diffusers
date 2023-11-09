@@ -20,7 +20,12 @@ import torch
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin, IPAdapterMixin
+from ...loaders import (
+    FromSingleFileMixin,
+    IPAdapterMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
@@ -104,7 +109,11 @@ def retrieve_latents(encoder_output, generator):
 
 
 class StableDiffusionXLImg2ImgPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin
+    DiffusionPipeline,
+    TextualInversionLoaderMixin,
+    FromSingleFileMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    IPAdapterMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
@@ -665,7 +674,7 @@ class StableDiffusionXLImg2ImgPipeline(
         latents = init_latents
 
         return latents
-    
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -678,7 +687,7 @@ class StableDiffusionXLImg2ImgPipeline(
         image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
 
         uncond_image_embeds = torch.zeros_like(image_embeds)
-        return image_embeds, uncond_image_embeds    
+        return image_embeds, uncond_image_embeds
 
     def _get_add_time_ids(
         self,
