@@ -714,11 +714,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-
-
-
-
-
         # 9. Prepare noisy latent variables for diffusion denoising loop
         diffusion_seq_len = self.diffusion_output_sequence_length(top_k_autoregressive_latents)
         latents = self.prepare_latents(

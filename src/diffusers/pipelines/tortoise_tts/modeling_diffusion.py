@@ -126,6 +126,8 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
                 hidden_channels * 2,
                 n_heads=num_attention_heads,
                 dim_head=(hidden_channels * 2) // num_attention_heads,
+                relative_attention_num_buckets=32,
+                relative_attention_max_distance=64,
             )
             for _ in range(audio_attention_layers)
         ])
@@ -149,7 +151,8 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
 
     def get_mel_spectrogram(self, audio):
         stft = TacotronSTFT(1024, 256, 1024, 100, 24000, 0, 12000)
-        mel_spectrogram = stft.mel_spectrogram(torch.from_numpy(audio).reshape(1, -1))
+        stft = stft.to("cuda")
+        mel_spectrogram = stft.mel_spectrogram(audio)
 
         return mel_spectrogram
 
@@ -166,16 +169,19 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         for audio_sample in audio:
             if latent_averaging_mode == 0:
                 # Average across all samples (original Tortoise TTS behavior)
-                audio_sample = pad_or_truncate(audio_sample, chunk_size).numpy()
-                spectrogram = self.get_mel_spectrogram(audio_sample)
+                audio_sample = pad_or_truncate(audio_sample, chunk_size).to("cuda")
+                # spectrogram = self.get_mel_spectrogram(audio_sample[None])
+                spectrogram = torch.load("/home/susnato/PycharmProjects/tortoise/check/mel_spec.pth") # use this until the Feature Extractor problem is solved.
                 audio_spectrograms.append(spectrogram)
             else:
                 if latent_averaging_mode == 2:
                     sample_audio_spectrograms = []
                 for chunk in range(math.ceil(audio_sample.shape[1] / chunk_size)):
                     current_chunk = audio_sample[:, chunk * chunk_size : (chunk + 1) * chunk_size]
-                    current_chunk = pad_or_truncate(current_chunk, chunk_size).numpy()
-                    chunk_spectrogram = self.get_mel_spectrogram(current_chunk, chunk_size)
+                    current_chunk = pad_or_truncate(current_chunk, chunk_size).to("cuda")
+                    # chunk_spectrogram = self.get_mel_spectrogram(current_chunk[None])
+                    chunk_spectrogram = torch.load(
+                        "/home/susnato/PycharmProjects/tortoise/check/mel_spec.pth")  # use this until the Feature Extractor problem is solved.
 
                     if latent_averaging_mode == 1:
                         # Average across all chunks of all samples
@@ -194,15 +200,12 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         # the diffusion model expects the audio to be at 24 kHz so resample it.
         audio = check_and_resample(torch.from_numpy(audio), audio_sr, target_sr)
         audio_spectrograms = self.convert_and_average_audio_samples(audio, latent_averaging_mode, chunk_size)
+        audio_spectrograms = audio_spectrograms[0, ...]
 
-        conds = []
-        for j in range(audio_spectrograms.shape[1]):
-            conv_opt = self.contextual_embedder_conv(audio_spectrograms[:, j])
-            attn_opt = self.contextual_embedder_attention(conv_opt.transpose(1, 2))
-            conds.append(attn_opt.transpose(1, 2))
+        audio_embedding = self.contextual_embedder_conv(audio_spectrograms)
+        audio_embedding = self.contextual_embedder_attention(audio_embedding.transpose(1, 2))
 
-        audio_embedding = torch.cat(conds, dim=-1)
-        audio_embedding = audio_embedding.mean(dim=-1)
+        audio_embedding = audio_embedding.mean(dim=1)
         return audio_embedding
 
     def diffusion_cond_embedding(
