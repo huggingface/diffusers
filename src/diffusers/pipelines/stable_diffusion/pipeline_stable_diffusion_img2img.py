@@ -865,6 +865,9 @@ class StableDiffusionImg2ImgPipeline(
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        # 6.5 Add image embeds for IP-Adapter
+        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -873,11 +876,6 @@ class StableDiffusionImg2ImgPipeline(
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-                if ip_adapter_image is not None:
-                    added_cond_kwargs = {"image_embeds": image_embeds}
-                else:
-                    added_cond_kwargs = None
 
                 # predict the noise residual
                 noise_pred = self.unet(

@@ -1111,6 +1111,9 @@ class StableDiffusionInpaintPipeline(
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        # 9.5 Add image embeds for IP-Adapter
+        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+
         # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -1124,11 +1127,6 @@ class StableDiffusionInpaintPipeline(
 
                 if num_channels_unet == 9:
                     latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-
-                if ip_adapter_image is not None:
-                    added_cond_kwargs = {"image_embeds": image_embeds}
-                else:
-                    added_cond_kwargs = None
 
                 # predict the noise residual
                 noise_pred = self.unet(
