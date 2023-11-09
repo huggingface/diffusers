@@ -16,7 +16,7 @@ Latent Consistency Models (LCM) enable quality image generation in typically 2-4
 
 From the [official website](https://latent-consistency-models.github.io/):
 
-> LCMs can be distilled from any pre-trained Stable Diffusion (SD) in only 4,000 training steps (~32 A100 GPU Hours) for generating high quality 768 x 768 resolution images in 2~4 steps or even one step , significantly accelerating text-to-image generation. We employ LCM to distill the Dreamshaper-V7 version of SD in just 4,000 training iterations.
+> LCMs can be distilled from any pre-trained Stable Diffusion (SD) in only 4,000 training steps (~32 A100 GPU Hours) for generating high quality 768 x 768 resolution images in 2~4 steps or even one step, significantly accelerating text-to-image generation. We employ LCM to distill the Dreamshaper-V7 version of SD in just 4,000 training iterations.
 
 For a more technical overview of LCMs, refer to [the paper](https://huggingface.co/papers/2310.04378).
 
@@ -52,10 +52,10 @@ image = pipe(
 
 Notice that we use only 4 steps for generation which is way less than what's typically used for standard SDXL.
 
-So notes to keep in mind:
+Some details to keep in mind:
 
 * For performing classifier-free guidance, usually batch size is doubled. When using LCM, classifier-free guidance is performed using guidance embeddings, so, the batch size is not doubled. This leads to a faster inference time. Since guidance is performed using guidance embeddings, negative prompts do not have any effect on the denoising process.
-* The UNet was trained using the [3., 13.] guidance scale range. So, that is the ideal range for `guidance_scale`. However, a `guidance_scale` of 1.0 is also effective.
+* The UNet was trained using the [3., 13.] guidance scale range. So, that is the ideal range for `guidance_scale`. However, disabling `guidance_scale` using a value of 1.0 is also effective in most cases.
 
 ## Image-to-image
 
@@ -188,5 +188,5 @@ image = pipe(
 For LoRA, some of the above-mentioned findings change: 
 
 * By default, _no guidance is performed_ which enables faster inference. It works for most of the prompts. This means `guidance_scale` is set to 1 (as in the example above).
-* When `guidance_scale` > 1, regular classifier-free guidance is performed leading slower inference as this doubles the batch size. 
-* Recommended range for `guidance_scale` is [1., 2.].
+* When `guidance_scale` > 1, regular classifier-free guidance is performed leading to slightly slower inference as this doubles the batch size. 
+* The recommended range for `guidance_scale` is [1., 2.].
