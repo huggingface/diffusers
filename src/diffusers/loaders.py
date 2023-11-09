@@ -2390,7 +2390,7 @@ class LoraLoaderMixin:
     def set_adapters_for_text_encoder(
         self,
         adapter_names: Union[List[str], str],
-        text_encoder: Optional[PreTrainedModel] = None,
+        text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
         text_encoder_weights: List[float] = None,
     ):
         """
@@ -2429,7 +2429,7 @@ class LoraLoaderMixin:
             )
         set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
 
-    def disable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
+    def disable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
         """
         Disables the LoRA layers for the text encoder.
 
@@ -2446,7 +2446,7 @@ class LoraLoaderMixin:
             raise ValueError("Text Encoder not found.")
         set_adapter_layers(text_encoder, enabled=False)
 
-    def enable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
+    def enable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
         """
         Enables the LoRA layers for the text encoder.
 
@@ -2727,6 +2727,7 @@ class FromSingleFileMixin:
         text_encoder = kwargs.pop("text_encoder", None)
         vae = kwargs.pop("vae", None)
         controlnet = kwargs.pop("controlnet", None)
+        adapter = kwargs.pop("adapter", None)
         tokenizer = kwargs.pop("tokenizer", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
@@ -2819,6 +2820,7 @@ class FromSingleFileMixin:
             model_type=model_type,
             stable_unclip=stable_unclip,
             controlnet=controlnet,
+            adapter=adapter,
             from_safetensors=from_safetensors,
             extract_ema=extract_ema,
             image_size=image_size,
