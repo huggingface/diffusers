@@ -16,7 +16,13 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import (
@@ -146,7 +152,14 @@ class StableDiffusionXLPipeline(
             watermarker will be used.
     """
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2", "image_encoder"]
+    _optional_components = [
+        "tokenizer",
+        "tokenizer_2",
+        "text_encoder",
+        "text_encoder_2",
+        "image_encoder",
+        "feature_extractor",
+    ]
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
@@ -167,6 +180,7 @@ class StableDiffusionXLPipeline(
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         image_encoder: CLIPVisionModelWithProjection,
+        feature_extractor: CLIPImageProcessor,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
     ):
@@ -181,6 +195,7 @@ class StableDiffusionXLPipeline(
             unet=unet,
             scheduler=scheduler,
             image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)

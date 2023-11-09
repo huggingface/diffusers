@@ -17,7 +17,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import PIL.Image
 import torch
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import (
@@ -183,6 +189,7 @@ class StableDiffusionXLImg2ImgPipeline(
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
         image_encoder: CLIPVisionModelWithProjection,
+        feature_extractor: CLIPImageProcessor,
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
@@ -198,6 +205,7 @@ class StableDiffusionXLImg2ImgPipeline(
             tokenizer_2=tokenizer_2,
             unet=unet,
             image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
             scheduler=scheduler,
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
