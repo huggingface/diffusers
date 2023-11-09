@@ -105,8 +105,6 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         inputs = self.get_dummy_inputs(for_image_to_image=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        slice = image_slice.tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
         expected_slice = np.array([0.2307, 0.2341, 0.2305, 0.24, 0.2268, 0.25, 0.2322, 0.2588, 0.2935])
 
@@ -124,9 +122,7 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         inputs = self.get_dummy_inputs(for_inpainting=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        slice = image_slice.tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([0.2307, 0.2341, 0.2305, 0.24, 0.2268, 0.25, 0.2322, 0.2588, 0.2935])
+        expected_slice = np.array([0.3618, 0.3313, 0.2983, 0.3708, 0.345, 0.311, 0.3608, 0.343, 0.3335])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
