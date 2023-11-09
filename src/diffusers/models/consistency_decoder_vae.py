@@ -152,7 +152,6 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         self.use_slicing = False
         self.use_tiling = False
 
-
     # Copied from diffusers.models.autoencoder_kl.AutoencoderKL.enable_tiling
     def enable_tiling(self, use_tiling: bool = True):
         r"""
