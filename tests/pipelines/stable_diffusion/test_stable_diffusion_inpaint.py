@@ -28,8 +28,8 @@ from diffusers import (
     AsymmetricAutoencoderKL,
     AutoencoderKL,
     DDIMScheduler,
-    LCMScheduler,
     DPMSolverMultistepScheduler,
+    LCMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionInpaintPipeline,
@@ -41,7 +41,6 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_image,
-    print_tensor_test,
     load_numpy,
     nightly,
     require_python39_or_higher,
@@ -220,7 +219,6 @@ class StableDiffusionInpaintPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4931, 0.5988, 0.4569, 0.5556, 0.6650, 0.5087, 0.5966, 0.5358, 0.5269])
@@ -414,7 +412,6 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.6240, 0.5355, 0.5649, 0.5378, 0.5374, 0.6242, 0.5132, 0.5347, 0.5396])

@@ -30,7 +30,6 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    print_tensor_test,
     floats_tensor,
     require_torch_gpu,
     torch_device,
@@ -186,13 +185,13 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
 
         assert image.shape == (1, 32, 32, 3)
 
         expected_slice = np.array([0.5604, 0.4352, 0.4717, 0.5844, 0.5101, 0.6704, 0.6290, 0.5460, 0.5286])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
 

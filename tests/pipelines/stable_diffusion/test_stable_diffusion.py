@@ -42,9 +42,9 @@ from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
+    load_image,
     load_numpy,
     nightly,
-    print_tensor_test,
     numpy_cosine_similarity_distance,
     require_python39_or_higher,
     require_torch_2,
@@ -213,7 +213,6 @@ class StableDiffusionPipelineFastTests(
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3454, 0.5349, 0.5185, 0.2808, 0.4509, 0.4612, 0.4655, 0.3601, 0.4315])
@@ -1089,6 +1088,29 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
         inputs["torch_device"] = torch_device
         inputs["seed"] = seed
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=inputs)
+
+    def test_stable_diffusion_lcm(self):
+        unet = UNet2DConditionModel.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", subfolder="unet")
+        sd_pipe = StableDiffusionPipeline.from_pretrained("Lykon/dreamshaper-7", unet=unet).to(torch_device)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_inputs(torch_device)
+        inputs["num_inference_steps"] = 6
+        inputs["output_type"] = "pil"
+
+        image = sd_pipe(**inputs).images[0]
+
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_full/stable_diffusion_lcm.png"
+        )
+
+        image = sd_pipe.image_processor.pil_to_numpy(image)
+        expected_image = sd_pipe.image_processor.pil_to_numpy(expected_image)
+
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
+
+        assert max_diff < 1e-2
 
 
 @slow

@@ -25,10 +25,10 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
-    LCMScheduler,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     HeunDiscreteScheduler,
+    LCMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
@@ -40,9 +40,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     nightly,
-    print_tensor_test,
     require_python39_or_higher,
-    print_tensor_test,
     require_torch_2,
     require_torch_gpu,
     run_test_in_subprocess,
@@ -202,7 +200,6 @@ class StableDiffusionImg2ImgPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.5709, 0.4614, 0.4587, 0.5978, 0.5298, 0.6910, 0.6240, 0.5212, 0.5454])
