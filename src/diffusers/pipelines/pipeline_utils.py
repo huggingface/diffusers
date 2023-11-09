@@ -831,7 +831,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
 
-        module_names, _ = self._get_signature_keys(self)
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        module_names = list(expected_modules) + list(optional_parameters)
+
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
@@ -872,7 +874,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             `torch.device`: The torch device on which the pipeline is located.
         """
-        module_names, _ = self._get_signature_keys(self)
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        module_names = list(expected_modules) + list(optional_parameters)
+
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
@@ -887,7 +891,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             `torch.dtype`: The torch dtype on which the pipeline is located.
         """
-        module_names, _ = self._get_signature_keys(self)
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        module_names = list(expected_modules) + list(optional_parameters)
+
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
@@ -2017,7 +2023,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
 
-        module_names, _ = self._get_signature_keys(self)
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        module_names = list(expected_modules) + list(optional_parameters)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
@@ -2073,7 +2080,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self.enable_attention_slicing(None)
 
     def set_attention_slice(self, slice_size: Optional[int]):
-        module_names, _ = self._get_signature_keys(self)
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        module_names = list(expected_modules) + list(optional_parameters)
+
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module) and hasattr(m, "set_attention_slice")]
 
