@@ -542,7 +542,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for name, module in kwargs.items():
             # retrieve library
-            if module is None:
+            if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
             else:
                 # register the config from the original module, not the dynamo compiled one
@@ -551,7 +551,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 else:
                     not_compiled_module = module
 
-                library = not_compiled_module.__module__.split(".")[0]
+                try:
+                    library = not_compiled_module.__module__.split(".")[0]
+                except:
+                    import ipdb
+
+                    ipdb.set_trace()
 
                 # check if the module is a pipeline module
                 module_path_items = not_compiled_module.__module__.split(".")
