@@ -245,6 +245,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
+            "image_encoder": None,
         }
         lora_components = {
             "unet_lora_layers": unet_lora_layers,
