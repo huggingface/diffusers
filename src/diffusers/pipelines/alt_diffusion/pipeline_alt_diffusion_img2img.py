@@ -902,7 +902,7 @@ class AltDiffusionImg2ImgPipeline(
 
         # 7.1 Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
-        
+
         # 7.2 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
