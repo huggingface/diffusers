@@ -1932,9 +1932,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         expected_modules, optional_parameters = self._get_signature_keys(self)
-        components = {
-            k: getattr(self, k) for k in self.config.keys() if not k.startswith("_") and k not in optional_parameters
-        }
+        for name in optional_parameters:
+            if name in self._optional_components:
+                expected_modules.add(name)
+
+        def is_component(name):
+            if name.startswith("_"):
+                return False
+            if name in optional_parameters and name not in self._optional_components:
+                return False
+            return True
+
+        components = {k: getattr(self, k) for k in self.config.keys() if is_component(k)}
 
         if set(components.keys()) != expected_modules:
             raise ValueError(

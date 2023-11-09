@@ -331,6 +331,7 @@ class PipelineTesterMixin:
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
+            import ipdb; ipdb.set_trace()
             with CaptureLogger(logger) as cap_logger:
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
 
