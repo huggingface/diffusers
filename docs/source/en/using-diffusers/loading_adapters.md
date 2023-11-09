@@ -312,14 +312,20 @@ image
 
 [IP-Adapter](https://ip-adapter.github.io/) is an effective and lightweight adapter to achieve image prompt capability for the pre-trained text-to-image diffusion models. It is now available to use with most of our Stable Diffusion and Stable Diffusion XL pipelines. You can also use the IP-Adapter with other custom models fine-tuned from the same base model, as well as ControlNet and T2I adapters. Moreover, the image prompt can also work well with the text prompt to accomplish multimodal image generation.
 
-Let's look at an example where we use IP-Adapter with the Stable Diffusion text-to-image pipeline.
+Let's look at an example where we use IP-Adapter with the Stable Diffusion text-to-image pipeline. 
 
 ``` py
-from diffusers import AutoPipelineForText2Image
+from diffusers import AutoPipelineForText2Image, CLIPVisionModelWithProjection
 import torch
 from diffusers.utils import load_image
 
-pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16).to("cuda")
 ```
 
 Now you can load the IP-Adapter with [`~loaders.IPAdapterMixin.load_ip_adapter`] method. 
@@ -361,7 +367,13 @@ from diffusers import AutoPipelineForImage2Image
 import torch
 from diffusers.utils import load_image
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16).to("cuda")
 
 image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
 ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
