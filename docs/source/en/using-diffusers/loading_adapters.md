@@ -312,6 +312,8 @@ image
 
 [IP-Adapter](https://ip-adapter.github.io/) is an effective and lightweight adapter to achieve image prompt capability for the pre-trained text-to-image diffusion models. It is now available to use with most of our Stable Diffusion and Stable Diffusion XL pipelines. You can also use the IP-Adapter with other custom models fine-tuned from the same base model, as well as ControlNet and T2I adapters. Moreover, the image prompt can also work well with the text prompt to accomplish multimodal image generation.
 
+You can find the officially available IP-Adapter checkpoints in [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter).
+
 Let's look at an example where we use IP-Adapter with the Stable Diffusion text-to-image pipeline. 
 
 ``` py
@@ -390,3 +392,53 @@ images = pipeline(
 ).images
 images[0]
 ```
+
+IP-Adapters can be used with [Stable Diffusion XL](../api/pipelines/stable_diffusion/stable_diffusion_xl.md) (SDXL) for text-to-image, image-to-image, and inpainting pipelines. Below is an example for SDXL text-to-image.
+
+```python
+from diffusers import AutoPipelineForText2Image
+from diffusers.utils import load_image
+from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
+import torch
+
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="sdxl_models/image_encoder",
+    torch_dtype=torch.float16,
+).to("cuda")
+feature_extractor = CLIPImageProcessor.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+  
+pipeline = AutoPipelineForText2Image.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    image_encoder=image_encoder,
+    feature_extractor=feature_extractor,
+    torch_dtype=torch.float16
+).to("cuda")
+
+image = load_image("https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/watercolor_painting.jpeg")
+
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+image = pipeline(
+    prompt="best quality, high quality", 
+    ip_adapter_image=image,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=25,
+    generator=generator,
+).images[0]
+image.save("sdxl_t2i.png")
+```
+
+<div class="flex justify-center">
+   <table border="1">
+    <tr>
+        <th>Input Image</th>
+        <th>Adapted Image</th>
+    </tr>
+    <tr>
+        <td><img src="https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/watercolor_painting.jpeg" alt="Input Image"></td>
+        <td><img src="https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/sdxl_t2i.png" alt="Adapted Image"></td>
+    </tr>
+    </table>
+</div>
