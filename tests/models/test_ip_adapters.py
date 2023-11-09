@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
+from diffusers import StableDiffusionImg2ImgPipeline, StableDiffusionPipeline
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -69,6 +69,11 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
             image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
             ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
             input_kwargs.update({"image": image, "ip_adapter_image": ip_image})
+        elif for_inpainting:
+            image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/inpaint_image.png")
+            mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/mask.png")
+            ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/girl.png")
+            input_kwargs.update({"image": image, "mask_image": mask, "ip_adapter_image": ip_image})
 
         return input_kwargs
 
@@ -98,6 +103,25 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+        slice = image_slice.tolist()
+        print(", ".join([str(round(x, 4)) for x in slice]))
+
+        expected_slice = np.array([0.2307, 0.2341, 0.2305, 0.24, 0.2268, 0.25, 0.2322, 0.2588, 0.2935])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+    def test_inpainting(self):
+        StableDiffusionImg2ImgPipeline
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+        inputs = self.get_dummy_inputs(for_inpainting=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         slice = image_slice.tolist()
