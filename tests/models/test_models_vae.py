@@ -24,7 +24,7 @@ from diffusers import (
     AsymmetricAutoencoderKL,
     AutoencoderKL,
     AutoencoderTiny,
-    ConsistencyDecoderVae,
+    ConsistencyDecoderVAE,
     StableDiffusionPipeline,
 )
 from diffusers.utils.import_utils import is_xformers_available
@@ -278,8 +278,8 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
         pass
 
 
-class ConsistencyDecoderVaeTests(ModelTesterMixin, unittest.TestCase):
-    model_class = ConsistencyDecoderVae
+class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
+    model_class = ConsistencyDecoderVAE
     main_input_name = "sample"
     base_precision = 1e-2
     forward_requires_fresh_args = True
@@ -806,7 +806,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
 
 
 @slow
-class ConsistencyDecoderVaeIntegrationTests(unittest.TestCase):
+class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -814,7 +814,7 @@ class ConsistencyDecoderVaeIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_encode_decode(self):
-        vae = ConsistencyDecoderVae.from_pretrained("williamberman/consistency-decoder")  # TODO - update
+        vae = ConsistencyDecoderVAE.from_pretrained("williamberman/consistency-decoder")  # TODO - update
         vae.to(torch_device)
 
         image = load_image(
@@ -835,7 +835,7 @@ class ConsistencyDecoderVaeIntegrationTests(unittest.TestCase):
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
 
     def test_sd(self):
-        vae = ConsistencyDecoderVae.from_pretrained("williamberman/consistency-decoder")  # TODO - update
+        vae = ConsistencyDecoderVAE.from_pretrained("williamberman/consistency-decoder")  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None)
         pipe.to(torch_device)
 
@@ -849,7 +849,7 @@ class ConsistencyDecoderVaeIntegrationTests(unittest.TestCase):
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
 
     def test_encode_decode_f16(self):
-        vae = ConsistencyDecoderVae.from_pretrained(
+        vae = ConsistencyDecoderVAE.from_pretrained(
             "williamberman/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         vae.to(torch_device)
@@ -876,7 +876,7 @@ class ConsistencyDecoderVaeIntegrationTests(unittest.TestCase):
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
 
     def test_sd_f16(self):
-        vae = ConsistencyDecoderVae.from_pretrained(
+        vae = ConsistencyDecoderVAE.from_pretrained(
             "williamberman/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained(

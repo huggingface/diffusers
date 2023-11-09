@@ -201,7 +201,7 @@
     - local: api/models/autoencoder_tiny
       title: Tiny AutoEncoder
     - local: api/models/consistency_decoder_vae
-      title: ConsistencyDecoderVae
+      title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal

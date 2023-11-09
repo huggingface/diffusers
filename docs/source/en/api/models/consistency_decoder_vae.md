@@ -11,7 +11,7 @@ Inference is only supported for 2 iterations as of now.
 </Tip>
 
 
-## ConsistencyDecoderVae
-[[autodoc]] ConsistencyDecoderVae
+## ConsistencyDecoderVAE
+[[autodoc]] ConsistencyDecoderVAE
     - all
     - decode

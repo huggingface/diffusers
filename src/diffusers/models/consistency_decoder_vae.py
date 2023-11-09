@@ -36,7 +36,7 @@ from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
 
 
 @dataclass
-class ConsistencyDecoderVaeOutput(BaseOutput):
+class ConsistencyDecoderVAEOutput(BaseOutput):
     """
     Output of encoding method.
 
@@ -49,17 +49,17 @@ class ConsistencyDecoderVaeOutput(BaseOutput):
     latent_dist: "DiagonalGaussianDistribution"
 
 
-class ConsistencyDecoderVae(ModelMixin, ConfigMixin):
+class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
     r"""
     The consistency decoder used with DALL-E 3.
 
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import DiffusionPipeline, ConsistencyDecoderVae
+        >>> from diffusers import DiffusionPipeline, ConsistencyDecoderVAE
 
         >>> # TODO - is this going to be where the model is uploaded?
-        >>> vae = ConsistencyDecoderVae.from_pretrained("openai/consistency-decoder", torch_dtype=pipe.torch_dtype)
+        >>> vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=pipe.torch_dtype)
         >>> pipe = StableDiffusionPipeline.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", vae=vae, torch_dtype=torch.float16
         ... ).to("cuda")
@@ -202,7 +202,7 @@ class ConsistencyDecoderVae(ModelMixin, ConfigMixin):
     @apply_forward_hook
     def encode(
         self, x: torch.FloatTensor, return_dict: bool = True
-    ) -> Union[ConsistencyDecoderVaeOutput, Tuple[DiagonalGaussianDistribution]]:
+    ) -> Union[ConsistencyDecoderVAEOutput, Tuple[DiagonalGaussianDistribution]]:
         """
         Encode a batch of images into latents.
 
@@ -214,7 +214,7 @@ class ConsistencyDecoderVae(ModelMixin, ConfigMixin):
 
         Returns:
                 The latent representations of the encoded images. If `return_dict` is True, a
-                [`~models.consistency_decoder_vae.ConsistencyDecoderVaeOutput`] is returned, otherwise a plain `tuple`
+                [`~models.consistency_decoder_vae.ConsistencyDecoderVAEOutput`] is returned, otherwise a plain `tuple`
                 is returned.
         """
         if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
@@ -232,7 +232,7 @@ class ConsistencyDecoderVae(ModelMixin, ConfigMixin):
         if not return_dict:
             return (posterior,)
 
-        return ConsistencyDecoderVaeOutput(latent_dist=posterior)
+        return ConsistencyDecoderVAEOutput(latent_dist=posterior)
 
     @apply_forward_hook
     def decode(
@@ -282,7 +282,7 @@ class ConsistencyDecoderVae(ModelMixin, ConfigMixin):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> ConsistencyDecoderVaeOutput:
+    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> ConsistencyDecoderVAEOutput:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -294,12 +294,12 @@ class ConsistencyDecoderVae(ModelMixin, ConfigMixin):
         Args:
             x (`torch.FloatTensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.consistency_decoder_vae.ConsistencyDecoderVaeOutput`] instead of a
+                Whether or not to return a [`~models.consistency_decoder_vae.ConsistencyDecoderVAEOutput`] instead of a
                 plain tuple.
 
         Returns:
-            [`~models.consistency_decoder_vae.ConsistencyDecoderVaeOutput`] or `tuple`:
-                If return_dict is True, a [`~models.consistency_decoder_vae.ConsistencyDecoderVaeOutput`] is returned,
+            [`~models.consistency_decoder_vae.ConsistencyDecoderVAEOutput`] or `tuple`:
+                If return_dict is True, a [`~models.consistency_decoder_vae.ConsistencyDecoderVAEOutput`] is returned,
                 otherwise a plain `tuple` is returned.
         """
         overlap_size = int(self.tile_sample_min_size * (1 - self.tile_overlap_factor))
@@ -335,7 +335,7 @@ class ConsistencyDecoderVae(ModelMixin, ConfigMixin):
         if not return_dict:
             return (posterior,)
 
-        return ConsistencyDecoderVaeOutput(latent_dist=posterior)
+        return ConsistencyDecoderVAEOutput(latent_dist=posterior)
 
     def forward(
         self,

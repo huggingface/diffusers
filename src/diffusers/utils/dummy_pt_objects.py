@@ -47,7 +47,7 @@ class AutoencoderTiny(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class ConsistencyDecoderVae(metaclass=DummyObject):
+class ConsistencyDecoderVAE(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):

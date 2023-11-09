@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from safetensors.torch import load_file as stl
 from tqdm import tqdm
 
-from diffusers import AutoencoderKL, ConsistencyDecoderVae, DiffusionPipeline, StableDiffusionPipeline, UNet2DModel
+from diffusers import AutoencoderKL, ConsistencyDecoderVAE, DiffusionPipeline, StableDiffusionPipeline, UNet2DModel
 from diffusers.models.embeddings import TimestepEmbedding
 from diffusers.models.unet_2d_blocks import ResnetDownsampleBlock2D, ResnetUpsampleBlock2D, UNetMidBlock2D
 from diffusers.models.vae import Encoder
@@ -1091,7 +1091,7 @@ Encoder.__init__ = new_constructor
 
 
 vae = AutoencoderKL.from_pretrained("runwayml/stable-diffusion-v1-5", subfolder="vae")
-consistency_vae = ConsistencyDecoderVae(
+consistency_vae = ConsistencyDecoderVAE(
     encoder_args=vae.encoder.constructor_arguments,
     decoder_args=unet.config,
     scaling_factor=vae.config.scaling_factor,
