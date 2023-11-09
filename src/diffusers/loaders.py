@@ -1412,13 +1412,9 @@ class LoraLoaderMixin:
         )
 
         if any(f.endswith(LORA_WEIGHT_NAME) for f in targeted_files):
-            targeted_files = list(
-                filter(lambda x: x.endswith(LORA_WEIGHT_NAME), targeted_files)
-            )
+            targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME), targeted_files))
         elif any(f.endswith(LORA_WEIGHT_NAME_SAFE) for f in targeted_files):
-            targeted_files = list(
-                filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files)
-            )
+            targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
 
         if len(targeted_files) > 1:
             raise ValueError(

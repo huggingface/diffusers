@@ -28,12 +28,12 @@ from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokeniz
 
 from diffusers import (
     AutoencoderKL,
+    AutoPipelineForImage2Image,
     ControlNetModel,
     DDIMScheduler,
-    LCMScheduler,
-    AutoPipelineForImage2Image,
     DiffusionPipeline,
     EulerDiscreteScheduler,
+    LCMScheduler,
     StableDiffusionPipeline,
     StableDiffusionXLControlNetPipeline,
     StableDiffusionXLPipeline,
@@ -54,8 +54,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
-from diffusers.pipelines.auto_pipeline import AutoPipelineForText2Image
 
 
 if is_accelerate_available():
@@ -112,7 +110,6 @@ class PeftLoraLoaderMixinTests:
     vae_kwargs = None
 
     def get_dummy_components(self, scheduler_cls=None):
-
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
 
         torch.manual_seed(0)
@@ -233,7 +230,9 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
             pipe.text_encoder.add_adapter(text_lora_config)
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
 
             if self.has_two_text_encoders:
                 pipe.text_encoder_2.add_adapter(text_lora_config)
@@ -262,7 +261,9 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
             pipe.text_encoder.add_adapter(text_lora_config)
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
 
             if self.has_two_text_encoders:
                 pipe.text_encoder_2.add_adapter(text_lora_config)
@@ -307,7 +308,9 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
             pipe.text_encoder.add_adapter(text_lora_config)
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
 
             if self.has_two_text_encoders:
                 pipe.text_encoder_2.add_adapter(text_lora_config)
@@ -317,7 +320,9 @@ class PeftLoraLoaderMixinTests:
 
             pipe.fuse_lora()
             # Fusing should still keep the LoRA layers
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
 
             if self.has_two_text_encoders:
                 self.assertTrue(
@@ -327,7 +332,7 @@ class PeftLoraLoaderMixinTests:
             ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertFalse(
                 np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
-        )
+            )
 
     def test_simple_inference_with_text_lora_unloaded(self):
         """
@@ -345,7 +350,9 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
             pipe.text_encoder.add_adapter(text_lora_config)
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
 
             if self.has_two_text_encoders:
                 pipe.text_encoder_2.add_adapter(text_lora_config)
@@ -361,12 +368,14 @@ class PeftLoraLoaderMixinTests:
 
             if self.has_two_text_encoders:
                 self.assertFalse(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly unloaded in text encoder 2"
+                    self.check_if_lora_correctly_set(pipe.text_encoder_2),
+                    "Lora not correctly unloaded in text encoder 2",
                 )
 
             ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
-                np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+                np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
+                "Fused lora should change the output",
             )
 
     def test_simple_inference_with_text_lora_save_load(self):
@@ -384,7 +393,9 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
             pipe.text_encoder.add_adapter(text_lora_config)
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
 
             if self.has_two_text_encoders:
                 pipe.text_encoder_2.add_adapter(text_lora_config)
@@ -418,7 +429,9 @@ class PeftLoraLoaderMixinTests:
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
             images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
 
             if self.has_two_text_encoders:
                 self.assertTrue(
@@ -445,7 +458,9 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
             pipe.text_encoder.add_adapter(text_lora_config)
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
 
             if self.has_two_text_encoders:
                 pipe.text_encoder_2.add_adapter(text_lora_config)
@@ -496,7 +511,9 @@ class PeftLoraLoaderMixinTests:
             pipe.text_encoder.add_adapter(text_lora_config)
             pipe.unet.add_adapter(unet_lora_config)
 
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -534,7 +551,9 @@ class PeftLoraLoaderMixinTests:
                 pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
             images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -564,7 +583,9 @@ class PeftLoraLoaderMixinTests:
 
             pipe.text_encoder.add_adapter(text_lora_config)
             pipe.unet.add_adapter(unet_lora_config)
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -617,7 +638,9 @@ class PeftLoraLoaderMixinTests:
             pipe.text_encoder.add_adapter(text_lora_config)
             pipe.unet.add_adapter(unet_lora_config)
 
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -628,7 +651,9 @@ class PeftLoraLoaderMixinTests:
 
             pipe.fuse_lora()
             # Fusing should still keep the LoRA layers
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in unet")
 
             if self.has_two_text_encoders:
@@ -658,7 +683,9 @@ class PeftLoraLoaderMixinTests:
 
             pipe.text_encoder.add_adapter(text_lora_config)
             pipe.unet.add_adapter(unet_lora_config)
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -676,12 +703,14 @@ class PeftLoraLoaderMixinTests:
 
             if self.has_two_text_encoders:
                 self.assertFalse(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly unloaded in text encoder 2"
+                    self.check_if_lora_correctly_set(pipe.text_encoder_2),
+                    "Lora not correctly unloaded in text encoder 2",
                 )
 
             ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
-                np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+                np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
+                "Fused lora should change the output",
             )
 
     def test_simple_inference_with_text_unet_lora_unfused(self):
@@ -699,7 +728,9 @@ class PeftLoraLoaderMixinTests:
             pipe.text_encoder.add_adapter(text_lora_config)
             pipe.unet.add_adapter(unet_lora_config)
 
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -716,7 +747,9 @@ class PeftLoraLoaderMixinTests:
 
             output_unfused_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
             # unloading should remove the LoRA layers
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Unfuse should still keep LoRA layers")
 
             if self.has_two_text_encoders:
@@ -750,7 +783,9 @@ class PeftLoraLoaderMixinTests:
             pipe.unet.add_adapter(unet_lora_config, "adapter-1")
             pipe.unet.add_adapter(unet_lora_config, "adapter-2")
 
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -816,7 +851,9 @@ class PeftLoraLoaderMixinTests:
             pipe.unet.add_adapter(unet_lora_config, "adapter-1")
             pipe.unet.add_adapter(unet_lora_config, "adapter-2")
 
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -882,7 +919,9 @@ class PeftLoraLoaderMixinTests:
 
             pipe.unet.add_adapter(unet_lora_config, "adapter-1")
 
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             # corrupt one LoRA weight with `inf` values
@@ -956,7 +995,8 @@ class PeftLoraLoaderMixinTests:
 
             pipe.set_adapters(["adapter-1", "adapter-2"])
             self.assertDictEqual(
-                pipe.get_list_adapters(), {"unet": ["adapter-1", "adapter-2"], "text_encoder": ["adapter-1", "adapter-2"]}
+                pipe.get_list_adapters(),
+                {"unet": ["adapter-1", "adapter-2"], "text_encoder": ["adapter-1", "adapter-2"]},
             )
 
             pipe.unet.add_adapter(unet_lora_config, "adapter-3")
@@ -981,7 +1021,9 @@ class PeftLoraLoaderMixinTests:
             pipe.text_encoder.add_adapter(text_lora_config)
             pipe.unet.add_adapter(unet_lora_config)
 
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
             self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -1607,10 +1649,12 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         generator = torch.Generator().manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdxl"
-        
+
         pipe.load_lora_weights(lora_model_id)
 
-        image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
+        image = pipe(
+            "masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5
+        ).images[0]
 
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
@@ -1635,7 +1679,9 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
         pipe.load_lora_weights(lora_model_id)
 
-        image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
+        image = pipe(
+            "masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5
+        ).images[0]
 
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora.png"
@@ -1664,7 +1710,14 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
         pipe.load_lora_weights(lora_model_id)
 
-        image = pipe("snowy mountain", generator=generator, image=init_image, strength=0.5, num_inference_steps=4, guidance_scale=0.5).images[0]
+        image = pipe(
+            "snowy mountain",
+            generator=generator,
+            image=init_image,
+            strength=0.5,
+            num_inference_steps=4,
+            guidance_scale=0.5,
+        ).images[0]
 
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora_img2img.png"
