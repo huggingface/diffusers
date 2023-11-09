@@ -918,6 +918,7 @@ class StableDiffusionXLPipelineFastTests(
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
 
+@slow
 class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_lcm(self):
         torch.manual_seed(0)
