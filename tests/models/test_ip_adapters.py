@@ -20,7 +20,7 @@ import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -53,7 +53,7 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
         return image_processor
 
-    def get_dummy_inputs(self):
+    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False):
         image = load_image(
             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
         )
@@ -65,6 +65,11 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
             "ip_adapter_image": image,
             "output_type": "np",
         }
+        if for_image_to_image:
+            image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
+            ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
+            input_kwargs.update({"image": image, "ip_adapter_image": ip_image})
+
         return input_kwargs
 
     def test_text_to_image(self):
@@ -78,9 +83,26 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         inputs = self.get_dummy_inputs()
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.8047, 0.8774, 0.9248, 0.9155, 0.9814, 1.0, 0.9678, 1.0, 1.0])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+    def test_image_to_image(self):
+        StableDiffusionImg2ImgPipeline
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+        inputs = self.get_dummy_inputs(for_image_to_image=True)
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
         slice = image_slice.tolist()
         print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([list(range(9))]).astype("float32")
+        expected_slice = np.array([0.8047, 0.8774, 0.9248, 0.9155, 0.9814, 1.0, 0.9678, 1.0, 1.0])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
