@@ -314,6 +314,8 @@ image
 
 You can find the officially available IP-Adapter checkpoints in [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter).
 
+The pipeline was contributed by [okotaku](https://github.com/okotaku).
+
 Let's look at an example where we use IP-Adapter with the Stable Diffusion text-to-image pipeline. 
 
 ``` py
