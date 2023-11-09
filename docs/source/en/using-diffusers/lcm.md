@@ -93,75 +93,11 @@ image = pipe(
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_i2i.png)
 
-## ControlNet
-
-One nifty advantage of LCMs is that it applies to all the other derivative pipelines that make use of the UNet such as [ControlNet](./controlnet.md). Let's see how to perform inference with LCMs and ControlNet.
-
-Let's first initialize the `StableDiffusionXLControlNetPipeline` with the above `unet` and the `LCMScheduler`:
-
-```python
-import cv2
-import numpy as np
-import torch
-from PIL import Image
-
-from diffusers.utils import load_image
-from diffusers import (AutoencoderKL, ControlNetModel, LCMScheduler,
-                       StableDiffusionXLControlNetPipeline,
-                       UNet2DConditionModel)
-
-unet = UNet2DConditionModel.from_pretrained(
-    "latent-consistency/lcm-sdxl",
-    torch_dtype=torch.float16,
-    variant="fp16",
-)
-controlnet = ControlNetModel.from_pretrained(
-    "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
-)
-vae = AutoencoderKL.from_pretrained(
-    "madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16
-)
-
-model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    model_id, unet=unet, controlnet=controlnet, vae=vae, torch_dtype=torch.float16
-).to("cuda")
-pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-```
-
-Prepare the conditioning image for inference:
-
-```python
-image = load_image(
-    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
-)
-image = np.array(image)
-image = cv2.Canny(image, 100, 200)
-image = image[:, :, None]
-image = np.concatenate([image, image, image], axis=2)
-image = Image.fromarray(image)
-```
-
-Perform inference:
-
-```python
-prompt = (
-    "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
-)
-image = pipe(
-    prompt=prompt,
-    image=image,
-    num_inference_steps=4,
-    guidance_scale=8.0,
-    controlnet_conditioning_scale=0.5,  # recommended for good generalization
-).images[0]
-```
-
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_controlnet.png)
-
 ## LoRA
 
 It is possible to generalize the LCM framework to use with [LoRA](../training/lora.md). It effectively eliminates the need to conduct expensive fine-tuning runs as LoRA training concerns just a few number of parameters compared to full fine-tuning. During inference, the [`LCMScheduler`] comes to the advantage as it enables very few-steps inference without compromising the quality.
+
+### Text-to-image
 
 ```python
 from diffusers import DiffusionPipeline, LCMScheduler
@@ -172,14 +108,14 @@ lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
 
 pipe = DiffusionPipeline.from_pretrained(model_id, variant="fp16", torch_dtype=torch.float16).to("cuda")
 
-pipe.load_lora_weights(lcm_lora_id, weight_name="lcm_sdxl_lora.safetensors")
+pipe.load_lora_weights(lcm_lora_id)
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 prompt = "close-up photography of old man standing in the rain at night, in a street lit by lamps, leica 35mm summilux"
 image = pipe(
     prompt=prompt,
     num_inference_steps=4,
-    guidance_scale=1,
+    guidance_scale=0,
 ).images[0]
 ```
 
@@ -187,6 +123,44 @@ image = pipe(
 
 For LoRA, some of the above-mentioned findings change: 
 
-* By default, _no guidance is performed_ which enables faster inference. It works for most of the prompts. This means `guidance_scale` is set to 1 (as in the example above).
+* By default, _no guidance is performed_ (hence a `guidance_scale` of 0) which enables faster inference. It works for most of the prompts. 
 * When `guidance_scale` > 1, regular classifier-free guidance is performed leading to slightly slower inference as this doubles the batch size. 
 * If `guidance_scale` is not disabled, the recommended range for `guidance_scale` is [1., 2.].
+
+### Image-to-image
+
+Extending LCM LoRA to image-to-image is possible:
+
+```python
+from diffusers import StableDiffusionXLImg2ImgPipeline, LCMScheduler
+from diffusers.utils import load_image
+import torch
+
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+lcm_lora_id = "latent-consistency/lcm-lora-sdxl"
+
+pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(model_id, variant="fp16", torch_dtype=torch.float16).to("cuda")
+
+pipe.load_lora_weights(lcm_lora_id)
+pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+
+prompt = "close-up photography of old man standing in the rain at night, in a street lit by lamps, leica 35mm summilux"
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lora_lcm.png")
+image = pipe(
+    prompt=prompt,
+    image=image,
+    num_inference_steps=4,
+    guidance_scale=0,
+).images[0]
+```
+
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_lora_i2i.png)
+
+### ControlNet
+
+One nifty advantage of LCMs is that it applies to all the other derivative pipelines that make use of the UNet such as [ControlNet](./controlnet.md). Let's see how to perform inference with LCM LoRAs and ControlNet.
+
+Let's first initialize the `StableDiffusionXLControlNetPipeline` with the above `unet` and the `LCMScheduler`:
+
+
+
