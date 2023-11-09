@@ -309,6 +309,17 @@ class LoraLoaderMixinTests(unittest.TestCase):
         image = sd_pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 
+        # run lora xformers attention
+        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
+        attn_processors = {
+            k: LoRAXFormersAttnProcessor(hidden_size=v.hidden_size, cross_attention_dim=v.cross_attention_dim)
+            for k, v in attn_processors.items()
+        }
+        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
+        sd_pipe.unet.set_attn_processor(attn_processors)
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
     @unittest.skipIf(not torch.cuda.is_available(), reason="xformers requires cuda")
     def test_stable_diffusion_attn_processors(self):
         # disable_full_determinism()
@@ -336,17 +347,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # run lora attention
         attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
-        attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
-        sd_pipe.unet.set_attn_processor(attn_processors)
-        image = sd_pipe(**inputs).images
-        assert image.shape == (1, 64, 64, 3)
-
-        # run lora xformers attention
-        attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
-        attn_processors = {
-            k: LoRAXFormersAttnProcessor(hidden_size=v.hidden_size, cross_attention_dim=v.cross_attention_dim)
-            for k, v in attn_processors.items()
-        }
         attn_processors = {k: v.to("cuda") for k, v in attn_processors.items()}
         sd_pipe.unet.set_attn_processor(attn_processors)
         image = sd_pipe(**inputs).images
@@ -605,7 +605,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
             orig_image_slice, orig_image_slice_two, atol=1e-3
         ), "Unloading LoRA parameters should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
 
-    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="This test is supposed to run on GPU with xformers",
+    )
     def test_lora_unet_attn_processors_with_xformers(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             self.create_lora_weight_file(tmpdirname)
@@ -642,7 +645,10 @@ class LoraLoaderMixinTests(unittest.TestCase):
                 if isinstance(module, Attention):
                     self.assertIsInstance(module.processor, XFormersAttnProcessor)
 
-    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="This test is supposed to run on GPU with xformers",
+    )
     def test_lora_save_load_with_xformers(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**pipeline_components)

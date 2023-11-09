@@ -975,6 +975,7 @@ class PeftLoraLoaderMixinTests:
         _ = pipe(**inputs, generator=torch.manual_seed(0)).images
 
 
+@require_peft_backend
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
     scheduler_cls = DDIMScheduler
@@ -1197,6 +1198,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
 
+@require_peft_backend
 class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     has_two_text_encoders = True
     pipeline_class = StableDiffusionXLPipeline
