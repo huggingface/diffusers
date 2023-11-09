@@ -16,11 +16,19 @@
 import gc
 import unittest
 
+import numpy as np
 import torch
 from parameterized import parameterized
 
-from diffusers import AsymmetricAutoencoderKL, AutoencoderKL, AutoencoderTiny
+from diffusers import (
+    AsymmetricAutoencoderKL,
+    AutoencoderKL,
+    AutoencoderTiny,
+    ConsistencyDecoderVAE,
+    StableDiffusionPipeline,
+)
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.loading_utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
@@ -30,6 +38,7 @@ from diffusers.utils.testing_utils import (
     torch_all_close,
     torch_device,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -267,6 +276,79 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
 
     def test_outputs_equivalence(self):
         pass
+
+
+class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
+    model_class = ConsistencyDecoderVAE
+    main_input_name = "sample"
+    base_precision = 1e-2
+    forward_requires_fresh_args = True
+
+    def inputs_dict(self, seed=None):
+        generator = torch.Generator("cpu")
+        if seed is not None:
+            generator.manual_seed(0)
+        image = randn_tensor((4, 3, 32, 32), generator=generator, device=torch.device(torch_device))
+
+        return {"sample": image, "generator": generator}
+
+    @property
+    def input_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def init_dict(self):
+        return {
+            "encoder_args": {
+                "block_out_channels": [32, 64],
+                "in_channels": 3,
+                "out_channels": 4,
+                "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            },
+            "decoder_args": {
+                "act_fn": "silu",
+                "add_attention": False,
+                "block_out_channels": [32, 64],
+                "down_block_types": [
+                    "ResnetDownsampleBlock2D",
+                    "ResnetDownsampleBlock2D",
+                ],
+                "downsample_padding": 1,
+                "downsample_type": "conv",
+                "dropout": 0.0,
+                "in_channels": 7,
+                "layers_per_block": 1,
+                "norm_eps": 1e-05,
+                "norm_num_groups": 32,
+                "num_train_timesteps": 1024,
+                "out_channels": 6,
+                "resnet_time_scale_shift": "scale_shift",
+                "time_embedding_type": "learned",
+                "up_block_types": [
+                    "ResnetUpsampleBlock2D",
+                    "ResnetUpsampleBlock2D",
+                ],
+                "upsample_type": "conv",
+            },
+            "scaling_factor": 1,
+            "block_out_channels": [32, 64],
+            "latent_channels": 4,
+        }
+
+    def prepare_init_args_and_inputs_for_common(self):
+        return self.init_dict, self.inputs_dict()
+
+    @unittest.skip
+    def test_training(self):
+        ...
+
+    @unittest.skip
+    def test_ema_training(self):
+        ...
 
 
 @slow
@@ -721,3 +803,94 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
 
         tolerance = 3e-3 if torch_device != "mps" else 1e-2
         assert torch_all_close(output_slice, expected_output_slice, atol=tolerance)
+
+
+@slow
+class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_encode_decode(self):
+        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
+        vae.to(torch_device)
+
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        ).resize((256, 256))
+        image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[
+            None, :, :, :
+        ].cuda()
+
+        latent = vae.encode(image).latent_dist.mean
+
+        sample = vae.decode(latent, generator=torch.Generator("cpu").manual_seed(0)).sample
+
+        actual_output = sample[0, :2, :2, :2].flatten().cpu()
+        expected_output = torch.tensor([-0.0141, -0.0014, 0.0115, 0.0086, 0.1051, 0.1053, 0.1031, 0.1024])
+
+        assert torch_all_close(actual_output, expected_output, atol=5e-3)
+
+    def test_sd(self):
+        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None)
+        pipe.to(torch_device)
+
+        out = pipe(
+            "horse", num_inference_steps=2, output_type="pt", generator=torch.Generator("cpu").manual_seed(0)
+        ).images[0]
+
+        actual_output = out[:2, :2, :2].flatten().cpu()
+        expected_output = torch.tensor([0.7686, 0.8228, 0.6489, 0.7455, 0.8661, 0.8797, 0.8241, 0.8759])
+
+        assert torch_all_close(actual_output, expected_output, atol=5e-3)
+
+    def test_encode_decode_f16(self):
+        vae = ConsistencyDecoderVAE.from_pretrained(
+            "openai/consistency-decoder", torch_dtype=torch.float16
+        )  # TODO - update
+        vae.to(torch_device)
+
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        ).resize((256, 256))
+        image = (
+            torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :]
+            .half()
+            .cuda()
+        )
+
+        latent = vae.encode(image).latent_dist.mean
+
+        sample = vae.decode(latent, generator=torch.Generator("cpu").manual_seed(0)).sample
+
+        actual_output = sample[0, :2, :2, :2].flatten().cpu()
+        expected_output = torch.tensor(
+            [-0.0111, -0.0125, -0.0017, -0.0007, 0.1257, 0.1465, 0.1450, 0.1471], dtype=torch.float16
+        )
+
+        assert torch_all_close(actual_output, expected_output, atol=5e-3)
+
+    def test_sd_f16(self):
+        vae = ConsistencyDecoderVAE.from_pretrained(
+            "openai/consistency-decoder", torch_dtype=torch.float16
+        )  # TODO - update
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, vae=vae, safety_checker=None
+        )
+        pipe.to(torch_device)
+
+        out = pipe(
+            "horse", num_inference_steps=2, output_type="pt", generator=torch.Generator("cpu").manual_seed(0)
+        ).images[0]
+
+        actual_output = out[:2, :2, :2].flatten().cpu()
+        expected_output = torch.tensor(
+            [0.0000, 0.0249, 0.0000, 0.0000, 0.1709, 0.2773, 0.0471, 0.1035], dtype=torch.float16
+        )
+
+        assert torch_all_close(actual_output, expected_output, atol=5e-3)

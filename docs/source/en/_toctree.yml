@@ -200,6 +200,8 @@
       title: AsymmetricAutoencoderKL
     - local: api/models/autoencoder_tiny
       title: Tiny AutoEncoder
+    - local: api/models/consistency_decoder_vae
+      title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal
@@ -344,6 +346,8 @@
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
+    - local: api/schedulers/consistency_decoder
+      title: ConsistencyDecoderScheduler
     - local: api/schedulers/ddim_inverse
       title: DDIMInverseScheduler
     - local: api/schedulers/ddim
