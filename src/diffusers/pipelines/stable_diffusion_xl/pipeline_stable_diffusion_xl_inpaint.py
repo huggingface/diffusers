@@ -411,7 +411,7 @@ class StableDiffusionXLInpaintPipeline(
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.encode_image
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
