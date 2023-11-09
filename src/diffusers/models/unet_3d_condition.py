@@ -32,6 +32,7 @@ from .attention_processor import (
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .transformer_temporal import TransformerTemporalModel
+from .activations import get_activation
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
     CrossAttnUpBlock3D,
@@ -41,8 +42,6 @@ from .unet_3d_blocks import (
     get_down_block,
     get_up_block,
 )
-
-from .activations import get_activation
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
