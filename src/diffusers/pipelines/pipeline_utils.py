@@ -43,13 +43,13 @@ from ..utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
     SAFETENSORS_WEIGHTS_NAME,
-    USE_PEFT_BACKEND,
     WEIGHTS_NAME,
     BaseOutput,
     deprecate,
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
+    is_peft_available,
     is_torch_version,
     is_transformers_available,
     logging,
@@ -293,7 +293,7 @@ def maybe_raise_or_warn(
             sub_model = sub_model._orig_mod
 
         model_cls = sub_model.__class__
-        if USE_PEFT_BACKEND:
+        if is_peft_available():
             from peft import PeftModel
 
             if isinstance(sub_model, PeftModel):
