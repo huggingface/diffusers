@@ -58,7 +58,6 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         >>> import torch
         >>> from diffusers import DiffusionPipeline, ConsistencyDecoderVAE
 
-        >>> # TODO - is this going to be where the model is uploaded?
         >>> vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder", torch_dtype=pipe.torch_dtype)
         >>> pipe = StableDiffusionPipeline.from_pretrained(
         ...     "runwayml/stable-diffusion-v1-5", vae=vae, torch_dtype=torch.float16
