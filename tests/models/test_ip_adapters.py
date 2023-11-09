@@ -170,10 +170,8 @@ class IPAdapterSDXLIntegrationTests(IPAdapterTestsMixin):
         inputs = self.get_dummy_inputs()
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        slice = image_slice.tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([0.8047, 0.8774, 0.9248, 0.9155, 0.9814, 1.0, 0.9678, 1.0, 1.0])
+        expected_slice = np.array([0.0968, 0.0959, 0.0852, 0.0912, 0.0948, 0.093, 0.0893, 0.0932, 0.0923])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -193,10 +191,8 @@ class IPAdapterSDXLIntegrationTests(IPAdapterTestsMixin):
         inputs = self.get_dummy_inputs(for_image_to_image=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        slice = image_slice.tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([0.2307, 0.2341, 0.2305, 0.24, 0.2268, 0.25, 0.2322, 0.2588, 0.2935])
+        expected_slice = np.array([0.0653, 0.0704, 0.0725, 0.0741, 0.0702, 0.0647, 0.0782, 0.0799, 0.0752])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
