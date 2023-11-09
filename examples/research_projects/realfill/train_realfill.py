@@ -450,10 +450,10 @@ class RealFillDataset(Dataset):
 
         self.transform = transforms_v2.Compose(
             [
+                transforms_v2.ToImage(),
                 transforms_v2.RandomResize(size, int(1.125 * size)),
                 transforms_v2.RandomCrop(size),
-                transforms_v2.ToImageTensor(),
-                transforms_v2.ConvertImageDtype(),
+                transforms_v2.ToDtype(torch.float32, scale=True),
                 transforms_v2.Normalize([0.5], [0.5]),
             ]
         )
