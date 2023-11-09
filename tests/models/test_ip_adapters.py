@@ -60,7 +60,7 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         input_kwargs = {
             "prompt": "best quality, high quality",
             "negative_prompt": "monochrome, lowres, bad anatomy, worst quality, low quality",
-            "num_inference_steps": 2,
+            "num_inference_steps": 5,
             "generator": torch.Generator(device="cpu").manual_seed(33),
             "ip_adapter_image": image,
             "output_type": "np",
@@ -70,7 +70,7 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
     def test_text_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=self.dtype
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
