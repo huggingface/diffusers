@@ -16,7 +16,7 @@ limitations under the License.
 
 # Generating the documentation
 
-To generate the documentation, you first have to build it. Several packages are necessary to build the doc, 
+To generate the documentation, you first have to build it. Several packages are necessary to build the doc,
 you can install them with the following command, at the root of the code repository:
 
 ```bash
@@ -142,7 +142,7 @@ This will include every public method of the pipeline that is documented, as wel
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
-    - enable_xformers_memory_efficient_attention 
+    - enable_xformers_memory_efficient_attention
     - disable_xformers_memory_efficient_attention
 ```
 
@@ -154,7 +154,7 @@ Values that should be put in `code` should either be surrounded by backticks: \`
 and objects like True, None, or any strings should usually be put in `code`.
 
 When mentioning a class, function, or method, it is recommended to use our syntax for internal links so that our tool
-adds a link to its documentation with this syntax: \[\`XXXClass\`\] or \[\`function\`\]. This requires the class or 
+adds a link to its documentation with this syntax: \[\`XXXClass\`\] or \[\`function\`\]. This requires the class or
 function to be in the main package.
 
 If you want to create a link to some internal class or function, you need to
