@@ -120,7 +120,6 @@ Load the LoRA weights from your finetuned model *on top of the base model weight
 ... ).images[0]
 # use the weights from the fully finetuned LoRA model
 
->>> image = pipe("A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5).images[0]
 >>> image.save("blue_pokemon.png")
 ```
 
@@ -235,7 +234,6 @@ Load the LoRA weights from your finetuned DreamBooth model *on top of the base m
 ... ).images[0]
 # use the weights from the fully finetuned LoRA model
 
->>> image = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25, guidance_scale=7.5).images[0]
 >>> image.save("bucket-dog.png")
 ```
 
