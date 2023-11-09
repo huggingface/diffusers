@@ -18,6 +18,8 @@ There are several [training](../training/overview) techniques for personalizing 
 
 This guide will show you how to load DreamBooth, textual inversion, and LoRA weights.
 
+Thanks to [okotaku](https://github.com/okotaku) who contributed this features with some guidance from [Yiyi](https://github.com/yiyixuxu) and [Sayak](https://github.com/sayakpaul).
+
 <Tip>
 
 Feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer), [LoRA the Explorer](https://huggingface.co/spaces/multimodalart/LoraTheExplorer), and the [Diffusers Models Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) for checkpoints and embeddings to use.
