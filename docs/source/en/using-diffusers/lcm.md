@@ -54,7 +54,7 @@ Notice that we use only 4 steps for generation which is way less than what's typ
 
 Some details to keep in mind:
 
-* For performing classifier-free guidance, usually batch size is doubled. When using LCM, classifier-free guidance is performed using guidance embeddings, so, the batch size is not doubled. This leads to a faster inference time. Since guidance is performed using guidance embeddings, negative prompts do not have any effect on the denoising process.
+* To perform classifier-free guidance, batch size is usually doubled inside the pipeline. LCM, however, applies guidance using guidance embeddings, so the batch size does not have to be doubled in this case. This leads to a faster inference time, with the drawback that negative prompts don't have any effect on the denoising process.
 * The UNet was trained using the [3., 13.] guidance scale range. So, that is the ideal range for `guidance_scale`. However, disabling `guidance_scale` using a value of 1.0 is also effective in most cases.
 
 ## Image-to-image
