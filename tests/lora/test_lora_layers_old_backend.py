@@ -757,6 +757,7 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
@@ -866,6 +867,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             "text_encoder_2": text_encoder_2,
             "tokenizer": tokenizer,
             "tokenizer_2": tokenizer_2,
+            "image_encoder": None,
         }
         lora_components = {
             "unet_lora_layers": unet_lora_layers,
