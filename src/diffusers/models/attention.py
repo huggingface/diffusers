@@ -24,6 +24,7 @@ from .attention_processor import Attention
 from .embeddings import CombinedTimestepLabelEmbeddings
 from .lora import LoRACompatibleLinear
 
+from ..umer_debug_logger import udl
 
 @maybe_allow_in_graph
 class GatedSelfAttentionDense(nn.Module):
@@ -197,9 +198,6 @@ class BasicTransformerBlock(nn.Module):
         cross_attention_kwargs: Dict[str, Any] = None,
         class_labels: Optional[torch.LongTensor] = None,
     ) -> torch.FloatTensor:
-
-        UMER_DEBUG_CACHE = []
-
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         if self.use_ada_layer_norm:
@@ -224,12 +222,12 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
-        UMER_DEBUG_CACHE.append(('attn1', attn_output))
+        udl.log_if('attn1', attn_output, 'SUBBLOCK-MINUS-1')
 
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
         hidden_states = attn_output + hidden_states
-        UMER_DEBUG_CACHE.append(('add attn1', hidden_states))
+        udl.log_if('add attn1', hidden_states, 'SUBBLOCK-MINUS-1')
 
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
@@ -241,8 +239,8 @@ class BasicTransformerBlock(nn.Module):
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
             )
-            UMER_DEBUG_CACHE.append(('norm2', norm_hidden_states))
-            UMER_DEBUG_CACHE.append(('context', encoder_hidden_states))
+            udl.log_if('norm2', norm_hidden_states, 'SUBBLOCK-MINUS-1')
+            udl.log_if('context', encoder_hidden_states, 'SUBBLOCK-MINUS-1')
             if encoder_attention_mask is not None: print('encoder_attention_mask is not None. Shape = '+str(list(encoder_attention_mask.shape)+'\tvals = '+str(encoder_attention_mask.flatten[:10])))
             if cross_attention_kwargs is not None:
                 if len(cross_attention_kwargs.keys()) > 0: print('cross_attention_kwargs is not None. Keys = '+str(cross_attention_kwargs.keys()))
@@ -253,8 +251,8 @@ class BasicTransformerBlock(nn.Module):
                 **cross_attention_kwargs,
             )
             hidden_states = attn_output + hidden_states
-        UMER_DEBUG_CACHE.append(('attn2', attn_output))
-        UMER_DEBUG_CACHE.append(('add attn2', hidden_states))
+        udl.log_if('attn2', attn_output, 'SUBBLOCK-MINUS-1')
+        udl.log_if('add attn2', hidden_states, 'SUBBLOCK-MINUS-1')
 
         # 4. Feed-forward
         norm_hidden_states = self.norm3(hidden_states)
@@ -284,10 +282,10 @@ class BasicTransformerBlock(nn.Module):
             ff_output = gate_mlp.unsqueeze(1) * ff_output
 
         hidden_states = ff_output + hidden_states
-        UMER_DEBUG_CACHE.append(('ff', ff_output))
-        UMER_DEBUG_CACHE.append(('add ff', hidden_states))
+        udl.log_if('ff', ff_output, 'SUBBLOCK-MINUS-1')
+        udl.log_if('add ff', hidden_states, 'SUBBLOCK-MINUS-1')
 
-        return hidden_states, UMER_DEBUG_CACHE
+        return hidden_states
 
 
 class FeedForward(nn.Module):

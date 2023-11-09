@@ -26,6 +26,7 @@ from .embeddings import PatchEmbed
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 
+from ..umer_debug_logger import udl
 
 @dataclass
 class Transformer2DModelOutput(BaseOutput):
@@ -288,8 +289,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
-        UMER_DEBUG_CACHE = []
-
         # 1. Input
         if self.is_input_continuous:
             batch, _, height, width = hidden_states.shape
@@ -318,7 +317,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_patches:
             hidden_states = self.pos_embed(hidden_states)
 
-        UMER_DEBUG_CACHE.append(('proj_in', hidden_states))
+        udl.log_if('proj_in', hidden_states, condition='SUBBLOCK-MINUS-1')
 
         # 2. Blocks
         for block in self.transformer_blocks:
@@ -335,7 +334,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     use_reentrant=False,
                 )
             else:
-                hidden_states, debug_cache_from_attention_block = block(
+                hidden_states = block(
                     hidden_states,
                     attention_mask=attention_mask,
                     encoder_hidden_states=encoder_hidden_states,
@@ -344,7 +343,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
                 )
-                UMER_DEBUG_CACHE += debug_cache_from_attention_block
 
         # 3. Output
         if self.is_input_continuous:
@@ -391,11 +389,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
             )
 
-        UMER_DEBUG_CACHE.append(('proj_out', output))
+        udl.log_if('proj_out', output, condition='SUBBLOCK-MINUS-1')
 
         if not return_dict:
             return (output,)
 
-        result = Transformer2DModelOutput(sample=output)
-        result.debug_cache = UMER_DEBUG_CACHE
-        return result#Transformer2DModelOutput(sample=output)
+        return Transformer2DModelOutput(sample=output)
