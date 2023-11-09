@@ -140,6 +140,7 @@ class PeftLoraLoaderMixinTests:
                 "text_encoder_2": text_encoder_2,
                 "tokenizer_2": tokenizer_2,
                 "image_encoder": None,
+                "feature_extractor": None,
             }
         else:
             pipeline_components = {

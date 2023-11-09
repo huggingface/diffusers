@@ -868,6 +868,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             "tokenizer": tokenizer,
             "tokenizer_2": tokenizer_2,
             "image_encoder": None,
+            "feature_extractor": None,
         }
         lora_components = {
             "unet_lora_layers": unet_lora_layers,
