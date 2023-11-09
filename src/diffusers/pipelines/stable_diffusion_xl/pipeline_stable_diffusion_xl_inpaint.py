@@ -315,7 +315,7 @@ class StableDiffusionXLInpaintPipeline(
     """
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
 
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2", "image_encoder"]
+    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2", "image_encoder", "feature_extractor"]
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
