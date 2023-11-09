@@ -72,7 +72,7 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
-    - local: using/diffusers/lcm
+    - local: using-diffusers/lcm
       title: Latent Consistency Models
     - local: using-diffusers/kandinsky
       title: Kandinsky
