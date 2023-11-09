@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-🧪 This pipeline is for research purposes only. 
+🧪 This pipeline is for research purposes only.
 
 </Tip>
 
@@ -26,13 +26,13 @@ The abstract from the paper is:
 
 You can find additional information about Text-to-Video on the [project page](https://modelscope.cn/models/damo/text-to-video-synthesis/summary), [original codebase](https://github.com/modelscope/modelscope/), and try it out in a [demo](https://huggingface.co/spaces/damo-vilab/modelscope-text-to-video-synthesis). Official checkpoints can be found at [damo-vilab](https://huggingface.co/damo-vilab) and [cerspense](https://huggingface.co/cerspense).
 
-## Usage example 
+## Usage example
 
 ### `text-to-video-ms-1.7b`
 
 Let's start by generating a short video with the default length of 16 frames (2s at 8 fps):
 
-```python 
+```python
 import torch
 from diffusers import DiffusionPipeline
 from diffusers.utils import export_to_video
@@ -88,7 +88,7 @@ video_path = export_to_video(video_frames)
 video_path
 ```
 
-Here are some sample outputs: 
+Here are some sample outputs:
 
 <table>
     <tr>
@@ -118,8 +118,9 @@ which can then be upscaled using [`VideoToVideoSDPipeline`] and [`cerspense/zero
 
 ```py
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 from diffusers.utils import export_to_video
+from PIL import Image
 
 pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
@@ -152,7 +153,7 @@ video_path = export_to_video(video_frames)
 video_path
 ```
 
-Here are some sample outputs: 
+Here are some sample outputs:
 
 <table>
     <tr>
@@ -165,6 +166,12 @@ Here are some sample outputs:
         </center></td>
     </tr>
 </table>
+
+<Tip>
+
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
 
 ## TextToVideoSDPipeline
 [[autodoc]] TextToVideoSDPipeline
