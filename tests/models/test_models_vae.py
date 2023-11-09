@@ -303,39 +303,30 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
     @property
     def init_dict(self):
         return {
-            "encoder_args": {
-                "block_out_channels": [32, 64],
-                "in_channels": 3,
-                "out_channels": 4,
-                "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            },
-            "decoder_args": {
-                "act_fn": "silu",
-                "add_attention": False,
-                "block_out_channels": [32, 64],
-                "down_block_types": [
-                    "ResnetDownsampleBlock2D",
-                    "ResnetDownsampleBlock2D",
-                ],
-                "downsample_padding": 1,
-                "downsample_type": "conv",
-                "dropout": 0.0,
-                "in_channels": 7,
-                "layers_per_block": 1,
-                "norm_eps": 1e-05,
-                "norm_num_groups": 32,
-                "num_train_timesteps": 1024,
-                "out_channels": 6,
-                "resnet_time_scale_shift": "scale_shift",
-                "time_embedding_type": "learned",
-                "up_block_types": [
-                    "ResnetUpsampleBlock2D",
-                    "ResnetUpsampleBlock2D",
-                ],
-                "upsample_type": "conv",
-            },
+            "encoder_block_out_channels": [32, 64],
+            "encoder_in_channels": 3,
+            "encoder_out_channels": 4,
+            "encoder_down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            "decoder_add_attention": False,
+            "decoder_block_out_channels": [32, 64],
+            "decoder_down_block_types": [
+                "ResnetDownsampleBlock2D",
+                "ResnetDownsampleBlock2D",
+            ],
+            "decoder_downsample_padding": 1,
+            "decoder_in_channels": 7,
+            "decoder_layers_per_block": 1,
+            "decoder_norm_eps": 1e-05,
+            "decoder_norm_num_groups": 32,
+            "decoder_num_train_timesteps": 1024,
+            "decoder_out_channels": 6,
+            "decoder_resnet_time_scale_shift": "scale_shift",
+            "decoder_time_embedding_type": "learned",
+            "decoder_up_block_types": [
+                "ResnetUpsampleBlock2D",
+                "ResnetUpsampleBlock2D",
+            ],
             "scaling_factor": 1,
-            "block_out_channels": [32, 64],
             "latent_channels": 4,
         }
 
