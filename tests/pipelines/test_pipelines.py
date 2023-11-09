@@ -1137,8 +1137,8 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         ).to(torch_device)
-        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components).to(torch_device)
-        text2img = StableDiffusionPipeline(**inpaint.components).to(torch_device)
+        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components, image_encoder=None).to(torch_device)
+        text2img = StableDiffusionPipeline(**inpaint.components, image_encoder=None).to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
 
@@ -1185,6 +1185,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
 
         sd.enable_model_cpu_offload()
@@ -1203,6 +1204,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
 
     def test_set_scheduler(self):
@@ -1220,6 +1222,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
 
         sd.scheduler = DDIMScheduler.from_config(sd.scheduler.config)
@@ -1252,6 +1255,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -1293,6 +1297,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
 
         pndm_config = sd.scheduler.config
@@ -1311,6 +1316,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
 
         ddim_config = sd.scheduler.config
@@ -1404,6 +1410,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=unet,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
         sd = orig_sd
 
@@ -1543,6 +1550,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
 
         device_type = torch.device(torch_device).type
@@ -1604,6 +1612,7 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
 
         sd.enable_model_cpu_offload(gpu_id=5)
