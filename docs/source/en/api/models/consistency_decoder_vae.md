@@ -10,6 +10,7 @@ Inference is only supported for 2 iterations as of now.
 
 </Tip>
 
+The pipeline could not have been contributed without the help of [madebyollin](https://github.com/madebyollin) and [mrsteyk](https://github.com/mrsteyk) from [this issue](https://github.com/openai/consistencydecoder/issues/1).
 
 ## ConsistencyDecoderVAE
 [[autodoc]] ConsistencyDecoderVAE
