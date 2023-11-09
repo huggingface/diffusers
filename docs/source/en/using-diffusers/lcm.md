@@ -163,6 +163,12 @@ image = pipe(
 
 It is possible to generalize the LCM framework to use with [LoRA](../training/lora.md). It effectively eliminates the need to conduct expensive fine-tuning runs as LoRA training concerns just a few number of parameters compared to full fine-tuning. During inference, the [`LCMScheduler`] comes to the advantage as it enables very few-steps inference without compromising the quality.
 
+We recommend to disable `guidance_scale` by setting it 0. The model is trained to follow prompts accurately 
+even without using guidance scale. You can however, still use guidance scale in which case we recommend 
+using values between 1.0 and 2.0.
+
+##3 Te
+
 ```python
 from diffusers import DiffusionPipeline, LCMScheduler
 import torch
@@ -179,10 +185,11 @@ prompt = "close-up photography of old man standing in the rain at night, in a st
 image = pipe(
     prompt=prompt,
     num_inference_steps=4,
-    guidance_scale=1,
+    guidance_scale=0,  # set guidance scale to 0 to disable it
 ).images[0]
 ```
 
+Note
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lora_lcm.png)
 
 For LoRA, some of the above-mentioned findings change: 
