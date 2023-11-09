@@ -42,6 +42,7 @@ from .unet_3d_blocks import (
     get_up_block,
 )
 
+from .activations import get_activation
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -150,11 +151,10 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             )
 
         # input
-        conv_in_kernel = 3
-        conv_out_kernel = 3
-        conv_in_padding = (conv_in_kernel - 1) // 2
+        conv_in_out_kernel = 3
+        conv_in_out_padding = (conv_in_out_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
-            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+            in_channels, block_out_channels[0], kernel_size=conv_in_out_kernel, padding=conv_in_out_padding
         )
 
         # time
@@ -265,14 +265,13 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             self.conv_norm_out = nn.GroupNorm(
                 num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
             )
-            self.conv_act = nn.SiLU()
+            self.conv_act = get_activation("silu")
         else:
             self.conv_norm_out = None
             self.conv_act = None
 
-        conv_out_padding = (conv_out_kernel - 1) // 2
         self.conv_out = nn.Conv2d(
-            block_out_channels[0], out_channels, kernel_size=conv_out_kernel, padding=conv_out_padding
+            block_out_channels[0], out_channels, kernel_size=conv_in_out_kernel, padding=conv_in_out_padding
         )
 
     @property
