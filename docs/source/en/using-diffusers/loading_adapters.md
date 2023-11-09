@@ -318,7 +318,7 @@ IP-Adapter was contributed by [okotaku](https://github.com/okotaku).
 
 Let's look at an example where we use IP-Adapter with the Stable Diffusion text-to-image pipeline. 
 
-``` py
+```py
 from diffusers import AutoPipelineForText2Image, CLIPVisionModelWithProjection
 import torch
 from diffusers.utils import load_image
