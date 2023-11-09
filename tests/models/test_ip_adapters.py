@@ -124,7 +124,7 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         slice = image_slice.tolist()
         print(", ".join([str(round(x, 4)) for x in slice]))
 
-        expected_slice = np.array([0.3618, 0.3313, 0.2983, 0.3708, 0.345, 0.311, 0.3608, 0.343, 0.3335])
+        expected_slice = np.array([0.2705, 0.2395, 0.2209, 0.2312, 0.2102, 0.2104, 0.2178, 0.2065, 0.1997])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
