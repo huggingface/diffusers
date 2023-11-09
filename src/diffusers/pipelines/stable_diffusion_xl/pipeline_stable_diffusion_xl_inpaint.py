@@ -343,9 +343,9 @@ class StableDiffusionXLInpaintPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        image_encoder: CLIPVisionModelWithProjection = None,
-        feature_extractor: CLIPImageProcessor = None
         scheduler: KarrasDiffusionSchedulers,
+        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: CLIPImageProcessor = None,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,

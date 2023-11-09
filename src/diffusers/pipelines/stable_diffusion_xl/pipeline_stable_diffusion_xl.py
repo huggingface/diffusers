@@ -180,7 +180,7 @@ class StableDiffusionXLPipeline(
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
         image_encoder: CLIPVisionModelWithProjection = None,
-        feature_extractor: CLIPImageProcessor = None
+        feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
     ):
