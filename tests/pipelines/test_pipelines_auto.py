@@ -116,7 +116,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert pipe.__class__.__name__ == "StableDiffusionControlNetPipeline"
         assert "controlnet" in pipe.components
 
-        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=None)
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, controlnet=None, image_encoder=None)
         assert pipe.__class__.__name__ == "StableDiffusionPipeline"
         assert "controlnet" not in pipe.components
 
@@ -128,7 +128,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert pipe.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
         assert "controlnet" in pipe.components
 
-        pipe = AutoPipelineForImage2Image.from_pipe(pipe, controlnet=None)
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe, controlnet=None, image_encoder=None)
         assert pipe.__class__.__name__ == "StableDiffusionImg2ImgPipeline"
         assert "controlnet" not in pipe.components
 
@@ -140,7 +140,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert pipe.__class__.__name__ == "StableDiffusionControlNetInpaintPipeline"
         assert "controlnet" in pipe.components
 
-        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=None)
+        pipe = AutoPipelineForInpainting.from_pipe(pipe, controlnet=None, image_encoder=None)
         assert pipe.__class__.__name__ == "StableDiffusionInpaintPipeline"
         assert "controlnet" not in pipe.components
 
@@ -152,7 +152,7 @@ class AutoPipelineFastTest(unittest.TestCase):
         assert pipe_control_img2img.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
         assert "controlnet" in pipe_control_img2img.components
 
-        pipe_inpaint = AutoPipelineForInpainting.from_pipe(pipe_control_img2img, controlnet=None)
+        pipe_inpaint = AutoPipelineForInpainting.from_pipe(pipe_control_img2img, controlnet=None, image_encoder=None)
         assert pipe_inpaint.__class__.__name__ == "StableDiffusionInpaintPipeline"
         assert "controlnet" not in pipe_inpaint.components
 
