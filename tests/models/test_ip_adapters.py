@@ -67,7 +67,7 @@ class IPAdapterSDIntegrationTests(unittest.TestCase):
         }
         return input_kwargs
 
-    def text_to_image(self):
+    def test_text_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", sunfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=self.dtype
