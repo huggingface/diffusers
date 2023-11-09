@@ -18,16 +18,34 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
+import torch.nn.functional as F
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
+    UNet2DConditionModel,
 )
+from diffusers.models.attention_processor import (
+    AttnProcessor,
+    AttnProcessor2_0,
+    IPAdapterAttnProcessor,
+    IPAdapterAttnProcessor2_0,
+)
+from diffusers.models.embeddings import ImageProjection
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -40,7 +58,185 @@ from diffusers.utils.testing_utils import (
 enable_full_determinism()
 
 
-class IPAdapterTestsMixin(unittest.TestCase):
+class IPAdapterFastTests(unittest.TestCase):
+    hidden_dim = 32
+    num_image_text_embeds = 4
+
+    def get_dummy_components(self):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(
+            block_out_channels=(4, 8),
+            layers_per_block=1,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=self.hidden_dim,
+            norm_num_groups=2,
+        )
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
+        torch.manual_seed(0)
+        vae = AutoencoderKL(
+            block_out_channels=[4, 8],
+            in_channels=3,
+            out_channels=3,
+            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            latent_channels=4,
+            norm_num_groups=2,
+        )
+
+        torch.manual_seed(0)
+        text_encoder_config = CLIPTextConfig(
+            bos_token_id=0,
+            eos_token_id=2,
+            hidden_size=self.hidden_dim,
+            intermediate_size=64,
+            layer_norm_eps=1e-05,
+            num_attention_heads=8,
+            num_hidden_layers=3,
+            pad_token_id=1,
+            vocab_size=1000,
+        )
+        text_encoder = CLIPTextModel(text_encoder_config)
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=self.hidden_dim,
+            projection_dim=self.hidden_dim,
+            num_hidden_layers=5,
+            num_attention_heads=4,
+            image_size=32,
+            intermediate_size=37,
+            patch_size=1,
+        )
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            "feature_extractor": None,
+            "image_encoder": image_encoder,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0, with_image=False):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+        }
+        if with_image:
+            inputs.update({"ip_adapter_image": torch.randn(1, 3, 32, 32, generator=generator)})
+        return inputs
+
+    def get_attn_procs_for_ip_adapter(self, unet):
+        # Cross-attention modules.
+        attn_procs = {}
+        for name in unet.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = unet.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = unet.config.block_out_channels[block_id]
+            if cross_attention_dim is None:
+                attn_processor_class = (
+                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                )
+                attn_procs[name] = attn_processor_class()
+            else:
+                attn_processor_class = (
+                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
+                )
+                attn_procs[name] = attn_processor_class(
+                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
+                ).to(dtype=unet.dtype, device=unet.device)
+        return attn_procs
+
+    def get_ip_adapter_state_dict(self, unet):
+        # Image projection module.
+        image_projection = ImageProjection(
+            cross_attention_dim=self.hidden_dim, image_embed_dim=self.hidden_dim, num_image_text_embeds=4
+        )
+
+        # Attention modules.
+        attn_procs = self.get_attn_procs_for_ip_adapter(unet)
+
+        # Rename the keys.
+        cross_attention_params = {}
+        key_id = 1
+        for key, value in attn_procs.items():
+            if isinstance(attn_procs[key], torch.nn.Module):
+                current_sd = attn_procs[key].state_dict()
+                current_sd = {f"{key_id}.{k}": v for k, v in current_sd.items()}
+                cross_attention_params.update(current_sd)
+                key_id += 2
+
+        # Make it compatible.
+        image_projection_sd = image_projection.state_dict()
+        new_image_projection_sd = {}
+        for k in image_projection_sd:
+            if "image_embeds" in k:
+                new_k = k.replace("image_embeds", "proj")
+            else:
+                new_k = k
+            new_image_projection_sd.update({new_k: image_projection_sd[k]})
+
+        # Final.
+        final_state_dict = {}
+        final_state_dict.update({"image_proj": new_image_projection_sd, "ip_adapter": cross_attention_params})
+        return final_state_dict
+
+    def test_inference_fast(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+
+        ip_adapter_state_dict = self.get_ip_adapter_state_dict(components["unet"])
+        sd_pipe.load_ip_adapter(ip_adapter_state_dict)
+        inputs = self.get_dummy_inputs(device, with_image=True)
+        output_ip_adapter = sd_pipe(**inputs).images
+
+        assert output_ip_adapter.shape == (1, 64, 64, 3)
+
+        assert not np.allclose(image_slice, output_ip_adapter[0, -3:, -3:, -1], atol=1e-4, rtol=1e-4)
+
+
+class IPAdapterNightlyTestsMixin(unittest.TestCase):
     dtype = torch.float16
 
     def tearDown(self):
@@ -100,7 +296,7 @@ class IPAdapterTestsMixin(unittest.TestCase):
 
 @nightly
 @require_torch_gpu
-class IPAdapterSDIntegrationTests(IPAdapterTestsMixin):
+class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
@@ -153,7 +349,7 @@ class IPAdapterSDIntegrationTests(IPAdapterTestsMixin):
 
 @nightly
 @require_torch_gpu
-class IPAdapterSDXLIntegrationTests(IPAdapterTestsMixin):
+class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image_sdxl(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="sdxl_models/image_encoder")
         feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
