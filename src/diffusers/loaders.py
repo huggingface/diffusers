@@ -82,9 +82,6 @@ TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
 
-IP_ADAPTER_WEIGHT_NAME = "pytorch_ip_adapter_weights.bin"
-IP_ADAPTER_WEIGHT_NAME_SAFE = "pytorch_ip_adapter_weights.safetensors"
-
 LORA_DEPRECATION_MESSAGE = "You are using an old version of LoRA backend. This will be deprecated in the next releases in favor of PEFT make sure to install the latest PEFT and transformers packages in the future."
 
 
@@ -3439,7 +3436,6 @@ class IPAdapterMixin:
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
-        # TODO (sayakpaul): incorporate safetensors
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -3460,7 +3456,10 @@ class IPAdapterMixin:
                 subfolder=subfolder,
                 user_agent=user_agent,
             )
-            state_dict = torch.load(model_file, map_location="cpu")
+            if weight_name.endswith(".safetensors"):
+                state_dict = safetensors.torch.load_file(model_file, device="cpu")
+            else:
+                state_dict = torch.load(model_file, map_location="cpu")
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
