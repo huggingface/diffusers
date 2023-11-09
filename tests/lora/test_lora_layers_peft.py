@@ -1604,58 +1604,27 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
 
-        for weight_name in [None, "lcm_sdxl_lora.safetensors"]:
-            generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
 
-            lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
-            lora_model_id = "/home/patrick/lcm-sdxl-lora-huber"
+        lora_model_id = "latent-consistency/lcm-lora-sdxl"
         
-            pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
+        pipe.load_lora_weights(lora_model_id)
 
-            image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
+        image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
 
-            expected_image = load_image(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
-            )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
+        )
 
-            # import hf_image_uploader as hui
-            # hui.upload(image, "patrickvonplaten/images")
+        import hf_image_uploader as hui
+        hui.upload(image, "patrickvonplaten/images")
 
-            image_np = pipe.image_processor.pil_to_numpy(image)
-            expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+        image_np = pipe.image_processor.pil_to_numpy(image)
+        expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-            self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
 
-            pipe.unload_lora_weights()
-
-        release_memory(pipe)
-
-    def test_ssd_lcm_lora(self):
-        pipe = DiffusionPipeline.from_pretrained("segmind/SSD-1B", torch_dtype=torch.float16)
-        return 
-        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
-
-        for weight_name in [None, "lcm_sdxl_lora.safetensors"]:
-            generator = torch.Generator().manual_seed(0)
-
-            # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
-            lora_model_id = "/home/patrick/lcm-sdxl-base-1.0-lora/"
-        
-            pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
-
-            image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
-
-            expected_image = load_image(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
-            )
-
-            image_np = pipe.image_processor.pil_to_numpy(image)
-            expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
-
-            self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
-
-            pipe.unload_lora_weights()
+        pipe.unload_lora_weights()
 
         release_memory(pipe)
 
@@ -1664,24 +1633,26 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.to("cuda")
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
-        for weight_name in [None, "lcm_sd_lora.safetensors"]:
-            generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
 
-            lora_model_id = "lcm-sd/lcm-sd1.5-lora"
-            pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
+        lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
+        pipe.load_lora_weights(lora_model_id)
 
-            image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
+        image = pipe("masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5).images[0]
 
-            expected_image = load_image(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora.png"
-            )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora.png"
+        )
 
-            image_np = pipe.image_processor.pil_to_numpy(image)
-            expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+        import hf_image_uploader as hui
+        hui.upload(image, "patrickvonplaten/images")
 
-            self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        image_np = pipe.image_processor.pil_to_numpy(image)
+        expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-            pipe.unload_lora_weights()
+        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+
+        pipe.unload_lora_weights()
 
         release_memory(pipe)
 
@@ -1694,25 +1665,26 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.png"
         )
 
-        for weight_name in [None, "lcm_sd_lora.safetensors"]:
-            generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator().manual_seed(0)
 
-            # lora_model_id = "lcm-sd/lcm-sdxl-base-1.0-lora"
-            lora_model_id = "/home/patrick/lcm-sd1.5-lora"
-            pipe.load_lora_weights(lora_model_id, weight_name=weight_name)
+        lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
+        pipe.load_lora_weights(lora_model_id)
 
-            image = pipe("snowy mountain", generator=generator, image=init_image, strength=0.5, num_inference_steps=4, guidance_scale=0.5).images[0]
+        image = pipe("snowy mountain", generator=generator, image=init_image, strength=0.5, num_inference_steps=4, guidance_scale=0.5).images[0]
 
-            expected_image = load_image(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora_img2img.png"
-            )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora_img2img.png"
+        )
 
-            image_np = pipe.image_processor.pil_to_numpy(image)
-            expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+        import hf_image_uploader as hui
+        hui.upload(image, "patrickvonplaten/images")
 
-            self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        image_np = pipe.image_processor.pil_to_numpy(image)
+        expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-            pipe.unload_lora_weights()
+        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+
+        pipe.unload_lora_weights()
 
         release_memory(pipe)
 
