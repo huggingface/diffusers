@@ -64,7 +64,7 @@ To create the package for pypi.
    pip install -i https://testpypi.python.org/pypi diffusers
 
    Check you can run the following commands:
-   python -c "python -c "from diffusers import __version__; print(__version__)"
+   python -c "from diffusers import __version__; print(__version__)"
    python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('fusing/unet-ldm-dummy-update'); pipe()"
    python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('hf-internal-testing/tiny-stable-diffusion-pipe', safety_checker=None); pipe('ah suh du')"
    python -c "from diffusers import *"
