@@ -18,8 +18,6 @@ There are several [training](../training/overview) techniques for personalizing 
 
 This guide will show you how to load DreamBooth, textual inversion, and LoRA weights.
 
-Thanks to [okotaku](https://github.com/okotaku) who contributed this features with some guidance from [Yiyi](https://github.com/yiyixuxu) and [Sayak](https://github.com/sayakpaul).
-
 <Tip>
 
 Feel free to browse the [Stable Diffusion Conceptualizer](https://huggingface.co/spaces/sd-concepts-library/stable-diffusion-conceptualizer), [LoRA the Explorer](https://huggingface.co/spaces/multimodalart/LoraTheExplorer), and the [Diffusers Models Gallery](https://huggingface.co/spaces/huggingface-projects/diffusers-gallery) for checkpoints and embeddings to use.
@@ -316,7 +314,7 @@ image
 
 You can find the officially available IP-Adapter checkpoints in [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter).
 
-The pipeline was contributed by [okotaku](https://github.com/okotaku).
+IP-Adapter was contributed by [okotaku](https://github.com/okotaku).
 
 Let's look at an example where we use IP-Adapter with the Stable Diffusion text-to-image pipeline. 
 
