@@ -1184,7 +1184,6 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
-            image_encoder=None,
         )
 
         sd.enable_model_cpu_offload()
@@ -1203,7 +1202,6 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
-            image_encoder=None,
         )
 
     def test_set_scheduler(self):
@@ -1221,7 +1219,6 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
-            image_encoder=None,
         )
 
         sd.scheduler = DDIMScheduler.from_config(sd.scheduler.config)
@@ -1318,7 +1315,6 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
-            image_encoder=None,
         )
 
         pndm_config = sd.scheduler.config
@@ -1337,7 +1333,6 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
-            image_encoder=None,
         )
 
         ddim_config = sd.scheduler.config
@@ -1431,7 +1426,6 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=unet,
             feature_extractor=self.dummy_extractor,
-            image_encoder=None,
         )
         sd = orig_sd
 
@@ -1558,7 +1552,6 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
-            image_encoder=None,
         )
 
         device_type = torch.device(torch_device).type
@@ -1620,7 +1613,6 @@ class PipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
-            image_encoder=None,
         )
 
         sd.enable_model_cpu_offload(gpu_id=5)

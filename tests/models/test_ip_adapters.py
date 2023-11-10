@@ -294,7 +294,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         return input_kwargs
 
 
-@nightly
+@slow 
 @require_torch_gpu
 class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image(self):
@@ -314,7 +314,6 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     def test_image_to_image(self):
-        StableDiffusionImg2ImgPipeline
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
@@ -347,7 +346,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
 
-@nightly
+@slow
 @require_torch_gpu
 class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image_sdxl(self):

@@ -329,13 +329,9 @@ class PipelineTesterMixin:
         logger.setLevel(diffusers.logging.INFO)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            print(pipe.components.keys())
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:
-                print(os.listdir(tmpdir))
-                if "image_encoder" in os.listdir(tmpdir):
-                    print(os.listdir(f"{tmpdir}/image_encoder"))
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
 
             for name in pipe_loaded.components.keys():
@@ -1047,7 +1043,6 @@ class PipelinePushToHubTester(unittest.TestCase):
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "image_encoder": None,
         }
         return components
 
