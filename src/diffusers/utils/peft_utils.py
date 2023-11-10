@@ -180,6 +180,14 @@ def set_adapter_layers(model, enabled=True):
                 module.disable_adapters = not enabled
 
 
+def delete_lora_layers(model, adapter_name):
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            module.delete_adapter(adapter_name)
+
+
 def set_weights_and_activate_adapters(model, adapter_names, weights):
     from peft.tuners.tuners_utils import BaseTunerLayer
 
