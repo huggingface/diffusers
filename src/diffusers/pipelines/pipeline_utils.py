@@ -831,9 +831,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"It seems like you have activated model offloading by calling `enable_model_cpu_offload`, but are now manually moving the pipeline to GPU. It is strongly recommended against doing so as memory gains from offloading are likely to be lost. Offloading automatically takes care of moving the individual components {', '.join(self.components.keys())} to GPU when needed. To make sure offloading works as expected, you should consider moving the pipeline back to CPU: `pipeline.to('cpu')` or removing the move altogether if you use offloading."
             )
 
-        expected_modules, optional_parameters = self._get_signature_keys(self)
-        module_names = list(expected_modules) + list(optional_parameters)
-
+        module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
@@ -874,9 +872,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             `torch.device`: The torch device on which the pipeline is located.
         """
-        expected_modules, optional_parameters = self._get_signature_keys(self)
-        module_names = list(expected_modules) + list(optional_parameters)
-
+        module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
@@ -891,9 +887,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             `torch.dtype`: The torch dtype on which the pipeline is located.
         """
-        expected_modules, optional_parameters = self._get_signature_keys(self)
-        module_names = list(expected_modules) + list(optional_parameters)
-
+        module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
@@ -1900,12 +1894,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     " above."
                 ) from model_info_call_error
 
-    @staticmethod
-    def _get_signature_keys(obj):
+    @classmethod
+    def _get_signature_keys(cls, obj):
         parameters = inspect.signature(obj.__init__).parameters
         required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
         expected_modules = set(required_parameters.keys()) - {"self"}
+
+        optional_names = list(optional_parameters)
+        for name in optional_names:
+            if name in cls._optional_components:
+                expected_modules.add(name)
+                optional_parameters.remove(name)
+
         return expected_modules, optional_parameters
 
     @property
@@ -1932,18 +1933,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         expected_modules, optional_parameters = self._get_signature_keys(self)
-        for name in optional_parameters:
-            if name in self._optional_components:
-                expected_modules.add(name)
-
-        def is_component(name):
-            if name.startswith("_"):
-                return False
-            if name in optional_parameters and name not in self._optional_components:
-                return False
-            return True
-
-        components = {k: getattr(self, k) for k in self.config.keys() if is_component(k)}
+        components = {
+            k: getattr(self, k) for k in self.config.keys() if not k.startswith("_") and k not in optional_parameters
+        }
 
         if set(components.keys()) != expected_modules:
             raise ValueError(
@@ -2032,8 +2024,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             for child in module.children():
                 fn_recursive_set_mem_eff(child)
 
-        expected_modules, optional_parameters = self._get_signature_keys(self)
-        module_names = list(expected_modules) + list(optional_parameters)
+        module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module)]
 
@@ -2089,9 +2080,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self.enable_attention_slicing(None)
 
     def set_attention_slice(self, slice_size: Optional[int]):
-        expected_modules, optional_parameters = self._get_signature_keys(self)
-        module_names = list(expected_modules) + list(optional_parameters)
-
+        module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
         modules = [m for m in modules if isinstance(m, torch.nn.Module) and hasattr(m, "set_attention_slice")]
 
