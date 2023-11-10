@@ -110,13 +110,20 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         num_inference_steps = inputs["num_inference_steps"]
         output_type = inputs["output_type"]
 
-        prompt_embeds, negative_prompt_embeds = pipe.encode_prompt(prompt)
+        (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
+        ) = pipe.encode_prompt(prompt)
 
         # inputs with prompt converted to embeddings
         inputs = {
             "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attention_mask,
             "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": negative_prompt_attention_mask,
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
@@ -149,8 +156,10 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # inputs with prompt converted to embeddings
         inputs = {
             "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attention_mask,
             "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": negative_prompt_attention_mask,
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
@@ -208,13 +217,15 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         num_inference_steps = inputs["num_inference_steps"]
         output_type = inputs["output_type"]
 
-        prompt_embeds, negative_prompt_embeds = pipe.encode_prompt(prompt)
+        prompt_embeds, prompt_attn_mask, negative_prompt_embeds, neg_prompt_attn_mask = pipe.encode_prompt(prompt)
 
         # inputs with prompt converted to embeddings
         inputs = {
             "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attn_mask,
             "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": neg_prompt_attn_mask,
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
@@ -270,13 +281,13 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["num_images_per_prompt"] = 4
+        inputs["num_images_per_prompt"] = 2
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
         slice = image_slice.flattent().tolist()
         print(", ".join([str(round(x, 4)) for x in slice]))
 
-        self.assertEqual(image.shape, (4, 8, 8, 3))
+        self.assertEqual(image.shape, (2, 8, 8, 3))
         expected_slice = np.array([0.5303, 0.2658, 0.7979, 0.1182, 0.3304, 0.4608, 0.5195, 0.4261, 0.4675])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)

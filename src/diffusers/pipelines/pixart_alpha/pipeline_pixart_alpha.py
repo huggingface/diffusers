@@ -126,6 +126,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
     ):
         r"""
@@ -189,10 +191,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     f" {max_length} tokens: {removed_text}"
                 )
 
-            attention_mask = text_inputs.attention_mask
-            prompt_embeds_attn_mask = attention_mask.to(device)
+            prompt_attention_mask = text_inputs.attention_mask
+            prompt_attention_mask = prompt_attention_mask.to(device)
 
-            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_embeds_attn_mask)
+            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)
             prompt_embeds = prompt_embeds[0]
 
         if self.text_encoder is not None:
@@ -208,8 +210,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_attn_mask = prompt_embeds_attn_mask.view(bs_embed, -1)
-        prompt_embeds_attn_mask = prompt_embeds_attn_mask.repeat(num_images_per_prompt, 1)
+        prompt_attention_mask = prompt_attention_mask.view(bs_embed, -1)
+        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -225,11 +227,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 add_special_tokens=True,
                 return_tensors="pt",
             )
-            neg_prompt_embeds_attn_mask = uncond_input.attention_mask
-            neg_prompt_embeds_attn_mask = neg_prompt_embeds_attn_mask.to(device)
+            negative_prompt_attention_mask = uncond_input.attention_mask
+            negative_prompt_attention_mask = negative_prompt_attention_mask.to(device)
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device), attention_mask=neg_prompt_embeds_attn_mask
+                uncond_input.input_ids.to(device), attention_mask=negative_prompt_attention_mask
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
@@ -242,13 +244,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            neg_prompt_embeds_attn_mask = neg_prompt_embeds_attn_mask.view(bs_embed, -1)
-            neg_prompt_embeds_attn_mask = neg_prompt_embeds_attn_mask.repeat(num_images_per_prompt, 1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.view(bs_embed, -1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
         else:
             negative_prompt_embeds = None
-            neg_prompt_embeds_attn_mask = None
+            negative_prompt_attention_mask = None
 
-        return prompt_embeds, prompt_embeds_attn_mask, negative_prompt_embeds, neg_prompt_embeds_attn_mask
+        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -277,6 +279,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback_steps,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        prompt_attention_mask=None,
+        negative_prompt_attention_mask=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -313,12 +317,24 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
 
+        if prompt_embeds is not None and prompt_attention_mask is None:
+            raise ValueError("Mask provide `prompt_attention_mask` when specifying `prompt_embeds`.")
+
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError("Mask provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
+
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
+                )
+            if prompt_attention_mask.shape != negative_prompt_attention_mask.shape:
+                raise ValueError(
+                    "`prompt_attention_mask` and `negative_prompt_attention_mask` must have the same shape when passed directly, but"
+                    f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
+                    f" {negative_prompt_attention_mask.shape}."
                 )
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
@@ -495,7 +511,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -544,9 +562,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            prompt_attention_mask (`torch.FloatTensor`, *optional*): Pre-generated attention mask for text embeddings.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt should be "". If not
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
+            negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
+                Pre-generated attention mask for negative text embeddings.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -574,7 +595,15 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
         self.check_inputs(
-            prompt, height, width, negative_prompt, callback_steps, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            negative_prompt,
+            callback_steps,
+            prompt_embeds,
+            negative_prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_attention_mask,
         )
 
         # 2. Default height and width to transformer
@@ -593,7 +622,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, prompt_attn_mask, negative_prompt_embeds, neg_prompt_attn_mask = self.encode_prompt(
+        (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
+        ) = self.encode_prompt(
             prompt,
             do_classifier_free_guidance,
             negative_prompt=negative_prompt,
@@ -601,11 +635,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             device=device,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
             clean_caption=clean_caption,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            prompt_attn_mask = torch.cat([neg_prompt_attn_mask, prompt_attn_mask], dim=0)
+            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -663,7 +699,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
-                    encoder_attention_mask=prompt_attn_mask,
+                    encoder_attention_mask=prompt_attention_mask,
                     timestep=current_timestep,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
