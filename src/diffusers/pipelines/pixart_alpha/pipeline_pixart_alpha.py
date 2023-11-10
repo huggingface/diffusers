@@ -156,7 +156,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             mask_feature: (bool, defaults to `True`):
                 If `True`, the function will mask the text embeddings.
         """
-        embeds_initially_provided = prompt_embeds is not None and negative_prompt_embeds is not None
 
         if device is None:
             device = self._execution_device
@@ -193,13 +192,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     f" {max_length} tokens: {removed_text}"
                 )
 
-            attention_mask = text_inputs.attention_mask.to(device)
-            prompt_embeds_attention_mask = attention_mask
+            attention_mask = text_inputs.attention_mask
+            prompt_embeds_attn_mask = attention_mask.to(device)
 
-            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_embeds_attn_mask)
             prompt_embeds = prompt_embeds[0]
-        else:
-            prompt_embeds_attention_mask = torch.ones_like(prompt_embeds)
 
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
@@ -214,8 +211,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_attention_mask = prompt_embeds_attention_mask.view(bs_embed, -1)
-        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(num_images_per_prompt, 1)
+        prompt_embeds_attn_mask = prompt_embeds_attn_mask.view(bs_embed, -1)
+        prompt_embeds_attn_mask = prompt_embeds_attn_mask.repeat(num_images_per_prompt, 1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -231,11 +228,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 add_special_tokens=True,
                 return_tensors="pt",
             )
-            attention_mask = uncond_input.attention_mask.to(device)
+            neg_prompt_embeds_attn_mask = uncond_input.attention_mask
+            neg_prompt_embeds_attn_mask = neg_prompt_embeds_attn_mask.to(device)
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
+                uncond_input.input_ids.to(device), attention_mask=neg_prompt_embeds_attn_mask
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
@@ -248,23 +245,23 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
+            neg_prompt_embeds_attn_mask = neg_prompt_embeds_attn_mask.view(bs_embed, -1)
+            neg_prompt_embeds_attn_mask = neg_prompt_embeds_attn_mask.repeat(num_images_per_prompt, 1)
         else:
             negative_prompt_embeds = None
+            neg_prompt_embeds_attn_mask = None
 
         # Perform additional masking.
-        if mask_feature and not embeds_initially_provided:
-            prompt_embeds = prompt_embeds.unsqueeze(1)
-            masked_prompt_embeds, keep_indices = self.mask_text_embeddings(prompt_embeds, prompt_embeds_attention_mask)
-            masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
-            masked_negative_prompt_embeds = (
-                negative_prompt_embeds[:, :keep_indices, :] if negative_prompt_embeds is not None else None
-            )
-            return masked_prompt_embeds, masked_negative_prompt_embeds
+        # if mask_feature and not embeds_initially_provided:
+        #     prompt_embeds = prompt_embeds.unsqueeze(1)
+        #     masked_prompt_embeds, keep_indices = self.mask_text_embeddings(prompt_embeds, prompt_embeds_attention_mask)
+        #     masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
+        #     masked_negative_prompt_embeds = (
+        #         negative_prompt_embeds[:, :keep_indices, :] if negative_prompt_embeds is not None else None
+        #     )
+        #     return masked_prompt_embeds, masked_negative_prompt_embeds
 
-        return prompt_embeds, negative_prompt_embeds
+        return prompt_embeds, prompt_embeds_attn_mask, negative_prompt_embeds, neg_prompt_embeds_attn_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -611,7 +608,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_embeds, prompt_attn_mask, negative_prompt_embeds, neg_prompt_attn_mask = self.encode_prompt(
             prompt,
             do_classifier_free_guidance,
             negative_prompt=negative_prompt,
@@ -623,7 +620,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             mask_feature=mask_feature,
         )
         if do_classifier_free_guidance:
-            prompt_embeds = torch.cat([prompt_embeds, negative_prompt_embeds], dim=0)
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            prompt_attn_mask = torch.cat([prompt_attn_mask, neg_prompt_attn_mask], dim=0)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -681,6 +679,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=prompt_attn_mask,
                     timestep=current_timestep,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
@@ -688,7 +687,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_text, noise_pred_uncond  = noise_pred.chunk(2)
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # learned sigma
