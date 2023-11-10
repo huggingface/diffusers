@@ -6,6 +6,7 @@ from ...utils import (
     _LazyModule,
     get_objects_from_module,
     is_torch_available,
+    is_torchvision_available,
     is_transformers_available,
 )
 
@@ -15,7 +16,7 @@ _import_structure = {}
 
 
 try:
-    if not (is_transformers_available() and is_torch_available()):
+    if not (is_transformers_available() and is_torch_available() and is_torchvision_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils import dummy_torch_and_transformers_objects  # noqa F403
@@ -26,7 +27,7 @@ else:
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
-        if not (is_transformers_available() and is_torch_available()):
+        if not (is_transformers_available() and is_torch_available() and is_torchvision_available()):
             raise OptionalDependencyNotAvailable()
 
     except OptionalDependencyNotAvailable:
