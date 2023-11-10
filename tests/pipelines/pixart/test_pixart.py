@@ -259,8 +259,10 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # inputs with prompt converted to embeddings
         inputs = {
             "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attn_mask,
             "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": neg_prompt_attn_mask,
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
@@ -284,8 +286,6 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["num_images_per_prompt"] = 2
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        slice = image_slice.flatten().tolist()
-        print(", ".join([str(round(x, 4)) for x in slice]))
 
         self.assertEqual(image.shape, (2, 8, 8, 3))
         expected_slice = np.array([0.5303, 0.2658, 0.7979, 0.1182, 0.3304, 0.4608, 0.5195, 0.4261, 0.4675])
