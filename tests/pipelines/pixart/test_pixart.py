@@ -110,7 +110,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         num_inference_steps = inputs["num_inference_steps"]
         output_type = inputs["output_type"]
 
-        prompt_embeds, negative_prompt_embeds = pipe.encode_prompt(prompt, mask_feature=False)
+        prompt_embeds, negative_prompt_embeds = pipe.encode_prompt(prompt)
 
         # inputs with prompt converted to embeddings
         inputs = {
