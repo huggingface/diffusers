@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Loaders
 
-Adapters (textual inversion, LoRA, hypernetworks) allow you to modify a diffusion model to generate images in a specific style without training or finetuning the entire model. The adapter weights are typically only a tiny fraction of the pretrained model making them very portable. 🤗 Diffusers provides an easy-to-use `LoaderMixin` API to load adapter weights.
+Adapters (textual inversion, LoRA, hypernetworks) allow you to modify a diffusion model to generate images in a specific style without training or finetuning the entire model. The adapter weights are very portable because they're typically only a tiny fraction of the pretrained model weights. 🤗 Diffusers provides an easy-to-use `LoaderMixin` API to load adapter weights.
 
 <Tip warning={true}>
 
