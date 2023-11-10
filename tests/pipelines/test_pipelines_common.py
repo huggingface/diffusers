@@ -332,6 +332,7 @@ class PipelineTesterMixin:
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:
+                print(os.listdir(tmpdir))
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
 
             for name in pipe_loaded.components.keys():
