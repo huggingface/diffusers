@@ -646,6 +646,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return True
 
         model_index_dict = {k: v for k, v in model_index_dict.items() if is_saveable_module(k, v)}
+        print(f"From save_pretrained: {model_index_dict.keys()}")
         for pipeline_component_name in model_index_dict.keys():
             print(f"From save_pretrained: {pipeline_component_name}")
             sub_model = getattr(self, pipeline_component_name)
@@ -683,7 +684,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 continue
 
             save_method = getattr(sub_model, save_method_name)
-            
+
             # Call the save method with the argument safe_serialization only if it's supported
             save_method_signature = inspect.signature(save_method)
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
