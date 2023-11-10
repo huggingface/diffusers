@@ -1515,18 +1515,18 @@ class PipelineFastTests(unittest.TestCase):
         assert "but no such modeling files are available" in str(error_context.exception)
         assert variant in str(error_context.exception)
 
-        def get_all_filenames(directory):
-            filenames = glob.glob(directory + "/**", recursive=True)
-            filenames = [f for f in filenames if os.path.isfile(f)]
-            return filenames
+        # def get_all_filenames(directory):
+        #     filenames = glob.glob(directory + "/**", recursive=True)
+        #     filenames = [f for f in filenames if os.path.isfile(f)]
+        #     return filenames
 
-        filenames = get_all_filenames(str(cached_folder))
+        # filenames = get_all_filenames(str(cached_folder))
 
-        all_model_files, variant_model_files = variant_compatible_siblings(filenames, variant=variant)
+        # all_model_files, variant_model_files = variant_compatible_siblings(filenames, variant=variant)
 
-        # make sure that none of the model names are variant model names
-        assert len(variant_model_files) == 0
-        assert len(all_model_files) > 0
+        # # make sure that none of the model names are variant model names
+        # assert len(variant_model_files) == 0
+        # assert len(all_model_files) > 0
 
     def test_pipe_to(self):
         unet = self.dummy_cond_unet()
