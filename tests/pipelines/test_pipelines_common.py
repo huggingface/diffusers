@@ -524,7 +524,6 @@ class PipelineTesterMixin:
         pipe = self.pipeline_class(**init_components)
 
         self.assertTrue(hasattr(pipe, "components"))
-        import ipdb; ipdb.set_trace()
         self.assertTrue(set(pipe.components.keys()) == set(init_components.keys()))
 
     @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
