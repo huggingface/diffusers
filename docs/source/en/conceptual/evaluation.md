@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Evaluating Diffusion Models
 
-<a target="_blank" href="https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/evaluation.ipynb">                                                                                                                                                                                                                                                                                                                                                            
-    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>                                                                                                                                                 
-</a>   
+<a target="_blank" href="https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/evaluation.ipynb">
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a>
 
 Evaluation of generative models like [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) is subjective in nature. But as practitioners and researchers, we often have to make careful choices amongst many different possibilities. So, when working with different generative models (like GANs, Diffusion, etc.), how do we choose one over the other?
 
@@ -23,7 +23,7 @@ However, quantitative metrics don't necessarily correspond to image quality. So,
 of both qualitative and quantitative evaluations provides a stronger signal when choosing one model
 over the other.
 
-In this document, we provide a non-exhaustive overview of qualitative and quantitative methods to evaluate Diffusion models. For quantitative methods, we specifically focus on how to implement them alongside `diffusers`. 
+In this document, we provide a non-exhaustive overview of qualitative and quantitative methods to evaluate Diffusion models. For quantitative methods, we specifically focus on how to implement them alongside `diffusers`.
 
 The methods shown in this document can also be used to evaluate different [noise schedulers](https://huggingface.co/docs/diffusers/main/en/api/schedulers/overview) keeping the underlying generation model fixed.
 
@@ -38,9 +38,9 @@ We cover Diffusion models with the following pipelines:
 ## Qualitative Evaluation
 
 Qualitative evaluation typically involves human assessment of generated images. Quality is measured across aspects such as compositionality, image-text alignment, and spatial relations. Common prompts provide a degree of uniformity for subjective metrics.
-DrawBench and PartiPrompts are prompt datasets used for qualitative benchmarking. DrawBench and PartiPrompts were introduced by [Imagen](https://imagen.research.google/) and [Parti](https://parti.research.google/) respectively. 
+DrawBench and PartiPrompts are prompt datasets used for qualitative benchmarking. DrawBench and PartiPrompts were introduced by [Imagen](https://imagen.research.google/) and [Parti](https://parti.research.google/) respectively.
 
-From the [official Parti website](https://parti.research.google/): 
+From the [official Parti website](https://parti.research.google/):
 
 > PartiPrompts (P2) is a rich set of over 1600 prompts in English that we release as part of this work. P2 can be used to measure model capabilities across various categories and challenge aspects.
 
@@ -52,13 +52,13 @@ PartiPrompts has the following columns:
 - Category of the prompt (such as “Abstract”, “World Knowledge”, etc.)
 - Challenge reflecting the difficulty (such as “Basic”, “Complex”, “Writing & Symbols”, etc.)
 
-These benchmarks allow for side-by-side human evaluation of different image generation models. 
+These benchmarks allow for side-by-side human evaluation of different image generation models.
 
 For this, the 🧨 Diffusers team has built **Open Parti Prompts**, which is a community-driven qualitative benchmark based on Parti Prompts to compare state-of-the-art open-source diffusion models:
 - [Open Parti Prompts Game](https://huggingface.co/spaces/OpenGenAI/open-parti-prompts): For 10 parti prompts, 4 generated images are shown and the user selects the image that suits the prompt best.
 - [Open Parti Prompts Leaderboard](https://huggingface.co/spaces/OpenGenAI/parti-prompts-leaderboard): The leaderboard comparing the currently best open-sourced diffusion models to each other.
 
-To manually compare images, let’s see how we can use `diffusers` on a couple of PartiPrompts. 
+To manually compare images, let’s see how we can use `diffusers` on a couple of PartiPrompts.
 
 Below we show some prompts sampled across different challenges: Basic, Complex, Linguistic Structures, Imagination, and Writing & Symbols. Here we are using PartiPrompts as a [dataset](https://huggingface.co/datasets/nateraw/parti-prompts).
 
@@ -92,16 +92,16 @@ images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generato
 
 ![parti-prompts-14](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-14.png)
 
-We can also set `num_images_per_prompt` accordingly to compare different images for the same prompt. Running the same pipeline but with a different checkpoint ([v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)), yields: 
+We can also set `num_images_per_prompt` accordingly to compare different images for the same prompt. Running the same pipeline but with a different checkpoint ([v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)), yields:
 
 ![parti-prompts-15](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-15.png)
 
 Once several images are generated from all the prompts using multiple models (under evaluation), these results are presented to human evaluators for scoring. For
-more details on the DrawBench and PartiPrompts benchmarks, refer to their respective papers.  
+more details on the DrawBench and PartiPrompts benchmarks, refer to their respective papers.
 
-<Tip> 
+<Tip>
 
-It is useful to look at some inference samples while a model is training to measure the 
+It is useful to look at some inference samples while a model is training to measure the
 training progress. In our [training scripts](https://github.com/huggingface/diffusers/tree/main/examples/), we support this utility with additional support for
 logging to TensorBoard and Weights & Biases.
 
@@ -177,7 +177,7 @@ generator = torch.manual_seed(seed)
 images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
 
-Then we load the [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffusion-v1-5) to generate images: 
+Then we load the [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffusion-v1-5) to generate images:
 
 ```python
 model_ckpt_1_5 = "runwayml/stable-diffusion-v1-5"
@@ -205,7 +205,7 @@ It seems like the [v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) 
 By construction, there are some limitations in this score. The captions in the training dataset
 were crawled from the web and extracted from `alt` and similar tags associated an image on the internet.
 They are not necessarily representative of what a human being would use to describe an image. Hence we
-had to "engineer" some prompts here. 
+had to "engineer" some prompts here.
 
 </Tip>
 
@@ -551,15 +551,15 @@ FID results tend to be fragile as they depend on a lot of factors:
 * The implementation accuracy of the computation.
 * The image format (not the same if we start from PNGs vs JPGs).
 
-Keeping that in mind, FID is often most useful when comparing similar runs, but it is 
-hard to reproduce paper results unless the authors carefully disclose the FID 
+Keeping that in mind, FID is often most useful when comparing similar runs, but it is
+hard to reproduce paper results unless the authors carefully disclose the FID
 measurement code.
 
-These points apply to other related metrics too, such as KID and IS. 
+These points apply to other related metrics too, such as KID and IS.
 
 </Tip>
 
-As a final step, let's visually inspect the `fake_images`. 
+As a final step, let's visually inspect the `fake_images`.
 
 <p align="center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/fake-images.png" alt="fake-images"><br>
