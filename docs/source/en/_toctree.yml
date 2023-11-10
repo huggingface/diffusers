@@ -135,7 +135,7 @@
     - local: optimization/memory
       title: Reduce memory usage
     - local: optimization/torch2.0
-      title: Torch 2.0
+      title: PyTorch 2.0
     - local: optimization/xformers
       title: xFormers
     - local: optimization/tome
