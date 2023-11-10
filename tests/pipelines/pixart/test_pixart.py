@@ -284,7 +284,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs["num_images_per_prompt"] = 2
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        slice = image_slice.flattent().tolist()
+        slice = image_slice.flatten().tolist()
         print(", ".join([str(round(x, 4)) for x in slice]))
 
         self.assertEqual(image.shape, (2, 8, 8, 3))

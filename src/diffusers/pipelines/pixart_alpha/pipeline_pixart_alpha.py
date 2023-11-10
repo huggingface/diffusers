@@ -282,6 +282,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
     ):
+        print(f"From check inputs: {prompt_embeds is not None and prompt_attention_mask is None}")
+        print(f"From check inputs: {negative_prompt_embeds is not None and negative_prompt_attention_mask is None}")
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -318,10 +320,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             )
 
         if prompt_embeds is not None and prompt_attention_mask is None:
-            raise ValueError("Mask provide `prompt_attention_mask` when specifying `prompt_embeds`.")
+            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
 
         if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
-            raise ValueError("Mask provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
+            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
