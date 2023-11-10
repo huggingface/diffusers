@@ -768,13 +768,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if len(index_candidates) == 0:
             step_index = len(self.timesteps) - 1
         # The sigma index that is taken for the **very** first `step`
-        # is always the second index (or the last index if there is only 1)
-        # This way we can ensure we don't accidentally skip a sigma in
-        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        elif len(index_candidates) > 1:
-            step_index = index_candidates[1].item()
-        else:
-            step_index = index_candidates[0].item()
+        # is always the first index. This way we can ensure we don't accidentally skip a sigma in
+        # case we start with a duplicated timestep
+        step_index = index_candidates[0].item()
 
         self._step_index = step_index
 
@@ -885,7 +881,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        step_indices = [(schedule_timesteps == t).nonzero()[0].item() for t in timesteps]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
