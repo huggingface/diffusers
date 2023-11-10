@@ -24,7 +24,7 @@ import numpy as np
 from .import_utils import is_torch_available
 
 
-def is_tensor(x):
+def is_tensor(x) -> bool:
     """
     Tests if `x` is a `torch.Tensor` or `np.ndarray`.
     """
@@ -66,7 +66,7 @@ class BaseOutput(OrderedDict):
                 lambda values, context: cls(**torch.utils._pytree._dict_unflatten(values, context)),
             )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         class_fields = fields(self)
 
         # Safety and consistency checks
@@ -97,14 +97,14 @@ class BaseOutput(OrderedDict):
     def update(self, *args, **kwargs):
         raise Exception(f"You cannot use ``update`` on a {self.__class__.__name__} instance.")
 
-    def __getitem__(self, k):
+    def __getitem__(self, k: Any) -> Any:
         if isinstance(k, str):
             inner_dict = dict(self.items())
             return inner_dict[k]
         else:
             return self.to_tuple()[k]
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: Any, value: Any) -> None:
         if name in self.keys() and value is not None:
             # Don't call self.__setitem__ to avoid recursion errors
             super().__setitem__(name, value)
@@ -123,7 +123,7 @@ class BaseOutput(OrderedDict):
         args = tuple(getattr(self, field.name) for field in fields(self))
         return callable, args, *remaining
 
-    def to_tuple(self) -> Tuple[Any]:
+    def to_tuple(self) -> Tuple[Any, ...]:
         """
         Convert self to a tuple containing all the attributes/keys that are not `None`.
         """
