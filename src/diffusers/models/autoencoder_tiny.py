@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -307,7 +307,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         return AutoencoderTinyOutput(latents=output)
 
     @apply_forward_hook
-    def decode(self, x: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
+    def decode(
+        self, x: torch.FloatTensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         if self.use_slicing and x.shape[0] > 1:
             output = [self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x) for x_slice in x.split(1)]
             output = torch.cat(output)

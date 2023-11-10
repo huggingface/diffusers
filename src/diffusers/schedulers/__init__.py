@@ -38,6 +38,7 @@ except OptionalDependencyNotAvailable:
     _dummy_modules.update(get_objects_from_module(dummy_pt_objects))
 
 else:
+    _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
     _import_structure["scheduling_ddim_inverse"] = ["DDIMInverseScheduler"]
@@ -128,6 +129,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
         from .scheduling_ddim import DDIMScheduler
         from .scheduling_ddim_inverse import DDIMInverseScheduler

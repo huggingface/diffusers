@@ -158,9 +158,9 @@ def is_safetensors_compatible(filenames, variant=None, passed_components=None) -
             continue
 
         if extension == ".bin":
-            pt_filenames.append(filename)
+            pt_filenames.append(os.path.normpath(filename))
         elif extension == ".safetensors":
-            sf_filenames.add(filename)
+            sf_filenames.add(os.path.normpath(filename))
 
     for filename in pt_filenames:
         #  filename = 'foo/bar/baz.bam' -> path = 'foo/bar', filename = 'baz', extention = '.bam'
@@ -172,9 +172,8 @@ def is_safetensors_compatible(filenames, variant=None, passed_components=None) -
         else:
             filename = filename
 
-        expected_sf_filename = os.path.join(path, filename)
+        expected_sf_filename = os.path.normpath(os.path.join(path, filename))
         expected_sf_filename = f"{expected_sf_filename}.safetensors"
-
         if expected_sf_filename not in sf_filenames:
             logger.warning(f"{expected_sf_filename} not found")
             return False
@@ -353,13 +352,18 @@ def _get_pipeline_class(
         else:
             file_name = CUSTOM_PIPELINE_FILE_NAME
 
+        if repo_id is not None and hub_revision is not None:
+            # if we load the pipeline code from the Hub
+            # make sure to overwrite the `revison`
+            revision = hub_revision
+
         return get_class_from_dynamic_module(
             custom_pipeline,
             module_file=file_name,
             class_name=class_name,
             repo_id=repo_id,
             cache_dir=cache_dir,
-            revision=revision if hub_revision is None else hub_revision,
+            revision=revision,
         )
 
     if class_obj != DiffusionPipeline:
@@ -1669,7 +1673,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             for component in folder_names:
                 module_candidate = config_dict[component][0]
 
-                if module_candidate is None:
+                if module_candidate is None or not isinstance(module_candidate, str):
                     continue
 
                 candidate_file = os.path.join(component, module_candidate + ".py")
@@ -1769,7 +1773,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 )
             ):
                 raise EnvironmentError(
-                    f"Could not found the necessary `safetensors` weights in {model_filenames} (variant={variant})"
+                    f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
                 )
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]

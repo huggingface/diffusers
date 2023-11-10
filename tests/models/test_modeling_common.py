@@ -196,11 +196,15 @@ class UNetTesterMixin:
 class ModelTesterMixin:
     main_input_name = None  # overwrite in model specific tester class
     base_precision = 1e-3
+    forward_requires_fresh_args = False
 
     def test_from_save_pretrained(self, expected_max_diff=5e-5):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
 
-        model = self.model_class(**init_dict)
         if hasattr(model, "set_default_attn_processor"):
             model.set_default_attn_processor()
         model.to(torch_device)
@@ -214,11 +218,18 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
-            image = model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                image = model(**self.inputs_dict(0))
+            else:
+                image = model(**inputs_dict)
+
             if isinstance(image, dict):
                 image = image.to_tuple()[0]
 
-            new_image = new_model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                new_image = new_model(**self.inputs_dict(0))
+            else:
+                new_image = new_model(**inputs_dict)
 
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
@@ -275,8 +286,11 @@ class ModelTesterMixin:
     )
     def test_set_xformers_attn_processor_for_determinism(self):
         torch.use_deterministic_algorithms(False)
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
         model.to(torch_device)
 
         if not hasattr(model, "set_attn_processor"):
@@ -286,54 +300,78 @@ class ModelTesterMixin:
         model.set_default_attn_processor()
         assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
-            output = model(**inputs_dict)[0]
+            if self.forward_requires_fresh_args:
+                output = model(**self.inputs_dict(0))[0]
+            else:
+                output = model(**inputs_dict)[0]
 
         model.enable_xformers_memory_efficient_attention()
         assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
-            output_2 = model(**inputs_dict)[0]
-
-        assert torch.allclose(output, output_2, atol=self.base_precision)
-
-    @require_torch_gpu
-    def test_set_attn_processor_for_determinism(self):
-        torch.use_deterministic_algorithms(False)
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        if not hasattr(model, "set_attn_processor"):
-            # If not has `set_attn_processor`, skip test
-            return
-
-        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
-        with torch.no_grad():
-            output_1 = model(**inputs_dict)[0]
-
-        model.set_default_attn_processor()
-        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
-        with torch.no_grad():
-            output_2 = model(**inputs_dict)[0]
-
-        model.enable_xformers_memory_efficient_attention()
-        assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
-        with torch.no_grad():
-            model(**inputs_dict)[0]
-
-        model.set_attn_processor(AttnProcessor2_0())
-        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
-        with torch.no_grad():
-            output_4 = model(**inputs_dict)[0]
-
-        model.set_attn_processor(AttnProcessor())
-        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
-        with torch.no_grad():
-            output_5 = model(**inputs_dict)[0]
+            if self.forward_requires_fresh_args:
+                output_2 = model(**self.inputs_dict(0))[0]
+            else:
+                output_2 = model(**inputs_dict)[0]
 
         model.set_attn_processor(XFormersAttnProcessor())
         assert all(type(proc) == XFormersAttnProcessor for proc in model.attn_processors.values())
         with torch.no_grad():
-            output_6 = model(**inputs_dict)[0]
+            if self.forward_requires_fresh_args:
+                output_3 = model(**self.inputs_dict(0))[0]
+            else:
+                output_3 = model(**inputs_dict)[0]
+
+        torch.use_deterministic_algorithms(True)
+
+        assert torch.allclose(output, output_2, atol=self.base_precision)
+        assert torch.allclose(output, output_3, atol=self.base_precision)
+        assert torch.allclose(output_2, output_3, atol=self.base_precision)
+
+    @require_torch_gpu
+    def test_set_attn_processor_for_determinism(self):
+        torch.use_deterministic_algorithms(False)
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
+
+        model.to(torch_device)
+
+        if not hasattr(model, "set_attn_processor"):
+            # If not has `set_attn_processor`, skip test
+            return
+
+        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_1 = model(**self.inputs_dict(0))[0]
+            else:
+                output_1 = model(**inputs_dict)[0]
+
+        model.set_default_attn_processor()
+        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_2 = model(**self.inputs_dict(0))[0]
+            else:
+                output_2 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(AttnProcessor2_0())
+        assert all(type(proc) == AttnProcessor2_0 for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_4 = model(**self.inputs_dict(0))[0]
+            else:
+                output_4 = model(**inputs_dict)[0]
+
+        model.set_attn_processor(AttnProcessor())
+        assert all(type(proc) == AttnProcessor for proc in model.attn_processors.values())
+        with torch.no_grad():
+            if self.forward_requires_fresh_args:
+                output_5 = model(**self.inputs_dict(0))[0]
+            else:
+                output_5 = model(**inputs_dict)[0]
 
         torch.use_deterministic_algorithms(True)
 
@@ -341,12 +379,14 @@ class ModelTesterMixin:
         assert torch.allclose(output_2, output_1, atol=self.base_precision)
         assert torch.allclose(output_2, output_4, atol=self.base_precision)
         assert torch.allclose(output_2, output_5, atol=self.base_precision)
-        assert torch.allclose(output_2, output_6, atol=self.base_precision)
 
     def test_from_save_pretrained_variant(self, expected_max_diff=5e-5):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
 
-        model = self.model_class(**init_dict)
         if hasattr(model, "set_default_attn_processor"):
             model.set_default_attn_processor()
 
@@ -369,11 +409,17 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
-            image = model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                image = model(**self.inputs_dict(0))
+            else:
+                image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.to_tuple()[0]
 
-            new_image = new_model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                new_image = new_model(**self.inputs_dict(0))
+            else:
+                new_image = new_model(**inputs_dict)
 
             if isinstance(new_image, dict):
                 new_image = new_image.to_tuple()[0]
@@ -407,17 +453,26 @@ class ModelTesterMixin:
                 assert new_model.dtype == dtype
 
     def test_determinism(self, expected_max_diff=1e-5):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
 
         with torch.no_grad():
-            first = model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                first = model(**self.inputs_dict(0))
+            else:
+                first = model(**inputs_dict)
             if isinstance(first, dict):
                 first = first.to_tuple()[0]
 
-            second = model(**inputs_dict)
+            if self.forward_requires_fresh_args:
+                second = model(**self.inputs_dict(0))
+            else:
+                second = model(**inputs_dict)
             if isinstance(second, dict):
                 second = second.to_tuple()[0]
 
@@ -550,15 +605,22 @@ class ModelTesterMixin:
                     ),
                 )
 
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        if self.forward_requires_fresh_args:
+            model = self.model_class(**self.init_dict)
+        else:
+            init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+            model = self.model_class(**init_dict)
 
-        model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
 
         with torch.no_grad():
-            outputs_dict = model(**inputs_dict)
-            outputs_tuple = model(**inputs_dict, return_dict=False)
+            if self.forward_requires_fresh_args:
+                outputs_dict = model(**self.inputs_dict(0))
+                outputs_tuple = model(**self.inputs_dict(0), return_dict=False)
+            else:
+                outputs_dict = model(**inputs_dict)
+                outputs_tuple = model(**inputs_dict, return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)
 

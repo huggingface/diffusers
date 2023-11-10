@@ -8,28 +8,24 @@ The abstract of the [paper](https://arxiv.org/pdf/2310.04378.pdf) is as follows:
 
 A demo for the [SimianLuo/LCM_Dreamshaper_v7](https://huggingface.co/SimianLuo/LCM_Dreamshaper_v7) checkpoint can be found [here](https://huggingface.co/spaces/SimianLuo/Latent_Consistency_Model).
 
-This pipeline was contributed by [luosiallen](https://luosiallen.github.io/) and [dg845](https://github.com/dg845).
+The pipelines were contributed by [luosiallen](https://luosiallen.github.io/), [nagolinc](https://github.com/nagolinc), and [dg845](https://github.com/dg845).
 
-```python
-import torch
-from diffusers import DiffusionPipeline
-
-pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", torch_dtype=torch.float32)
-
-# To save GPU memory, torch.float16 can be used, but it may compromise image quality.
-pipe.to(torch_device="cuda", torch_dtype=torch.float32)
-
-prompt = "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
-
-# Can be set to 1~50 steps. LCM support fast inference even <= 4 steps. Recommend: 1~8 steps.
-num_inference_steps = 4 
-
-images = pipe(prompt=prompt, num_inference_steps=num_inference_steps, guidance_scale=8.0).images
-```
 
 ## LatentConsistencyModelPipeline
 
 [[autodoc]] LatentConsistencyModelPipeline
+    - all
+    - __call__
+    - enable_freeu
+    - disable_freeu
+    - enable_vae_slicing
+    - disable_vae_slicing
+    - enable_vae_tiling
+    - disable_vae_tiling
+
+## LatentConsistencyModelImg2ImgPipeline
+
+[[autodoc]] LatentConsistencyModelImg2ImgPipeline
     - all
     - __call__
     - enable_freeu

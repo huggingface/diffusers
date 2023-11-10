@@ -12,7 +12,7 @@
   - local: tutorials/tutorial_overview
     title: Overview
   - local: using-diffusers/write_own_pipeline
-    title: Understanding models and schedulers
+    title: Understanding pipelines, models and schedulers
   - local: tutorials/autopipeline
     title: AutoPipeline
   - local: tutorials/basic_training
@@ -29,7 +29,7 @@
     - local: using-diffusers/schedulers
       title: Load and compare different schedulers
     - local: using-diffusers/custom_pipeline_overview
-      title: Load community pipelines
+      title: Load community pipelines and components
     - local: using-diffusers/using_safetensors
       title: Load safetensors
     - local: using-diffusers/other-formats
@@ -40,6 +40,8 @@
       title: Push files to the Hub
     title: Loading & Hub
   - sections:
+    - local: using-diffusers/pipeline_overview
+      title: Overview
     - local: using-diffusers/unconditional_image_generation
       title: Unconditional image generation
     - local: using-diffusers/conditional_image_generation
@@ -70,8 +72,14 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
+    - local: using-diffusers/lcm
+      title: Latent Consistency Models
+    - local: using-diffusers/kandinsky
+      title: Kandinsky
     - local: using-diffusers/controlnet
       title: ControlNet
+    - local: using-diffusers/callback
+      title: Callback
     - local: using-diffusers/shap-e
       title: Shap-E
     - local: using-diffusers/diffedit
@@ -127,7 +135,7 @@
     - local: optimization/memory
       title: Reduce memory usage
     - local: optimization/torch2.0
-      title: Torch 2.0
+      title: PyTorch 2.0
     - local: optimization/xformers
       title: xFormers
     - local: optimization/tome
@@ -184,6 +192,8 @@
       title: UNet2DConditionModel
     - local: api/models/unet3d-cond
       title: UNet3DConditionModel
+    - local: api/models/unet-motion
+      title: UNetMotionModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
@@ -192,6 +202,8 @@
       title: AsymmetricAutoencoderKL
     - local: api/models/autoencoder_tiny
       title: Tiny AutoEncoder
+    - local: api/models/consistency_decoder_vae
+      title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal
@@ -206,6 +218,8 @@
       title: Overview
     - local: api/pipelines/alt_diffusion
       title: AltDiffusion
+    - local: api/pipelines/animatediff
+      title: AnimateDiff
     - local: api/pipelines/attend_and_excite
       title: Attend-and-Excite
     - local: api/pipelines/audio_diffusion
@@ -241,7 +255,7 @@
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
-      title: Kandinsky
+      title: Kandinsky 2.1
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
     - local: api/pipelines/latent_consistency_models
@@ -253,11 +267,13 @@
     - local: api/pipelines/musicldm
       title: MusicLDM
     - local: api/pipelines/paint_by_example
-      title: PaintByExample
+      title: Paint By Example
     - local: api/pipelines/paradigms
       title: Parallel Sampling of Diffusion Models
     - local: api/pipelines/pix2pix_zero
       title: Pix2Pix Zero
+    - local: api/pipelines/pixart
+      title: PixArt
     - local: api/pipelines/pndm
       title: PNDM
     - local: api/pipelines/repaint
@@ -298,7 +314,7 @@
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth)
       - local: api/pipelines/stable_diffusion/adapter
-        title: Stable Diffusion T2I-adapter
+        title: Stable Diffusion T2I-Adapter
       - local: api/pipelines/stable_diffusion/gligen
         title: GLIGEN (Grounded Language-to-Image Generation)
       title: Stable Diffusion
@@ -313,7 +329,7 @@
     - local: api/pipelines/text_to_video_zero
       title: Text2Video-Zero
     - local: api/pipelines/unclip
-      title: UnCLIP
+      title: unCLIP
     - local: api/pipelines/latent_diffusion_uncond
       title: Unconditional Latent Diffusion
     - local: api/pipelines/unidiffuser
@@ -332,6 +348,8 @@
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
+    - local: api/schedulers/consistency_decoder
+      title: ConsistencyDecoderScheduler
     - local: api/schedulers/ddim_inverse
       title: DDIMInverseScheduler
     - local: api/schedulers/ddim
@@ -392,5 +410,5 @@
       title: Utilities
     - local: api/image_processor
       title: VAE Image Processor
-    title: Internal classes   
+    title: Internal classes
   title: API
