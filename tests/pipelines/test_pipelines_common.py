@@ -329,6 +329,7 @@ class PipelineTesterMixin:
         logger.setLevel(diffusers.logging.INFO)
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            print(pipe.components.keys())
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
             with CaptureLogger(logger) as cap_logger:
