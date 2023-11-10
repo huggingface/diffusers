@@ -28,7 +28,7 @@ pipe = pipe.to("cuda")
 
 prompt = "slice of delicious New York-style berry cheesecake"
 image = pipe(prompt, num_inference_steps=25).images[0]
-image#.save("cheesecake.png")
+image
 ```
 
 To use with Stable Diffusion XL 1.0
