@@ -185,7 +185,12 @@ def delete_lora_layers(model, adapter_name):
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            module.delete_adapter(adapter_name)
+            if hasattr(module, "delete_adapter"):
+                module.delete_adapter(adapter_name)
+            else:
+                raise ValueError(
+                    "The version of PEFT you are using is not compatible, please use a version that is greater than 0.6.1"
+                )
 
 
 def set_weights_and_activate_adapters(model, adapter_names, weights):
