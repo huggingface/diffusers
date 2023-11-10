@@ -20,7 +20,7 @@ from typing import Optional
 
 from packaging import version
 
-from .import_utils import is_peft_available, is_torch_available
+from .import_utils import is_peft_available
 
 
 def recurse_remove_peft_layers(model):
@@ -35,7 +35,8 @@ def recurse_remove_peft_layers(model):
             parent, target, target_name = _get_submodules(model, key)
         except AttributeError:
             continue
-        setattr(parent, target_name, target.get_base_layer())
+        if hasattr(target, "base_layer"):
+            setattr(parent, target_name, target.get_base_layer())
     return model
 
 
