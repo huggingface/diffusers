@@ -305,7 +305,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
         num_inference_steps: int = 2,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         z = (z * self.config.scaling_factor - self.means) / self.stds
 
         scale_factor = 2 ** (len(self.config.block_out_channels) - 1)
