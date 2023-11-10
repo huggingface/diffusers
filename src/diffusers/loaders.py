@@ -36,7 +36,7 @@ from .utils import (
     convert_state_dict_to_diffusers,
     convert_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
-    delete_lora_layers,
+    delete_adapter_layers,
     deprecate,
     get_adapter_name,
     get_peft_kwargs,
@@ -768,7 +768,7 @@ class UNet2DConditionLoadersMixin:
             adapter_names = [adapter_names]
 
         for adapter_name in adapter_names:
-            delete_lora_layers(self, adapter_name)
+            delete_adapter_layers(self, adapter_name)
 
             # Pop also the corresponding adapter from the config
             if hasattr(self, "peft_config"):
@@ -2549,9 +2549,9 @@ class LoraLoaderMixin:
         for adapter_name in adapter_names:
             # Delete text encoder adapters
             if hasattr(self, "text_encoder"):
-                delete_lora_layers(self.text_encoder, adapter_name)
+                delete_adapter_layers(self.text_encoder, adapter_name)
             if hasattr(self, "text_encoder_2"):
-                delete_lora_layers(self.text_encoder_2, adapter_name)
+                delete_adapter_layers(self.text_encoder_2, adapter_name)
 
     def get_active_adapters(self) -> List[str]:
         """

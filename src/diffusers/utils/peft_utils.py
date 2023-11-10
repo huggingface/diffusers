@@ -180,7 +180,7 @@ def set_adapter_layers(model, enabled=True):
                 module.disable_adapters = not enabled
 
 
-def delete_lora_layers(model, adapter_name):
+def delete_adapter_layers(model, adapter_name):
     from peft.tuners.tuners_utils import BaseTunerLayer
 
     for module in model.modules():
