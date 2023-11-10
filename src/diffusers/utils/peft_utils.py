@@ -192,6 +192,10 @@ def delete_lora_layers(model, adapter_name):
                     "The version of PEFT you are using is not compatible, please use a version that is greater than 0.6.1"
                 )
 
+    # For transformers integration - we need to pop the adapter from the config
+    if getattr(model, "_hf_peft_config_loaded", False) and hasattr(model, "peft_config"):
+        model.peft_config.pop(adapter_name, None)
+
 
 def set_weights_and_activate_adapters(model, adapter_names, weights):
     from peft.tuners.tuners_utils import BaseTunerLayer

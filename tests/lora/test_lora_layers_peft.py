@@ -874,7 +874,6 @@ class PeftLoraLoaderMixinTests:
 
             output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-            # Fuse and unfuse should lead to the same results
             self.assertFalse(
                 np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
                 "Adapter 1 and 2 should give different results",
@@ -890,7 +889,7 @@ class PeftLoraLoaderMixinTests:
                 "Adapter 2 and mixed adapters should give different results",
             )
 
-            pipe.delete_lora("adapter-1")
+            pipe.delete_adapters("adapter-1")
             output_deleted_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
             self.assertTrue(
@@ -898,7 +897,23 @@ class PeftLoraLoaderMixinTests:
                 "Adapter 1 and 2 should give different results",
             )
 
-            pipe.delete_lora("adapter-2")
+            pipe.delete_adapters("adapter-2")
+            output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            self.assertTrue(
+                np.allclose(output_no_lora, output_deleted_adapters, atol=1e-3, rtol=1e-3),
+                "output with no lora and output with lora disabled should give same results",
+            )
+
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+
+            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+
+            pipe.set_adapters(["adapter-1", "adapter-2"])
+            pipe.delete_adapters(["adapter-1", "adapter-2"])
+
             output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0)).images
 
             self.assertTrue(
