@@ -579,7 +579,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         clean_caption: bool = True,
         mask_feature: bool = True,
-        use_resolution_bin: bool = True,
+        use_resolution_binning: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -642,7 +642,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
             mask_feature (`bool` defaults to `True`): If set to `True`, the text embeddings will be masked.
-            use_resolution_bin:
+            use_resolution_binning:
                 (`bool` defaults to `True`): If set to `True`, the requested height and width are first mapped to the
                 closest resolutions using `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images,
                 they are resized back to the requested resolution. Useful for generating non-square images.
@@ -657,7 +657,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
-        if use_resolution_bin:
+        if use_resolution_binning:
             orig_height, orig_width = height, width
             height, width = self.classify_height_width_bin(height, width, ratios=ASPECT_RATIO_1024_BIN)
 
@@ -779,7 +779,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            if use_resolution_bin:
+            if use_resolution_binning:
                 image = self.resize_and_crop_tensor(image, orig_width, orig_height)
         else:
             image = latents
