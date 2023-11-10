@@ -1507,13 +1507,13 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_warning_no_variant_available(self):
         variant = "fp16"
-        with self.assertWarns(FutureWarning) as warning_context:
+        with self.assertRaises(ValueError) as error_context:
             cached_folder = StableDiffusionPipeline.download(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
             )
-
-        assert "but no such modeling files are available" in str(warning_context.warning)
-        assert variant in str(warning_context.warning)
+            
+        assert "but no such modeling files are available" in str(error_context.exception)
+        assert variant in str(error_context.exception)
 
         def get_all_filenames(directory):
             filenames = glob.glob(directory + "/**", recursive=True)
