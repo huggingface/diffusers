@@ -768,6 +768,7 @@ def main(args):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
+            data_dir=args.train_data_dir
         )
     else:
         data_files = {}
