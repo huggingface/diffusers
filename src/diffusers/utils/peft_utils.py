@@ -195,6 +195,11 @@ def delete_lora_layers(model, adapter_name):
     # For transformers integration - we need to pop the adapter from the config
     if getattr(model, "_hf_peft_config_loaded", False) and hasattr(model, "peft_config"):
         model.peft_config.pop(adapter_name, None)
+        # In case all adapters are deleted, we need to delete the config
+        # and make sure to set the flag to False
+        if len(model.peft_config) == 0:
+            del model.peft_config
+            model._hf_peft_config_loaded = None
 
 
 def set_weights_and_activate_adapters(model, adapter_names, weights):

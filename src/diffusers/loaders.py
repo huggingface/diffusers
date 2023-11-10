@@ -770,6 +770,10 @@ class UNet2DConditionLoadersMixin:
         for adapter_name in adapter_names:
             delete_lora_layers(self, adapter_name)
 
+            # Pop also the corresponding adapter from the config
+            if hasattr(self, "peft_config"):
+                self.peft_config.pop(adapter_name, None)
+
 
 def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
     cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
