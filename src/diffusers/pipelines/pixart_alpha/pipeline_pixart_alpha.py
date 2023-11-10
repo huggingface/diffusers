@@ -127,7 +127,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
-        mask_feature: bool = True,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -153,8 +152,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 string.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
-            mask_feature: (bool, defaults to `True`):
-                If `True`, the function will mask the text embeddings.
         """
 
         if device is None:
@@ -250,16 +247,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         else:
             negative_prompt_embeds = None
             neg_prompt_embeds_attn_mask = None
-
-        # Perform additional masking.
-        # if mask_feature and not embeds_initially_provided:
-        #     prompt_embeds = prompt_embeds.unsqueeze(1)
-        #     masked_prompt_embeds, keep_indices = self.mask_text_embeddings(prompt_embeds, prompt_embeds_attention_mask)
-        #     masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
-        #     masked_negative_prompt_embeds = (
-        #         negative_prompt_embeds[:, :keep_indices, :] if negative_prompt_embeds is not None else None
-        #     )
-        #     return masked_prompt_embeds, masked_negative_prompt_embeds
 
         return prompt_embeds, prompt_embeds_attn_mask, negative_prompt_embeds, neg_prompt_embeds_attn_mask
 
@@ -514,7 +501,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         clean_caption: bool = True,
-        mask_feature: bool = True,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -576,7 +562,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
-            mask_feature (`bool` defaults to `True`): If set to `True`, the text embeddings will be masked.
 
         Examples:
 
@@ -617,7 +602,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             clean_caption=clean_caption,
-            mask_feature=mask_feature,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
