@@ -502,6 +502,7 @@ def load_sub_model(
             loading_kwargs["low_cpu_mem_usage"] = False
 
     # check if the module is in a subdirectory
+    print(f"From loading module: cached_folder: {cached_folder} name: {name}")
     if os.path.isdir(os.path.join(cached_folder, name)):
         loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
     else:
@@ -645,7 +646,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             return True
 
         model_index_dict = {k: v for k, v in model_index_dict.items() if is_saveable_module(k, v)}
+        print(f"From save_pretrained: {model_index_dict.keys()}")
         for pipeline_component_name in model_index_dict.keys():
+            print(f"From save_pretrained: {pipeline_component_name}")
             sub_model = getattr(self, pipeline_component_name)
             model_cls = sub_model.__class__
 

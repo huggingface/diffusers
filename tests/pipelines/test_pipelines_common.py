@@ -329,10 +329,13 @@ class PipelineTesterMixin:
         logger.setLevel(diffusers.logging.INFO)
 
         with tempfile.TemporaryDirectory() as tmpdir:
+            print(pipe.components.keys())
             pipe.save_pretrained(tmpdir, safe_serialization=False)
 
-            import ipdb; ipdb.set_trace()
             with CaptureLogger(logger) as cap_logger:
+                print(os.listdir(tmpdir))
+                if "image_encoder" in os.listdir(tmpdir):
+                    print(os.listdir(f"{tmpdir}/image_encoder"))
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
 
             for name in pipe_loaded.components.keys():

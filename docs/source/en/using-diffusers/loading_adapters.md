@@ -308,15 +308,21 @@ image = pipeline(prompt=prompt).images[0]
 image
 ```
 
-### IP-Adapter 
+## IP-Adapter 
 
-[IP-Adapter](https://ip-adapter.github.io/) is an effective and lightweight adapter to achieve image prompt capability for the pre-trained text-to-image diffusion models. It is now available to use with most of our Stable Diffusion and Stable Diffusion XL pipelines. You can also use the IP-Adapter with other custom models fine-tuned from the same base model, as well as ControlNet and T2I adapters. Moreover, the image prompt can also work well with the text prompt to accomplish multimodal image generation.
+[IP-Adapter](https://ip-adapter.github.io/) is an effective and lightweight adapter that adds image prompting capabilities to a diffusion model. This adapter works by decoupling the cross-attention layers of the image and text features. All the other model components are frozen and only the embedded image features in the UNet are trained. As a result, IP-Adapter files are typically only ~100MBs.
 
-You can find the officially available IP-Adapter checkpoints in [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter).
+IP-Adapter works with most of our Stable Diffusion, Stable Diffusion XL (SDXL), ControlNet, T2I-Adapter, and any custom models finetuned from the same base models.
+
+<Tip>
+
+You can find official IP-Adapter checkpoints in [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter).
 
 IP-Adapter was contributed by [okotaku](https://github.com/okotaku).
 
-Let's look at an example where we use IP-Adapter with the Stable Diffusion text-to-image pipeline. 
+</Tip>
+
+IP-Adapter relies on an image encoder to generate the image features, so let's load a [`~transformers.CLIPVisionModelWithProjection`] model and then pass it to a Stable Diffusion pipeline.
 
 ```py
 from diffusers import AutoPipelineForText2Image, CLIPVisionModelWithProjection
@@ -332,13 +338,13 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
 pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16).to("cuda")
 ```
 
-Now you can load the IP-Adapter with [`~loaders.IPAdapterMixin.load_ip_adapter`] method. 
+Now load the [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter) weights with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method. 
 
 ```py
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 ```
 
-IP-Adapter allows you to use both image and text to condition the image generation process. In this example, let's take the cute bear eating pizza that we generated with Textual Inversion, and create a new bear that is similarly cute but wears sunglasses. We can pass the bear image as `ip_adapter_image`, along with a text prompt that mentions "sunglasses". 
+IP-Adapter allows you to use both image and text to condition the image generation process. For example, let's use the bear image from the [Textual Inversion](#textual-inversion) section as the image prompt (`ip_adapter_image`) along with a text prompt to add "sunglasses". 😎
 
 ```py
 pipeline.set_ip_adapter_scale(0.6)
@@ -360,7 +366,7 @@ images[0]
 
 <Tip>
 
-You can use the `pipeline.set_ip_adapter_scale()` method to adjust the ratio of text prompt and image prompt condition.  If you only use the image prompt, you should set the scale to be `1.0`. You can lower the scale to get more diversity in the generation, at the cost of less prompt alignment.
+You can use the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] method to adjust the text prompt and image prompt condition ratio.  If you're only using the image prompt, you should set the scale to `1.0`. You can lower the scale to get more generation diversity, but it'll be less aligned with the prompt.
 `scale=0.5` can achieve good results in most cases when you use both text and image prompts.
 </Tip>
 
@@ -395,7 +401,7 @@ images = pipeline(
 images[0]
 ```
 
-IP-Adapters can be used with [Stable Diffusion XL](../api/pipelines/stable_diffusion/stable_diffusion_xl.md) (SDXL) for text-to-image, image-to-image, and inpainting pipelines. Below is an example for SDXL text-to-image.
+IP-Adapters can also be used with [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl.md), but you'll also need to load a [`~transformers.CLIPImageProcessor`] as your feature extractor and pass it to the pipeline.
 
 ```python
 from diffusers import AutoPipelineForText2Image
@@ -432,15 +438,13 @@ image = pipeline(
 image.save("sdxl_t2i.png")
 ```
 
-<div class="flex justify-center">
-   <table border="1">
-    <tr>
-        <th>Input Image</th>
-        <th>Adapted Image</th>
-    </tr>
-    <tr>
-        <td><img src="https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/watercolor_painting.jpeg" alt="Input Image"></td>
-        <td><img src="https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/sdxl_t2i.png" alt="Adapted Image"></td>
-    </tr>
-    </table>
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/watercolor_painting.jpeg"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">input image</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/sdxl_t2i.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">adapted image</figcaption>
+  </div>
 </div>
