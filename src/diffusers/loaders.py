@@ -1411,6 +1411,11 @@ class LoraLoaderMixin:
             filter(lambda x: all(substring not in x for substring in unallowed_substrings), targeted_files)
         )
 
+        if any(f.endswith(LORA_WEIGHT_NAME) for f in targeted_files):
+            targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME), targeted_files))
+        elif any(f.endswith(LORA_WEIGHT_NAME_SAFE) for f in targeted_files):
+            targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
+
         if len(targeted_files) > 1:
             raise ValueError(
                 f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
@@ -2390,7 +2395,7 @@ class LoraLoaderMixin:
     def set_adapters_for_text_encoder(
         self,
         adapter_names: Union[List[str], str],
-        text_encoder: Optional[PreTrainedModel] = None,
+        text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
         text_encoder_weights: List[float] = None,
     ):
         """
@@ -2429,7 +2434,7 @@ class LoraLoaderMixin:
             )
         set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
 
-    def disable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
+    def disable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
         """
         Disables the LoRA layers for the text encoder.
 
@@ -2446,7 +2451,7 @@ class LoraLoaderMixin:
             raise ValueError("Text Encoder not found.")
         set_adapter_layers(text_encoder, enabled=False)
 
-    def enable_lora_for_text_encoder(self, text_encoder: Optional[PreTrainedModel] = None):
+    def enable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
         """
         Enables the LoRA layers for the text encoder.
 

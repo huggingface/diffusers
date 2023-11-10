@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Torch 2.0
+# PyTorch 2.0
 
 🤗 Diffusers supports the latest optimizations from [PyTorch 2.0](https://pytorch.org/get-started/pytorch-2.0/) which include:
 
@@ -48,7 +48,6 @@ In some cases - such as making the pipeline more deterministic or converting it 
 ```diff
   import torch
   from diffusers import DiffusionPipeline
-  from diffusers.models.attention_processor import AttnProcessor
 
   pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 + pipe.unet.set_default_attn_processor()
@@ -110,17 +109,14 @@ for _ in range(3):
 
 ### Stable Diffusion image-to-image
 
-```python 
+```python
 from diffusers import StableDiffusionImg2ImgPipeline
-import requests
+from diffusers.utils import load_image
 import torch
-from PIL import Image
-from io import BytesIO
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 init_image = init_image.resize((512, 512))
 
 path = "runwayml/stable-diffusion-v1-5"
@@ -143,25 +139,16 @@ for _ in range(3):
 
 ### Stable Diffusion inpainting
 
-```python 
+```python
 from diffusers import StableDiffusionInpaintPipeline
-import requests
+from diffusers.utils import load_image
 import torch
-from PIL import Image
-from io import BytesIO
-
-url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-
-def download_image(url):
-    response = requests.get(url)
-    return Image.open(BytesIO(response.content)).convert("RGB")
-
 
 img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
 mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
 
-init_image = download_image(img_url).resize((512, 512))
-mask_image = download_image(mask_url).resize((512, 512))
+init_image = load_image(img_url).resize((512, 512))
+mask_image = load_image(mask_url).resize((512, 512))
 
 path = "runwayml/stable-diffusion-inpainting"
 
@@ -183,17 +170,14 @@ for _ in range(3):
 
 ### ControlNet
 
-```python 
+```python
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
-import requests
+from diffusers.utils import load_image
 import torch
-from PIL import Image
-from io import BytesIO
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = load_image(url)
 init_image = init_image.resize((512, 512))
 
 path = "runwayml/stable-diffusion-v1-5"
@@ -221,26 +205,26 @@ for _ in range(3):
 
 ### DeepFloyd IF text-to-image + upscaling
 
-```python 
+```python
 from diffusers import DiffusionPipeline
 import torch
 
 run_compile = True  # Set True / False
 
-pipe = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-M-v1.0", variant="fp16", text_encoder=None, torch_dtype=torch.float16, use_safetensors=True)
-pipe.to("cuda")
+pipe_1 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-I-M-v1.0", variant="fp16", text_encoder=None, torch_dtype=torch.float16, use_safetensors=True)
+pipe_1.to("cuda")
 pipe_2 = DiffusionPipeline.from_pretrained("DeepFloyd/IF-II-M-v1.0", variant="fp16", text_encoder=None, torch_dtype=torch.float16, use_safetensors=True)
 pipe_2.to("cuda")
 pipe_3 = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16, use_safetensors=True)
 pipe_3.to("cuda")
 
 
-pipe.unet.to(memory_format=torch.channels_last)
+pipe_1.unet.to(memory_format=torch.channels_last)
 pipe_2.unet.to(memory_format=torch.channels_last)
 pipe_3.unet.to(memory_format=torch.channels_last)
 
 if run_compile:
-    pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+    pipe_1.unet = torch.compile(pipe_1.unet, mode="reduce-overhead", fullgraph=True)
     pipe_2.unet = torch.compile(pipe_2.unet, mode="reduce-overhead", fullgraph=True)
     pipe_3.unet = torch.compile(pipe_3.unet, mode="reduce-overhead", fullgraph=True)
 
@@ -250,9 +234,9 @@ prompt_embeds = torch.randn((1, 2, 4096), dtype=torch.float16)
 neg_prompt_embeds = torch.randn((1, 2, 4096), dtype=torch.float16)
 
 for _ in range(3):
-    image = pipe(prompt_embeds=prompt_embeds, negative_prompt_embeds=neg_prompt_embeds, output_type="pt").images
-    image_2 = pipe_2(image=image, prompt_embeds=prompt_embeds, negative_prompt_embeds=neg_prompt_embeds, output_type="pt").images
-    image_3 = pipe_3(prompt=prompt, image=image, noise_level=100).images
+    image_1 = pipe_1(prompt_embeds=prompt_embeds, negative_prompt_embeds=neg_prompt_embeds, output_type="pt").images
+    image_2 = pipe_2(image=image_1, prompt_embeds=prompt_embeds, negative_prompt_embeds=neg_prompt_embeds, output_type="pt").images
+    image_3 = pipe_3(prompt=prompt, image=image_1, noise_level=100).images
 ```
 </details>
 
@@ -426,9 +410,9 @@ In the following tables, we report our findings in terms of the *number of itera
 | IF | 9.26 | 9.2 | ❌ | 13.31 |
 | SDXL - txt2img | 0.52 | 0.53 | - | - |
 
-## Notes 
+## Notes
 
-* Follow this [PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks. 
+* Follow this [PR](https://github.com/huggingface/diffusers/pull/3313) for more details on the environment used for conducting the benchmarks.
 * For the DeepFloyd IF pipeline where batch sizes > 1, we only used a batch size of > 1 in the first IF pipeline for text-to-image generation and NOT for upscaling. That means the two upscaling pipelines received a batch size of 1.
 
 *Thanks to [Horace He](https://github.com/Chillee) from the PyTorch team for their support in improving our support of `torch.compile()` in Diffusers.*

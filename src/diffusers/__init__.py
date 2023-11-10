@@ -1,4 +1,4 @@
-__version__ = "0.22.0.dev0"
+__version__ = "0.23.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -77,6 +77,7 @@ else:
             "AsymmetricAutoencoderKL",
             "AutoencoderKL",
             "AutoencoderTiny",
+            "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ModelMixin",
             "MotionAdapter",
@@ -235,6 +236,7 @@ else:
             "LDMTextToImagePipeline",
             "MusicLDMPipeline",
             "PaintByExamplePipeline",
+            "PixArtAlphaPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -442,6 +444,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AutoencoderKL,
             AutoencoderTiny,
+            ConsistencyDecoderVAE,
             ControlNetModel,
             ModelMixin,
             MotionAdapter,
@@ -579,6 +582,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             MusicLDMPipeline,
             PaintByExamplePipeline,
+            PixArtAlphaPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,

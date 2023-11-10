@@ -27,12 +27,20 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
+    LCMScheduler,
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_image,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
@@ -56,11 +64,12 @@ class StableDiffusionXLPipelineFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"add_text_embeds", "add_time_ids"})
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(2, 4),
             layers_per_block=2,
+            time_cond_proj_dim=time_cond_proj_dim,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -152,6 +161,23 @@ class StableDiffusionXLPipelineFastTests(
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5552, 0.5569, 0.4725, 0.4348, 0.4994, 0.4632, 0.5142, 0.5012, 0.47])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_xl_euler_lcm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.4917, 0.6555, 0.4348, 0.5219, 0.7324, 0.4855, 0.5168, 0.5447, 0.5156])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -890,3 +916,32 @@ class StableDiffusionXLPipelineFastTests(
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
+
+
+@slow
+class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
+    def test_stable_diffusion_lcm(self):
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel.from_pretrained(
+            "latent-consistency/lcm-ssd-1b", torch_dtype=torch.float16, variant="fp16"
+        )
+        sd_pipe = StableDiffusionXLPipeline.from_pretrained(
+            "segmind/SSD-1B", unet=unet, torch_dtype=torch.float16, variant="fp16"
+        ).to(torch_device)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "a red car standing on the side of the street"
+
+        image = sd_pipe(prompt, num_inference_steps=4, guidance_scale=8.0).images[0]
+
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_full/stable_diffusion_ssd_1b_lcm.png"
+        )
+
+        image = sd_pipe.image_processor.pil_to_numpy(image)
+        expected_image = sd_pipe.image_processor.pil_to_numpy(expected_image)
+
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
+
+        assert max_diff < 1e-2
