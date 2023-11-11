@@ -542,7 +542,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
     @staticmethod
     def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int) -> torch.Tensor:
         orig_height, orig_width = samples.shape[2], samples.shape[3]
-        torch.tensor([new_height, new_width])
 
         # Check if resizing is needed
         if orig_height != new_height or orig_width != new_width:
