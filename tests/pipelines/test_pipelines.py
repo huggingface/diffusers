@@ -1296,7 +1296,7 @@ class PipelineFastTests(unittest.TestCase):
 
         pipeline = StableDiffusionPipeline(**items)
 
-        assert sorted(list(pipeline.components.keys())) == sorted(["image_encoder"] + list(items.keys()))
+        assert sorted(pipeline.components.keys()) == sorted(["image_encoder"] + list(items.keys()))
         assert pipeline.image_encoder is None
 
     def test_set_scheduler_consistency(self):
