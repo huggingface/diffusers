@@ -19,6 +19,7 @@ import urllib.parse as ul
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import VaeImageProcessor
@@ -28,7 +29,6 @@ from ...utils import (
     BACKENDS_MAPPING,
     is_bs4_available,
     is_ftfy_available,
-    is_torchvision_available,
     logging,
     replace_example_docstring,
 )
@@ -43,9 +43,6 @@ if is_bs4_available():
 
 if is_ftfy_available():
     import ftfy
-
-if is_torchvision_available():
-    from torchvision import transforms as T
 
 EXAMPLE_DOC_STRING = """
     Examples:
@@ -544,17 +541,28 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
     @staticmethod
     def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int) -> torch.Tensor:
-        orig_hw = torch.tensor([samples.shape[2], samples.shape[3]])
-        custom_hw = torch.tensor([new_height, new_width])
+        orig_height, orig_width = samples.shape[2], samples.shape[3]
+        torch.tensor([new_height, new_width])
 
-        if (orig_hw != custom_hw).all():
-            ratio = max(custom_hw[0] / orig_hw[0], custom_hw[1] / orig_hw[1])
-            resized_width = int(orig_hw[1] * ratio)
-            resized_height = int(orig_hw[0] * ratio)
-            transform = T.Compose([T.Resize((resized_height, resized_width)), T.CenterCrop(custom_hw.tolist())])
-            return transform(samples)
-        else:
-            return samples
+        # Check if resizing is needed
+        if orig_height != new_height or orig_width != new_width:
+            ratio = max(new_height / orig_height, new_width / orig_width)
+            resized_width = int(orig_width * ratio)
+            resized_height = int(orig_height * ratio)
+
+            # Resize
+            samples = F.interpolate(
+                samples, size=(resized_height, resized_width), mode="bilinear", align_corners=False
+            )
+
+            # Center Crop
+            start_x = (resized_width - new_width) // 2
+            end_x = start_x + new_width
+            start_y = (resized_height - new_height) // 2
+            end_y = start_y + new_height
+            samples = samples[:, :, start_y:end_y, start_x:end_x]
+
+        return samples
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
