@@ -44,9 +44,9 @@ DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
 # For PEFT it is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
-) > version.parse(MIN_PEFT_VERSION)
+) >= version.parse(MIN_PEFT_VERSION)
 _required_transformers_version = is_transformers_available() and version.parse(
     version.parse(importlib.metadata.version("transformers")).base_version
-) > version.parse(MIN_TRANSFORMERS_VERSION)
+) >= version.parse(MIN_TRANSFORMERS_VERSION)
 
 USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
