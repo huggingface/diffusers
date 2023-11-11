@@ -49,8 +49,8 @@ from diffusers.models.embeddings import ImageProjection
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    nightly,
     require_torch_gpu,
+    slow,
     torch_device,
 )
 
@@ -294,7 +294,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         return input_kwargs
 
 
-@slow 
+@slow
 @require_torch_gpu
 class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image(self):

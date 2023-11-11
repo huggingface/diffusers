@@ -62,7 +62,13 @@ from .utils.import_utils import BACKENDS_MAPPING
 
 
 if is_transformers_available():
-    from transformers import CLIPTextModel, CLIPTextModelWithProjection, PreTrainedModel
+    from transformers import (
+        CLIPImageProcessor,
+        CLIPTextModel,
+        CLIPTextModelWithProjection,
+        CLIPVisionModelWithProjection,
+        PreTrainedModel,
+    )
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -3426,9 +3432,6 @@ class IPAdapterMixin:
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
         """
-        if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
-            raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
-
         self.set_ip_adapter()
 
         # Load the main state dict first.
@@ -3472,6 +3475,22 @@ class IPAdapterMixin:
         if keys != ["image_proj", "ip_adapter"]:
             raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
 
+        # load CLIP image encoer here if it has not been registered to the pipeline yet
+        if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
+            if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+                logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
+                image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+                    pretrained_model_name_or_path_or_dict,
+                    subfolder=os.path.join(subfolder, "image_encoder"),
+                ).to(self.device, dtype=self.dtype)
+                self.image_encoder = image_encoder
+            else:
+                raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
+
+        # create feature extractor if it has not been registered to the pipeline yet
+        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
+            self.feature_extractor = CLIPImageProcessor()
+
         # Handle image projection layers.
         clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
         cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
@@ -3495,8 +3514,7 @@ class IPAdapterMixin:
         image_projection.load_state_dict(diffusers_state_dict)
 
         self.unet.encoder_hid_proj = image_projection.to(device=self.unet.device, dtype=self.unet.dtype)
-        self.unet.config.encoder_hid_dim_type = "image_proj"
-        self.unet.config.encoder_hid_dim = clip_embeddings_dim
+        self.unet.config.encoder_hid_dim_type = "ip_image_proj"
 
         # Handle IP-Adapter cross-attention layers.
         ip_layers = torch.nn.ModuleList(
