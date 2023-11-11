@@ -909,7 +909,8 @@ def main(args):
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
                 # make sure to pop weight so that corresponding model is not saved again
-                weights.pop()
+                if weights: # Don't pop if empty
+                    weights.pop()
 
             LoraLoaderMixin.save_lora_weights(
                 output_dir,
