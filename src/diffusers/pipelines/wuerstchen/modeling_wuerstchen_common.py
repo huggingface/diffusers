@@ -30,19 +30,19 @@ class WuerstchenLayerNorm(nn.LayerNorm):
 
 
 class TimestepBlock(nn.Module):
-    def __init__(self, c, c_timestep, conds=['sca']):
+    def __init__(self, c, c_timestep, conds=["sca"]):
         super().__init__()
-        self.mapper = nn.Linear(c_timestep, c*2)
+        self.mapper = nn.Linear(c_timestep, c * 2)
         self.conds = conds
         for cname in conds:
-            setattr(self, f"mapper_{cname}", nn.Linear(c_timestep, c*2))
+            setattr(self, f"mapper_{cname}", nn.Linear(c_timestep, c * 2))
 
     def forward(self, x, t):
-        t = t.chunk(len(self.conds)+1, dim=1)
+        t = t.chunk(len(self.conds) + 1, dim=1)
         a, b = self.mapper(t[0])[:, :, None, None].chunk(2, dim=1)
         for i, c in enumerate(self.conds):
-            ac, bc = getattr(self, f"mapper_{c}")(t[i+1])[:, :, None, None].chunk(2, dim=1)
-            a, b = a+ac, b+bc
+            ac, bc = getattr(self, f"mapper_{c}")(t[i + 1])[:, :, None, None].chunk(2, dim=1)
+            a, b = a + ac, b + bc
         return x * (1 + a) + b
 
 
