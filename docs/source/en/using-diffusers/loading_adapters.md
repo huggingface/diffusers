@@ -322,12 +322,29 @@ IP-Adapter was contributed by [okotaku](https://github.com/okotaku).
 
 </Tip>
 
-IP-Adapter relies on an image encoder to generate the image features, so let's load a [`~transformers.CLIPVisionModelWithProjection`] model and then pass it to a Stable Diffusion pipeline.
+Let's first create a Stable Diffusion Pipeline.
+
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+from diffusers.utils import load_image
+
+
+pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+```
+
+Now load the [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter) weights with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method. 
+
+```py
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+```
+
+<Tip>
+IP-Adapter relies on an image encoder to generate the image features, if your IP-Adapter weights folder contains a "image_encoder" subfolder, the image encoder will be automatically loaded and registered to the pipeline. Otherwise you can so load a [`~transformers.CLIPVisionModelWithProjection`] model and  pass it to a Stable Diffusion pipeline when you create it.
 
 ```py
 from diffusers import AutoPipelineForText2Image, CLIPVisionModelWithProjection
 import torch
-from diffusers.utils import load_image
 
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter", 
@@ -337,12 +354,7 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
 
 pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16).to("cuda")
 ```
-
-Now load the [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter) weights with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method. 
-
-```py
-pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
-```
+</Tip>
 
 IP-Adapter allows you to use both image and text to condition the image generation process. For example, let's use the bear image from the [Textual Inversion](#textual-inversion) section as the image prompt (`ip_adapter_image`) along with a text prompt to add "sunglasses". 😎
 
@@ -377,13 +389,7 @@ from diffusers import AutoPipelineForImage2Image
 import torch
 from diffusers.utils import load_image
 
-image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-    "h94/IP-Adapter", 
-    subfolder="models/image_encoder",
-    torch_dtype=torch.float16,
-).to("cuda")
-
-pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
 
 image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
 ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
@@ -401,25 +407,15 @@ images = pipeline(
 images[0]
 ```
 
-IP-Adapters can also be used with [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl.md), but you'll also need to load a [`~transformers.CLIPImageProcessor`] as your feature extractor and pass it to the pipeline.
+IP-Adapters can also be used with [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
 
 ```python
 from diffusers import AutoPipelineForText2Image
 from diffusers.utils import load_image
-from transformers import CLIPVisionModelWithProjection, CLIPImageProcessor
 import torch
 
-image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-    "h94/IP-Adapter", 
-    subfolder="sdxl_models/image_encoder",
-    torch_dtype=torch.float16,
-).to("cuda")
-feature_extractor = CLIPImageProcessor.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
-  
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
-    image_encoder=image_encoder,
-    feature_extractor=feature_extractor,
     torch_dtype=torch.float16
 ).to("cuda")
 
