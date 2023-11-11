@@ -33,8 +33,6 @@ from .models.attention_processor import (
     AttnProcessor2_0,
     IPAdapterAttnProcessor,
     IPAdapterAttnProcessor2_0,
-    IPAdapterControlNetAttnProcessor,
-    IPAdapterControlNetAttnProcessor2_0,
 )
 from .models.embeddings import ImageProjection
 from .models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
@@ -767,6 +765,65 @@ class UNet2DConditionLoadersMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
         set_adapter_layers(self, enabled=True)
+
+    def _load_ip_adapter_weights(self, state_dict):
+        # set ip-adapter cross-attention processors
+        attn_procs = {}
+        for name in self.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = self.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(self.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = self.config.block_out_channels[block_id]
+            if cross_attention_dim is None:
+                attn_processor_class = (
+                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                )
+                attn_procs[name] = attn_processor_class()
+            else:
+                attn_processor_class = (
+                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
+                )
+                attn_procs[name] = attn_processor_class(
+                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
+                ).to(dtype=self.dtype, device=self.device)
+
+        self.set_attn_processor(attn_procs)
+
+        # load ip-adapter cross-attention weights
+        ip_attn_layers = torch.nn.ModuleList(
+            [module if isinstance(module, nn.Module) else nn.Identity() for module in self.attn_processors.values()]
+        )
+        ip_attn_layers.load_state_dict(state_dict["ip_adapter"])
+
+        # create image projection layers.
+        clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
+        cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
+
+        image_projection = ImageProjection(
+            cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
+        )
+        image_projection.to(dtype=self.dtype, device=self.device)
+
+        # load image projection layer weights
+        image_proj_state_dict = {}
+        image_proj_state_dict.update(
+            {
+                "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
+                "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
+                "norm.weight": state_dict["image_proj"]["norm.weight"],
+                "norm.bias": state_dict["image_proj"]["norm.bias"],
+            }
+        )
+
+        image_projection.load_state_dict(image_proj_state_dict)
+
+        self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
+        self.config.encoder_hid_dim_type = "ip_image_proj"
 
 
 def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
@@ -3355,42 +3412,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
 class IPAdapterMixin:
     """Mixin for handling IP Adapters."""
 
-    def set_ip_adapter(self):
-        unet = self.unet
-        attn_procs = {}
-        for name in unet.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
-            if name.startswith("mid_block"):
-                hidden_size = unet.config.block_out_channels[-1]
-            elif name.startswith("up_blocks"):
-                block_id = int(name[len("up_blocks.")])
-                hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-            elif name.startswith("down_blocks"):
-                block_id = int(name[len("down_blocks.")])
-                hidden_size = unet.config.block_out_channels[block_id]
-            if cross_attention_dim is None:
-                attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                )
-                attn_procs[name] = attn_processor_class()
-            else:
-                attn_processor_class = (
-                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
-                )
-                attn_procs[name] = attn_processor_class(
-                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
-                ).to(dtype=unet.dtype, device=unet.device)
-
-        unet.set_attn_processor(attn_procs)
-
-        if hasattr(self, "controlnet"):
-            attn_processor_class = (
-                IPAdapterControlNetAttnProcessor2_0
-                if hasattr(F, "scaled_dot_product_attention")
-                else IPAdapterControlNetAttnProcessor
-            )
-            self.pipeline.controlnet.set_attn_processor(attn_processor_class())
-
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -3432,7 +3453,6 @@ class IPAdapterMixin:
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
         """
-        self.set_ip_adapter()
 
         # Load the main state dict first.
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
@@ -3491,39 +3511,8 @@ class IPAdapterMixin:
         if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
             self.feature_extractor = CLIPImageProcessor()
 
-        # Handle image projection layers.
-        clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
-        cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
-
-        image_projection = ImageProjection(
-            cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
-        )
-        image_projection.to(dtype=self.unet.dtype, device=self.unet.device)
-
-        diffusers_state_dict = {}
-
-        diffusers_state_dict.update(
-            {
-                "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
-                "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
-                "norm.weight": state_dict["image_proj"]["norm.weight"],
-                "norm.bias": state_dict["image_proj"]["norm.bias"],
-            }
-        )
-
-        image_projection.load_state_dict(diffusers_state_dict)
-
-        self.unet.encoder_hid_proj = image_projection.to(device=self.unet.device, dtype=self.unet.dtype)
-        self.unet.config.encoder_hid_dim_type = "ip_image_proj"
-
-        # Handle IP-Adapter cross-attention layers.
-        ip_layers = torch.nn.ModuleList(
-            [
-                module if isinstance(module, nn.Module) else nn.Identity()
-                for module in self.unet.attn_processors.values()
-            ]
-        )
-        ip_layers.load_state_dict(state_dict["ip_adapter"])
+        # load ip-adapter into unet
+        self.unet._load_ip_adapter_weights(state_dict)
 
     def set_ip_adapter_scale(self, scale):
         for attn_processor in self.unet.attn_processors.values():
