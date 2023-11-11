@@ -189,11 +189,34 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs, height=32, width=48).images
         image_slice = image[0, -3:, -3:, -1]
-
         self.assertEqual(image.shape, (1, 32, 48, 3))
+
         expected_slice = np.array([0.3859, 0.2987, 0.2333, 0.5243, 0.6721, 0.4436, 0.5292, 0.5373, 0.4416])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+
+    def test_resolution_binning(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs, height=32, width=48).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        inputs = self.get_dummy_inputs(device)
+        no_res_binning_image = pipe(**inputs, height=32, width=48, use_resolution_binning=False).images
+        no_res_binning_image_slice = no_res_binning_image[0, -3:, -3:, -1]
+
+        self.assertEqual(image.shape, (1, 32, 48, 3))
+        self.assertEqual(no_res_binning_image.shape, (1, 32, 48, 3))
+
+        assert np.allclose(
+            image_slice, no_res_binning_image_slice, atol=1e-3, rtol=1e-3
+        ), "Resolution binning should change the results."
 
     def test_inference_with_embeddings_and_multiple_images(self):
         components = self.get_dummy_components()
