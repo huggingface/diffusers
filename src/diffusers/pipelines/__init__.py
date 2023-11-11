@@ -182,6 +182,11 @@ else:
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
     ]
+    _import_structure["wuerstchen3"] = [
+        "WuerstchenV3CombinedPipeline",
+        "WuerstchenV3DecoderPipeline",
+        "WuerstchenV3PriorPipeline",
+    ]
 try:
     if not is_onnx_available():
         raise OptionalDependencyNotAvailable()
@@ -401,6 +406,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+        )
+        from .wuerstchen3 import (
+            WuerstchenV3CombinedPipeline,
+            WuerstchenV3DecoderPipeline,
+            WuerstchenV3PriorPipeline,
         )
 
         try:

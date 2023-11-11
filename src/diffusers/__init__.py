@@ -290,6 +290,9 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "WuerstchenV3CombinedPipeline",
+            "WuerstchenV3DecoderPipeline",
+            "WuerstchenV3PriorPipeline",
         ]
     )
 
@@ -636,6 +639,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
+            WuerstchenV3CombinedPipeline,
+            WuerstchenV3DecoderPipeline,
+            WuerstchenV3PriorPipeline,
         )
 
     try:
