@@ -445,12 +445,28 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
         # 2 - mid blocks (bottleneck)
         udl.print_if('------ mid ------', conditions=RUN_ONCE)
-        for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
+        # Because Heidelberg treats the R/A/R as one block, they first execute the full base mid block,
+        # then the full ctrl mid block; while I execute them interlaced.
+        # This doesn't change the computation, but messes up parts of the logs.
+        # So let's, while debugging, first execute full base mid block and then full ctrl mid block.
+
+        #for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
+        #    udl.print_if('>> Applying base block\t', end='', conditions=RUN_ONCE)
+        #    h_base = m_base(h_base, temb, cemb)
+        #    udl.print_if('>> Applying ctrl block\t', end='', conditions=RUN_ONCE)
+        #    h_ctrl = m_ctrl(h_ctrl, temb, cemb)
+        #    udl.print_if('', conditions=RUN_ONCE)
+
+        for m_base in base_mid_subblocks:
             udl.print_if('>> Applying base block\t', end='', conditions=RUN_ONCE)
             h_base = m_base(h_base, temb, cemb)
+            udl.print_if('', conditions=RUN_ONCE)
+
+        for m_ctrl in ctrl_mid_subblocks:
             udl.print_if('>> Applying ctrl block\t', end='', conditions=RUN_ONCE)
             h_ctrl = m_ctrl(h_ctrl, temb, cemb)
             udl.print_if('', conditions=RUN_ONCE)
+
         # Heidelberg treats the R/A/R as one block, while I treat is as 2 subblocks
         # Let's therefore only log after the mid section
         udl.log_if('mid.h_base', h_base, condition='SUBBLOCK')
