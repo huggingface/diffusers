@@ -74,7 +74,7 @@ from diffusers import DiffusionPipeline
 
 pipe = DiffusionPipeline.from_pretrained(
     "longlian/lmd_plus", 
-    custom_pipeline="llm-grounded-diffusion",
+    custom_pipeline="llm_grounded_diffusion",
     variant="fp16", torch_dtype=torch.float16
 )
 pipe.enable_model_cpu_offload()
@@ -108,7 +108,7 @@ from diffusers import DiffusionPipeline
 
 pipe = DiffusionPipeline.from_pretrained(
     "longlian/lmd_plus", 
-    custom_pipeline="llm-grounded-diffusion",
+    custom_pipeline="llm_grounded_diffusion",
     variant="fp16", torch_dtype=torch.float16
 )
 pipe.enable_model_cpu_offload()
