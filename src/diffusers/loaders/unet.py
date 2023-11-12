@@ -27,16 +27,12 @@ from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     is_accelerate_available,
-    is_transformers_available,
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
 from .utils import AttnProcsLayers
 
-
-if is_transformers_available():
-    pass
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
