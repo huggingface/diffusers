@@ -1411,6 +1411,11 @@ class LoraLoaderMixin:
             filter(lambda x: all(substring not in x for substring in unallowed_substrings), targeted_files)
         )
 
+        if any(f.endswith(LORA_WEIGHT_NAME) for f in targeted_files):
+            targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME), targeted_files))
+        elif any(f.endswith(LORA_WEIGHT_NAME_SAFE) for f in targeted_files):
+            targeted_files = list(filter(lambda x: x.endswith(LORA_WEIGHT_NAME_SAFE), targeted_files))
+
         if len(targeted_files) > 1:
             raise ValueError(
                 f"Provided path contains more than one weights file in the {file_extension} format. Either specify `weight_name` in `load_lora_weights` or make sure there's only one  `.safetensors` or `.bin` file in  {pretrained_model_name_or_path_or_dict}."
