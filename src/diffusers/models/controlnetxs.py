@@ -256,6 +256,24 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         del self.control_model.conv_norm_out
         del self.control_model.conv_out
 
+    def toggle_control(self, to):
+        if not hasattr(self, 'do_control'): self.do_control = True
+        if not hasattr(self, 'scale_back_up'): self.back_up = None
+        if self.do_control == to:
+            print(f'Model already set to control mode == {to}')
+            return
+        if not to:
+            self.scale_back_up = self.scale_list[0].clone()
+            self.scale_list = self.scale_list * 0.
+            self.do_control = False
+        else:
+            self.scale_list = self.scale_list * 0. + self.scale_back_up 
+            self.scale_back_up = None
+            self.do_control = True
+        assert self.do_control == to
+        print(f'Model set to control mode == {self.do_control}')
+
+
     def forward(
         self,
         x: torch.Tensor,
@@ -268,6 +286,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     ):
         if self.base_model is None:
             raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel by `cnxs_model.base_model = the_base_model`")
+
+        print('control_scale:',self.scale_list)
 
         """ Params from unet_2d_condition.UNet2DConditionModel.forward:
         # self,
@@ -404,7 +424,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             # A - concat base -> ctrl
             cat_to_ctrl = next(it_enc_convs_in)(h_base)
             h_ctrl = torch.cat([h_ctrl, cat_to_ctrl], dim=1)
-            udl.log_if('enc.h_ctr', h_ctrl, condition='SUBBLOCK')
+            udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
             # B - apply base subblock
             udl.print_if('>> Applying base block\t', end='', conditions=RUN_ONCE)
             h_base = m_base(h_base, temb, cemb)
@@ -451,10 +471,19 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             udl.log_if('dec.h_base', h_base, condition='SUBBLOCK')
             udl.print_if('',conditions=RUN_ONCE)
 
+        h_base = self.base_model.conv_norm_out(h_base)
+        h_base = self.base_model.conv_act(h_base)
+        h_base = self.base_model.conv_out(h_base)
+
+        result = h_base
+
+        udl.log_if('conv_out.h_base', result, condition='SUBBLOCK')
+        udl.print_if('',conditions=RUN_ONCE)
+
         udl.stop_if('SUBBLOCK', 'The subblocks are cought. Let us gaze into their soul, their very essence.')
         udl.stop_if('SUBBLOCK-MINUS-1', 'Alright captain. Look at all these tensors we caught. Time to do some real analysis.')
 
-        return UNet2DConditionOutput(sample=self.base_model.conv_out(h_base))
+        return UNet2DConditionOutput(sample=result)
 
     def make_zero_conv(self, in_channels, out_channels=None):
         # keep running track # todo: better comment
