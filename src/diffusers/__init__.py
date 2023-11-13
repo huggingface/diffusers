@@ -74,15 +74,7 @@ except OptionalDependencyNotAvailable:
 
 else:
     _import_structure["loaders"].extend(
-        [
-            "FromOriginalControlnetMixin",
-            "FromOriginalVAEMixin",
-            "PatchedLoraProjection",
-            "UNet2DConditionLoadersMixin",
-            "text_encoder_attn_modules",
-            "text_encoder_lora_state_dict",
-            "text_encoder_mlp_modules",
-        ]
+        ["FromOriginalControlnetMixin", "FromOriginalVAEMixin", "UNet2DConditionLoadersMixin"]
     )
     _import_structure["models"].extend(
         [
@@ -455,15 +447,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .loaders import (
-            FromOriginalControlnetMixin,
-            FromOriginalVAEMixin,
-            PatchedLoraProjection,
-            UNet2DConditionLoadersMixin,
-            text_encoder_attn_modules,
-            text_encoder_lora_state_dict,
-            text_encoder_mlp_modules,
-        )
+        from .loaders import FromOriginalControlnetMixin, FromOriginalVAEMixin, UNet2DConditionLoadersMixin
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,

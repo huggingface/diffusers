@@ -32,21 +32,6 @@ class FromOriginalVAEMixin(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class PatchedLoraProjection(metaclass=DummyObject):
-    _backends = ["torch"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch"])
-
-
 class UNet2DConditionLoadersMixin(metaclass=DummyObject):
     _backends = ["torch"]
 
@@ -60,18 +45,6 @@ class UNet2DConditionLoadersMixin(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
-
-
-def text_encoder_attn_modules(*args, **kwargs):
-    requires_backends(text_encoder_attn_modules, ["torch"])
-
-
-def text_encoder_lora_state_dict(*args, **kwargs):
-    requires_backends(text_encoder_lora_state_dict, ["torch"])
-
-
-def text_encoder_mlp_modules(*args, **kwargs):
-    requires_backends(text_encoder_mlp_modules, ["torch"])
 
 
 class AsymmetricAutoencoderKL(metaclass=DummyObject):
