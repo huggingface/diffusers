@@ -1064,6 +1064,13 @@ def main(args):
     if args.use_8bit_adam and not args.optimizer.lower() == "adamw":
         logger.warn(f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
                     f"set to {args.optimizer.lower()}")
+          elif args.use_8bit_adam:
+              try:
+                  import bitsandbytes as bnb
+              except ImportError:
+                  raise ImportError(
+                      "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+                  )
 
     if args.optimizer.lower() == "prodigy":
         try:
