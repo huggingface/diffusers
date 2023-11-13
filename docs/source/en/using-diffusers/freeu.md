@@ -1,3 +1,15 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Improve generation quality with FreeU
 
 [[open-in-colab]]
@@ -11,7 +23,7 @@ However, the skip connection can sometimes introduce unnatural image details. [F
 
 FreeU is applied during inference and it does not require any additional training. The technique works for different tasks such as text-to-image, image-to-image, and text-to-video.
 
-In this guide, you will apply FreeU to the [`StableDiffusionPipeline`], [`StableDiffusionXLPipeline`], and [`TextToVideoSDPipeline`].
+In this guide, you will apply FreeU to the [`StableDiffusionPipeline`], [`StableDiffusionXLPipeline`], and [`TextToVideoSDPipeline`]. You need to install Diffusers from source to run the examples below.
 
 ## StableDiffusionPipeline
 
@@ -46,6 +58,7 @@ And then run inference:
 prompt = "A squirrel eating a burger"
 seed = 2023
 image = pipeline(prompt, generator=torch.manual_seed(seed)).images[0]
+image
 ```
 
 The figure below compares non-FreeU and FreeU results respectively for the same hyperparameters used above (`prompt` and `seed`):
@@ -68,8 +81,8 @@ seed = 2023
 
 pipeline.enable_freeu(s1=0.9, s2=0.2, b1=1.1, b2=1.2)
 image = pipeline(prompt, generator=torch.manual_seed(seed)).images[0]
+image
 ```
-
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/freeu/sdv2_1_freeu.jpg)
 
@@ -88,12 +101,12 @@ pipeline = DiffusionPipeline.from_pretrained(
 prompt = "A squirrel eating a burger"
 seed = 2023
 
-# Comes from 
+# Comes from
 # https://wandb.ai/nasirk24/UNET-FreeU-SDXL/reports/FreeU-SDXL-Optimal-Parameters--Vmlldzo1NDg4NTUw
 pipeline.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
 image = pipeline(prompt, generator=torch.manual_seed(seed)).images[0]
+image
 ```
-
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/freeu/sdxl_freeu.jpg)
 
@@ -107,8 +120,7 @@ from diffusers.utils import export_to_video
 import torch
 
 model_id = "cerspense/zeroscope_v2_576w"
-pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16).to("cuda")
-pipe = pipe.to("cuda")
+pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "an astronaut riding a horse on mars"
 seed = 2023

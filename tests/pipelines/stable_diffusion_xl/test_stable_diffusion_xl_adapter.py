@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
 import unittest
 
@@ -30,8 +31,15 @@ from diffusers import (
     T2IAdapter,
     UNet2DConditionModel,
 )
-from diffusers.utils import logging
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, torch_device
+from diffusers.utils import load_image, logging
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    floats_tensor,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import (
@@ -560,3 +568,42 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
 
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(output_batch[0][0], output[0][0])
+
+
+@slow
+@require_torch_gpu
+class AdapterSDXLPipelineSlowTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_canny_lora(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16).to(
+            "cpu"
+        )
+        pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        )
+        pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
+        pipe.enable_sequential_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "toy"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
+        )
+
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+
+        assert images[0].shape == (768, 512, 3)
+
+        original_image = images[0, -3:, -3:, -1].flatten()
+        expected_image = np.array(
+            [0.50346327, 0.50708383, 0.50719553, 0.5135172, 0.5155377, 0.5066059, 0.49680984, 0.5005894, 0.48509413]
+        )
+        assert numpy_cosine_similarity_distance(original_image, expected_image) < 1e-4

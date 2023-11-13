@@ -59,6 +59,10 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             Configure if the `TransformerBlock` should use learnable elementwise affine parameters for normalization.
         double_self_attention (`bool`, *optional*):
             Configure if each `TransformerBlock` should contain two self-attention layers.
+        positional_embeddings: (`str`, *optional*):
+            The type of positional embeddings to apply to the sequence input before passing use.
+        num_positional_embeddings: (`int`, *optional*):
+            The maximum length of the sequence over which to apply positional embeddings.
     """
 
     @register_to_config
@@ -77,6 +81,8 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         activation_fn: str = "geglu",
         norm_elementwise_affine: bool = True,
         double_self_attention: bool = True,
+        positional_embeddings: Optional[str] = None,
+        num_positional_embeddings: Optional[int] = None,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -101,6 +107,8 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
                     attention_bias=attention_bias,
                     double_self_attention=double_self_attention,
                     norm_elementwise_affine=norm_elementwise_affine,
+                    positional_embeddings=positional_embeddings,
+                    num_positional_embeddings=num_positional_embeddings,
                 )
                 for d in range(num_layers)
             ]

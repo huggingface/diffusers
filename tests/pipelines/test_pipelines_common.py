@@ -231,8 +231,6 @@ class PipelineTesterMixin:
             "latents",
             "output_type",
             "return_dict",
-            "callback",
-            "callback_steps",
         ]
     )
 
@@ -292,6 +290,20 @@ class PipelineTesterMixin:
             "image pipeline `negative_prompt` is not batched should set the attribute as "
             "`batch_params = TEXT_TO_IMAGE_BATCH_PARAMS - {'negative_prompt'}`. "
             "See existing pipeline tests for reference."
+        )
+
+    @property
+    def callback_cfg_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `callback_cfg_params` in the child test class that requires to run test_callback_cfg. "
+            "`callback_cfg_params` are the parameters that needs to be passed to the pipeline's callback "
+            "function when dynamically adjusting `guidance_scale`. They are variables that require special"
+            "treatment when `do_classifier_free_guidance` is `True`. `pipeline_params.py` provides some common"
+            " sets of parameters such as `TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS`. If your pipeline's "
+            "set of cfg arguments has minor changes from one of the common sets of cfg arguments, "
+            "do not make modifications to the existing common sets of cfg arguments. I.e. for inpaint pipeine, you "
+            " need to adjust batch size of `mask` and `masked_image_latents` so should set the attribute as"
+            "`callback_cfg_params = TEXT_TO_IMAGE_CFG_PARAMS.union({'mask', 'masked_image_latents'})`"
         )
 
     def tearDown(self):
@@ -481,7 +493,7 @@ class PipelineTesterMixin:
 
         assert output_batch[0].shape[0] == batch_size
 
-        max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
+        max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
@@ -690,7 +702,7 @@ class PipelineTesterMixin:
             self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
 
         if test_mean_pixel_difference:
-            assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
+            assert_mean_pixel_difference(to_np(output_with_slicing[0]), to_np(output_without_slicing[0]))
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
@@ -742,6 +754,14 @@ class PipelineTesterMixin:
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "CPU offloading should not affect the inference results")
+        offloaded_modules = [
+            v
+            for k, v in pipe.components.items()
+            if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
+        ]
+        self.assertTrue(
+            all(v.device.type == "cpu" for v in offloaded_modules)
+        ), f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}"
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -852,6 +872,107 @@ class PipelineTesterMixin:
         out_cfg = pipe(**inputs)[0]
 
         assert out_cfg.shape == out_no_cfg.shape
+
+    def test_callback_inputs(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+        has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
+        has_callback_step_end = "callback_on_step_end" in sig.parameters
+
+        if not (has_callback_tensor_inputs and has_callback_step_end):
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        self.assertTrue(
+            hasattr(pipe, "_callback_tensor_inputs"),
+            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        )
+
+        def callback_inputs_subset(pipe, i, t, callback_kwargs):
+            # interate over callback args
+            for tensor_name, tensor_value in callback_kwargs.items():
+                # check that we're only passing in allowed tensor inputs
+                assert tensor_name in pipe._callback_tensor_inputs
+
+            return callback_kwargs
+
+        def callback_inputs_all(pipe, i, t, callback_kwargs):
+            for tensor_name in pipe._callback_tensor_inputs:
+                assert tensor_name in callback_kwargs
+
+            # interate over callback args
+            for tensor_name, tensor_value in callback_kwargs.items():
+                # check that we're only passing in allowed tensor inputs
+                assert tensor_name in pipe._callback_tensor_inputs
+
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        # Test passing in a subset
+        inputs["callback_on_step_end"] = callback_inputs_subset
+        inputs["callback_on_step_end_tensor_inputs"] = ["latents"]
+        inputs["output_type"] = "latent"
+        output = pipe(**inputs)[0]
+
+        # Test passing in a everything
+        inputs["callback_on_step_end"] = callback_inputs_all
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        inputs["output_type"] = "latent"
+        output = pipe(**inputs)[0]
+
+        def callback_inputs_change_tensor(pipe, i, t, callback_kwargs):
+            is_last = i == (pipe.num_timesteps - 1)
+            if is_last:
+                callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
+            return callback_kwargs
+
+        inputs["callback_on_step_end"] = callback_inputs_change_tensor
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        inputs["output_type"] = "latent"
+        output = pipe(**inputs)[0]
+        assert output.abs().sum() == 0
+
+    def test_callback_cfg(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+        has_callback_tensor_inputs = "callback_on_step_end_tensor_inputs" in sig.parameters
+        has_callback_step_end = "callback_on_step_end" in sig.parameters
+
+        if not (has_callback_tensor_inputs and has_callback_step_end):
+            return
+
+        if "guidance_scale" not in sig.parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        self.assertTrue(
+            hasattr(pipe, "_callback_tensor_inputs"),
+            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        )
+
+        def callback_increase_guidance(pipe, i, t, callback_kwargs):
+            pipe._guidance_scale += 1.0
+
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        # use cfg guidance because some pipelines modify the shape of the latents
+        # outside of the denoising loop
+        inputs["guidance_scale"] = 2.0
+        inputs["callback_on_step_end"] = callback_increase_guidance
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        _ = pipe(**inputs)[0]
+
+        # we increase the guidance scale by 1.0 at every step
+        # check that the guidance scale is increased by the number of scheduler timesteps
+        # accounts for models that modify the number of inference steps based on strength
+        assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps)
 
 
 @is_staging_test
