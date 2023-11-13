@@ -1086,7 +1086,7 @@ def main(args):
             )
         if args.text_encoder_lr:
             logger.warn(
-                f"Learning rates were provided both for the unet and the text encdoer- e.g. text_encoder_lr and learning_rate"
+                f"Learning rates were provided both for the unet and the text encoder- e.g. text_encoder_lr: {args.text_encoder_lr} and learning_rate: {args.learning_rate}"
                 f"when using prodigy only learning_rate is used as the initial learning rate"
             )
 
