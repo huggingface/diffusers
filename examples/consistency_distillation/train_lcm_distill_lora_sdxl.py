@@ -1232,6 +1232,8 @@ def main(args):
                         # Get teacher model prediction on noisy_latents and unconditional embedding
                         uncond_added_conditions = copy.deepcopy(encoded_text)
                         uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
+                        for k, v in uncond_added_conditions.items():
+                            print(k, v.shape)
                         uncond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),
                             start_timesteps,
