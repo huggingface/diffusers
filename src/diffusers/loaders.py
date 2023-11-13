@@ -767,8 +767,9 @@ class UNet2DConditionLoadersMixin:
         set_adapter_layers(self, enabled=True)
 
     def _load_ip_adapter_weights(self, state_dict):
-        # set ip-adapter cross-attention processors
+        # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
+        key_id = 1
         for name in self.attn_processors.keys():
             cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
             if name.startswith("mid_block"):
@@ -779,7 +780,7 @@ class UNet2DConditionLoadersMixin:
             elif name.startswith("down_blocks"):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = self.config.block_out_channels[block_id]
-            if cross_attention_dim is None:
+            if cross_attention_dim is None or "motion_modules" in name:
                 attn_processor_class = (
                     AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
                 )
@@ -792,13 +793,14 @@ class UNet2DConditionLoadersMixin:
                     hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
                 ).to(dtype=self.dtype, device=self.device)
 
-        self.set_attn_processor(attn_procs)
+                value_dict = {}
+                for k, w in attn_procs[name].state_dict().items():
+                    value_dict.update({f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]})
 
-        # load ip-adapter cross-attention weights
-        ip_attn_layers = torch.nn.ModuleList(
-            [module if isinstance(module, nn.Module) else nn.Identity() for module in self.attn_processors.values()]
-        )
-        ip_attn_layers.load_state_dict(state_dict["ip_adapter"])
+                attn_procs[name].load_state_dict(value_dict)
+                key_id += 2
+
+        self.set_attn_processor(attn_procs)
 
         # create image projection layers.
         clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
