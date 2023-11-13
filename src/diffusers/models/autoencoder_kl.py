@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import FromOriginalVAEMixin
+from ..loaders.single_file import FromOriginalVAEMixin
 from ..utils import BaseOutput
 from ..utils.accelerate_utils import apply_forward_hook
 from .attention_processor import (
