@@ -39,6 +39,7 @@ from packaging import version
 from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
 from torchvision import transforms
 from torchvision.transforms.functional import crop
+from safetensors.torch import save_file
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
@@ -1341,8 +1342,8 @@ def main(args):
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
         unet.save_pretrained(args.output_dir)
-        lora_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
-        StableDiffusionXLPipeline.save_lora_weights(os.path.join(args.output_dir, "unet_lora"), lora_state_dict)
+        kohya_state_dict = get_module_kohya_state_dict(unet, "lora_unet", dtype=unet.dtype)
+        save_file(kohya_state_dict, os.path.join(args.output_dir, "pytorch_lora_weights.safetensors"))
 
         if args.push_to_hub:
             upload_folder(
