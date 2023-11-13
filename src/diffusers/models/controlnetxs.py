@@ -88,6 +88,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             base_model_channel_sizes=base_model_channel_sizes,
             control_scale=0.95,
             addition_embed_type='text_time',
+            control_attention_head_dim=64,
         )
         cnxs_model.base_model = base_model
         return cnxs_model
@@ -150,6 +151,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             control_scale=1,
             time_control_scale=1,
             addition_embed_type: Optional[str] = None,
+            control_attention_head_dim: Optional[int] = 8,
         ):
         super().__init__()
 
@@ -172,6 +174,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             time_embedding_dim=time_embedding_dim,
             transformer_layers_per_block=transformer_layers_per_block,
             cross_attention_dim=cross_attention_dim,
+            attention_head_dim=control_attention_head_dim,
         )
 
         # 2 - Do model surgery on control model
