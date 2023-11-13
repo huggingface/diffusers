@@ -304,6 +304,51 @@ make_image_grid([init_image, image], rows=1, cols=2)
   </div>
 </div>
 
+The trade-off of using a non-inpaint specific checkpoint is the overall image quality may be lower, but it generally tends to preserve the mask area (that is why you can see the mask outline). The inpaint specific checkpoints are intentionally trained to generate higher quality inpainted images, and that includes creating a more natural transition between the masked and unmasked areas. As a result, these checkpoints are more likely to change your unmasked area.
+
+If preserving the unmasked area is important for your task, you can use the code below to force the unmasked area of an image to remain the same at the expense of some more unnatural transitions between the masked and unmasked areas.
+
+```py
+import PIL
+import numpy as np
+import torch
+
+from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
+
+device = "cuda"
+pipeline = AutoPipelineForInpainting.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    torch_dtype=torch.float16,
+)
+pipeline = pipeline.to(device)
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = load_image(img_url).resize((512, 512))
+mask_image = load_image(mask_url).resize((512, 512))
+
+prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+repainted_image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+repainted_image.save("repainted_image.png")
+
+# Convert mask to grayscale NumPy array
+mask_image_arr = np.array(mask_image.convert("L"))
+# Add a channel dimension to the end of the grayscale mask
+mask_image_arr = mask_image_arr[:, :, None]
+# Binarize the mask: 1s correspond to the pixels which are repainted
+mask_image_arr = mask_image_arr.astype(np.float32) / 255.0
+mask_image_arr[mask_image_arr < 0.5] = 0
+mask_image_arr[mask_image_arr >= 0.5] = 1
+
+# Take the masked pixels from the repainted image and the unmasked pixels from the initial image
+unmasked_unchanged_image_arr = (1 - mask_image_arr) * init_image + mask_image_arr * repainted_image
+unmasked_unchanged_image = PIL.Image.fromarray(unmasked_unchanged_image_arr.round().astype("uint8"))
+unmasked_unchanged_image.save("force_unmasked_unchanged.png")
+make_image_grid([init_image, mask_image, repainted_image, unmasked_unchanged_image], rows=2, cols=2)
+```
+
 ## Configure pipeline parameters
 
 Image features - like quality and "creativity" - are dependent on pipeline parameters. Knowing what these parameters do is important for getting the results you want. Let's take a look at the most important parameters and see how changing them affects the output.
@@ -423,50 +468,6 @@ image
     <figcaption class="text-center">negative_prompt = "bad architecture, unstable, poor details, blurry"</figcaption>
   </figure>
 </div>
-
-## Preserve unmasked areas
-
-The [`AutoPipelineForInpainting`] (and other inpainting pipelines) generally changes the unmasked parts of an image to create a more natural transition between the masked and unmasked region. If this behavior is undesirable, you can force the unmasked area to remain the same. However, forcing the unmasked portion of the image to remain the same may result in some unusual transitions between the unmasked and masked areas.
-
-```py
-import PIL
-import numpy as np
-import torch
-
-from diffusers import AutoPipelineForInpainting
-from diffusers.utils import load_image
-
-device = "cuda"
-pipeline = AutoPipelineForInpainting.from_pretrained(
-    "runwayml/stable-diffusion-inpainting",
-    torch_dtype=torch.float16,
-)
-pipeline = pipeline.to(device)
-
-img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
-
-init_image = load_image(img_url).resize((512, 512))
-mask_image = load_image(mask_url).resize((512, 512))
-
-prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
-repainted_image = pipeline(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
-repainted_image.save("repainted_image.png")
-
-# Convert mask to grayscale NumPy array
-mask_image_arr = np.array(mask_image.convert("L"))
-# Add a channel dimension to the end of the grayscale mask
-mask_image_arr = mask_image_arr[:, :, None]
-# Binarize the mask: 1s correspond to the pixels which are repainted
-mask_image_arr = mask_image_arr.astype(np.float32) / 255.0
-mask_image_arr[mask_image_arr < 0.5] = 0
-mask_image_arr[mask_image_arr >= 0.5] = 1
-
-# Take the masked pixels from the repainted image and the unmasked pixels from the initial image
-unmasked_unchanged_image_arr = (1 - mask_image_arr) * init_image + mask_image_arr * repainted_image
-unmasked_unchanged_image = PIL.Image.fromarray(unmasked_unchanged_image_arr.round().astype("uint8"))
-unmasked_unchanged_image.save("force_unmasked_unchanged.png")
-```
 
 ## Chained inpainting pipelines
 
