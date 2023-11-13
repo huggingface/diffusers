@@ -60,35 +60,35 @@ class AttnProcsLayers(AttnProcsLayers):
 
 
 class UNet2DConditionLoadersMixin(UNet2DConditionLoadersMixin):
-    deprecation_message = "Importing `UNet2DConditionLoadersMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers.loaders.unet import UNet2DConditionLoadersMixin`, instead."
+    deprecation_message = "Importing `UNet2DConditionLoadersMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers import UNet2DConditionLoadersMixin`, instead."
     deprecate("UNet2DConditionLoadersMixin", "1.0.0", deprecation_message, standard_warn=False)
 
 
 class TextualInversionLoaderMixin(TextualInversionLoaderMixin):
-    deprecation_message = "Importing `TextualInversionLoaderMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers.loaders.textual_inversion import TextualInversionLoaderMixin`, instead."
+    deprecation_message = "Importing `TextualInversionLoaderMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers import TextualInversionLoaderMixin`, instead."
     deprecate("TextualInversionLoaderMixin", "1.0.0", deprecation_message, standard_warn=False)
 
 
 class LoraLoaderMixin(LoraLoaderMixin):
-    deprecation_message = "Importing `LoraLoaderMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers.loaders.lora import LoraLoaderMixin`, instead."
+    deprecation_message = "Importing `LoraLoaderMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers import LoraLoaderMixin`, instead."
     deprecate("LoraLoaderMixin", "1.0.0", deprecation_message, standard_warn=False)
 
 
 class StableDiffusionXLLoraLoaderMixin(StableDiffusionXLLoraLoaderMixin):
-    deprecation_message = "Importing `StableDiffusionXLLoraLoaderMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers.loaders.lora import StableDiffusionXLLoraLoaderMixin`, instead."
+    deprecation_message = "Importing `StableDiffusionXLLoraLoaderMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers import StableDiffusionXLLoraLoaderMixin`, instead."
     deprecate("StableDiffusionXLLoraLoaderMixin", "1.0.0", deprecation_message, standard_warn=False)
 
 
 class FromSingleFileMixin(FromSingleFileMixin):
-    deprecation_message = "Importing `FromSingleFileMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers.loaders.single_file import FromSingleFileMixin`, instead."
+    deprecation_message = "Importing `FromSingleFileMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers import FromSingleFileMixin`, instead."
     deprecate("FromSingleFileMixin", "1.0.0", deprecation_message, standard_warn=False)
 
 
 class FromOriginalVAEMixin(FromOriginalVAEMixin):
-    deprecation_message = "Importing `FromOriginalVAEMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers.loaders.single_file import FromOriginalVAEMixin`, instead."
+    deprecation_message = "Importing `FromOriginalVAEMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers import FromOriginalVAEMixin`, instead."
     deprecate("FromOriginalVAEMixin", "1.0.0", deprecation_message, standard_warn=False)
 
 
 class FromOriginalControlnetMixin(FromOriginalControlnetMixin):
-    deprecation_message = "Importing `FromOriginalControlnetMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers.loaders.single_file import FromOriginalControlnetMixin`, instead."
+    deprecation_message = "Importing `FromOriginalControlnetMixin` from `diffusers.loaders` is depcrecated and will be removed in v1.0.0. Import it as `from diffusers import FromOriginalControlnetMixin`, instead."
     deprecate("FromOriginalControlnetMixin", "1.0.0", deprecation_message, standard_warn=False)

@@ -198,7 +198,7 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
-    _import_structure["loaders"].extend(["FromSingleFileMixin", "LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin"])
+    _import_structure["loaders"].extend(["FromSingleFileMixin", "LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin", "TextualInversionLoaderMixin"])
     _import_structure["pipelines"].extend(
         [
             "AltDiffusionImg2ImgPipeline",
@@ -549,7 +549,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .loaders import FromSingleFileMixin, LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin
+        from .loaders import FromSingleFileMixin, LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
