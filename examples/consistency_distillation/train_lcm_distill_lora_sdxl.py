@@ -412,6 +412,12 @@ def parse_args():
         action="store_true",
         help="whether to randomly flip images horizontally",
     )
+    parser.add_argument(
+        "--encode_batch_size",
+        type=int,
+        default=8,
+        help="Batch size to use for VAE encoding of the images for efficient processing.",
+    )
     # ----Dataloader----
     parser.add_argument(
         "--dataloader_num_workers",
@@ -1149,8 +1155,8 @@ def main(args):
 
                 # encode pixel values with batch size of at most 8
                 latents = []
-                for i in range(0, pixel_values.shape[0], 8):
-                    latents.append(vae.encode(pixel_values[i : i + 8]).latent_dist.sample())
+                for i in range(0, pixel_values.shape[0], args.encode_batch_size):
+                    latents.append(vae.encode(pixel_values[i : i + args.encode_batch_size]).latent_dist.sample())
                 latents = torch.cat(latents, dim=0)
 
                 latents = latents * vae.config.scaling_factor
