@@ -144,7 +144,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         image: Optional[torch.FloatTensor] = None,
         mask: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         decoded = self._decode(z, image, mask).sample
 
         if not return_dict:
