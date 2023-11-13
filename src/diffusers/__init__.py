@@ -74,7 +74,15 @@ except OptionalDependencyNotAvailable:
 
 else:
     _import_structure["loaders"].extend(
-        ["FromOriginalControlnetMixin", "FromOriginalVAEMixin", "UNet2DConditionLoadersMixin"]
+        [
+            "FromOriginalControlnetMixin",
+            "FromOriginalVAEMixin",
+            "PatchedLoraProjection",
+            "UNet2DConditionLoadersMixin",
+            "text_encoder_attn_modules",
+            "text_encoder_lora_state_dict",
+            "text_encoder_mlp_modules",
+        ]
     )
     _import_structure["models"].extend(
         [
@@ -198,7 +206,9 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
-    _import_structure["loaders"].extend(["FromSingleFileMixin", "LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin", "TextualInversionLoaderMixin"])
+    _import_structure["loaders"].extend(
+        ["FromSingleFileMixin", "LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin", "TextualInversionLoaderMixin"]
+    )
     _import_structure["pipelines"].extend(
         [
             "AltDiffusionImg2ImgPipeline",
@@ -445,7 +455,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .loaders import FromOriginalControlnetMixin, FromOriginalVAEMixin, UNet2DConditionLoadersMixin
+        from .loaders import (
+            FromOriginalControlnetMixin,
+            FromOriginalVAEMixin,
+            PatchedLoraProjection,
+            UNet2DConditionLoadersMixin,
+            text_encoder_attn_modules,
+            text_encoder_lora_state_dict,
+            text_encoder_mlp_modules,
+        )
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
@@ -549,7 +567,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .loaders import FromSingleFileMixin, LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
+        from .loaders import (
+            FromSingleFileMixin,
+            LoraLoaderMixin,
+            StableDiffusionXLLoraLoaderMixin,
+            TextualInversionLoaderMixin,
+        )
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
