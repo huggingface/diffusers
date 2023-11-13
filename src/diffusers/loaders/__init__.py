@@ -2,12 +2,6 @@ from typing import TYPE_CHECKING
 
 from ..utils import DIFFUSERS_SLOW_IMPORT, _LazyModule
 from ..utils.import_utils import is_torch_available, is_transformers_available
-from .utils import (
-    PatchedLoraProjection,
-    text_encoder_attn_modules,
-    text_encoder_lora_state_dict,
-    text_encoder_mlp_modules,
-)
 
 
 _import_structure = {}
@@ -16,6 +10,7 @@ if is_torch_available():
     _import_structure["single_file"] = ["FromOriginalControlnetMixin", "FromOriginalVAEMixin"]
     _import_structure["unet"] = ["UNet2DConditionLoadersMixin"]
     _import_structure["utils"] = [
+        "AttnProcsLayers",
         "PatchedLoraProjection",
         "text_encoder_attn_modules",
         "text_encoder_lora_state_dict",
@@ -33,6 +28,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .single_file import FromOriginalControlnetMixin, FromOriginalVAEMixin
         from .unet import UNet2DConditionLoadersMixin
         from .utils import (
+            AttnProcsLayers,
             PatchedLoraProjection,
             text_encoder_attn_modules,
             text_encoder_lora_state_dict,
