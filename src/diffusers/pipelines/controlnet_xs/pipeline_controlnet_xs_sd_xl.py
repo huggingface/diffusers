@@ -47,7 +47,6 @@ if is_invisible_watermark_available():
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# todo: Test if this runs
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py

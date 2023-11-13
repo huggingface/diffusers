@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Union, Tuple
 
 from itertools import zip_longest
 
+import math
 import torch
 from torch import nn
 from torch.nn.modules.normalization import GroupNorm
@@ -24,7 +25,14 @@ import torch.utils.checkpoint
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
-from .embeddings import get_timestep_embedding
+from .attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnProcessor,
+)
+from .embeddings import Timesteps
 from .modeling_utils import ModelMixin
 from .lora import LoRACompatibleConv
 from .unet_2d_blocks import (
@@ -54,40 +62,33 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     # to delete later
     @classmethod
-    def create_as_in_paper(cls, base_model=None):
-        if base_model is None:
-            # todo: load sdxl instead
-            base_model = UNet2DConditionModel(
-                block_out_channels=(320, 640, 1280),
-                down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
-                up_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
-                transformer_layers_per_block=(0,2,10),
-                cross_attention_dim=2048,
-            )
+    def create_as_in_paper(cls, base_model: UNet2DConditionModel):
 
-        def class_names(modules): return [m.__class__.__name__ for m in modules]
         def get_time_emb_dim(unet: UNet2DConditionModel): return unet.time_embedding.linear_2.out_features
         def get_time_emb_input_dim(unet: UNet2DConditionModel):return unet.time_embedding.linear_1.in_features
 
         base_model_channel_sizes = ControlNetXSModel.gather_base_model_sizes(base_model, base_or_control='base')
 
+        control_model_ratio = 0.1
+
+        block_out_channels = [int(c*control_model_ratio)for c in base_model.config.block_out_channels]
+        dim_attention_heads = 64
+        num_attention_heads = [math.ceil(c/dim_attention_heads) for c in block_out_channels]
+
         cnxs_model = cls(
-            model_channels=320,
-            out_channels=4,
-            hint_channels=3,
-            block_out_channels=(32,64,128),
-            down_block_types=class_names(base_model.down_blocks),
-            up_block_types=class_names(base_model.up_blocks),
+            conditioning_channels=3,
+            block_out_channels=block_out_channels,
+            down_block_types=base_model.config.down_block_types,
+            up_block_types=base_model.config.up_block_types,
             time_embedding_dim=get_time_emb_dim(base_model),
             time_embedding_input_dim=get_time_emb_input_dim(base_model),
-            transformer_layers_per_block=(0,2,10),
-            cross_attention_dim=2048,
+            layers_per_block=base_model.config.layers_per_block,
+            transformer_layers_per_block=base_model.config.transformer_layers_per_block,
+            cross_attention_dim=base_model.config.cross_attention_dim,
             learn_embedding=True,
-            control_model_ratio=0.1,
             base_model_channel_sizes=base_model_channel_sizes,
-            control_scale=0.95,
-            addition_embed_type='text_time',
-            control_attention_head_dim=64,
+            addition_embed_type=base_model.config.addition_embed_type,
+            num_attention_heads=num_attention_heads,
         )
         cnxs_model.base_model = base_model
         return cnxs_model
@@ -128,67 +129,111 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
     @register_to_config
     def __init__(
-            self,
-            model_channels=320,
-            out_channels=4,
-            hint_channels=3,
-            block_out_channels=(32,64,128),
-            down_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
-            up_block_types=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
-            time_embedding_dim=1280,
-            time_embedding_input_dim=320,
-            transformer_layers_per_block=(0,2,10),
-            cross_attention_dim: Union[int, Tuple[int]] = 2048,#1280,
-            learn_embedding=False,
-            control_model_ratio=1.0,
-            base_model_channel_sizes={
-                'enc': [(4, 320), (320, 320), (320, 320), (320, 320), (320, 640), (640, 640), (640, 640), (640, 1280), (1280, 1280)],
-                'mid': [(1280, 1280)],
-                'dec': [(2560, 1280), (2560, 1280), (1920, 1280), (1920, 640), (1280, 640), (960, 640), (960, 320), (640, 320), (640, 320)]
-            },
-            global_pool_conditions: bool = False, # Todo Umer: Needed by SDXL pipeline, but what is this?,
-            control_scale=1,
-            time_control_scale=1,
-            addition_embed_type: Optional[str] = None,
-            control_attention_head_dim: Optional[int] = 8,
-        ):
+        self,
+        conditioning_channels: int = 3,
+        flip_sin_to_cos: bool = True,
+        freq_shift: int = 0,
+        down_block_types: Tuple[str]=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+        up_block_types: Tuple[str]=("DownBlock2D","CrossAttnDownBlock2D","CrossAttnDownBlock2D"),
+        only_cross_attention: Union[bool, Tuple[bool]] = False,
+        block_out_channels: Tuple[int]=(32,64,128),
+        layers_per_block: int = 2,
+        downsample_padding: int = 1,
+        mid_block_scale_factor: float = 1,
+        act_fn: str = "silu",
+        norm_num_groups: Optional[int] = 32,
+        norm_eps: float = 1e-5,
+        time_embedding_dim=1280,
+        time_embedding_input_dim=320,
+        cross_attention_dim: Union[int, Tuple[int]] = 1280,
+        transformer_layers_per_block: Union[int, Tuple[int]]=(0,2,10),
+        base_model_channel_sizes: Dict[str, List[Tuple[int]]]={
+            'enc': [(4, 320), (320, 320), (320, 320), (320, 320), (320, 640), (640, 640), (640, 640), (640, 1280), (1280, 1280)],
+            'mid': [(1280, 1280)],
+            'dec': [(2560, 1280), (2560, 1280), (1920, 1280), (1920, 640), (1280, 640), (960, 640), (960, 320), (640, 320), (640, 320)]
+        },
+        attention_head_dim: Union[int, Tuple[int]] = 8,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
+        use_linear_projection: bool = False,
+        class_embed_type: Optional[str] = None,
+        num_class_embeds: Optional[int] = None,
+        upcast_attention: bool = False,
+        resnet_time_scale_shift: str = "default",
+        projection_class_embeddings_input_dim: Optional[int] = None,
+        controlnet_conditioning_channel_order: str = "rgb",
+        global_pool_conditions: bool = False,
+        time_control_scale:float=1.0,
+        learn_embedding: bool =False,
+        addition_embed_type: Optional[str] = None,
+    ):
         super().__init__()
 
-        # 1 - Save parameters
-        # TODO make variables
-        self.in_ch_factor = 1 if "cat" == 'add' else 2
-        self.control_model_ratio = control_model_ratio
-        self.out_channels = out_channels
-        self.dims = 2
-        self.model_channels = model_channels
-        self.hint_model = None
-        self.no_control = False
-        self.learn_embedding = learn_embedding
+        # If `num_attention_heads` is not defined (which is the case for most models)
+        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
+        # The reason for this behavior is to correct for incorrectly named variables that were introduced
+        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
+        # which is why we correct for the naming here.
+        num_attention_heads = num_attention_heads or attention_head_dim
 
-        # 1 - Create controller
+        # Check inputs
+        if len(block_out_channels) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(only_cross_attention, bool) and len(only_cross_attention) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `only_cross_attention` as `down_block_types`. `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
+            )
+
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
+
+        # 1 - Create control unet
         self.control_model = UNet2DConditionModel(
             block_out_channels=block_out_channels,
             down_block_types=down_block_types,
             up_block_types=up_block_types,
             time_embedding_dim=time_embedding_dim,
+            layers_per_block=layers_per_block,
             transformer_layers_per_block=transformer_layers_per_block,
             cross_attention_dim=cross_attention_dim,
-            # Currently, `attention_head_dim` actually describes the numer of attention heads. See https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-            # TODO: How to handle this?
-            attention_head_dim=[c//control_attention_head_dim for c in block_out_channels], 
+            attention_head_dim=num_attention_heads, 
+            downsample_padding=downsample_padding,
+            mid_block_scale_factor=mid_block_scale_factor,
+            act_fn=act_fn,
+            norm_num_groups=norm_num_groups,
+            norm_eps=norm_eps,
+            use_linear_projection=use_linear_projection,
+            class_embed_type=class_embed_type,
+            num_class_embeds=num_class_embeds,
+            upcast_attention=upcast_attention,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
         )
 
         # 2 - Do model surgery on control model
         # 2.1 - Allow to use the same time information as the base model
         adjust_time_input_dim(self.control_model, time_embedding_input_dim)
+ 
         # 2.2 - Allow for information infusion from base model
-        # todo: make variable (sth like zip(block_out_channels[:-1],block_out_channels[1:]))
-        for i, extra_channels in enumerate(((320, 320), (320,640), (640,1280))):
-            e1,e2=extra_channels
+        base_block_out_channels = [sz[1] for sz in base_model_channel_sizes['enc'] if sz[0] != sz[1]]
+
+        extra_channels = list(zip(
+            base_block_out_channels[0:1] + base_block_out_channels[:-1],
+            base_block_out_channels
+        ))
+        for i, (e1, e2) in enumerate(extra_channels):
             increase_block_input_in_encoder_resnet(self.control_model, block_no=i, resnet_idx=0, by=e1)
             increase_block_input_in_encoder_resnet(self.control_model, block_no=i, resnet_idx=1, by=e2)
             if self.control_model.down_blocks[i].downsamplers: increase_block_input_in_encoder_downsampler(self.control_model, block_no=i, by=e2)
-        increase_block_input_in_mid_resnet(self.control_model, by=1280) # todo: make var
+        increase_block_input_in_mid_resnet(self.control_model, by=base_block_out_channels[-1])
 
         # 3 - Gather Channel Sizes
         self.ch_inout_ctrl = ControlNetXSModel.gather_base_model_sizes(self.control_model, base_or_control='control')
@@ -223,7 +268,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 5 - Create conditioning hint embedding
         self.input_hint_block = nn.Sequential(
-            nn.Conv2d(hint_channels, 16, 3, padding=1),
+            nn.Conv2d(conditioning_channels, 16, 3, padding=1),
             nn.SiLU(),
             nn.Conv2d(16, 16, 3, padding=1),
             nn.SiLU(),
@@ -237,29 +282,232 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             nn.SiLU(),
             nn.Conv2d(96, 256, 3, padding=1, stride=2),
             nn.SiLU(),
-            zero_module(nn.Conv2d(256, int(model_channels * self.control_model_ratio), 3, padding=1))
+            zero_module(nn.Conv2d(256, block_out_channels[0], 3, padding=1))
         )
     
         # 6 - Create time embedding
-        pass
-        self.flip_sin_to_cos = True # default params
-        self.freq_shift = 0
-        # !! TODO !! : learn_embedding is True, so we need our own embedding
-        # Edit: That's already part of the ctrl model, even thought it's not used
-        # Todo: Only when `learn_embedding = False` can we just use the base model's time embedding, otherwise we need to create our own 
-        
-        # Text embedding
-        # info: I deleted the encoder_hid_proj as it's not given by the Heidelberg CVL weights
+        self.time_proj = Timesteps(time_embedding_input_dim, flip_sin_to_cos, freq_shift)
 
-        scale_list = [1.] * len(self.enc_zero_convs_out) + [1.] + [1.] * len(self.dec_zero_convs_out)
-        self.register_buffer('scale_list', torch.tensor(scale_list) * control_scale)
-
-        # in the mininal implementation setting, we only need the control model up to the mid block
-        # note: these can only be deleted after  has to be `gather_base_model_sizes(self.control_mode, 'control')` has been called
+        # In the mininal implementation setting, we only need the control model up to the mid block
         del self.control_model.up_blocks
         del self.control_model.conv_norm_out
         del self.control_model.conv_out
 
+    @classmethod
+    def from_unet(
+        cls,
+        unet: UNet2DConditionModel,
+        controlnet_conditioning_channel_order: str = "rgb",
+        block_out_channels: Optional[Tuple[int]] = None,
+        control_size: Optional[float] = 0.1
+    ):
+        r"""
+        Instantiate a [`ControlNetXSModel`] from [`UNet2DConditionModel`].
+
+        Parameters:
+            unet (`UNet2DConditionModel`):
+                The UNet model whose configuration are copief to the [`ControlNetXSModel`].
+        """
+
+        fixed_size = block_out_channels is not None
+        relative_size = control_size is not None
+
+        if not (fixed_size ^ relative_size):
+            raise ValueError("Exactly one of `block_out_channels` (for absolute sizing) or `control_size` (for relative sizing) must be given to create a controlnetxs model from a unet.")
+
+        if block_out_channels is None:
+            block_out_channels = [control_size*c for c in unet.config.block_out_channels]
+
+        transformer_layers_per_block = (
+            unet.config.transformer_layers_per_block if "transformer_layers_per_block" in unet.config else 1
+        )
+        encoder_hid_dim = unet.config.encoder_hid_dim if "encoder_hid_dim" in unet.config else None
+        encoder_hid_dim_type = unet.config.encoder_hid_dim_type if "encoder_hid_dim_type" in unet.config else None
+        addition_embed_type = unet.config.addition_embed_type if "addition_embed_type" in unet.config else None
+        addition_time_embed_dim = (
+            unet.config.addition_time_embed_dim if "addition_time_embed_dim" in unet.config else None
+        )
+
+        base_model_channel_sizes = ControlNetXSModel.gather_base_model_sizes(unet, base_or_control='base')
+
+        controlnet = cls(
+            base_model_channel_sizes=base_model_channel_sizes,
+            addition_time_embed_dim=addition_time_embed_dim,
+            transformer_layers_per_block=transformer_layers_per_block,
+            in_channels=unet.config.in_channels,
+            flip_sin_to_cos=unet.config.flip_sin_to_cos,
+            freq_shift=unet.config.freq_shift,
+            down_block_types=unet.config.down_block_types,
+            only_cross_attention=unet.config.only_cross_attention,
+            block_out_channels=unet.config.block_out_channels,
+            layers_per_block=unet.config.layers_per_block,
+            downsample_padding=unet.config.downsample_padding,
+            mid_block_scale_factor=unet.config.mid_block_scale_factor,
+            act_fn=unet.config.act_fn,
+            norm_num_groups=unet.config.norm_num_groups,
+            norm_eps=unet.config.norm_eps,
+            cross_attention_dim=unet.config.cross_attention_dim,
+            attention_head_dim=unet.config.attention_head_dim,
+            num_attention_heads=unet.config.num_attention_heads,
+            use_linear_projection=unet.config.use_linear_projection,
+            class_embed_type=unet.config.class_embed_type,
+            num_class_embeds=unet.config.num_class_embeds,
+            upcast_attention=unet.config.upcast_attention,
+            resnet_time_scale_shift=unet.config.resnet_time_scale_shift,
+            projection_class_embeddings_input_dim=unet.config.projection_class_embeddings_input_dim,
+            controlnet_conditioning_channel_order=controlnet_conditioning_channel_order,
+        )
+
+        return controlnet
+
+    @property
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+        r"""
+        Returns:
+            `dict` of attention processors: A dictionary containing all attention processors used in the model with
+            indexed by its weight name.
+        """
+        # set recursively
+        processors = {}
+
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
+
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
+
+            return processors
+
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
+
+        return processors
+
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    def set_attn_processor(
+        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
+    ):
+        r"""
+        Sets the attention processor to use to compute attention.
+
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
+
+        """
+        count = len(self.attn_processors.keys())
+
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+            )
+
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "set_processor"):
+                if not isinstance(processor, dict):
+                    module.set_processor(processor, _remove_lora=_remove_lora)
+                else:
+                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
+
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
+
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    def set_default_attn_processor(self):
+        """
+        Disables custom attention processors and sets the default attention implementation.
+        """
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnAddedKVProcessor()
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+            processor = AttnProcessor()
+        else:
+            raise ValueError(
+                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
+            )
+
+        self.set_attn_processor(processor, _remove_lora=True)
+
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
+    def set_attention_slice(self, slice_size):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module splits the input tensor in slices to compute attention in
+        several steps. This is useful for saving some memory in exchange for a small decrease in speed.
+
+        Args:
+            slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
+                When `"auto"`, input to the attention heads is halved, so attention is computed in two steps. If
+                `"max"`, maximum amount of memory is saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
+        """
+        sliceable_head_dims = []
+
+        def fn_recursive_retrieve_sliceable_dims(module: torch.nn.Module):
+            if hasattr(module, "set_attention_slice"):
+                sliceable_head_dims.append(module.sliceable_head_dim)
+
+            for child in module.children():
+                fn_recursive_retrieve_sliceable_dims(child)
+
+        # retrieve number of attention layers
+        for module in self.children():
+            fn_recursive_retrieve_sliceable_dims(module)
+
+        num_sliceable_layers = len(sliceable_head_dims)
+
+        if slice_size == "auto":
+            # half the attention head size is usually a good trade-off between
+            # speed and memory
+            slice_size = [dim // 2 for dim in sliceable_head_dims]
+        elif slice_size == "max":
+            # make smallest slice possible
+            slice_size = num_sliceable_layers * [1]
+
+        slice_size = num_sliceable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
+
+        if len(slice_size) != len(sliceable_head_dims):
+            raise ValueError(
+                f"You have provided {len(slice_size)}, but {self.config} has {len(sliceable_head_dims)} different"
+                f" attention layers. Make sure to match `len(slice_size)` to be {len(sliceable_head_dims)}."
+            )
+
+        for i in range(len(slice_size)):
+            size = slice_size[i]
+            dim = sliceable_head_dims[i]
+            if size is not None and size > dim:
+                raise ValueError(f"size {size} has to be smaller or equal to {dim}.")
+
+        # Recursively walk through all the children.
+        # Any children which exposes the set_attention_slice method
+        # gets the message
+        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
+            if hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size.pop())
+
+            for child in module.children():
+                fn_recursive_set_attention_slice(child, slice_size)
+
+        reversed_slice_size = list(reversed(slice_size))
+        for module in self.children():
+            fn_recursive_set_attention_slice(module, reversed_slice_size)
+
+    # Copied from diffusers.models.controlnet.ControlNetModel._set_gradient_checkpointing
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
+            module.gradient_checkpointing = value
 
     def forward(
         self,
@@ -270,21 +518,35 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         conditioning_scale: float = 1.0,
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         guess_mode: bool = False, # todo: understand and implement if required
         return_dict: bool = True,
     ) -> Union[ControlNetXSOutput, Tuple]:
         if self.base_model is None:
-            raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel by `cnxs_model.base_model = the_base_model`")
+            raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel via `cnxs_model.base_model = the_base_model`")
 
-        # todo: should scale_list remain an attribute?
-        scale_list = self.scale_list * 0. + conditioning_scale
+        # check channel order
+        channel_order = self.config.controlnet_conditioning_channel_order
 
-        #x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
-        # todo: check if we need this line. I assume duplication of guiding image is done in pipeline
-        if sample.size(0) // 2 == controlnet_cond.size(0): controlnet_cond = torch.cat([controlnet_cond, controlnet_cond], dim=0) # for classifier free guidance
-        
+        if channel_order == "rgb":
+            # in rgb order by default
+            ...
+        elif channel_order == "bgr":
+            controlnet_cond = torch.flip(controlnet_cond, dims=[1])
+        else:
+            raise ValueError(f"unknown `controlnet_conditioning_channel_order`: {channel_order}")
+
+        # scale control strength
+        n_connections = len(self.enc_zero_convs_out) + 1 + len(self.dec_zero_convs_out)
+        scale_list = torch.full((n_connections,), conditioning_scale)
+   
+        # prepare attention_mask
+        if attention_mask is not None:
+            attention_mask = (1 - attention_mask.to(sample.dtype)) * -10000.0
+            attention_mask = attention_mask.unsqueeze(1)
+
         # 1. time
         timesteps=timestep
         if not torch.is_tensor(timesteps):
@@ -302,18 +564,14 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
-        t_emb = get_timestep_embedding(
-            timesteps, 
-            self.model_channels,
-            flip_sin_to_cos=self.flip_sin_to_cos,
-            downscale_freq_shift=self.freq_shift,
-        )
+        t_emb = self.time_proj(timesteps)
+
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=sample.dtype)
 
-        if self.learn_embedding:
+        if self.config.learn_embedding:
             temb = self.control_model.time_embedding(t_emb) * self.config.time_control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.config.time_control_scale ** 0.3)
         else:
             temb = self.base_model.time_embedding(t_emb)
@@ -321,7 +579,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # added time & text embeddings
         aug_emb = None
         if self.config.addition_embed_type == "text":
-            raise NotImplementedError()
+            aug_emb = self.base_model.add_embedding(encoder_hidden_states)
         elif self.config.addition_embed_type == "text_image":
             raise NotImplementedError()
         elif self.config.addition_embed_type == "text_time":
@@ -341,7 +599,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
             add_embeds = add_embeds.to(temb.dtype)
             aug_emb = self.base_model.add_embedding(add_embeds)
-
         elif self.config.addition_embed_type == "image":
             raise NotImplementedError()
         elif self.config.addition_embed_type == "image_hint":
@@ -376,30 +633,43 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
 
-        # 1 - input blocks (encoder)
+        # 1 - down
         for m_base, m_ctrl  in zip(base_down_subblocks, ctrl_down_subblocks):
             h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
-            h_base = m_base(h_base, temb, cemb)                                 # B - apply base subblock
-            h_ctrl = m_ctrl(h_ctrl, temb, cemb)                                 # C - apply ctrl subblock
+            h_base = m_base(                                                    # B - apply base subblock
+                h_base, temb, cemb,
+                attention_mask, cross_attention_kwargs
+            )                                 
+            h_ctrl = m_ctrl(                                                    # C - apply ctrl subblock
+                h_ctrl, temb, cemb,
+                attention_mask, cross_attention_kwargs
+            )                             
             h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)     # D - add ctrl -> base
 
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
 
-        h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
-
-        # 2 - mid blocks (bottleneck)
+        # 2 - mid
+        h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)      # A - concat base -> ctrl
         for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
-            h_base = m_base(h_base, temb, cemb)
-            h_ctrl = m_ctrl(h_ctrl, temb, cemb)
-   
-        h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)
+            h_base = m_base(                                                    # B - apply base subblock
+                h_base, temb, cemb,
+                attention_mask, cross_attention_kwargs
+            )  
+            h_ctrl  = m_ctrl(                                                   # C - apply ctrl subblock
+                h_ctrl, temb, cemb,
+                attention_mask, cross_attention_kwargs
+            )  
+        h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)          # D - add ctrl -> base
  
-        # 3 - output blocks (decoder)
+        # 3 - up
         for m_base in base_up_subblocks:
             h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales)  # add info from ctrl encoder 
             h_base = torch.cat([h_base, hs_base.pop()], dim=1)                      # concat info from base encoder+ctrl encoder
-            h_base = m_base(h_base, temb, cemb)
+            h_base = m_base(                                                   
+                h_base, temb, cemb,
+                attention_mask, cross_attention_kwargs
+            )  
 
         h_base = self.base_model.conv_norm_out(h_base)
         h_base = self.base_model.conv_act(h_base)
@@ -409,7 +679,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             return h_base
         
         return ControlNetXSOutput(sample=h_base)
-
 
     def make_zero_conv(self, in_channels, out_channels=None):
         # keep running track # todo: better comment
@@ -424,20 +693,25 @@ class EmbedSequential(nn.ModuleList):
         if not is_iterable(ms): ms = [ms]
         super().__init__(ms,*args,**kwargs)
     
-    def forward(self,x,temb,cemb):
-        def cls_name(x): return str(type(x)).split('.')[-1].replace("'>",'')
-        content = ' '.join(cls_name(m) for m in self)
-        udl.print_if(f'EmbedSequential.forward with content {content}', conditions='SUBBLOCK-MINUS-1')
+    def forward(
+        self,
+        x: torch.Tensor,
+        temb: torch.Tensor,
+        cemb: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+    ):
         for m in self:
             if isinstance(m,ResnetBlock2D):
                 x = m(x,temb)
             elif isinstance(m,Transformer2DModel):
-                x = m(x,cemb).sample
+                x = m(x,cemb,attention_mask=attention_mask,cross_attention_kwargs=cross_attention_kwargs).sample
             elif isinstance(m,Downsample2D):
                 x = m(x)
             elif isinstance(m,Upsample2D):
                 x = m(x)
-            else: raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D` or `Upsample2D`')
+            else:
+                raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D` or `Upsample2D`')
 
         return x
 

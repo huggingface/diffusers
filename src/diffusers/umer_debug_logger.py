@@ -20,6 +20,7 @@ class UmerDebugLogger:
         self.fields = ['timestamp', 'cls', 'fn', 'shape', 'msg', 'condition', 'tensor_file']
         self.create_file()
         self.warned_of_no_condition = False
+        print("Info: `UmerDebugLogger` created. This is a logging class that will be deleted when the PR to integrate ControlNet-XS is done.")
 
     @property
     def full_file_path(self): return os.path.join(self.log_dir, self._FILE) 
@@ -30,7 +31,6 @@ class UmerDebugLogger:
             with open(file, 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=self.fields)
                 writer.writeheader()
-
 
     def set_dir(self, log_dir, clear=False):
         self.log_dir = log_dir
@@ -94,7 +94,7 @@ class UmerDebugLogger:
 
     def maybe_warn_of_no_condition(self):
         if self.condition is None and not self.warned_of_no_condition :
-            print("Warning: No condition set for UmerDebugLogger")
+            print("Info: No condition set for UmerDebugLogger")
             self.warned_of_no_condition = True
 
     def get_log_objects(self):
