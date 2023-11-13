@@ -1334,9 +1334,17 @@ def download_from_original_stable_diffusion_ckpt(
     if pipeline_class is None:
         # Check if we have a SDXL or SD model and initialize default pipeline
         if model_type not in ["SDXL", "SDXL-Refiner"]:
-            pipeline_class = StableDiffusionPipeline if not controlnet else StableDiffusionControlNetPipeline
+            pipeline_class = (
+                StableDiffusionPipeline
+                if not controlnet
+                else StableDiffusionControlNetPipeline
+            )
         else:
-            pipeline_class = StableDiffusionXLPipeline if model_type == "SDXL" else StableDiffusionXLImg2ImgPipeline
+            pipeline_class = (
+                StableDiffusionXLPipeline
+                if model_type == "SDXL"
+                else StableDiffusionXLImg2ImgPipeline
+            )
 
     if num_in_channels is None and pipeline_class == StableDiffusionInpaintPipeline:
         num_in_channels = 9
