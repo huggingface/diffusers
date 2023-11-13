@@ -355,7 +355,7 @@ def parse_args():
     )
     # ----Image Processing----
     parser.add_argument(
-        "--train_shards_path_or_url",
+        "--dataset_name",
         type=str,
         default=None,
         help=(
@@ -365,6 +365,31 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--dataset_config_name",
+        type=str,
+        default=None,
+        help="The config of the Dataset, leave as None if there's only one config.",
+    )
+    parser.add_argument(
+        "--train_data_dir",
+        type=str,
+        default=None,
+        help=(
+            "A folder containing the training data. Folder contents must follow the structure described in"
+            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
+            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
+        ),
+    )
+    parser.add_argument(
+        "--image_column", type=str, default="image", help="The column of the dataset containing an image."
+    )
+    parser.add_argument(
+        "--caption_column",
+        type=str,
+        default="text",
+        help="The column of the dataset containing a caption or a list of captions.",
+    )
+    parser.add_argument(
         "--resolution",
         type=int,
         default=1024,
@@ -372,12 +397,6 @@ def parse_args():
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
         ),
-    )
-    parser.add_argument(
-        "--use_fix_crop_and_size",
-        action="store_true",
-        help="Whether or not to use the fixed crop and size for the teacher model.",
-        default=False,
     )
     parser.add_argument(
         "--center_crop",
@@ -466,7 +485,7 @@ def parse_args():
     parser.add_argument(
         "--proportion_empty_prompts",
         type=float,
-        default=0,
+        default=0.0,
         help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
     )
     # ----Latent Consistency Distillation (LCD) Specific Arguments----
@@ -1021,7 +1040,7 @@ def main(args):
 
     compute_embeddings_fn = functools.partial(
         compute_embeddings,
-        proportion_empty_prompts=0,
+        proportion_empty_prompts=args.proportion_empty_prompts,
         text_encoders=text_encoders,
         tokenizers=tokenizers,
     )
