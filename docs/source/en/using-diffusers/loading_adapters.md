@@ -312,7 +312,8 @@ image
 
 [IP-Adapter](https://ip-adapter.github.io/) is an effective and lightweight adapter that adds image prompting capabilities to a diffusion model. This adapter works by decoupling the cross-attention layers of the image and text features. All the other model components are frozen and only the embedded image features in the UNet are trained. As a result, IP-Adapter files are typically only ~100MBs.
 
-IP-Adapter works with most of our Stable Diffusion, Stable Diffusion XL (SDXL), ControlNet, T2I-Adapter, and any custom models finetuned from the same base models.
+IP-Adapter works with most of our pipelines, including Stable Diffusion, Stable Diffusion XL (SDXL), ControlNet, T2I-Adapter, AnimateDiff.  And you can use any custom models finetuned from the same base models. It also works with LCM-Lora out of box.
+
 
 <Tip>
 
@@ -382,7 +383,10 @@ You can use the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] method to adjus
 `scale=0.5` can achieve good results in most cases when you use both text and image prompts.
 </Tip>
 
-IP-Adapter also works great with Image-to-Image and Inpainting pipelines. Here is an example of how you can use it with Image-to-Image.
+IP-Adapter also works great with Image-to-Image and Inpainting pipelines. See below examples of how you can use it with Image-to-Image and Inpaint.
+
+<hfoptions id="tasks">
+<hfoption id="image-to-image">
 
 ```py
 from diffusers import AutoPipelineForImage2Image
@@ -406,6 +410,42 @@ images = pipeline(
 ).images
 images[0]
 ```
+
+</hfoption>
+<hfoption id="inpaint">
+
+```py
+from diffusers import AutoPipelineForInpaint
+import torch
+from diffusers.utils import load_image
+
+pipeline = AutoPipelineForInpaint.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float).to("cuda")
+
+image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/inpaint_image.png")
+mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/mask.png")
+ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/girl.png")
+
+image = image.resize((512, 768))
+mask = mask.resize((512, 768))
+
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+images = pipeline(
+    prompt='best quality, high quality', 
+    image = image,
+    mask_image = mask,
+    ip_adapter_image=ip_image,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=50,
+    generator=generator,
+    strength=0.5,
+).images
+images[0]
+```
+</hfoption>
+</hfoptions>
+
 
 IP-Adapters can also be used with [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
 
@@ -444,3 +484,154 @@ image.save("sdxl_t2i.png")
     <figcaption class="mt-2 text-center text-sm text-gray-500">adapted image</figcaption>
   </div>
 </div>
+
+
+### LCM-Lora
+
+You can use IP-Adapter with LCM-Lora to achieve "instant fine-tune" with custom images. Note that you need to load IP-Adapter weights before loading the LCM-Lora weights.
+
+```py
+from diffusers import DiffusionPipeline, LCMScheduler
+import torch
+from diffusers.utils import load_image
+
+model_id =  "sd-dreambooth-library/herge-style"
+lcm_lora_id = "latent-consistency/lcm-lora-sdv1-5"
+
+pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+
+pipe.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+pipe.load_lora_weights(lcm_lora_id)
+pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+pipe.enable_model_cpu_offload()
+
+prompt = "best quality, high quality"
+image = load_image("https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png")
+images = pipe(
+    prompt=prompt,
+    ip_adapter_image=image,
+    num_inference_steps=4,
+    guidance_scale=1,
+).images[0]
+```
+
+### Other pipelines
+
+IP-Adapter is compatible with any pipeline that (1) uses a text prompt and (2) uses Stable Diffusion or Stable Diffusion XL checkpoint. To use IP-Adapter with a different pipeline, all you need to do is to run `load_ip_adapter()` method after you create the pipeline, and then pass your image to the pipeline as `ip_adapter_image`
+
+<Tip>
+
+🤗 Diffusers currently only supports using IP-Adapter with some of the most popular pipelines, feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you have a cool use-case and require integrating IP-adapters with a pipeline that does not support it yet!
+
+</Tip>
+
+You can find below examples on how to use IP-Adapter with ControlNet and AnimateDiff. 
+
+<hfoptions id="model">
+<hfoption id="ControlNet">
+
+```
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
+import torch
+from diffusers.utils import load_image
+
+controlnet_model_path = "lllyasviel/control_v11f1p_sd15_depth"
+controlnet = ControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.float16)
+
+pipeline = StableDiffusionControlNetPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16)
+pipeline.to("cuda")
+
+image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/statue.png")
+depth_map = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/depth.png")
+
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+images = pipeline(
+    prompt='best quality, high quality', 
+    image=depth_map,
+    ip_adapter_image=image,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=50,
+    generator=generator,
+).images
+images[0]
+```
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/statue.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">input image</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ipa-controlnet-out.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">adapted image</figcaption>
+  </div>
+</div>
+
+</hfoption>
+<hfoption id="AnimateDiff">
+
+```py
+# animate diff + ip adapter
+import torch
+from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers.utils import export_to_gif, load_image
+
+# Load the motion adapter
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
+# load SD 1.5 based finetuned model
+model_id = "Lykon/DreamShaper"
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
+
+# scheduler
+scheduler = DDIMScheduler(
+    clip_sample=False,
+    beta_start=0.00085,
+    beta_end=0.012,
+    beta_schedule="linear",
+    timestep_spacing="trailing",
+    steps_offset=1
+)
+pipe.scheduler = scheduler
+
+# enable memory savings
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
+
+# load ip_adapter
+pipe.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+# load motion adapters
+pipe.load_lora_weights("guoyww/animatediff-motion-lora-zoom-out", adapter_name="zoom-out")
+pipe.load_lora_weights("guoyww/animatediff-motion-lora-tilt-up", adapter_name="tilt-up")
+pipe.load_lora_weights("guoyww/animatediff-motion-lora-pan-left", adapter_name="pan-left")
+
+seed = 42
+image = load_image("https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png")
+images = [image] * 3
+prompts = ["best quality, high quality"] * 3
+negative_prompt = "bad quality, worst quality"
+adapter_weights = [[0.75, 0.0, 0.0], [0.0, 0.0, 0.75], [0.0, 0.75, 0.75]]
+
+# generate
+output_frames = []
+for prompt, image, adapter_weight in zip(prompts, images, adapter_weights):
+    pipe.set_adapters(["zoom-out", "tilt-up", "pan-left"], adapter_weights=adapter_weight)
+    output = pipe(
+      prompt= prompt,
+      num_frames=16,
+      guidance_scale=7.5,
+      num_inference_steps=30,
+      ip_adapter_image = image,
+      generator=torch.Generator("cpu").manual_seed(seed),
+    )
+    frames = output.frames[0]
+    output_frames.extend(frames)
+
+export_to_gif(output_frames, "test_out_animation.gif") 
+```
+
+</hfoption>
+</hfoptions>
+
