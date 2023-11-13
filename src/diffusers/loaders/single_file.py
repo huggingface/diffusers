@@ -19,7 +19,6 @@ import requests
 import torch
 from huggingface_hub import hf_hub_download
 
-from ..models.modeling_utils import load_model_dict_into_meta
 from ..utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -470,6 +469,8 @@ class FromOriginalVAEMixin:
             vae = AutoencoderKL(**vae_config)
 
         if is_accelerate_available():
+            from ..models.modeling_utils import load_model_dict_into_meta
+
             load_model_dict_into_meta(vae, converted_vae_checkpoint, device="cpu")
         else:
             vae.load_state_dict(converted_vae_checkpoint)
