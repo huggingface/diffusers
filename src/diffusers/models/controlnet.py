@@ -425,15 +425,15 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             )
         elif mid_block_type == "UNetMidBlock2D":
             self.mid_block = UNetMidBlock2D(
-                    in_channels=block_out_channels[-1],
-                    temb_channels=time_embed_dim,
-                    num_layers=0,
-                    resnet_eps=norm_eps,
-                    resnet_act_fn=act_fn,
-                    output_scale_factor=mid_block_scale_factor,
-                    resnet_groups=norm_num_groups,
-                    resnet_time_scale_shift=resnet_time_scale_shift,
-                    add_attention=False,
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                num_layers=0,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_groups=norm_num_groups,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                add_attention=False,
             )
         else:
             raise ValueError(f"unknown mid_block_type : {mid_block_type}")
@@ -824,7 +824,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 )
             else:
                 sample = self.mid_block(sample, emb)
-
 
         # 5. Control net blocks
 
