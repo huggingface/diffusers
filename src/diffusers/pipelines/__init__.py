@@ -17,7 +17,7 @@ from ..utils import (
 
 # These modules contain pipelines from multiple libraries/frameworks
 _dummy_objects = {}
-_import_structure = {"stable_diffusion": [], "stable_diffusion_xl": [], "latent_diffusion": [], "controlnet": []}
+_import_structure = {"stable_diffusion": [], "stable_diffusion_xl": [], "latent_diffusion": [], "controlnet": [], "controlnet_xs": []}
 
 try:
     if not is_torch_available():
@@ -78,6 +78,11 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+        ]
+    )
+    _import_structure["controlnet_xs"].extend(
+        [
+            "StableDiffusionXLControlNetXSPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -301,6 +306,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+        )
+        from .controlnet_xs import (
+            StableDiffusionXLControlNetXSPipeline,
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,

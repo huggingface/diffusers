@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union, Tuple
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 from itertools import zip_longest
 
@@ -43,10 +43,9 @@ from ..umer_debug_logger import udl
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-# todo Umer later: add attention_bias to relevant docs
-
 @dataclass
-class UNet2DConditionOutput(BaseOutput):
+class ControlNetXSOutput(BaseOutput):
+    # todo: docstring
     sample: torch.FloatTensor = None
 
 
@@ -261,67 +260,40 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         del self.control_model.conv_norm_out
         del self.control_model.conv_out
 
-    def toggle_control(self, to):
-        if not hasattr(self, 'do_control'): self.do_control = True
-        if not hasattr(self, 'scale_back_up'): self.back_up = None
-        if self.do_control == to:
-            print(f'Model already set to control mode == {to}')
-            return
-        if not to:
-            self.scale_back_up = self.scale_list[0].clone()
-            self.scale_list = self.scale_list * 0.
-            self.do_control = False
-        else:
-            self.scale_list = self.scale_list * 0. + self.scale_back_up 
-            self.scale_back_up = None
-            self.do_control = True
-        assert self.do_control == to
-        print(f'Model set to control mode == {self.do_control}')
-
 
     def forward(
         self,
-        x: torch.Tensor,
-        t: torch.Tensor,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        hint: torch.Tensor,
+        controlnet_cond: torch.Tensor,
+        conditioning_scale: float = 1.0,
+        class_labels: Optional[torch.Tensor] = None,
+        timestep_cond: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         no_control=False,
-    ):
+        guess_mode: bool = False, # todo: understand and implement if required
+        return_dict: bool = True,
+    ) -> Union[ControlNetXSOutput, Tuple]:
         if self.base_model is None:
             raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel by `cnxs_model.base_model = the_base_model`")
 
-        print('control_scale:',self.scale_list)
-
-        """ Params from unet_2d_condition.UNet2DConditionModel.forward:
-        # self,
-        # sample: torch.FloatTensor,
-        # timestep: Union[torch.Tensor, float, int],
-        # encoder_hidden_states: torch.Tensor,
-        # class_labels: Optional[torch.Tensor] = None,
-        # timestep_cond: Optional[torch.Tensor] = None,
-        # attention_mask: Optional[torch.Tensor] = None,
-        # cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        # added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        # down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
-        # mid_block_additional_residual: Optional[torch.Tensor] = None,
-        # encoder_attention_mask: Optional[torch.Tensor] = None,
-        # return_dict: bool = True,
-        """
 
         #x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
-        if x.size(0) // 2 == hint.size(0): hint = torch.cat([hint, hint], dim=0) # for classifier free guidance
+        if sample.size(0) // 2 == controlnet_cond.size(0): controlnet_cond = torch.cat([controlnet_cond, controlnet_cond], dim=0) # for classifier free guidance
         
-        timesteps=t
+        # todo: Can a tensor with different timesteps be passed? if so, do I need to adapt sth?
+        timesteps=timestep
         
         if no_control or self.no_control:
             return self.base_model(x, timesteps, encoder_hidden_states,cross_attention_kwargs=cross_attention_kwargs,added_cond_kwargs=added_cond_kwargs)
 
+        # todo: should scale_list remain an attribute?
+        scale_list = self.scale_list * 0. + conditioning_scale
+
         # time embeddings
         timesteps = timesteps[None]
-
-        udl.log_if('timestep', timesteps, condition='TIME', print_=True)
         t_emb = get_timestep_embedding(
             timesteps, 
             self.model_channels,
@@ -329,7 +301,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.freq_shift,
         )
-        udl.log_if('time_emb', t_emb, condition='TIME', print_=True)
         if self.learn_embedding:
             udl.log_if('time_proj_ctrl',self.control_model.time_embedding(t_emb), condition='TIME', print_=True)
             udl.log_if('time_proj_ctrl_scaled',self.control_model.time_embedding(t_emb) * self.config.time_control_scale ** 0.3, condition='TIME', print_=True)
@@ -338,14 +309,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             temb = self.control_model.time_embedding(t_emb) * self.config.time_control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.config.time_control_scale ** 0.3)
         else:
             temb = self.base_model.time_embedding(t_emb)
-        udl.log_if('time_proj',temb, condition='TIME', print_=True)
-
-        aug_emb = None
-
-        # text embeddings
-        cemb = encoder_hidden_states
 
         # added time & text embeddings
+        aug_emb = None
         if self.config.addition_embed_type == "text":
             raise NotImplementedError()
         elif self.config.addition_embed_type == "text_image":
@@ -357,20 +323,16 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
                 )
             text_embeds = added_cond_kwargs.get("text_embeds")
-            udl.log_if('text_embeds',text_embeds, condition='TIME', print_=True)
             if "time_ids" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
                 )
             time_ids = added_cond_kwargs.get("time_ids")
-            udl.log_if('add_input',time_ids.flatten(), condition='TIME', print_=True)
             time_embeds = self.base_model.add_time_proj(time_ids.flatten())
             time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
-            udl.log_if('add_emb',time_embeds, condition='TIME', print_=True)
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
             add_embeds = add_embeds.to(temb.dtype)
             aug_emb = self.base_model.add_embedding(add_embeds)
-            udl.log_if('add_proj',aug_emb, condition='TIME', print_=True)
 
         elif self.config.addition_embed_type == "image":
             raise NotImplementedError()
@@ -378,16 +340,17 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             raise NotImplementedError()
 
         temb = temb + aug_emb if aug_emb is not None else temb
-        udl.log_if('final_temb',temb,condition='TIME', print_=True)
-        udl.stop_if(condition='TIME', funny_msg='Time to analyze time!')
+
+        # text embeddings
+        cemb = encoder_hidden_states
 
         ###
-        guided_hint = self.input_hint_block(hint)
+        guided_hint = self.input_hint_block(controlnet_cond)
 
-        h_ctrl = h_base = x
+        h_ctrl = h_base = sample
         hs_base, hs_ctrl = [], []
         it_enc_convs_in, it_enc_convs_out, it_dec_convs_in, it_dec_convs_out = map(iter, (self.enc_zero_convs_in, self.enc_zero_convs_out, self.dec_zero_convs_in, self.dec_zero_convs_out))
-        scales = iter(self.scale_list)
+        scales = iter(scale_list)
 
         base_down_subblocks = to_sub_blocks(self.base_model.down_blocks)
         ctrl_down_subblocks = to_sub_blocks(self.control_model.down_blocks)
@@ -395,117 +358,50 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         ctrl_mid_subblocks = to_sub_blocks([self.control_model.mid_block])
         base_up_subblocks = to_sub_blocks(self.base_model.up_blocks)
 
-        # Debug Umer -- to delete later on
-        # this is for a global view, ie on subblock level
-        udl.log_if('prep.x',            x,              condition='SUBBLOCK')
-        udl.log_if('prep.temb',         temb,           condition='SUBBLOCK')
-        udl.log_if('prep.context',      cemb,           condition='SUBBLOCK')
-        udl.log_if('prep.raw_hint',     hint,           condition='SUBBLOCK')
-        udl.log_if('prep.guided_hint',  guided_hint,    condition='SUBBLOCK')
-
-        # Debug Umer - another one!
-        # this is for a detail view, ie below subblock level
-
         # Cross Control
         # 0 - conv in
         h_base = self.base_model.conv_in(h_base)
-        udl.log_if('enc.h_base', h_base, condition='SUBBLOCK')
-
         h_ctrl = self.control_model.conv_in(h_ctrl)
-        udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
-        
         if guided_hint is not None: h_ctrl += guided_hint
-        udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
-        
         h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)
-        udl.log_if('enc.h_base', h_base, condition='SUBBLOCK')
 
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
+
         # 1 - input blocks (encoder)
-        RUN_ONCE = ('SUBBLOCK', 'SUBBLOCK-MINUS-1')
-        udl.print_if('------ enc ------', conditions=RUN_ONCE)
-        for i, (m_base, m_ctrl)  in enumerate(zip(base_down_subblocks, ctrl_down_subblocks)):
-            # A - concat base -> ctrl
-            cat_to_ctrl = next(it_enc_convs_in)(h_base)
-            h_ctrl = torch.cat([h_ctrl, cat_to_ctrl], dim=1)
-            udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
-            # B - apply base subblock
-            udl.print_if('>> Applying base block\t', end='', conditions=RUN_ONCE)
-            h_base = m_base(h_base, temb, cemb)
-            udl.log_if('enc.h_base', h_base, condition='SUBBLOCK')
-            # C - apply ctrl subblock
-            udl.print_if('>> Applying ctrl block\t', end='', conditions=RUN_ONCE)
-            h_ctrl = m_ctrl(h_ctrl, temb, cemb)
-            udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
-            udl.print_if('', conditions=RUN_ONCE)
-            # D - add ctrl -> base
-            add_to_base = next(it_enc_convs_out)(h_ctrl)
-            scale = next(scales)
-            h_base = h_base + add_to_base * scale
-            udl.log_if('enc.h_base', h_base, condition='SUBBLOCK')
+        for m_base, m_ctrl  in zip(base_down_subblocks, ctrl_down_subblocks):
+            h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
+            h_base = m_base(h_base, temb, cemb)                                 # B - apply base subblock
+            h_ctrl = m_ctrl(h_ctrl, temb, cemb)                                 # C - apply ctrl subblock
+            h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)     # D - add ctrl -> base
+
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
-        cat_to_ctrl = next(it_enc_convs_in)(h_base)
-        h_ctrl = torch.cat([h_ctrl, cat_to_ctrl], dim=1)
-        udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
+
+        h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)
+
         # 2 - mid blocks (bottleneck)
-        udl.print_if('------ mid ------', conditions=RUN_ONCE)
-        # Because Heidelberg treats the R/A/R as one block, they first execute the full base mid block,
-        # then the full ctrl mid block; while I execute them interlaced.
-        # This doesn't change the computation, but messes up parts of the logs.
-        # So let's, while debugging, first execute full base mid block and then full ctrl mid block.
-
-        #for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
-        #    udl.print_if('>> Applying base block\t', end='', conditions=RUN_ONCE)
-        #    h_base = m_base(h_base, temb, cemb)
-        #    udl.print_if('>> Applying ctrl block\t', end='', conditions=RUN_ONCE)
-        #    h_ctrl = m_ctrl(h_ctrl, temb, cemb)
-        #    udl.print_if('', conditions=RUN_ONCE)
-
-        for m_base in base_mid_subblocks:
-            udl.print_if('>> Applying base block\t', end='', conditions=RUN_ONCE)
+        for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
             h_base = m_base(h_base, temb, cemb)
-            udl.print_if('', conditions=RUN_ONCE)
-
-        for m_ctrl in ctrl_mid_subblocks:
-            udl.print_if('>> Applying ctrl block\t', end='', conditions=RUN_ONCE)
             h_ctrl = m_ctrl(h_ctrl, temb, cemb)
-            udl.print_if('', conditions=RUN_ONCE)
-
-        # Heidelberg treats the R/A/R as one block, while I treat is as 2 subblocks
-        # Let's therefore only log after the mid section
-        udl.log_if('mid.h_base', h_base, condition='SUBBLOCK')
-        udl.log_if('mid.h_ctrl', h_ctrl, condition='SUBBLOCK')
-    
+   
         h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)
-        udl.log_if('mid.h_base', h_base, condition='SUBBLOCK')
-
+ 
         # 3 - output blocks (decoder)
-        udl.print_if('------ dec ------', conditions=RUN_ONCE)
         for m_base in base_up_subblocks:
-            h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales) # add info from ctrl encoder 
-            udl.log_if('dec.h_base', h_base, condition='SUBBLOCK')
-            h_base = torch.cat([h_base, hs_base.pop()], dim=1) # concat info from base encoder+ctrl encoder
-            udl.log_if('dec.h_base', h_base, condition='SUBBLOCK')
-            udl.print_if('>> Applying base block\t', end='', conditions=RUN_ONCE)
+            h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales)  # add info from ctrl encoder 
+            h_base = torch.cat([h_base, hs_base.pop()], dim=1)                      # concat info from base encoder+ctrl encoder
             h_base = m_base(h_base, temb, cemb)
-            udl.log_if('dec.h_base', h_base, condition='SUBBLOCK')
-            udl.print_if('',conditions=RUN_ONCE)
 
         h_base = self.base_model.conv_norm_out(h_base)
         h_base = self.base_model.conv_act(h_base)
         h_base = self.base_model.conv_out(h_base)
 
-        result = h_base
+        if not return_dict:
+            return h_base
+        
+        return ControlNetXSOutput(sample=h_base)
 
-        udl.log_if('conv_out.h_base', result, condition='SUBBLOCK')
-        udl.print_if('',conditions=RUN_ONCE)
-
-        udl.stop_if('SUBBLOCK', 'The subblocks are cought. Let us gaze into their soul, their very essence.')
-        udl.stop_if('SUBBLOCK-MINUS-1', 'Alright captain. Look at all these tensors we caught. Time to do some real analysis.')
-
-        return UNet2DConditionOutput(sample=result)
 
     def make_zero_conv(self, in_channels, out_channels=None):
         # keep running track # todo: better comment
@@ -513,14 +409,35 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.out_channels = out_channels or in_channels
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
 
-    def debug_print(self, s):
-        if hasattr(self, 'debug') and self.debug:
-            print(s)
+
+class EmbedSequential(nn.ModuleList):
+    """Sequential module passing embeddings (time and conditioning) to children if they support it."""
+    def __init__(self,ms,*args,**kwargs):
+        if not is_iterable(ms): ms = [ms]
+        super().__init__(ms,*args,**kwargs)
+    
+    def forward(self,x,temb,cemb):
+        def cls_name(x): return str(type(x)).split('.')[-1].replace("'>",'')
+        content = ' '.join(cls_name(m) for m in self)
+        udl.print_if(f'EmbedSequential.forward with content {content}', conditions='SUBBLOCK-MINUS-1')
+        for m in self:
+            if isinstance(m,ResnetBlock2D):
+                x = m(x,temb)
+            elif isinstance(m,Transformer2DModel):
+                x = m(x,cemb).sample
+            elif isinstance(m,Downsample2D):
+                x = m(x)
+            elif isinstance(m,Upsample2D):
+                x = m(x)
+            else: raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D` or `Upsample2D`')
+
+        return x
 
 
 def adjust_time_input_dim(unet: UNet2DConditionModel, dim: int):
     time_emb = unet.time_embedding
     time_emb.linear_1 = nn.Linear(dim, time_emb.linear_1.out_features)
+
 
 def increase_block_input_in_encoder_resnet(unet:UNet2DConditionModel, block_no, resnet_idx, by):
     """Increase channels sizes to allow for additional concatted information from base model"""
@@ -602,30 +519,6 @@ def increase_block_input_in_mid_resnet(unet:UNet2DConditionModel, by):
     unet.mid_block.resnets[0].conv1 = LoRACompatibleConv(**conv1_kwargs)
     unet.mid_block.resnets[0].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
     unet.mid_block.resnets[0].in_channels += by  # surgery done here
-
-
-class EmbedSequential(nn.ModuleList):
-    """Sequential module passing embeddings (time and conditioning) to children if they support it."""
-    def __init__(self,ms,*args,**kwargs):
-        if not is_iterable(ms): ms = [ms]
-        super().__init__(ms,*args,**kwargs)
-    
-    def forward(self,x,temb,cemb):
-        def cls_name(x): return str(type(x)).split('.')[-1].replace("'>",'')
-        content = ' '.join(cls_name(m) for m in self)
-        udl.print_if(f'EmbedSequential.forward with content {content}', conditions='SUBBLOCK-MINUS-1')
-        for m in self:
-            if isinstance(m,ResnetBlock2D):
-                x = m(x,temb)
-            elif isinstance(m,Transformer2DModel):
-                x = m(x,cemb).sample
-            elif isinstance(m,Downsample2D):
-                x = m(x)
-            elif isinstance(m,Upsample2D):
-                x = m(x)
-            else: raise ValueError(f'Type of m is {type(m)} but should be `ResnetBlock2D`, `Transformer2DModel`,  `Downsample2D` or `Upsample2D`')
-
-        return x
 
 
 def is_iterable(o):
