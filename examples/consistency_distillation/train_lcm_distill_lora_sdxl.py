@@ -987,7 +987,7 @@ def main(args):
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         original_sizes = [example["original_sizes"] for example in examples]
         crop_top_lefts = [example["crop_top_lefts"] for example in examples]
-        captions = torch.stack([example["captions"] for example in examples])
+        captions = [example["captions"] for example in examples]
 
         return {
             "pixel_values": pixel_values,
