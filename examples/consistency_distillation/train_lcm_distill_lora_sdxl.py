@@ -1079,10 +1079,6 @@ def main(args):
         tracker_config = dict(vars(args))
         accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
-    # Create uncond embeds for classifier free guidance
-    uncond_prompt_embeds = torch.zeros(args.train_batch_size, MAX_SEQ_LENGTH, EMBEDDING_DIM).to(accelerator.device)
-    uncond_pooled_prompt_embeds = torch.zeros(args.train_batch_size, POOLED_PROJECTION_DIM).to(accelerator.device)
-
     # 16. Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1229,11 +1225,16 @@ def main(args):
                             sigma_schedule,
                         )
 
-                        # Get teacher model prediction on noisy_latents and unconditional embedding
+                        # Create uncond embeds for classifier free guidance
+                        uncond_prompt_embeds = torch.zeros(
+                            cond_teacher_output.shape[0], MAX_SEQ_LENGTH, EMBEDDING_DIM
+                        ).to(accelerator.device)
+                        uncond_pooled_prompt_embeds = torch.zeros(
+                            cond_teacher_output.shape[0], POOLED_PROJECTION_DIM
+                        ).to(accelerator.device)
                         uncond_added_conditions = copy.deepcopy(encoded_text)
+                        # Get teacher model prediction on noisy_latents and unconditional embedding
                         uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
-                        for k, v in uncond_added_conditions.items():
-                            print(k, v.shape)
                         uncond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),
                             start_timesteps,
