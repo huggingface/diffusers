@@ -1231,13 +1231,11 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionUpscalePipeline,
+        StableDiffusionXLPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
-
-    if pipeline_class is None:
-        pipeline_class = StableDiffusionPipeline if not controlnet else StableDiffusionControlNetPipeline
 
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
@@ -1333,6 +1331,13 @@ def download_from_original_stable_diffusion_ckpt(
         if image_size is None:
             image_size = 1024
 
+    if pipeline_class is None:
+        # Check if we have a SDXL or SD model and initialize default pipeline
+        if model_type not in ["SDXL", "SDXL-Refiner"]:
+            pipeline_class = StableDiffusionPipeline if not controlnet else StableDiffusionControlNetPipeline
+        else:
+            pipeline_class = StableDiffusionXLPipeline if model_type == "SDXL" else StableDiffusionXLImg2ImgPipeline
+
     if num_in_channels is None and pipeline_class == StableDiffusionInpaintPipeline:
         num_in_channels = 9
     if num_in_channels is None and pipeline_class == StableDiffusionUpscalePipeline:
@@ -1400,6 +1405,7 @@ def download_from_original_stable_diffusion_ckpt(
         )
     # make sure scheduler works correctly with DDIM
     scheduler.register_to_config(clip_sample=False)
+
 
     if scheduler_type == "pndm":
         config = dict(scheduler.config)
