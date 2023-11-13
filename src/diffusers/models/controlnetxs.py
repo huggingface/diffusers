@@ -272,40 +272,48 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        no_control=False,
         guess_mode: bool = False, # todo: understand and implement if required
         return_dict: bool = True,
     ) -> Union[ControlNetXSOutput, Tuple]:
         if self.base_model is None:
             raise RuntimeError("To use `forward`, first set the base model for this ControlNetXSModel by `cnxs_model.base_model = the_base_model`")
 
-
-        #x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
-        if sample.size(0) // 2 == controlnet_cond.size(0): controlnet_cond = torch.cat([controlnet_cond, controlnet_cond], dim=0) # for classifier free guidance
-        
-        # todo: Can a tensor with different timesteps be passed? if so, do I need to adapt sth?
-        timesteps=timestep
-        
-        if no_control or self.no_control:
-            return self.base_model(x, timesteps, encoder_hidden_states,cross_attention_kwargs=cross_attention_kwargs,added_cond_kwargs=added_cond_kwargs)
-
         # todo: should scale_list remain an attribute?
         scale_list = self.scale_list * 0. + conditioning_scale
 
-        # time embeddings
-        timesteps = timesteps[None]
+        #x = torch.cat((x, c.get("concat", torch.Tensor([]).type_as(x))), dim=1)
+        # todo: check if we need this line. I assume duplication of guiding image is done in pipeline
+        if sample.size(0) // 2 == controlnet_cond.size(0): controlnet_cond = torch.cat([controlnet_cond, controlnet_cond], dim=0) # for classifier free guidance
+        
+        # 1. time
+        timesteps=timestep
+        if not torch.is_tensor(timesteps):
+            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if isinstance(timestep, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+        elif len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
+
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        timesteps = timesteps.expand(sample.shape[0])
+
         t_emb = get_timestep_embedding(
             timesteps, 
             self.model_channels,
-            # # TODO: Undetrstand flip_sin_to_cos / (downscale_)freq_shift
             flip_sin_to_cos=self.flip_sin_to_cos,
             downscale_freq_shift=self.freq_shift,
         )
+        # timesteps does not contain any weights and will always return f32 tensors
+        # but time_embedding might actually be running in fp16. so we need to cast here.
+        # there might be better ways to encapsulate this.
+        t_emb = t_emb.to(dtype=sample.dtype)
+
         if self.learn_embedding:
-            udl.log_if('time_proj_ctrl',self.control_model.time_embedding(t_emb), condition='TIME', print_=True)
-            udl.log_if('time_proj_ctrl_scaled',self.control_model.time_embedding(t_emb) * self.config.time_control_scale ** 0.3, condition='TIME', print_=True)
-            udl.log_if('time_proj_base',self.base_model.time_embedding(t_emb), condition='TIME', print_=True)
-            udl.log_if('time_proj_base_scaled',self.base_model.time_embedding(t_emb) * (1 - self.config.time_control_scale ** 0.3), condition='TIME', print_=True)
             temb = self.control_model.time_embedding(t_emb) * self.config.time_control_scale ** 0.3 + self.base_model.time_embedding(t_emb) * (1 - self.config.time_control_scale ** 0.3)
         else:
             temb = self.base_model.time_embedding(t_emb)
@@ -344,7 +352,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # text embeddings
         cemb = encoder_hidden_states
 
-        ###
+        # Preparation
         guided_hint = self.input_hint_block(controlnet_cond)
 
         h_ctrl = h_base = sample

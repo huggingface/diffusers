@@ -71,7 +71,7 @@ EXAMPLE_DOC_STRING = """
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
         >>> controlnet = ControlNetXSModel.from_pretrained(
-        ...     "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16
+        ...     "UmerHA/ConrolNetXS-SDXL-canny", torch_dtype=torch.float16
         ... )
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
         >>> pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
