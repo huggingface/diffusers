@@ -144,6 +144,8 @@ class StableDiffusionXLControlNetPipelineFastTests(
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
@@ -449,6 +451,8 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
@@ -634,6 +638,8 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
