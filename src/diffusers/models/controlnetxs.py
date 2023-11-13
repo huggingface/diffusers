@@ -174,7 +174,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             time_embedding_dim=time_embedding_dim,
             transformer_layers_per_block=transformer_layers_per_block,
             cross_attention_dim=cross_attention_dim,
-            attention_head_dim=control_attention_head_dim,
+            # Currently, `attention_head_dim` actually describes the numer of attention heads. See https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+            # TODO: How to handle this?
+            attention_head_dim=[c//control_attention_head_dim for c in block_out_channels], 
         )
 
         # 2 - Do model surgery on control model
