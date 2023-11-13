@@ -862,7 +862,6 @@ def main(args):
                 )
             unet.enable_xformers_memory_efficient_attention()
             teacher_unet.enable_xformers_memory_efficient_attention()
-            # target_unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
