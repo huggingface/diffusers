@@ -188,6 +188,11 @@ def parse_args(input_args=None):
         help="The column of the dataset containing the instance prompt for each image",
     )
 
+    parser.add_argument("--repeats",
+                        type=int,
+                        default=100,
+                        help="How many times to repeat the training data.")
+
     parser.add_argument(
         "--class_data_dir",
         type=str,
@@ -200,7 +205,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         required=True,
-        help="The prompt with identifier specifying the instance",
+        help="The prompt with identifier specifying the instance, e.g. 'photo of a TOK dog', 'in the style of TOK'",
     )
     parser.add_argument(
         "--class_prompt",
@@ -368,7 +373,6 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--snr_gamma",
         type=float,
-        action="store_true",
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
              "More details here: https://arxiv.org/abs/2303.09556.",
     )
@@ -396,7 +400,7 @@ def parse_args(input_args=None):
         type=str,
         default="prodigy",
         help=(
-            'The optimizer type to use. Choose between ["adamW", "prodigy"]'
+            'The optimizer type to use. Choose between ["AdamW", "prodigy"]'
         ),
     )
 
@@ -414,9 +418,9 @@ def parse_args(input_args=None):
                              "uses the value of square root of beta2")
     parser.add_argument("--prodigy_decouple", type=bool, default=True,
                         help="Use AdamW style decoupled weight decay")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-02, help="Weight decay to use. If you're using "
-                                                                               "the Adam optimizer you might want to "
-                                                                               "change value to 1e-4")
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
+    parser.add_argument("--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for "
+                                                                                            "text_encoder")
 
     parser.add_argument("--adam_epsilon", type=float, default=1e-08,
                         help="Epsilon value for the Adam optimizer and Prodigy optimizers.")
@@ -536,6 +540,7 @@ class DreamBoothDataset(Dataset):
             class_data_root=None,
             class_num=None,
             size=1024,
+            repeats=1,
             center_crop=False,
     ):
         self.size = size
@@ -585,14 +590,14 @@ class DreamBoothDataset(Dataset):
                         f"column as --caption_column")
             self.custom_instance_prompts = None
         else:
-            caption_column = args.caption_column
-            if caption_column not in column_names:
+            if args.caption_column not in column_names:
                 raise ValueError(
                     f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
                 )
+            self.custom_instance_prompts = dataset["train"][args.caption_column]
 
         self.num_instance_images = len(self.instance_images_path)
-        self._length = self.num_instance_images
+        self._length = self.num_instance_images * repeats
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
@@ -630,7 +635,7 @@ class DreamBoothDataset(Dataset):
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
             if caption:
-                example["instance_prompt"] = self.custom_instance_prompts[index % self.num_instance_images]
+                example["instance_prompt"] = caption
             else:
                 example["instance_prompt"] = self.instance_prompt
 
@@ -905,7 +910,8 @@ def main(args):
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
                 logger.warn(
-                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
+                    "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, "
+                    "please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
         else:
@@ -1041,19 +1047,21 @@ def main(args):
 
     # Optimization parameters
     unet_lora_parameters_with_lr = {"params": unet_lora_parameters, "lr": args.learning_rate}
-    if args.text_encoder_lr:  # different learning rate for text encoder and unet
-        text_lora_parameters_one_with_lr = {"params": text_lora_parameters_one, "lr": args.text_encoder_lr}
-        text_lora_parameters_two_with_lr = {"params": text_lora_parameters_two, "lr": args.text_encoder_lr}
-
+    if not args.train_text_encoder:
+        # different learning rate for text encoder and unet
+        text_lora_parameters_one_with_lr = {"params": text_lora_parameters_one,
+                                            "weight_decay": args.adam_weight_decay_text_encoder,
+                                            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate}
+        text_lora_parameters_two_with_lr = {"params": text_lora_parameters_two,
+                                            "weight_decay": args.adam_weight_decay_text_encoder,
+                                            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate}
+        params_to_optimize = [unet_lora_parameters_with_lr, text_lora_parameters_one_with_lr,
+                              text_lora_parameters_two_with_lr]
     else:
-        text_lora_parameters_one_with_lr = {"params": text_lora_parameters_one, "lr": args.learning_rate}
-        text_lora_parameters_two_with_lr = {"params": text_lora_parameters_two, "lr": args.learning_rate}
-
-    params_to_optimize = [unet_lora_parameters_with_lr, text_lora_parameters_one_with_lr,
-                          text_lora_parameters_two_with_lr]
+        params_to_optimize = [unet_lora_parameters_with_lr]
 
     # Optimizer creation
-    if args.use_8bit_adam and not args.optimizer.lower() == "AdamW":
+    if args.use_8bit_adam and not args.optimizer.lower() == "adamw":
         logger.warn(f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
                     f"set to {args.optimizer.lower()}")
 
@@ -1088,7 +1096,7 @@ def main(args):
         )
 
 
-    elif args.optimizer.lower() == "AdamW":
+    elif args.optimizer.lower() == "adamw":
         if args.use_8bit_adam:
             try:
                 import bitsandbytes as bnb
@@ -1119,6 +1127,7 @@ def main(args):
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         class_num=args.num_class_images,
         size=args.resolution,
+        repeats=args.repeats,
         center_crop=args.center_crop,
     )
 
@@ -1156,10 +1165,12 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
-    # Handle instance prompt. If custom instance prompts are NOT provided
-    # (i.e. the instance prompt is used for all images), we encode the instance prompt once to avoid
-    # the redundant encoding.
+    # Handle instance prompt.
     instance_time_ids = compute_time_ids()
+
+    # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
+    # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
+    # the redundant encoding.
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
@@ -1193,6 +1204,8 @@ def main(args):
             if args.with_prior_preservation:
                 prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
                 unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
+        # if we're optmizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
+        # batch prompts on all training steps
         else:
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt)
             tokens_two = tokenize_prompt(tokenizer_two, args.instance_prompt)
@@ -1312,7 +1325,7 @@ def main(args):
                         prompt_embeds, unet_add_text_embeds = compute_text_embeddings(
                             prompts, text_encoders, tokenizers)
                         if args.with_prior_preservation:
-                            prompt_embeds_input = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
+                            prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
                             unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
                     else:
                         tokens_one = tokenize_prompt(tokenizer_one, prompts)
@@ -1342,8 +1355,11 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
-                # Calculate the elements to repeat depending on the use of prior-preservation.
-                elems_to_repeat = bsz // 2 if args.with_prior_preservation else bsz
+                # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
+                if not train_dataset.custom_instance_prompts:
+                    elems_to_repeat = bsz // 2 if args.with_prior_preservation else bsz
+                else:
+                    elems_to_repeat = 1  # todo - make it smarter
 
                 # Predict the noise residual
                 if not args.train_text_encoder:
@@ -1351,10 +1367,7 @@ def main(args):
                         "time_ids": add_time_ids.repeat(elems_to_repeat, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat, 1),
                     }
-                    if not dataset.custom_instance_prompts:  # i.e. we only encoded args.instance_prompt
-                        prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
-                    else:
-                        prompt_embeds_input = prompt_embeds
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
@@ -1362,7 +1375,8 @@ def main(args):
                         added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
-                    unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat, 1)}
+                    unet_added_conditions = {"time_ids": add_time_ids.repeat(bsz, 1)}  # todo - make it smarter
+                    # unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat, 1)}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=None,
