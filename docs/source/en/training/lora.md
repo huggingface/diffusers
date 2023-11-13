@@ -113,14 +113,15 @@ Load the LoRA weights from your finetuned model *on top of the base model weight
 ```py
 >>> pipe.unet.load_attn_procs(lora_model_path)
 >>> pipe.to("cuda")
-# use half the weights from the LoRA finetuned model and half the weights from the base model
 
+# use half the weights from the LoRA finetuned model and half the weights from the base model
 >>> image = pipe(
 ...     "A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5, cross_attention_kwargs={"scale": 0.5}
 ... ).images[0]
-# use the weights from the fully finetuned LoRA model
 
->>> image = pipe("A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5).images[0]
+# OR, use the weights from the fully finetuned LoRA model
+# >>> image = pipe("A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5).images[0]
+
 >>> image.save("blue_pokemon.png")
 ```
 
@@ -225,17 +226,18 @@ Load the LoRA weights from your finetuned DreamBooth model *on top of the base m
 ```py
 >>> pipe.unet.load_attn_procs(lora_model_path)
 >>> pipe.to("cuda")
-# use half the weights from the LoRA finetuned model and half the weights from the base model
 
+# use half the weights from the LoRA finetuned model and half the weights from the base model
 >>> image = pipe(
 ...     "A picture of a sks dog in a bucket.",
 ...     num_inference_steps=25,
 ...     guidance_scale=7.5,
 ...     cross_attention_kwargs={"scale": 0.5},
 ... ).images[0]
-# use the weights from the fully finetuned LoRA model
 
->>> image = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25, guidance_scale=7.5).images[0]
+# OR, use the weights from the fully finetuned LoRA model
+# >>> image = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25, guidance_scale=7.5).images[0]
+
 >>> image.save("bucket-dog.png")
 ```
 

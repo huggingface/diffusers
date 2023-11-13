@@ -72,6 +72,8 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
+    - local: using-diffusers/lcm
+      title: Latent Consistency Models
     - local: using-diffusers/kandinsky
       title: Kandinsky
     - local: using-diffusers/controlnet
@@ -133,7 +135,7 @@
     - local: optimization/memory
       title: Reduce memory usage
     - local: optimization/torch2.0
-      title: Torch 2.0
+      title: PyTorch 2.0
     - local: optimization/xformers
       title: xFormers
     - local: optimization/tome
@@ -200,6 +202,8 @@
       title: AsymmetricAutoencoderKL
     - local: api/models/autoencoder_tiny
       title: Tiny AutoEncoder
+    - local: api/models/consistency_decoder_vae
+      title: ConsistencyDecoderVAE
     - local: api/models/transformer2d
       title: Transformer2D
     - local: api/models/transformer_temporal
@@ -344,6 +348,8 @@
       title: Overview
     - local: api/schedulers/cm_stochastic_iterative
       title: CMStochasticIterativeScheduler
+    - local: api/schedulers/consistency_decoder
+      title: ConsistencyDecoderScheduler
     - local: api/schedulers/ddim_inverse
       title: DDIMInverseScheduler
     - local: api/schedulers/ddim

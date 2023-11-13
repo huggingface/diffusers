@@ -996,7 +996,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare image
-        image = self.image_processor.preprocess(image).to(dtype=torch.float32)
+        image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
 
         # 5. Prepare controlnet_conditioning_image
         if isinstance(controlnet, ControlNetModel):
@@ -1138,7 +1138,9 @@ class StableDiffusionControlNetImg2ImgPipeline(
             torch.cuda.empty_cache()
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
+                0
+            ]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents

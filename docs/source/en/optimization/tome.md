@@ -14,18 +14,25 @@ specific language governing permissions and limitations under the License.
 
 [Token merging](https://huggingface.co/papers/2303.17604) (ToMe) merges redundant tokens/patches progressively in the forward pass of a Transformer-based network which can speed-up the inference latency of [`StableDiffusionPipeline`].
 
+Install ToMe from `pip`:
+
+```bash
+pip install tomesd
+```
+
 You can use ToMe from the [`tomesd`](https://github.com/dbolya/tomesd) library with the [`apply_patch`](https://github.com/dbolya/tomesd?tab=readme-ov-file#usage) function:
 
 ```diff
-from diffusers import StableDiffusionPipeline
-import tomesd
+  from diffusers import StableDiffusionPipeline
+  import torch
+  import tomesd
 
-pipeline = StableDiffusionPipeline.from_pretrained(
-      "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
-).to("cuda")
+  pipeline = StableDiffusionPipeline.from_pretrained(
+        "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
+  ).to("cuda")
 + tomesd.apply_patch(pipeline, ratio=0.5)
 
-image = pipeline("a photo of an astronaut riding a horse on mars").images[0]
+  image = pipeline("a photo of an astronaut riding a horse on mars").images[0]
 ```
 
 The `apply_patch` function exposes a number of [arguments](https://github.com/dbolya/tomesd#usage) to help strike a balance between pipeline inference speed and the quality of the generated tokens. The most important argument is `ratio` which controls the number of tokens that are merged during the forward pass.
