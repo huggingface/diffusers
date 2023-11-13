@@ -1123,8 +1123,8 @@ def main(args):
             eps=args.adam_epsilon,
         )
     else:
-        raise ValueError(
-            f"Unsupported choice of optimizer: {args.optimizer.lower()}. Supported optimizers include [adamW, prodigy]")
+        logger.warn("f"Unsupported choice of optimizer: {args.optimizer}. Supported optimizers include [adamW, prodigy]. Defaulting to "adamW") 
+        optimizer_class = torch.optim.AdamW
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
