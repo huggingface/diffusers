@@ -445,7 +445,7 @@ def parse_args():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=1e-4,
+        default=1e-6,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
@@ -1190,7 +1190,6 @@ def main(args):
                 noise_pred = unet(
                     noisy_model_input,
                     start_timesteps,
-                    timestep_cond=None,
                     encoder_hidden_states=prompt_embeds.float(),
                     added_cond_kwargs=encoded_text,
                 ).sample
@@ -1209,7 +1208,7 @@ def main(args):
                 # noisy_latents with both the conditioning embedding c and unconditional embedding 0
                 # Get teacher model prediction on noisy_latents and conditional embedding
                 with torch.no_grad():
-                    with torch.autocast("cuda"):
+                    with torch.autocast("cuda", dtype=weight_dtype):
                         cond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),
                             start_timesteps,
@@ -1257,11 +1256,10 @@ def main(args):
 
                 # Get target LCM prediction on x_prev, w, c, t_n
                 with torch.no_grad():
-                    with torch.autocast("cuda", enabled=True, dtype=weight_dtype):
+                    with torch.autocast("cuda", dtype=weight_dtype):
                         target_noise_pred = unet(
                             x_prev.float(),
                             timesteps,
-                            timestep_cond=None,
                             encoder_hidden_states=prompt_embeds.float(),
                             added_cond_kwargs=encoded_text,
                         ).sample
