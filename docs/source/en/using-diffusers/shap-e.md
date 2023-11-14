@@ -64,7 +64,7 @@ export_to_gif(images[1], "cake_3d.gif")
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/firecracker_out.gif"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">A firecracker</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">prompt = "A firecracker"</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/cake_out.gif"/>
