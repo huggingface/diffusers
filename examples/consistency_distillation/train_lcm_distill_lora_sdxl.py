@@ -52,7 +52,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available, convert_state_dict_to_diffusers
+from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -754,15 +754,15 @@ def main(args):
     )
 
     # 5. Load teacher U-Net from SD-XL checkpoint
-    teacher_unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
-    )
+    # teacher_unet = UNet2DConditionModel.from_pretrained(
+    #     args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
+    # )
 
     # 6. Freeze teacher vae, text_encoders, and teacher_unet
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
-    teacher_unet.requires_grad_(False)
+    # teacher_unet.requires_grad_(False)
 
     # 7. Create online (`unet`) student U-Net.
     unet = UNet2DConditionModel.from_pretrained(
@@ -821,9 +821,9 @@ def main(args):
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
     # Move teacher_unet to device, optionally cast to weight_dtype
-    teacher_unet.to(accelerator.device)
-    if args.cast_teacher_unet:
-        teacher_unet.to(dtype=weight_dtype)
+    # teacher_unet.to(accelerator.device)
+    # if args.cast_teacher_unet:
+    #     teacher_unet.to(dtype=weight_dtype)
 
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
@@ -867,7 +867,7 @@ def main(args):
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
-            teacher_unet.enable_xformers_memory_efficient_attention()
+            # teacher_unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
@@ -1213,52 +1213,53 @@ def main(args):
                 # Use the ODE solver to predict the kth step in the augmented PF-ODE trajectory after
                 # noisy_latents with both the conditioning embedding c and unconditional embedding 0
                 # Get teacher model prediction on noisy_latents and conditional embedding
-                with torch.no_grad():
-                    with torch.autocast("cuda", dtype=weight_dtype):
-                        cond_teacher_output = teacher_unet(
-                            noisy_model_input.to(weight_dtype),
-                            start_timesteps,
-                            encoder_hidden_states=prompt_embeds.to(weight_dtype),
-                            added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
-                        ).sample
-                        cond_pred_x0 = predicted_origin(
-                            cond_teacher_output,
-                            start_timesteps,
-                            noisy_model_input,
-                            noise_scheduler.config.prediction_type,
-                            alpha_schedule,
-                            sigma_schedule,
-                        )
+                # Notice that we're disabling the adapter layers within the `unet` and then it becomes a
+                # regular teacher. This way, we don't have to separately initialize a teacher UNet.
+                with torch.no_grad() and torch.autocast("cuda", dtype=weight_dtype) and unet.disable_adapter():
+                    cond_teacher_output = unet(
+                        noisy_model_input.to(weight_dtype),
+                        start_timesteps,
+                        encoder_hidden_states=prompt_embeds.to(weight_dtype),
+                        added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
+                    ).sample
+                    cond_pred_x0 = predicted_origin(
+                        cond_teacher_output,
+                        start_timesteps,
+                        noisy_model_input,
+                        noise_scheduler.config.prediction_type,
+                        alpha_schedule,
+                        sigma_schedule,
+                    )
 
-                        # Create uncond embeds for classifier free guidance
-                        uncond_prompt_embeds = torch.zeros(
-                            cond_teacher_output.shape[0], MAX_SEQ_LENGTH, EMBEDDING_DIM
-                        ).to(accelerator.device)
-                        uncond_pooled_prompt_embeds = torch.zeros(
-                            cond_teacher_output.shape[0], POOLED_PROJECTION_DIM
-                        ).to(accelerator.device)
-                        uncond_added_conditions = copy.deepcopy(encoded_text)
-                        # Get teacher model prediction on noisy_latents and unconditional embedding
-                        uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
-                        uncond_teacher_output = teacher_unet(
-                            noisy_model_input.to(weight_dtype),
-                            start_timesteps,
-                            encoder_hidden_states=uncond_prompt_embeds.to(weight_dtype),
-                            added_cond_kwargs={k: v.to(weight_dtype) for k, v in uncond_added_conditions.items()},
-                        ).sample
-                        uncond_pred_x0 = predicted_origin(
-                            uncond_teacher_output,
-                            start_timesteps,
-                            noisy_model_input,
-                            noise_scheduler.config.prediction_type,
-                            alpha_schedule,
-                            sigma_schedule,
-                        )
+                    # Create uncond embeds for classifier free guidance
+                    uncond_prompt_embeds = torch.zeros(cond_teacher_output.shape[0], MAX_SEQ_LENGTH, EMBEDDING_DIM).to(
+                        accelerator.device
+                    )
+                    uncond_pooled_prompt_embeds = torch.zeros(cond_teacher_output.shape[0], POOLED_PROJECTION_DIM).to(
+                        accelerator.device
+                    )
+                    uncond_added_conditions = copy.deepcopy(encoded_text)
+                    # Get teacher model prediction on noisy_latents and unconditional embedding
+                    uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
+                    uncond_teacher_output = unet(
+                        noisy_model_input.to(weight_dtype),
+                        start_timesteps,
+                        encoder_hidden_states=uncond_prompt_embeds.to(weight_dtype),
+                        added_cond_kwargs={k: v.to(weight_dtype) for k, v in uncond_added_conditions.items()},
+                    ).sample
+                    uncond_pred_x0 = predicted_origin(
+                        uncond_teacher_output,
+                        start_timesteps,
+                        noisy_model_input,
+                        noise_scheduler.config.prediction_type,
+                        alpha_schedule,
+                        sigma_schedule,
+                    )
 
-                        # Perform "CFG" to get x_prev estimate (using the LCM paper's CFG formulation)
-                        pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
-                        pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
-                        x_prev = solver.ddim_step(pred_x0, pred_noise, index)
+                    # Perform "CFG" to get x_prev estimate (using the LCM paper's CFG formulation)
+                    pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
+                    pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
+                    x_prev = solver.ddim_step(pred_x0, pred_noise, index)
 
                 # Get target LCM prediction on x_prev, w, c, t_n
                 with torch.no_grad():
