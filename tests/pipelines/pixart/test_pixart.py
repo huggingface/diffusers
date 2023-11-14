@@ -292,6 +292,22 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    def test_raises_warning_for_mask_feature(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs.update({"mask_feature": True})
+
+        with self.assertWarns(FutureWarning) as warning_ctx:
+            _ = pipe(**inputs).images
+
+        assert "mask_feature" in str(warning_ctx.warning)
+
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 

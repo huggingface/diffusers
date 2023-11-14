@@ -283,8 +283,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_attention_mask=None,
         negative_prompt_attention_mask=None,
     ):
-        print(f"From check inputs: {prompt_embeds is not None and prompt_attention_mask is None}")
-        print(f"From check inputs: {negative_prompt_embeds is not None and negative_prompt_attention_mask is None}")
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
