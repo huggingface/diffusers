@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2023 The LCM team and the HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -550,11 +550,6 @@ def parse_args():
             " https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices"
         ),
     )
-    parser.add_argument(
-        "--cast_teacher_unet",
-        action="store_true",
-        help="Whether to cast the teacher U-Net to the precision specified by `--mixed_precision`.",
-    )
     # ----Training Optimizations----
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
@@ -739,16 +734,11 @@ def main(args):
         revision=args.teacher_revision,
     )
 
-    # 5. Load teacher U-Net from SD-XL checkpoint
-    # teacher_unet = UNet2DConditionModel.from_pretrained(
-    #     args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
-    # )
 
     # 6. Freeze teacher vae, text_encoders, and teacher_unet
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
-    # teacher_unet.requires_grad_(False)
 
     # 7. Create online (`unet`) student U-Net.
     unet = UNet2DConditionModel.from_pretrained(
@@ -806,10 +796,6 @@ def main(args):
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
-    # Move teacher_unet to device, optionally cast to weight_dtype
-    # teacher_unet.to(accelerator.device)
-    # if args.cast_teacher_unet:
-    #     teacher_unet.to(dtype=weight_dtype)
 
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
@@ -853,7 +839,6 @@ def main(args):
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
-            # teacher_unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
