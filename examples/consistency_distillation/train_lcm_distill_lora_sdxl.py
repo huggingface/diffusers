@@ -734,7 +734,6 @@ def main(args):
         revision=args.teacher_revision,
     )
 
-
     # 6. Freeze teacher vae, text_encoders, and teacher_unet
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
@@ -795,7 +794,6 @@ def main(args):
         vae.to(dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-
 
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
