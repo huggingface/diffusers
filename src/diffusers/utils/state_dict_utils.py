@@ -137,6 +137,7 @@ def convert_state_dict(state_dict, mapping):
                 k = k.replace(pattern, new_pattern)
                 break
         converted_state_dict[k] = v
+    print("From state_dict utils", any("lora_A" in converted_state_dict))
     return converted_state_dict
 
 

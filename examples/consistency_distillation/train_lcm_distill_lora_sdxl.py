@@ -134,7 +134,7 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step):
     peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
     diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
     diffusers_state_dict = {
-        f"{pipeline.unet_name}.{module_name}": param for module_name, param in diffusers_state_dict.items()
+        f"{module_name.replace('base_model.model', pipeline.unet_name)}.{module_name}": param for module_name, param in diffusers_state_dict.items()
     }
     print(list(diffusers_state_dict.keys()))
     pipeline.load_lora_weights(diffusers_state_dict)
