@@ -1414,8 +1414,8 @@ class LoraLoaderMixin:
 
     def delete_adapters(self, adapter_names: Union[List[str], str]):
         """
-        Deletes the LoRA layers of `adapter_name` for the unet and text-encoder(s).
         Args:
+        Deletes the LoRA layers of `adapter_name` for the unet and text-encoder(s).
             adapter_names (`Union[List[str], str]`):
                 The names of the adapter to delete. Can be a single string or a list of strings
         """

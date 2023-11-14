@@ -26,7 +26,7 @@ from ..utils import (
     HF_HUB_OFFLINE,
     USE_PEFT_BACKEND,
     _get_model_file,
-    delete_adapter_layers
+    delete_adapter_layers,
     is_accelerate_available,
     logging,
     set_adapter_layers,
@@ -551,8 +551,8 @@ class UNet2DConditionLoadersMixin:
 
     def delete_adapters(self, adapter_names: Union[List[str], str]):
         """
-        Deletes the LoRA layers of `adapter_name` for the unet.
         Args:
+        Deletes the LoRA layers of `adapter_name` for the unet.
             adapter_names (`Union[List[str], str]`):
                 The names of the adapter to delete. Can be a single string or a list of strings
         """
