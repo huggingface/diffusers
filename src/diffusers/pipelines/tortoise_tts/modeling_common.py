@@ -577,7 +577,7 @@ class TacotronSTFT(torch.nn.Module):
         return output
 
     def spectral_de_normalize(self, magnitudes):
-        output = dynamic_range_decompression(magnitudes)
+        output = torch.exp(magnitudes)
         return output
 
     def mel_spectrogram(self, y):

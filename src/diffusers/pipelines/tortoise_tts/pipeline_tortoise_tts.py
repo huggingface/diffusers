@@ -421,7 +421,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         latents_dtype = latents.dtype
         if latents_dtype == torch.float16:
-            latents = latents.to(float32)
+            latents = latents.to(torch.float32)
 
         latents = self.decoder_final_norm(latents)
         latents = latents.to(latents_dtype)
