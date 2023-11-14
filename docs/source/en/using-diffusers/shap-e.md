@@ -68,7 +68,7 @@ export_to_gif(images[1], "cake_3d.gif")
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/cake_out.gif"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">A birthday cupcake</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">prompt = "A birthday cupcake"</figcaption>
   </div>
 </div>
 
