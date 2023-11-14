@@ -14,7 +14,7 @@
 from typing import List, Optional, Union
 
 import torch
-from diffuser.utils.torch_utils import randn_tensor
+from diffusers.utils.torch_utils import randn_tensor
 from packaging import version
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
