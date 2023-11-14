@@ -69,11 +69,9 @@ EXAMPLE_DOC_STRING = """
 
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
-        >>> controlnet = ControlNetXSModel.from_pretrained(
-        ...     "UmerHA/ConrolNetXS-SDXL-canny", torch_dtype=torch.float16
-        ... )
+        >>> controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-SDXL-canny", torch_dtype=torch.float16)
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+        >>> pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, torch_dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
@@ -172,7 +170,7 @@ class StableDiffusionXLControlNetXSPipeline(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
         add_watermarker = add_watermarker if add_watermarker is not None else is_invisible_watermark_available()
- 
+
         if add_watermarker:
             self.watermark = StableDiffusionXLWatermarker()
         else:
@@ -577,7 +575,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 f"`control_guidance_start` has {len(control_guidance_start)} elements, but `control_guidance_end` has {len(control_guidance_end)} elements. Make sure to provide the same number of elements to each list."
             )
 
-        #if isinstance(self.controlnet, MultiControlNetModel): # todo?
+        # if isinstance(self.controlnet, MultiControlNetModel): # todo?
 
         for start, end in zip(control_guidance_start, control_guidance_end):
             if start >= end:
@@ -894,13 +892,13 @@ class StableDiffusionXLControlNetXSPipeline(
                 as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
                 information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
-                
+
         Examples:
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] is returned,
-                otherwise a `tuple` is returned containing the output images.
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] is
+                returned, otherwise a `tuple` is returned containing the output images.
         """
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
@@ -910,26 +908,26 @@ class StableDiffusionXLControlNetXSPipeline(
         elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
         elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
-            mult = 1 # len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
+            mult = 1  # len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
             control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
                 control_guidance_end
             ]
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-             prompt,
-             prompt_2,
-             image,
-             callback_steps,
-             negative_prompt,
-             negative_prompt_2,
-             prompt_embeds,
-             negative_prompt_embeds,
-             pooled_prompt_embeds,
-             negative_pooled_prompt_embeds,
-             controlnet_conditioning_scale,
-             control_guidance_start,
-             control_guidance_end,
+            prompt,
+            prompt_2,
+            image,
+            callback_steps,
+            negative_prompt,
+            negative_prompt_2,
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+            controlnet_conditioning_scale,
+            control_guidance_start,
+            control_guidance_end,
         )
 
         # 2. Define call parameters
@@ -946,8 +944,8 @@ class StableDiffusionXLControlNetXSPipeline(
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        #todo: if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float): ...
-        
+        # todo: if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float): ...
+
         # todo umer: understand & implement if needed
         # global_pool_conditions = (
         #     controlnet.config.global_pool_conditions
@@ -995,7 +993,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 guess_mode=guess_mode,
             )
             height, width = image.shape[-2:]
-        #elif isinstance(controlnet, MultiControlNetModel): todo?
+        # elif isinstance(controlnet, MultiControlNetModel): todo?
         else:
             assert False
 

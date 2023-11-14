@@ -20,13 +20,13 @@ from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
+from ..umer_debug_logger import udl
 from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate
 from .attention import BasicTransformerBlock
 from .embeddings import PatchEmbed
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 
-from ..umer_debug_logger import udl
 
 @dataclass
 class Transformer2DModelOutput(BaseOutput):
@@ -317,7 +317,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_patches:
             hidden_states = self.pos_embed(hidden_states)
 
-        udl.log_if('proj_in', hidden_states, condition='SUBBLOCK-MINUS-1')
+        udl.log_if("proj_in", hidden_states, condition="SUBBLOCK-MINUS-1")
 
         # 2. Blocks
         for block in self.transformer_blocks:
@@ -389,7 +389,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
             )
 
-        udl.log_if('proj_out', output, condition='SUBBLOCK-MINUS-1')
+        udl.log_if("proj_out", output, condition="SUBBLOCK-MINUS-1")
 
         if not return_dict:
             return (output,)

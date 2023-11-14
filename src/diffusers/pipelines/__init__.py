@@ -17,7 +17,13 @@ from ..utils import (
 
 # These modules contain pipelines from multiple libraries/frameworks
 _dummy_objects = {}
-_import_structure = {"stable_diffusion": [], "stable_diffusion_xl": [], "latent_diffusion": [], "controlnet": [], "controlnet_xs": []}
+_import_structure = {
+    "controlnet": [],
+    "controlnet_xs": [],
+    "latent_diffusion": [],
+    "stable_diffusion": [],
+    "stable_diffusion_xl": [],
+}
 
 try:
     if not is_torch_available():

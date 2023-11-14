@@ -31,7 +31,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_flax_and_transformers_objects))
 else:
-    pass # _import_structure["pipeline_flax_controlnet"] = ["FlaxStableDiffusionControlNetPipeline"]
+    pass  # _import_structure["pipeline_flax_controlnet"] = ["FlaxStableDiffusionControlNetPipeline"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -50,7 +50,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_flax_and_transformers_objects import *  # noqa F403
     else:
-        pass # from .pipeline_flax_controlnet import FlaxStableDiffusionControlNetPipeline
+        pass  # from .pipeline_flax_controlnet import FlaxStableDiffusionControlNetPipeline
 
 
 else:

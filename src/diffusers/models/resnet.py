@@ -20,13 +20,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..umer_debug_logger import udl
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
 from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 
-from ..umer_debug_logger import udl
 
 class Upsample1D(nn.Module):
     """A 1D upsampling layer with an optional convolution.
@@ -206,7 +206,7 @@ class Upsample2D(nn.Module):
                 else:
                     hidden_states = self.Conv2d_0(hidden_states)
 
-        udl.log_if('conv',hidden_states, 'SUBBLOCK-MINUS-1')
+        udl.log_if("conv", hidden_states, "SUBBLOCK-MINUS-1")
 
         return hidden_states
 
@@ -276,7 +276,7 @@ class Downsample2D(nn.Module):
         else:
             hidden_states = self.conv(hidden_states)
 
-        udl.log_if('conv',hidden_states, 'SUBBLOCK-MINUS-1')
+        udl.log_if("conv", hidden_states, "SUBBLOCK-MINUS-1")
 
         return hidden_states
 
@@ -725,7 +725,7 @@ class ResnetBlock2D(nn.Module):
             )
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
-        udl.log_if('conv1', hidden_states, condition='SUBBLOCK-MINUS-1')
+        udl.log_if("conv1", hidden_states, condition="SUBBLOCK-MINUS-1")
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
@@ -738,7 +738,7 @@ class ResnetBlock2D(nn.Module):
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
-            udl.log_if('add time_emb_proj', hidden_states, condition='SUBBLOCK-MINUS-1')
+            udl.log_if("add time_emb_proj", hidden_states, condition="SUBBLOCK-MINUS-1")
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm2(hidden_states, temb)
@@ -752,7 +752,7 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
-        udl.log_if('conv2', hidden_states, condition='SUBBLOCK-MINUS-1')
+        udl.log_if("conv2", hidden_states, condition="SUBBLOCK-MINUS-1")
 
         if self.conv_shortcut is not None:
             input_tensor = (
@@ -760,7 +760,7 @@ class ResnetBlock2D(nn.Module):
             )
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
-        udl.log_if('add conv_shortcut', output_tensor, condition='SUBBLOCK-MINUS-1')
+        udl.log_if("add conv_shortcut", output_tensor, condition="SUBBLOCK-MINUS-1")
 
         return output_tensor
 

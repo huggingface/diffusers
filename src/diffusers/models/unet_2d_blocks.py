@@ -30,6 +30,7 @@ from .transformer_2d import Transformer2DModel
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 def get_down_block(
     down_block_type,
     num_layers,
