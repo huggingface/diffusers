@@ -1681,13 +1681,14 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             )
             self.assertTrue(starts_with_unet)
 
-    def test_text_to_image_lcm__lora_sdxl(self):
+    def test_text_to_image_lcm_lora_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/consistency_distillation/train_lcm_distill_lora_sdxl.py
                 --pretrained_teacher_model hf-internal-testing/tiny-stable-diffusion-xl-pipe
                 --dataset_name hf-internal-testing/dummy_image_text_data
                 --resolution 64
+                --lora_rank 4
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
                 --max_train_steps 2
