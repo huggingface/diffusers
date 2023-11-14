@@ -53,16 +53,23 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 class ControlNetXSOutput(BaseOutput):
-    # todo: docstring
+    """
+    The output of [`ControlNetXSModel`].
+
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            The output of the `ControlNetXSModel`. Unlike `ControlNetOutput` this is NOT to be added to
+            the base model output, but is already the final output.
+    """
     sample: torch.FloatTensor = None
 
 
-# todo umer: do we need UNet2DConditionLoadersMixin?
-class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+# todo umer: add sth like FromOriginalControlnetMixin
+class ControlNetXSModel(ModelMixin, ConfigMixin):
     r"""
     A ControlNet-XS model
 
-    This model inherits from [`ModelMixin`], [`ConfigMixin`] and [`UNet2DConditionLoadersMixin`].
+    This model inherits from [`ModelMixin`] and [`ConfigMixin`].
     Check the superclass documentation for it's generic methods implemented for all models
     (such as downloading or saving).
 
@@ -81,31 +88,27 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         learn_embedding (`bool`, defaults to `False`):
             Wether to use time embedding of the control model. If yes, the time embedding
             is a linear interpolation of the time embeddings of the control and base model
-            with interpolation parameter `time_control_scale**3`.
-        time_control_scale (`float`, defaults to 1.0):
+            with interpolation parameter `time_embedding_mix**3`.
+        time_embedding_mix (`float`, defaults to 1.0):
             Linear interpolation parameter used if `learn_embedding` is `True`.
         base_model_channel_sizes (`Dict[str, List[Tuple[int]]]`):
-            Channel sizes of each subblock of base model. Use `gather_base_model_sizes` on
+            Channel sizes of each subblock of base model. Use `gather_subblock_sizes` on
             your base model to compute it.
     """
-
-    # todo: rename enc/mid/dec in variable names (eg connections)
-    # todo: is time_control_scale a good name?
-    # todo: gather_base_model_sizes good name?
 
     # to delete later
     @classmethod
     def create_as_in_paper(cls, base_model: UNet2DConditionModel):
         return ControlNetXSModel.from_unet(
             base_model,
-            time_control_scale =  0.95,
+            time_embedding_mix =  0.95,
             learn_embedding = True,
-            control_model_ratio = 0.1,
+            control_model_size_ratio = 0.1,
             dim_attention_heads = 64
         )
 
     @classmethod
-    def gather_base_model_sizes(cls, unet: UNet2DConditionModel, base_or_control):
+    def gather_subblock_sizes(cls, unet: UNet2DConditionModel, base_or_control):
         if base_or_control not in ['base', 'control']:
             raise ValueError(f"`base_or_control` needs to be either `base` or `control`")
 
@@ -145,7 +148,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         controlnet_conditioning_channel_order: str = "rgb",
         time_embedding_input_dim: int = 320,
         time_embedding_dim: int = 1280,
-        time_control_scale:float=1.0,
+        time_embedding_mix:float=1.0,
         learn_embedding: bool =False,
         base_model_channel_sizes: Dict[str, List[Tuple[int]]]={
             'down':[(4, 320), (320, 320), (320, 320), (320, 320), (320, 640), (640, 640), (640, 640), (640, 1280), (1280, 1280)],
@@ -262,33 +265,33 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         increase_block_input_in_mid_resnet(self.control_model, by=base_block_out_channels[-1])
 
         # 3 - Gather Channel Sizes
-        self.ch_inout_ctrl = ControlNetXSModel.gather_base_model_sizes(self.control_model, base_or_control='control')
+        self.ch_inout_ctrl = ControlNetXSModel.gather_subblock_sizes(self.control_model, base_or_control='control')
         self.ch_inout_base = base_model_channel_sizes
 
         # 4 - Build connections between base and control model
-        self.enc_zero_convs_out = nn.ModuleList([])
-        self.enc_zero_convs_in = nn.ModuleList([])
+        self.down_zero_convs_out = nn.ModuleList([])
+        self.down_zero_convs_in = nn.ModuleList([])
         self.middle_block_out = nn.ModuleList([])
         self.middle_block_in = nn.ModuleList([])
-        self.dec_zero_convs_out = nn.ModuleList([])
-        self.dec_zero_convs_in = nn.ModuleList([])
+        self.up_zero_convs_out = nn.ModuleList([])
+        self.up_zero_convs_in = nn.ModuleList([])
 
         for ch_io_base in self.ch_inout_base['down']:
-            self.enc_zero_convs_in.append(self.make_zero_conv(
+            self.down_zero_convs_in.append(self.make_zero_conv(
                 in_channels=ch_io_base[1], out_channels=ch_io_base[1])
             )
         for i in range(len(self.ch_inout_ctrl['down'])):
-            self.enc_zero_convs_out.append(
+            self.down_zero_convs_out.append(
                 self.make_zero_conv(self.ch_inout_ctrl['down'][i][1], self.ch_inout_base['down'][i][1])
             )       
  
         self.middle_block_out = self.make_zero_conv(self.ch_inout_ctrl['mid'][-1][1], self.ch_inout_base['mid'][-1][1])
         
-        self.dec_zero_convs_out.append(
+        self.up_zero_convs_out.append(
             self.make_zero_conv(self.ch_inout_ctrl['down'][-1][1], self.ch_inout_base['mid'][-1][1])
         )
         for i in range(1, len(self.ch_inout_ctrl['down'])):
-            self.dec_zero_convs_out.append(
+            self.up_zero_convs_out.append(
                 self.make_zero_conv(self.ch_inout_ctrl['down'][-(i + 1)][1], self.ch_inout_base['up'][i - 1][1])
             )
 
@@ -323,7 +326,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         conditioning_channels: int = 3,
         controlnet_conditioning_channel_order: str = "rgb",
         learn_embedding: bool = False,
-        time_control_scale: float =  1.0,
+        time_embedding_mix: float =  1.0,
         block_out_channels: Optional[Tuple[int]] = None,
         control_model_size_ratio: Optional[float] = None,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
@@ -342,8 +345,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             learn_embedding (`bool`, defaults to `False`):
                 Wether to use time embedding of the control model. If yes, the time embedding
                 is a linear interpolation of the time embeddings of the control and base model
-                with interpolation parameter `time_control_scale**3`.
-            time_control_scale (`float`, defaults to 1.0):
+                with interpolation parameter `time_embedding_mix**3`.
+            time_embedding_mix (`float`, defaults to 1.0):
                 Linear interpolation parameter used if `learn_embedding` is `True`.
             block_out_channels (`Tuple[int]`, *optional*):
                 Down blocks output channels in control model. Either this or `block_out_channels` must be given.
@@ -389,9 +392,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             controlnet_conditioning_channel_order = controlnet_conditioning_channel_order,
             time_embedding_input_dim = get_time_emb_input_dim(unet),
             time_embedding_dim = get_time_emb_dim(unet),
-            time_control_scale =  time_control_scale,
+            time_embedding_mix =  time_embedding_mix,
             learn_embedding = learn_embedding,
-            base_model_channel_sizes = ControlNetXSModel.gather_base_model_sizes(unet, base_or_control='base'),
+            base_model_channel_sizes = ControlNetXSModel.gather_subblock_sizes(unet, base_or_control='base'),
         )
 
         return cls(**kwargs)
@@ -558,7 +561,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        guess_mode: bool = False, # todo: understand and implement if required
+        guess_mode: bool = False, # todo umer: understand and implement if required
         return_dict: bool = True,
     ) -> Union[ControlNetXSOutput, Tuple]:
         """
@@ -592,7 +595,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
             # guess_mode (`bool`, defaults to `False`):
-                # todo
+                # todo umer
             return_dict (`bool`, defaults to `True`):
                 Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
 
@@ -613,7 +616,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             raise ValueError(f"unknown `controlnet_conditioning_channel_order`: {channel_order}")
 
         # scale control strength
-        n_connections = len(self.enc_zero_convs_out) + 1 + len(self.dec_zero_convs_out)
+        n_connections = len(self.down_zero_convs_out) + 1 + len(self.up_zero_convs_out)
         scale_list = torch.full((n_connections,), conditioning_scale)
    
         # prepare attention_mask
@@ -648,7 +651,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if self.config.learn_embedding:
             ctrl_temb = self.control_model.time_embedding(t_emb, timestep_cond)
             base_temb = base_model.time_embedding(t_emb, timestep_cond)
-            interpolation_param = self.config.time_control_scale ** 0.3
+            interpolation_param = self.config.time_embedding_mix ** 0.3
 
             temb = ctrl_temb * interpolation_param + base_temb * (1 - interpolation_param)
         else:
@@ -704,7 +707,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         h_ctrl = h_base = sample
         hs_base, hs_ctrl = [], []
-        it_enc_convs_in, it_enc_convs_out, it_dec_convs_in, it_dec_convs_out = map(iter, (self.enc_zero_convs_in, self.enc_zero_convs_out, self.dec_zero_convs_in, self.dec_zero_convs_out))
+        it_down_convs_in, it_down_convs_out, it_dec_convs_in, it_up_convs_out = map(iter, (self.down_zero_convs_in, self.down_zero_convs_out, self.up_zero_convs_in, self.up_zero_convs_out))
         scales = iter(scale_list)
 
         base_down_subblocks = to_sub_blocks(base_model.down_blocks)
@@ -718,44 +721,44 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         h_base = base_model.conv_in(h_base)
         h_ctrl = self.control_model.conv_in(h_ctrl)
         if guided_hint is not None: h_ctrl += guided_hint
-        h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)
+        h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)
 
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
 
         # 1 - down
         for m_base, m_ctrl  in zip(base_down_subblocks, ctrl_down_subblocks):
-            h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
-            h_base = m_base(                                                    # B - apply base subblock
+            h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
+            h_base = m_base(                                                     # B - apply base subblock
                 h_base, temb, cemb,
                 attention_mask, cross_attention_kwargs
             )                                 
-            h_ctrl = m_ctrl(                                                    # C - apply ctrl subblock
+            h_ctrl = m_ctrl(                                                     # C - apply ctrl subblock
                 h_ctrl, temb, cemb,
                 attention_mask, cross_attention_kwargs
             )                             
-            h_base = h_base + next(it_enc_convs_out)(h_ctrl) * next(scales)     # D - add ctrl -> base
+            h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)     # D - add ctrl -> base
 
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
 
         # 2 - mid
-        h_ctrl = torch.cat([h_ctrl, next(it_enc_convs_in)(h_base)], dim=1)      # A - concat base -> ctrl
+        h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)      # A - concat base -> ctrl
         for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
-            h_base = m_base(                                                    # B - apply base subblock
+            h_base = m_base(                                                     # B - apply base subblock
                 h_base, temb, cemb,
                 attention_mask, cross_attention_kwargs
             )  
-            h_ctrl  = m_ctrl(                                                   # C - apply ctrl subblock
+            h_ctrl  = m_ctrl(                                                    # C - apply ctrl subblock
                 h_ctrl, temb, cemb,
                 attention_mask, cross_attention_kwargs
             )  
-        h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)          # D - add ctrl -> base
+        h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)           # D - add ctrl -> base
  
         # 3 - up
         for m_base in base_up_subblocks:
-            h_base = h_base + next(it_dec_convs_out)(hs_ctrl.pop()) * next(scales)  # add info from ctrl encoder 
-            h_base = torch.cat([h_base, hs_base.pop()], dim=1)                      # concat info from base encoder+ctrl encoder
+            h_base = h_base + next(it_up_convs_out)(hs_ctrl.pop()) * next(scales) # add info from ctrl encoder 
+            h_base = torch.cat([h_base, hs_base.pop()], dim=1)                    # concat info from base encoder+ctrl encoder
             h_base = m_base(                                                   
                 h_base, temb, cemb,
                 attention_mask, cross_attention_kwargs
@@ -771,9 +774,10 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         return ControlNetXSOutput(sample=h_base)
 
     def make_zero_conv(self, in_channels, out_channels=None):
-        # keep running track # todo: better comment
+        # keep running track of channels sizes
         self.in_channels = in_channels
         self.out_channels = out_channels or in_channels
+
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
 
 
