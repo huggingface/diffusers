@@ -450,10 +450,10 @@ class RealFillDataset(Dataset):
 
         self.transform = transforms_v2.Compose(
             [
+                transforms_v2.ToImage(),
                 transforms_v2.RandomResize(size, int(1.125 * size)),
                 transforms_v2.RandomCrop(size),
-                transforms_v2.ToImageTensor(),
-                transforms_v2.ConvertImageDtype(),
+                transforms_v2.ToDtype(torch.float32, scale=True),
                 transforms_v2.Normalize([0.5], [0.5]),
             ]
         )
@@ -639,7 +639,7 @@ def main(args):
             for model in models:
                 sub_dir = (
                     "unet"
-                    if isinstance(model.base_model.model, type(accelerator.unwrap_model(unet.base_model.model)))
+                    if isinstance(model.base_model.model, type(accelerator.unwrap_model(unet).base_model.model))
                     else "text_encoder"
                 )
                 model.save_pretrained(os.path.join(output_dir, sub_dir))
@@ -654,12 +654,12 @@ def main(args):
 
             sub_dir = (
                 "unet"
-                if isinstance(model.base_model.model, type(accelerator.unwrap_model(unet.base_model.model)))
+                if isinstance(model.base_model.model, type(accelerator.unwrap_model(unet).base_model.model))
                 else "text_encoder"
             )
             model_cls = (
                 UNet2DConditionModel
-                if isinstance(model.base_model.model, type(accelerator.unwrap_model(unet.base_model.model)))
+                if isinstance(model.base_model.model, type(accelerator.unwrap_model(unet).base_model.model))
                 else CLIPTextModel
             )
 
@@ -937,8 +937,8 @@ def main(args):
     if accelerator.is_main_process:
         pipeline = StableDiffusionInpaintPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet.merge_and_unload(), keep_fp32_wrapper=True),
-            text_encoder=accelerator.unwrap_model(text_encoder.merge_and_unload(), keep_fp32_wrapper=True),
+            unet=accelerator.unwrap_model(unet, keep_fp32_wrapper=True).merge_and_unload(),
+            text_encoder=accelerator.unwrap_model(text_encoder, keep_fp32_wrapper=True).merge_and_unload(),
             revision=args.revision,
         )
 
