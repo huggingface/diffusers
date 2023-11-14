@@ -100,26 +100,36 @@
       title: Create a dataset for training
     - local: training/adapt_a_model
       title: Adapt a model to a new task
-    - local: training/unconditional_training
-      title: Unconditional image generation
-    - local: training/text_inversion
-      title: Textual Inversion
-    - local: training/dreambooth
-      title: DreamBooth
-    - local: training/text2image
-      title: Text-to-image
-    - local: training/lora
-      title: Low-Rank Adaptation of Large Language Models (LoRA)
-    - local: training/controlnet
-      title: ControlNet
-    - local: training/instructpix2pix
-      title: InstructPix2Pix Training
-    - local: training/custom_diffusion
-      title: Custom Diffusion
-    - local: training/t2i_adapters
-      title: T2I-Adapters
-    - local: training/ddpo
-      title: Reinforcement learning training with DDPO
+    - sections:
+      - local: training/unconditional_training
+        title: Unconditional image generation
+      - local: training/text2image
+        title: Text-to-image
+      - local: training/sdxl
+        title: Stable Diffusion XL
+      - local: training/kandinsky
+        title: Kandinsky 2.2
+      - local: training/wuerstchen
+        title: Wuerstchen
+      - local: training/controlnet
+        title: ControlNet
+      - local: training/t2i_adapters
+        title: T2I-Adapters
+      - local: training/instructpix2pix
+        title: InstructPix2Pix
+      title: Models
+    - sections:
+      - local: training/text_inversion
+        title: Textual Inversion
+      - local: training/dreambooth
+        title: DreamBooth
+      - local: training/lora
+        title: LoRA
+      - local: training/custom_diffusion
+        title: Custom Diffusion
+      - local: training/ddpo
+        title: Reinforcement learning training with DDPO
+      title: Methods
     title: Training
   - sections:
     - local: using-diffusers/other-modalities
