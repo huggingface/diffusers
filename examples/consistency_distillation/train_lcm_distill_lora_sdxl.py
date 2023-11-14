@@ -476,12 +476,6 @@ def parse_args():
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     # ----Diffusion Training Arguments----
-    parser.add_argument(
-        "--proportion_empty_prompts",
-        type=float,
-        default=0.0,
-        help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
-    )
     # ----Latent Consistency Distillation (LCD) Specific Arguments----
     parser.add_argument(
         "--w_min",
@@ -593,21 +587,16 @@ def parse_args():
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
-    if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
-        raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
-
     return args
 
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
+def encode_prompt(prompt_batch, text_encoders, tokenizers, is_train=True):
     prompt_embeds_list = []
 
     captions = []
     for caption in prompt_batch:
-        if random.random() < proportion_empty_prompts:
-            captions.append("")
-        elif isinstance(caption, str):
+        if isinstance(caption, str):
             captions.append(caption)
         elif isinstance(caption, (list, np.ndarray)):
             # take a random caption if there are multiple
@@ -982,9 +971,7 @@ def main(args):
 
     # 14. Embeddings for the UNet.
     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-    def compute_embeddings(
-        prompt_batch, original_sizes, crop_coords, proportion_empty_prompts, text_encoders, tokenizers, is_train=True
-    ):
+    def compute_embeddings(prompt_batch, original_sizes, crop_coords, text_encoders, tokenizers, is_train=True):
         def compute_time_ids(original_size, crops_coords_top_left):
             target_size = (args.resolution, args.resolution)
             add_time_ids = list(original_size + crops_coords_top_left + target_size)
@@ -992,9 +979,7 @@ def main(args):
             add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
             return add_time_ids
 
-        prompt_embeds, pooled_prompt_embeds = encode_prompt(
-            prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
-        )
+        prompt_embeds, pooled_prompt_embeds = encode_prompt(prompt_batch, text_encoders, tokenizers, is_train)
         add_text_embeds = pooled_prompt_embeds
 
         add_time_ids = torch.cat([compute_time_ids(s, c) for s, c in zip(original_sizes, crop_coords)])
@@ -1008,12 +993,7 @@ def main(args):
     text_encoders = [text_encoder_one, text_encoder_two]
     tokenizers = [tokenizer_one, tokenizer_two]
 
-    compute_embeddings_fn = functools.partial(
-        compute_embeddings,
-        proportion_empty_prompts=args.proportion_empty_prompts,
-        text_encoders=text_encoders,
-        tokenizers=tokenizers,
-    )
+    compute_embeddings_fn = functools.partial(compute_embeddings, text_encoders=text_encoders, tokenizers=tokenizers)
 
     # 14. LR Scheduler creation
     # Scheduler and math around the number of training steps.
