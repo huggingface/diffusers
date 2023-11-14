@@ -14,13 +14,13 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-This script is experimental, and it's easy to overfit and run into issues like catastrophic forgetting. We recommend exploring different hyperparameters to get the best results on your dataset.
+This script is experimental, and it's easy to overfit and run into issues like catastrophic forgetting. Try exploring different hyperparameters to get the best results on your dataset.
 
 </Tip>
 
 [Stable Diffusion XL (SDXL)](https://hf.co/papers/2307.01952) is a larger and more powerful iteration of the Stable Diffusion model, capable of producing higher resolution images.
 
-SDXL's UNet is 3x larger and the model adds a second text encoder to the architecture. Depending on the hardware available to you, this can be very computationally intensive and it may not run on a consumer GPU like a Tesla T4. To help fit this larger model into memory and to speedup training, try enabling `gradient_checkpointing`, `mixed_precision`, and `gradient_accumulation_steps`. You can reduce your memory-usage even more by enabling memory-efficient attention with [xFormers](../optimization/xformers) and using bitsandbytes' 8-bit optimizer.
+SDXL's UNet is 3x larger and the model adds a second text encoder to the architecture. Depending on the hardware available to you, this can be very computationally intensive and it may not run on a consumer GPU like a Tesla T4. To help fit this larger model into memory and to speedup training, try enabling `gradient_checkpointing`, `mixed_precision`, and `gradient_accumulation_steps`. You can reduce your memory-usage even more by enabling memory-efficient attention with [xFormers](../optimization/xformers) and using [bitsandbytes'](https://github.com/TimDettmers/bitsandbytes) 8-bit optimizer.
 
 This guide will explore the [train_text_to_image_sdxl.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_sdxl.py) training script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
@@ -38,6 +38,12 @@ Then navigate to the example folder containing the training script and install t
 cd examples/text_to_image
 pip install -r requirements_sdxl.txt
 ```
+
+<Tip>
+
+🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
+
+</Tip>
 
 Initialize an 🤗 Accelerate environment:
 
@@ -61,28 +67,28 @@ write_basic_config()
 
 Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
+## Script parameters
+
 <Tip>
 
 The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_sdxl.py) and let us know if you have any questions or concerns.
 
 </Tip>
 
-## Script parameters
+The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L129) function. This function provides default values for each parameter, such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
 
-The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L129) function. The training script provides default values for each parameter such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
-
-For example, to speedup training with mixed precision using the bf16 format, add the `--mixed_precision` flag to the training command:
+For example, to speedup training with mixed precision using the bf16 format, add the `--mixed_precision` parameter to the training command:
 
 ```bash
 accelerate launch train_text_to_image_sdxl.py \
-  --mixed_precision="fp16"
+  --mixed_precision="bf16"
 ```
 
-Most of the parameters are identical to the parameters in the [Text-to-image](text2image#script-parameters) guide. Instead, this guide focuses on the parameters that are relevant to SDXL training.
+Most of the parameters are identical to the parameters in the [Text-to-image](text2image#script-parameters) training guide, so you'll focus on the parameters that are relevant to training SDXL in this guide.
 
 - `--pretrained_vae_model_name_or_path`: path to a pretrained VAE; the SDXL VAE is known to suffer from numerical instability, so this parameter allows you to specify a better [VAE](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)
 - `--proportion_empty_prompts`: the proportion of image prompts to replace with empty strings
-- `--timestep_bias_strategy`: where (earlier vs. later) in the timestep training to apply a bias, which can encourage the model to either learn low or high frequency details
+- `--timestep_bias_strategy`: where (earlier vs. later) in the timestep to apply a bias, which can encourage the model to either learn low or high frequency details
 - `--timestep_bias_multiplier`: the weight of the bias to apply to the timestep
 - `--timestep_bias_begin`: the timestep to begin applying the bias
 - `--timestep_bias_end`: the timestep to end applying the bias
@@ -90,7 +96,7 @@ Most of the parameters are identical to the parameters in the [Text-to-image](te
 
 ### Min-SNR weighting
 
-The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script predicts either `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
+The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting either `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
 
 Add the `--snr_gamma` parameter and set it to the recommended value of 5.0:
 
@@ -101,9 +107,9 @@ accelerate launch train_text_to_image_sdxl.py \
 
 ## Training script
 
-The training script is also similar to the [Text-to-image](text2image#training-script) guide, but it's been modified to support SDXL training. This guide will focus on the code that is unique to the SDXL training script. It starts by creating functions to [tokenize the prompts](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L478) to calculate the prompt embeddings, and to compute the image embeddings with the [VAE](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L519).
+The training script is also similar to the [Text-to-image](text2image#training-script) training guide, but it's been modified to support SDXL training. This guide will focus on the code that is unique to the SDXL training script.
 
-Next, the script provides a function to [generate the timesteps weights](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L531) depending on the number of timesteps and the timestep bias strategy to apply. 
+It starts by creating functions to [tokenize the prompts](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L478) to calculate the prompt embeddings, and to compute the image embeddings with the [VAE](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L519). Next, you'll a function to [generate the timesteps weights](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L531) depending on the number of timesteps and the timestep bias strategy to apply.
 
 Within the [`main()`](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/text_to_image/train_text_to_image_sdxl.py#L572) function, in addition to loading a tokenizer, the script loads a second tokenizer and text encoder because the SDXL architecture uses two of each:
 
@@ -164,11 +170,13 @@ weights = generate_timestep_weights(args, noise_scheduler.config.num_train_times
 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 ```
 
+If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
+
 ## Launch the script
 
 Once you’ve made all your changes or you’re okay with the default configuration, you’re ready to launch the training script! 🚀
 
-Let’s train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate your own Pokémon. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model (either from the Hub or a local path) and the dataset. You should also specify another VAE than the SDXL VAE (either from the Hub or a local path) with `VAE_NAME` to avoid numerical instabilities.
+Let’s train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate your own Pokémon. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model and the dataset (either from the Hub or a local path). You should also specify a VAE other than the SDXL VAE (either from the Hub or a local path) with `VAE_NAME` to avoid numerical instabilities.
 
 <Tip>
 
@@ -226,7 +234,7 @@ image.save("pokemon.png")
 </hfoption>
 <hfoption id="PyTorch XLA">
 
-[PyTorch XLA](https://pytorch.org/xla) allows you to run PyTorch on XLA devices such as TPUs, which can be faster. The initial warmup step takes longer because the model needs to be compiled and optimized. However, subsequent calls to the pipeline on an input **with the same length** as the original prompt are much faster because it can use the optimized graph.
+[PyTorch XLA](https://pytorch.org/xla) allows you to run PyTorch on XLA devices such as TPUs, which can be faster. The initial warmup step takes longer because the model needs to be compiled and optimized. However, subsequent calls to the pipeline on an input **with the same length** as the original prompt are much faster because it can reuse the optimized graph.
 
 ```py
 from diffusers import DiffusionPipeline

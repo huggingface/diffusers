@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing or xFormers. You should have a GPU with >30GB of memory if you want to train faster with Flax.
 
-This guide will explore the [train_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) script to help you become more familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [train_dreambooth.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
 Before running the script, make sure you install the library from source:
 
@@ -85,7 +85,7 @@ The following sections highlight parts of the training script that are important
 
 <Tip warning={true}>
 
-DreamBooth is very sensitive to training hyperparameters, and it is easy to overfit. We recommend taking a look at the [Training Stable Diffusion with Dreambooth using 🧨 Diffusers](https://huggingface.co/blog/dreambooth) blog post for recommended settings for different subjects to help you choose the appropriate hyperparameters.
+DreamBooth is very sensitive to training hyperparameters, and it is easy to overfit. Read the [Training Stable Diffusion with Dreambooth using 🧨 Diffusers](https://huggingface.co/blog/dreambooth) blog post for recommended settings for different subjects to help you choose the appropriate hyperparameters.
 
 </Tip>
 
@@ -110,7 +110,7 @@ Some basic and important parameters to know and specify are:
 
 ### Min-SNR weighting
 
-The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script predicts either `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
+The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
 
 Add the `--snr_gamma` parameter and set it to the recommended value of 5.0:
 
@@ -227,7 +227,7 @@ train_dataloader = torch.utils.data.DataLoader(
 
 Lastly, the [training loop](https://github.com/huggingface/diffusers/blob/072e00897a7cf4302c347a63ec917b4b8add16d4/examples/dreambooth/train_dreambooth.py#L1151) takes care of the remaining steps such as converting images to latent space, adding noise to the input, predicting the noise residual, and calculating the loss.
 
-Now that you have an idea of how the training script works, let's launch a training run!
+If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
 
 ## Launch the script
 
@@ -247,7 +247,7 @@ snapshot_download(
 )
 ```
 
-Set the environment variable `MODEL_NAME` to a model id on the Hub or a path to a local model, `DATA_DIR`  to the path where you just downloaded the dog images to, and `OUTPUT_DIR` to where you want to save the model. You'll use `sks` as the special word to tie the training to.
+Set the environment variable `MODEL_NAME` to a model id on the Hub or a path to a local model, `INSTANCE_DIR` to the path where you just downloaded the dog images to, and `OUTPUT_DIR` to where you want to save the model. You'll use `sks` as the special word to tie the training to.
 
 If you're interested in following along with the training process, you can periodically save generated images as training progresses. Add the following parameters to the training command:
 
@@ -430,18 +430,18 @@ image.save("dog-bucket.png")
 
 ## LoRA
 
-LoRA is a training technique for significantly reducing the number of trainable parameters. As a result, training is faster and it is easier to store the resulting weights because they are a lot smaller (~100MBs). Use the train_dreambooth_lora.py script to train with LoRA.
+LoRA is a training technique for significantly reducing the number of trainable parameters. As a result, training is faster and it is easier to store the resulting weights because they are a lot smaller (~100MBs). Use the [train_dreambooth_lora.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora.py) script to train with LoRA.
 
-We’ll discuss LoRA in more detail in the [LoRA training](lora) guide.
+The LoRA training script is discussed in more detail in the [LoRA training](lora) guide.
 
 ## Stable Diffusion XL
 
-Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the train_dreambooth_lora_sdxl.py script to train a SDXL model with LoRA.
+Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the [train_dreambooth_lora_sdxl.py](https://github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora_sdxl.py) script to train a SDXL model with LoRA.
 
-We’ll discuss training SDXL in more detail in the [SDXL training](sdxl) guide.
+The SDXL training script is discussed in more detail in the [SDXL training](sdxl) guide.
 
 ## Next steps
 
-Congratulations on training your DreamBooth model! To learn more about how to use your new model, the following guides may be helpful:
+Congratulations on training your DreamBooth model! To learn more about how to use your new model, the following guide may be helpful:
 
 - Learn how to [load a DreamBooth](../using-diffusers/loading_adapters) model for inference if you trained your model with LoRA.

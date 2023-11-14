@@ -17,7 +17,7 @@ specific language governing permissions and limitations under the License.
 Each training script is:
 
 - **Self-contained**: the training script does not depend on any local files, and all packages required to run the script are installed from the `requirements.txt` file.
-- **Easy-to-tweak**: the training scripts are an example of how to train a diffusion model for a specific task and won't work out-of-the-box for every training scenario. You'll likely need to adapt the training script for your specific use-case. To help you with that, we've fully exposed the data preprocessing code and the training loop in the script so you can modify it for your own use.
+- **Easy-to-tweak**: the training scripts are an example of how to train a diffusion model for a specific task and won't work out-of-the-box for every training scenario. You'll likely need to adapt the training script for your specific use-case. To help you with that, we've fully exposed the data preprocessing code and the training loop so you can modify it for your own use.
 - **Beginner-friendly**: the training scripts are designed to be beginner-friendly and easy to understand, rather than including the latest state-of-the-art methods to get the best and most competitive results. Any training methods we consider too complex are purposefully left out.
 - **Single-purpose**: each training script is expressly designed for only one task to keep it readable and understandable.
 
@@ -34,9 +34,9 @@ Our current collection of training scripts include:
 | [Custom Diffusion](https://github.com/huggingface/diffusers/tree/main/examples/custom_diffusion) |  |  |  |
 | [T2I-Adapters](https://github.com/huggingface/diffusers/tree/main/examples/t2i_adapter) | 👍 |  |  |
 | [Kandinsky 2.2](https://github.com/huggingface/diffusers/tree/main/examples/kandinsky2_2/text_to_image) |  | 👍 |  |
-| [Würstchen](https://github.com/huggingface/diffusers/tree/main/examples/wuerstchen/text_to_image) |  | 👍 |  |
+| [Wuerstchen](https://github.com/huggingface/diffusers/tree/main/examples/wuerstchen/text_to_image) |  | 👍 |  |
 
-We **actively** maintain these examples so please feel free to open an issue if they aren't working as expected. If you feel like another training task or technique should be included, you're more than welcome to start a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=) to discuss your feature idea with us and whether it meets our criteria of being self-contained, easy-to-tweak, beginner-friendly and single-purpose.
+These examples are **actively** maintained, so please feel free to open an issue if they aren't working as expected. If you feel like another training example should be included, you're more than welcome to start a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=) to discuss your feature idea with us and whether it meets our criteria of being self-contained, easy-to-tweak, beginner-friendly, and single-purpose.
 
 ## Install
 
@@ -53,11 +53,11 @@ Then navigate to the folder of the training script (for example, [DreamBooth](ht
 ```bash
 cd examples/dreambooth
 pip install -r requirements.txt
-# to train DreamBooth with SDXL
+# to train SDXL with DreamBooth
 pip install -r requirements_sdxl.txt
 ```
 
 To speedup training and reduce memory-usage, we recommend:
 
-- using PyTorch 2.0 or higher to automatically use [scaled dot product attention](../optimization/torch2.0#scaled-dot-product-attention) during training (you don't need to make any changes to the code)
+- using PyTorch 2.0 or higher to automatically use [scaled dot product attention](../optimization/torch2.0#scaled-dot-product-attention) during training (you don't need to make any changes to the training code)
 - installing [xFormers](../optimization/xformers) to enable memory-efficient attention

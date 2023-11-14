@@ -103,10 +103,10 @@
         title: Wuerstchen
       - local: training/controlnet
         title: ControlNet
-      - local: training/instructpix2pix
-        title: InstructPix2Pix
       - local: training/t2i_adapters
         title: T2I-Adapters
+      - local: training/instructpix2pix
+        title: InstructPix2Pix
       title: Models
     - sections:
       - local: training/text_inversion

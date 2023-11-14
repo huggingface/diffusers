@@ -16,7 +16,7 @@ specific language governing permissions and limitations under the License.
 
 If you're training on a GPU with limited vRAM, you should try enabling xFormers with `--enable_xformers_memory_efficient_attention` for faster training with lower vRAM requirements (16GB). To save even more memory, add `--set_grads_to_none` in the training argument to set the gradients to `None` instead of zero (this option can cause some issues, so if you experience any, try removing this parameter).
 
-This guide will explore the [train_custom_diffusion.py](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion/train_custom_diffusion.py) script to help you become more familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [train_custom_diffusion.py](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion/train_custom_diffusion.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
 Before running the script, make sure you install the library from source:
 
@@ -70,7 +70,7 @@ The following sections highlight parts of the training script that are important
 
 ## Script parameters
 
-The training script contains all the parameters to help you customize your training run. These are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/custom_diffusion/train_custom_diffusion.py#L319) function. The script comes with default values, but you can also set your own values in the training command if you'd like.
+The training script contains all the parameters to help you customize your training run. These are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/custom_diffusion/train_custom_diffusion.py#L319) function. The function comes with default values, but you can also set your own values in the training command if you'd like.
 
 For example, to change the resolution of the input image:
 
@@ -79,7 +79,7 @@ accelerate launch train_custom_diffusion.py \
   --resolution=256
 ```
 
-Many of the basic parameters are described in the [DreamBooth](dreambooth#script-parameters) guide, so this guide focuses on the parameters unique to Custom Diffusion:
+Many of the basic parameters are described in the [DreamBooth](dreambooth#script-parameters) training guide, so this guide focuses on the parameters unique to Custom Diffusion:
 
 - `--freeze_model`: freezes the key and value parameters in the cross-attention layer; the default is `crossattn_kv`, but you can set it to `crossattn` to train all the parameters in the cross-attention layer
 - `--concepts_list`: to learn multiple concepts, provide a path to a JSON file containing the concepts
@@ -90,11 +90,11 @@ Many of the basic parameters are described in the [DreamBooth](dreambooth#script
 
 Prior preservation loss is a method that uses a model's own generated samples to help it learn how to generate more diverse images. Because these generated sample images belong to the same class as the images you provided, they help the model retain what it has learned about the class and how it can use what it already knows about the class to make new compositions.
 
-Many of the parameters for prior preservation loss are described in the [DreamBooth](dreambooth#prior-preservation-loss) guide.
+Many of the parameters for prior preservation loss are described in the [DreamBooth](dreambooth#prior-preservation-loss) training guide.
 
 ### Regularization
 
-Custom Diffusion includes training the target images with a small set of real images to prevent overfitting. As you can imagine, this can be easy to do when you're only training on a few images! Download 200 real images with `clip_retrieval`. The `class_prompt` should be of the same category as the target images. These images are stored in `class_data_dir`.
+Custom Diffusion includes training the target images with a small set of real images to prevent overfitting. As you can imagine, this can be easy to do when you're only training on a few images! Download 200 real images with `clip_retrieval`. The `class_prompt` should be the same category as the target images. These images are stored in `class_data_dir`.
 
 ```bash
 python retrieve.py --class_prompt cat --class_data_dir real_reg/samples_cat --num_class_images 200
@@ -119,7 +119,7 @@ accelerate launch train_custom_diffusion.py \
 
 <Tip>
 
-A lot of the code in the Custom Diffusion training script is similar to the [DreamBooth](dreambooth#training-script) script. This guide instead focuses on the code that is unique to Custom Diffusion.
+A lot of the code in the Custom Diffusion training script is similar to the [DreamBooth](dreambooth#training-script) script. This guide instead focuses on the code that is relevant to Custom Diffusion.
 
 </Tip>
 
@@ -218,7 +218,7 @@ if args.modifier_token is not None:
 
 Once you’ve made all your changes or you’re okay with the default configuration, you’re ready to launch the training script! 🚀
 
-In this guide, you'll [download](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip) and use these example cat images. You can also create and use your own dataset if you want (see the [Create a dataset for training](create_dataset) guide).
+In this guide, you'll download and use these example [cat images](https://www.cs.cmu.edu/~custom-diffusion/assets/data.zip). You can also create and use your own dataset if you want (see the [Create a dataset for training](create_dataset) guide).
 
 Set the environment variable `MODEL_NAME` to a model id on the Hub or a path to a local model, `INSTANCE_DIR`  to the path where you just downloaded the cat images to, and `OUTPUT_DIR` to where you want to save the model. You'll use `<new1>` as the special word to tie the newly learned embeddings to. The script creates and saves model checkpoints and a pytorch_custom_diffusion_weights.bin file to your repository.
 
@@ -360,4 +360,4 @@ image.save("multi-subject.png")
 
 Congratulations on training a model with Custom Diffusion! 🎉 To learn more:
 
-- Read [Multi-Concept Customization of Text-to-Image Diffusion](https://www.cs.cmu.edu/~custom-diffusion/) to learn more details about the experimental results from the Custom Diffusion team.
+- Read the [Multi-Concept Customization of Text-to-Image Diffusion](https://www.cs.cmu.edu/~custom-diffusion/) blog post to learn more details about the experimental results from the Custom Diffusion team.

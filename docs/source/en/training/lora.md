@@ -14,11 +14,11 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-This is an experimental and the API may change in the future.
+This is experimental and the API may change in the future.
 
 </Tip>
 
-[LoRA (Low-Rank Adaptation of Large Language Models)](https://huggingface.co/papers/2106.09685) is a popular and lightweight training technique that significantly reduces the number of trainable parameters. Instead, it works by inserting and training a smaller number of new weights into the model, and only these are trained. This makes training with LoRA much faster, memory-efficient, and produces smaller model weights (a few hundred MBs) which are easier to store and share. LoRA can also be combined with other training techniques like DreamBooth to speedup training.
+[LoRA (Low-Rank Adaptation of Large Language Models)](https://hf.co/papers/2106.09685) is a popular and lightweight training technique that significantly reduces the number of trainable parameters. It works by inserting a smaller number of new weights into the model and only these are trained. This makes training with LoRA much faster, memory-efficient, and produces smaller model weights (a few hundred MBs), which are easier to store and share. LoRA can also be combined with other training techniques like DreamBooth to speedup training.
 
 <Tip>
 
@@ -26,7 +26,7 @@ LoRA is very versatile and supported for [DreamBooth](https://github.com/hugging
 
 </Tip>
 
-This guide will explore the [train_text_to_image_lora.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py) script to help you become more familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [train_text_to_image_lora.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
 Before running the script, make sure you install the library from source:
 
@@ -102,7 +102,7 @@ accelerate launch train_text_to_image_lora.py \
   --num_train_epochs=150 \
 ```
 
-Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) guide, so this guide just focuses on the relevant parameters for LoRA:
+Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) training guide, so this guide just focuses on the LoRA relevant parameters:
 
 - `--rank`: the number of low-rank matrices to train
 - `--learning_rate`: the default learning rate is 1e-4, but with LoRA, you can use a higher learning rate
@@ -111,7 +111,7 @@ Many of the basic and important parameters are described in the [Text-to-image](
 
 The dataset preprocessing code and training loop are found in the [`main()`](https://github.com/huggingface/diffusers/blob/dd9a5caf61f04d11c0fa9f3947b69ab0010c9a0f/examples/text_to_image/train_text_to_image_lora.py#L371) function, and if you need to adapt the training script, this is where you'll make your changes.
 
-As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) guide. Instead, this guide takes a look at the relevant parts of the script for LoRA.
+As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) training guide. Instead, this guide takes a look at the LoRA relevant parts of the script.
 
 The script begins by adding the [new LoRA weights](https://github.com/huggingface/diffusers/blob/dd9a5caf61f04d11c0fa9f3947b69ab0010c9a0f/examples/text_to_image/train_text_to_image_lora.py#L447) to the attention layers. This involves correctly configuring the weight size for each block in the UNet. You'll see the `rank` parameter is used to create the [`~models.attention_processor.LoRAAttnProcessor`]:
 
@@ -156,10 +156,10 @@ Aside from setting up the LoRA layers, the training script is more or less the s
 
 Once you've made all your changes or you're okay with the default configuration, you're ready to launch the training script! 🚀
 
-Let's train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate our own Pokémon. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model (either from the Hub or a local path) and the dataset. You should also specify where to save the model in `OUTPUT_DIR` and the name of the model to save to on the Hub with `HUB_MODEL_ID`. The script creates and saves the following files to your repository:
+Let's train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate our yown Pokémon. Set the environment variables `MODEL_NAME` and `DATASET_NAME` to the model and dataset respectively. You should also specify where to save the model in `OUTPUT_DIR`, and the name of the model to save to on the Hub with `HUB_MODEL_ID`. The script creates and saves the following files to your repository:
 
 - saved model checkpoints
-- `pytorch_lora_weights.safetensors`: the trained LoRA weights
+- `pytorch_lora_weights.safetensors` (the trained LoRA weights)
 
 If you're training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
 
@@ -198,7 +198,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_lora.py \
   --seed=1337
 ```
 
-Once training has been completed, you can use your model for inference like:
+Once training has been completed, you can use your model for inference:
 
 ```py
 from diffusers import AutoPipelineForText2Image

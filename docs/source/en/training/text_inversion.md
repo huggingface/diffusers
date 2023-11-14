@@ -12,11 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # Textual Inversion
 
-[Textual Inversion](https://huggingface.co/papers/2208.01618) is a training technique for personalizing image generation models with just a few example images of what you want it to learn. This technique works by learning and updating the text embeddings (the new embeddings are tied to a special word you must use in the prompt) to match the example images you provide.
+[Textual Inversion](https://hf.co/papers/2208.01618) is a training technique for personalizing image generation models with just a few example images of what you want it to learn. This technique works by learning and updating the text embeddings (the new embeddings are tied to a special word you must use in the prompt) to match the example images you provide.
 
 If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing` and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing or xFormers. With the same configuration and setup as PyTorch, the Flax training script should be at least ~70% faster!
 
-This guide will explore the [textual_inversion.py](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) script to help you become more familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [textual_inversion.py](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion/textual_inversion.py) script to help you become more familiar with it, and how you can adapt it for your own use-case.
 
 Before running the script, make sure you install the library from source:
 
@@ -85,11 +85,11 @@ The following sections highlight parts of the training script that are important
 
 The training script has many parameters to help you tailor the training run to your needs. All of the parameters and their descriptions are listed in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/839c2a5ece0af4e75530cb520d77bc7ed8acf474/examples/textual_inversion/textual_inversion.py#L176) function. Where applicable, Diffusers provides default values for each parameter such as the training batch size and learning rate, but feel free to change these values in the training command if you'd like.
 
-For example, to increase the number of gradient accumulation steps above the default value of 1 to the training command:
+For example, to increase the number of gradient accumulation steps above the default value of 1:
 
 ```bash
 accelerate launch textual_inversion.py \
-  --gradient_accumulation_steps=1
+  --gradient_accumulation_steps=4
 ```
 
 Some other basic and important parameters to specify include:
@@ -99,7 +99,7 @@ Some other basic and important parameters to specify include:
 - `--output_dir`: where to save the trained model
 - `--push_to_hub`: whether to push the trained model to the Hub
 - `--checkpointing_steps`: frequency of saving a checkpoint as the model trains; this is useful if for some reason training is interrupted, you can continue training from that checkpoint by adding `--resume_from_checkpoint` to your training command
-- `--num_vectors`: the number of vectors to learn the embeddings with; this helps the model learn better but it comes with increased training costs
+- `--num_vectors`: the number of vectors to learn the embeddings with; increasing this parameter helps the model learn better but it comes with increased training costs
 - `--placeholder_token`: the special word to tie the learned embeddings to (you must use the word in your prompt for inference)
 - `--initializer_token`: a single-word that roughly describes the object or style you're trying to train on
 - `--learnable_property`: whether you're training the model to learn a new "style" (for example, Van Gogh's painting style) or "object" (for example, your dog)
@@ -152,7 +152,7 @@ train_dataloader = torch.utils.data.DataLoader(
 
 Finally, the [training loop](https://github.com/huggingface/diffusers/blob/b81c69e489aad3a0ba73798c459a33990dc4379c/examples/textual_inversion/textual_inversion.py#L784) handles everything else from predicting the noisy residual to updating the embedding weights of the special placeholder token.
 
-Now that you have an idea of how the training script works, let's launch a training run!
+If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
 
 ## Launch the script
 

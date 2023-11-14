@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # InstructPix2Pix
 
-[InstructPix2Pix](https://huggingface.co/papers/2211.09800) is a Stable Diffusion model trained to edit images from human-provided instructions. For example, your prompt can be "turn the clouds rainy" and the model will edit the input image accordingly. This model is conditioned on the text prompt (or editing instruction) and the input image.
+[InstructPix2Pix](https://hf.co/papers/2211.09800) is a Stable Diffusion model trained to edit images from human-provided instructions. For example, your prompt can be "turn the clouds rainy" and the model will edit the input image accordingly. This model is conditioned on the text prompt (or editing instruction) and the input image.
 
-This guide will explore the [train_instruct_pix2pix.py](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py) training script to help you become familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [train_instruct_pix2pix.py](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
 
 Before running the script, make sure you install the library from source:
 
@@ -69,17 +69,17 @@ The following sections highlight parts of the training script that are important
 
 The training script has many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/instruct_pix2pix/train_instruct_pix2pix.py#L65) function. Default values are provided for most parameters that work pretty well, but you can also set your own values in the training command if you'd like.
 
-For example, to increase the resolution of the input imahe:
+For example, to increase the resolution of the input image:
 
 ```bash
-accelerate launch train_text_to_image_lora.py \
+accelerate launch train_instruct_pix2pix.py \
   --resolution=512 \
 ```
 
-Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) guide, so this guide just focuses on the relevant parameters for InstructPix2Pix:
+Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) training guide, so this guide just focuses on the relevant parameters for InstructPix2Pix:
 
-- `--original_image_column`: the original image before the edits were made
-- `--edited_image_column`: the image after the edits were made
+- `--original_image_column`: the original image before the edits are made
+- `--edited_image_column`: the image after the edits are made
 - `--edit_prompt_column`: the instructions to edit the image
 - `--conditioning_dropout_prob`: the dropout probability for the edited image and edit prompts during training which enables classifier-free guidance (CFG) for one or both conditioning inputs
 
@@ -87,7 +87,7 @@ Many of the basic and important parameters are described in the [Text-to-image](
 
 The dataset preprocessing code and training loop are found in the [`main()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/instruct_pix2pix/train_instruct_pix2pix.py#L374) function. This is where you'll make your changes to the training script to adapt it for your own use-case.
 
-As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) guide. Instead, this guide takes a look at the relevant parts of the script for InstructPix2Pix.
+As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) training guide. Instead, this guide takes a look at the InstructPix2Pix relevant parts of the script.
 
 The script begins by modifing the [number of input channels](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/instruct_pix2pix/train_instruct_pix2pix.py#L445) in the first convolutional layer of the UNet to account for InstructPix2Pix's additional conditioning image:
 
@@ -164,19 +164,19 @@ if args.conditioning_dropout_prob is not None:
     original_image_embeds = image_mask * original_image_embeds
 ```
 
-That's pretty much it! Aside from the differences described here, the rest of the script is very similar to the [Text-to-image](text2image#training-script) script, so feel free to take a look at that guide for more details.
+That's pretty much it! Aside from the differences described here, the rest of the script is very similar to the [Text-to-image](text2image#training-script) training script, so feel free to check it out for more details. If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
 
 ## Launch the script
 
 Once you're happy with the changes to your script or if you're okay with the default configuration, you're ready to launch the training script! 🚀
 
-In this guide, you'll use the [fusing/instructpix2pix-1000-samples](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) dataset, which is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered). You can also create and use your own dataset if you'd like (see the [Create a dataset for training](create_dataset) guide).
+This guide uses the [fusing/instructpix2pix-1000-samples](https://huggingface.co/datasets/fusing/instructpix2pix-1000-samples) dataset, which is a smaller version of the [original dataset](https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered). You can also create and use your own dataset if you'd like (see the [Create a dataset for training](create_dataset) guide).
 
 Set the `MODEL_NAME` environment variable to the name of the model (can be a model id on the Hub or a path to a local model), and the `DATASET_ID` to the name of the dataset on the Hub. The script creates and saves all the components (feature extractor, scheduler, text encoder, UNet, etc.) to a subfolder in your repository.
 
 <Tip>
 
-For better results, we recommend longer training runs with a larger dataset. We've only tested this training script on a smaller-scale dataset.
+For better results, try longer training runs with a larger dataset. We've only tested this training script on a smaller-scale dataset.
 
 <br>
 
@@ -243,10 +243,10 @@ You should experiment with different `num_inference_steps`, `image_guidance_scal
 
 Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the [`train_instruct_pix2pix_sdxl.py`](https://github.com/huggingface/diffusers/blob/main/examples/instruct_pix2pix/train_instruct_pix2pix_sdxl.py) script to train a SDXL model to follow image editing instructions.
 
-We'll discuss training SDXL in more detail in the [SDXL training](sdxl) guide.
+The SDXL training script is discussed in more detail in the [SDXL training](sdxl) guide.
 
 ## Next steps
 
 Congratulations on training your own InstructPix2Pix model! 🥳 To learn more about the model, it may be helpful to:
 
-- Read [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd) to learn more about some experiments we've done with InstructPix2Pix, dataset preparation, and results for different instructions.
+- Read the [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd) blog post to learn more about some experiments we've done with InstructPix2Pix, dataset preparation, and results for different instructions.

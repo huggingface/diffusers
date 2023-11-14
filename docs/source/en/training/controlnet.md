@@ -12,11 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # ControlNet
 
-[ControlNet](https://huggingface.co/papers/2302.05543) models are adapters trained on top of another pretrained model. It allows for a greater degree of control over image generation by conditioning the model with an additional input image. The input can be a canny edge, depth map, human pose, and many more.
+[ControlNet](https://hf.co/papers/2302.05543) models are adapters trained on top of another pretrained model. It allows for a greater degree of control over image generation by conditioning the model with an additional input image. The input image can be a canny edge, depth map, human pose, and many more.
 
 If you're training on a GPU with limited vRAM, you should try enabling the `gradient_checkpointing`, `gradient_accumulation_steps`, and `mixed_precision` parameters in the training command. You can also reduce your memory footprint by using memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing or xFormers. You should have a GPU with >30GB of memory if you want to train faster with Flax.
 
-This guide will explore the [train_controlnet.py](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet.py) training script to help you become familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [train_controlnet.py](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
 
 Before running the script, make sure you install the library from source:
 
@@ -104,23 +104,23 @@ The following sections highlight parts of the training script that are important
 
 ## Script parameters
 
-The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/controlnet/train_controlnet.py#L231) function. The training script provides default values for each parameter such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
+The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/controlnet/train_controlnet.py#L231) function. This function provides default values for each parameter, such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
 
-For example, to speedup training with mixed precision using the bf16 format, add the `--mixed_precision` flag to the training command:
+For example, to speedup training with mixed precision using the fp16 format, add the `--mixed_precision` parameter to the training command:
 
 ```bash
 accelerate launch train_controlnet.py \
   --mixed_precision="fp16"
 ```
 
-Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) guide, so this guide just focuses on the relevant parameters for ControlNet:
+Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) training guide, so this guide just focuses on the relevant parameters for ControlNet:
 
 - `--max_train_samples`: the number of training samples; this can be lowered for faster training, but if you want to stream really large datasets, you'll need to include this parameter and the `--streaming` parameter in your training command
-- `--gradient_accumulation_steps`: number of update steps to accumulate before the backward pass; this allows you to train with a bigger batch size than your GPU memory can typically handle and helps achieve better convergence
+- `--gradient_accumulation_steps`: number of update steps to accumulate before the backward pass; this allows you to train with a bigger batch size than your GPU memory can typically handle
 
 ### Min-SNR weighting
 
-The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script predicts either `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
+The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
 
 Add the `--snr_gamma` parameter and set it to the recommended value of 5.0:
 
@@ -131,13 +131,13 @@ accelerate launch train_controlnet.py \
 
 ## Training script
 
-As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) guide. Instead, this guide takes a look at the relevant parts of the script for ControlNet.
+As with the script parameters, a general walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) training guide. Instead, this guide takes a look at the relevant parts of the ControlNet script.
 
 The training script has a [`make_train_dataset`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/controlnet/train_controlnet.py#L582) function for preprocessing the dataset with image transforms and caption tokenization. You'll see that in addition to the usual caption tokenization and image transforms, the script also includes transforms for the conditioning image.
 
 <Tip>
 
-If you're streaming a dataset on a TPU, performance may be bottlenecked by the 🤗 Datasets library which is not optimized for images. To ensure maximum throughput, we encourage you to explore other dataset formats like [WebDataset](https://webdataset.github.io/webdataset/), [TorchData](https://github.com/pytorch/data), and [TensorFlow Datasets](https://www.tensorflow.org/datasets/tfless_tfds).
+If you're streaming a dataset on a TPU, performance may be bottlenecked by the 🤗 Datasets library which is not optimized for images. To ensure maximum throughput, you're encouraged to explore other dataset formats like [WebDataset](https://webdataset.github.io/webdataset/), [TorchData](https://github.com/pytorch/data), and [TensorFlow Datasets](https://www.tensorflow.org/datasets/tfless_tfds).
 
 </Tip>
 
@@ -151,7 +151,7 @@ conditioning_image_transforms = transforms.Compose(
 )
 ```
 
-Within the [`main()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/controlnet/train_controlnet.py#L713) function, you'll find the code for loading the tokenizer, text encoder, scheduler and models. This is also where the ControlNet model is loaded either from existing weights or randomly initialized from the UNet:
+Within the [`main()`](https://github.com/huggingface/diffusers/blob/64603389da01082055a901f2883c4810d1144edb/examples/controlnet/train_controlnet.py#L713) function, you'll find the code for loading the tokenizer, text encoder, scheduler and models. This is also where the ControlNet model is loaded either from existing weights or randomly initialized from a UNet:
 
 ```py
 if args.controlnet_model_name_or_path:
@@ -190,11 +190,13 @@ down_block_res_samples, mid_block_res_sample = controlnet(
 )
 ```
 
+If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
+
 ## Launch the script
 
 Now you're ready to launch the training script! 🚀
 
-In this guide, you'll use the [fusing/fill50k](https://huggingface.co/datasets/fusing/fill50k) dataset but remember, you can create and use your own dataset if you want (see the [Create a dataset for training](create_dataset) guide).
+This guide uses the [fusing/fill50k](https://huggingface.co/datasets/fusing/fill50k) dataset, but remember, you can create and use your own dataset if you want (see the [Create a dataset for training](create_dataset) guide).
 
 Set the environment variable `MODEL_NAME` to a model id on the Hub or a path to a local model and `OUTPUT_DIR` to where you want to save the model.
 
@@ -353,12 +355,12 @@ image.save("./output.png")
 
 ## Stable Diffusion XL
 
-Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the [`train_controlnet_sdxl.py`](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet_sdxl.py) script to train a SDXL model.
+Stable Diffusion XL (SDXL) is a powerful text-to-image model that generates high-resolution images, and it adds a second text-encoder to its architecture. Use the [`train_controlnet_sdxl.py`](https://github.com/huggingface/diffusers/blob/main/examples/controlnet/train_controlnet_sdxl.py) script to train a ControlNet adapter for the SDXL model.
 
-We'll discuss training SDXL in more detail in the [SDXL training](sdxl) guide.
+The SDXL training script is discussed in more detail in the [SDXL training](sdxl) guide.
 
 ## Next steps
 
 Congratulations on training your own ControlNet! To learn more about how to use your new model, the following guides may be helpful:
 
-- Learn how to [use ControlNet](../using-diffusers/controlnet) for inference on a variety of tasks.
+- Learn how to [use a ControlNet](../using-diffusers/controlnet) for inference on a variety of tasks.

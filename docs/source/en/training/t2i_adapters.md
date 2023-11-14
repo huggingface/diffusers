@@ -12,11 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # T2I-Adapter
 
-[T2I-Adapter]((https://hf.co/papers/2302.08453)) is a lightweight adapter model that provides an additional conditioning input image (line art, canny, sketch, depth, pose) to better control image generation. It is similar to a ControlNet model, but it is a lot smaller (~77M parameters and ~300MB) because its only inserts weights into the UNet instead of copying and training it.
+[T2I-Adapter]((https://hf.co/papers/2302.08453)) is a lightweight adapter model that provides an additional conditioning input image (line art, canny, sketch, depth, pose) to better control image generation. It is similar to a ControlNet, but it is a lot smaller (~77M parameters and ~300MB file size) because its only inserts weights into the UNet instead of copying and training it.
 
 The T2I-Adapter is only available for training with the Stable Diffusion XL (SDXL) model.
 
-This guide will explore the [train_t2i_adapter_sdxl.py](https://github.com/huggingface/diffusers/blob/main/examples/t2i_adapter/train_t2i_adapter_sdxl.py) training script to help you become familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [train_t2i_adapter_sdxl.py](https://github.com/huggingface/diffusers/blob/main/examples/t2i_adapter/train_t2i_adapter_sdxl.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
 
 Before running the script, make sure you install the library from source:
 
@@ -69,16 +69,16 @@ The following sections highlight parts of the training script that are important
 
 ## Script parameters
 
-The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L233) function. The training script provides default values for each parameter such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
+The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L233) function. It provides default values for each parameter, such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
 
-For example, to activate gradient accumulation, add the `--gradient_accumulation_steps` flag to the training command:
+For example, to activate gradient accumulation, add the `--gradient_accumulation_steps` parameter to the training command:
 
 ```bash
 accelerate launch train_t2i_adapter_sdxl.py \
   ----gradient_accumulation_steps=4
 ```
 
-Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) guide, so this guide just focuses on the relevant parameters for T2I-Adapter:
+Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) training guide, so this guide just focuses on the relevant T2I-Adapter parameters:
 
 - `--pretrained_vae_model_name_or_path`: path to a pretrained VAE; the SDXL VAE is known to suffer from numerical instability, so this parameter allows you to specify a better [VAE](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)
 - `--crops_coords_top_left_h` and `--crops_coords_top_left_w`: height and width coordinates to include in SDXL's crop coordinate embeddings
@@ -87,7 +87,7 @@ Many of the basic and important parameters are described in the [Text-to-image](
 
 ## Training script
 
-As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) guide. Instead, this guide takes a look at the relevant parts of the script for T2I-Adapter.
+As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) training guide. Instead, this guide takes a look at the T2I-Adapter relevant parts of the script.
 
 The training script begins by preparing the dataset. This incudes [tokenizing](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L674) the prompt and [applying transforms](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L714) to the images and conditioning images.
 
@@ -118,7 +118,7 @@ else:
     )
 ```
 
-The [optimizer](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L952) is initialized to train the T2I-Adapter:
+The [optimizer](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L952) is initialized for the T2I-Adapter parameters:
 
 ```py
 params_to_optimize = t2iadapter.parameters()
@@ -148,6 +148,8 @@ model_pred = unet(
     down_block_additional_residuals=down_block_additional_residuals,
 ).sample
 ```
+
+If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
 
 ## Launch the script
 
@@ -222,4 +224,4 @@ image.save("./output.png")
 
 Congratulations on training a T2I-Adapter model! 🎉 To learn more:
 
-- Read [Efficient Controllable Generation for SDXL with T2I-Adapters](https://www.cs.cmu.edu/~custom-diffusion/) to learn more details about the experimental results from the T2I-Adapter team.
+- Read the [Efficient Controllable Generation for SDXL with T2I-Adapters](https://www.cs.cmu.edu/~custom-diffusion/) blog post to learn more details about the experimental results from the T2I-Adapter team.

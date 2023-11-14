@@ -14,13 +14,13 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-This script is experimental, and it's easy to overfit and run into issues like catastrophic forgetting. We recommend exploring different hyperparameters to get the best results on your dataset.
+This script is experimental, and it's easy to overfit and run into issues like catastrophic forgetting. Try exploring different hyperparameters to get the best results on your dataset.
 
 </Tip>
 
 Kandinsky 2.2 is a multilingual text-to-image model capable of producing more photorealistic images. The model includes an image prior model for creating image embeddings from text prompts, and a decoder model that generates images based on the prior model's embeddings. That's why you'll find two separate scripts in Diffusers for Kandinsky 2.2, one for training the prior model and one for training the decoder model. You can train both models separately, but to get the best results, you should train both the prior and decoder models.
 
-Depending on your GPU, you may need to enable `gradient_checkpointing` (⚠️ not supported for the prior model!), `mixed_precision`, and `gradient_accumulation_steps` to help fit the model into memory and to speedup training. You can reduce your memory-usage even more by enabling memory-efficient attention with [xFormers](../optimization/xformers) (xFormers [v0.0.16](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212) fails for training on some GPUs so you may need to install a development version instead).
+Depending on your GPU, you may need to enable `gradient_checkpointing` (⚠️ not supported for the prior model!), `mixed_precision`, and `gradient_accumulation_steps` to help fit the model into memory and to speedup training. You can reduce your memory-usage even more by enabling memory-efficient attention with [xFormers](../optimization/xformers) (version [v0.0.16](https://github.com/huggingface/diffusers/issues/2234#issuecomment-1416931212) fails for training on some GPUs so you may need to install a development version instead).
 
 This guide explores the [train_text_to_image_prior.py](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_prior.py) and the [train_text_to_image_decoder.py](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/train_text_to_image_decoder.py) scripts to help you become more familiar with it, and how you can adapt it for your own use-case.
 
@@ -38,6 +38,12 @@ Then navigate to the example folder containing the training script and install t
 cd examples/kandinsky2_2/text_to_image
 pip install -r requirements.txt
 ```
+
+<Tip>
+
+🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
+
+</Tip>
 
 Initialize an 🤗 Accelerate environment:
 
@@ -69,20 +75,20 @@ The following sections highlight parts of the training scripts that are importan
 
 ## Script parameters
 
-The training scripts provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/6e68c71503682c8693cb5b06a4da4911dfd655ee/examples/kandinsky2_2/text_to_image/train_text_to_image_prior.py#L190) function. The training scripst provides default values for each parameter such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
+The training scripts provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/6e68c71503682c8693cb5b06a4da4911dfd655ee/examples/kandinsky2_2/text_to_image/train_text_to_image_prior.py#L190) function. The training scripts provides default values for each parameter, such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
 
-For example, to speedup training with mixed precision using the bf16 format, add the `--mixed_precision` flag to the training command:
+For example, to speedup training with mixed precision using the fp16 format, add the `--mixed_precision` parameter to the training command:
 
 ```bash
 accelerate launch train_text_to_image_prior.py \
   --mixed_precision="fp16"
 ```
 
-Most of the parameters are identical to the parameters in the [Text-to-image](text2image#script-parameters) guide, so let's skip straight to a walkthrough of the training script!
+Most of the parameters are identical to the parameters in the [Text-to-image](text2image#script-parameters) training guide, so let's get straight to a walkthrough of the Kandinsky training scripts!
 
 ### Min-SNR weighting
 
-The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script predicts either `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
+The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
 
 Add the `--snr_gamma` parameter and set it to the recommended value of 5.0:
 
@@ -93,7 +99,7 @@ accelerate launch train_text_to_image_prior.py \
 
 ## Training script
 
-The training script is also similar to the [Text-to-image](text2image#training-script) guide, but it's been modified to support training the prior and decoder models. This guide focuses on the code that is unique to the Kandinsky 2.2 training scripts.
+The training script is also similar to the [Text-to-image](text2image#training-script) training guide, but it's been modified to support training the prior and decoder models. This guide focuses on the code that is unique to the Kandinsky 2.2 training scripts.
 
 <hfoptions id="script">
 <hfoption id="prior model">
@@ -118,7 +124,7 @@ with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
     ).eval()
 ```
 
-To generate the image embeddings, Kandinsky uses a [`PriorTransformer`], so this is what you'll optimize for.
+Kandinsky uses a [`PriorTransformer`] to generate the image embeddings, so you'll want to setup the optimizer to learn the prior mode's parameters.
 
 ```py
 prior = PriorTransformer.from_pretrained(args.pretrained_prior_model_name_or_path, subfolder="prior")
@@ -154,6 +160,8 @@ model_pred = prior(
 ).predicted_image_embedding
 ```
 
+If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
+
 </hfoption>
 <hfoption id="decoder model">
 
@@ -184,9 +192,14 @@ def preprocess_train(examples):
 
 Lastly, the [training loop](https://github.com/huggingface/diffusers/blob/6e68c71503682c8693cb5b06a4da4911dfd655ee/examples/kandinsky2_2/text_to_image/train_text_to_image_decoder.py#L706) handles converting the images to latents, adding noise, and predicting the noise residual.
 
+If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
+
 ```py
 model_pred = unet(noisy_latents, timesteps, None, added_cond_kwargs=added_cond_kwargs).sample[:, :4]
 ```
+
+</hfoption>
+</hfoptions>
 
 ## Launch the script
 
@@ -272,7 +285,7 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt).images[0]
 
 <Tip>
 
-Replace kandinsky-community/kandinsky-2-2-decoder with your own trained decoder checkpoint!
+Feel free to replace `kandinsky-community/kandinsky-2-2-decoder` with your own trained decoder checkpoint!
 
 </Tip>
 
@@ -290,7 +303,7 @@ prompt="A robot pokemon, 4k photo"
 image = pipeline(prompt=prompt).images[0]
 ```
 
-For the decoder model, you can also perform inference from a saved checkpoint which can be useful for viewing intermediate results. Load the checkpoint into the UNet:
+For the decoder model, you can also perform inference from a saved checkpoint which can be useful for viewing intermediate results. In this case, load the checkpoint into the UNet:
 
 ```py
 from diffusers import AutoPipelineForText2Image, UNet2DConditionModel

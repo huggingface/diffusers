@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 Unconditional image generation models are not conditioned on text or images during training. It only generates images that resemble its training data distribution.
 
-This guide will explore the [train_unconditional.py](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) training script to help you become familiar with it and how you can adapt it for your own use-case.
+This guide will explore the [train_unconditional.py](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
 
 Before running the script, make sure you install the library from source:
 
@@ -59,17 +59,17 @@ write_basic_config()
 
 Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
+## Script parameters
+
 <Tip>
 
 The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) and let us know if you have any questions or concerns.
 
 </Tip>
 
-## Script parameters
+The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L55) function. It provides default values for each parameter, such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
 
-The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L55) function. The training script provides default values for each parameter such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
-
-For example, to speedup training with mixed precision using the bf16 format, add the `--mixed_precision` flag to the training command:
+For example, to speedup training with mixed precision using the bf16 format, add the `--mixed_precision` parameter to the training command:
 
 ```bash
 accelerate launch train_unconditional.py \
@@ -157,7 +157,7 @@ augmentations = transforms.Compose(
 )
 ```
 
-Finally, the [training loop](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L540) handles everything else such as adding noise to the images, predicting the noise residual, calculating the loss, saving checkpoints at specified steps, and saving and pushing the model to the Hub.
+Finally, the [training loop](https://github.com/huggingface/diffusers/blob/096f84b05f9514fae9f185cbec0a4d38fbad9919/examples/unconditional_image_generation/train_unconditional.py#L540) handles everything else such as adding noise to the images, predicting the noise residual, calculating the loss, saving checkpoints at specified steps, and saving and pushing the model to the Hub. If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
 
 ## Launch the script
 
@@ -183,7 +183,7 @@ accelerate launch train_unconditional.py \
 </hfoption>
 <hfoption id="multi-GPU">
 
-If you're training with more than one GPU, add the `--multi_gpu` flag to the training command:
+If you're training with more than one GPU, add the `--multi_gpu` parameter to the training command:
 
 ```bash
 accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
