@@ -63,10 +63,6 @@ check_min_version("0.24.0.dev0")
 
 logger = get_logger(__name__)
 
-MAX_SEQ_LENGTH = 77
-EMBEDDING_DIM = 2048
-POOLED_PROJECTION_DIM = 1280
-
 DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
@@ -1192,17 +1188,11 @@ def main(args):
                     )
 
                     # Create uncond embeds for classifier free guidance
-                    uncond_prompt_embeds = torch.zeros(cond_teacher_output.shape[0], MAX_SEQ_LENGTH, EMBEDDING_DIM).to(
-                        accelerator.device
-                    )
-                    uncond_pooled_prompt_embeds = torch.zeros(cond_teacher_output.shape[0], POOLED_PROJECTION_DIM).to(
-                        accelerator.device
-                    )
+                    uncond_prompt_embeds = torch.zeros_like(prompt_embeds)
+                    uncond_pooled_prompt_embeds = torch.zeros_like(encoded_text["text_embeds"])
                     uncond_added_conditions = copy.deepcopy(encoded_text)
                     # Get teacher model prediction on noisy_latents and unconditional embedding
                     uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
-                    for k, v in uncond_added_conditions.items():
-                        print("From training script:", k, v.shape)
                     uncond_teacher_output = unet(
                         noisy_model_input.to(weight_dtype),
                         start_timesteps,

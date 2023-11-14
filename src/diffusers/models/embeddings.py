@@ -223,7 +223,7 @@ class TimestepEmbedding(nn.Module):
     def forward(self, sample, condition=None):
         if condition is not None:
             sample = sample + self.cond_proj(condition)
-        print(f"From embeddings: {sample.shape}, {self.linear_1.weight.shape}, {self.linear_1.bias.shape}")
+
         sample = self.linear_1(sample)
 
         if self.act is not None:
