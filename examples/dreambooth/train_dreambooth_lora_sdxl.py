@@ -841,8 +841,10 @@ def main(args):
 
     params_to_optimize = list(filter(lambda p: p.requires_grad, unet.parameters()))
     if args.train_text_encoder:
-        params_to_optimize = params_to_optimize + list(
-            filter(lambda p: p.requires_grad, [text_encoder_one.parameters(), text_encoder_two.parameters()])
+        params_to_optimize = (
+            params_to_optimize
+            + list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
+            + list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
         )
 
     optimizer = optimizer_class(
