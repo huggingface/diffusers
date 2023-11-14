@@ -162,8 +162,8 @@ class VQModel(ModelMixin, ConfigMixin):
                 If return_dict is True, a [`~models.vq_model.VQEncoderOutput`] is returned, otherwise a plain `tuple`
                 is returned.
         """
-        x = sample
-        h = self.encode(x).latents
+
+        h = self.encode(sample).latents
         dec = self.decode(h).sample
 
         if not return_dict:
