@@ -241,7 +241,7 @@
     - local: api/pipelines/auto_pipeline
       title: AutoPipeline
     - local: api/pipelines/blip_diffusion
-      title: BLIP Diffusion
+      title: BLIP-Diffusion
     - local: api/pipelines/consistency_models
       title: Consistency Models
     - local: api/pipelines/controlnet
@@ -277,13 +277,13 @@
     - local: api/pipelines/musicldm
       title: MusicLDM
     - local: api/pipelines/paint_by_example
-      title: Paint By Example
+      title: Paint by Example
     - local: api/pipelines/paradigms
       title: Parallel Sampling of Diffusion Models
     - local: api/pipelines/pix2pix_zero
       title: Pix2Pix Zero
     - local: api/pipelines/pixart
-      title: PixArt
+      title: PixArt-α
     - local: api/pipelines/pndm
       title: PNDM
     - local: api/pipelines/repaint
