@@ -27,7 +27,6 @@ from .utils import (
 
 _import_structure = {
     "configuration_utils": ["ConfigMixin"],
-    "loaders": [],
     "models": [],
     "pipelines": [],
     "schedulers": [],
@@ -73,9 +72,6 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 
 else:
-    _import_structure["loaders"].extend(
-        ["FromOriginalControlnetMixin", "FromOriginalVAEMixin", "UNet2DConditionLoadersMixin"]
-    )
     _import_structure["models"].extend(
         [
             "AsymmetricAutoencoderKL",
@@ -198,9 +194,6 @@ except OptionalDependencyNotAvailable:
     ]
 
 else:
-    _import_structure["loaders"].extend(
-        ["FromSingleFileMixin", "LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin", "TextualInversionLoaderMixin"]
-    )
     _import_structure["pipelines"].extend(
         [
             "AltDiffusionImg2ImgPipeline",
@@ -447,7 +440,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .loaders import FromOriginalControlnetMixin, FromOriginalVAEMixin, UNet2DConditionLoadersMixin
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
@@ -551,12 +543,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .loaders import (
-            FromSingleFileMixin,
-            LoraLoaderMixin,
-            StableDiffusionXLLoraLoaderMixin,
-            TextualInversionLoaderMixin,
-        )
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
