@@ -57,8 +57,34 @@ class ControlNetXSOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
+# todo umer: do we need UNet2DConditionLoadersMixin?
 class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
-    """A ControlNet-XS model."""
+    r"""
+    A ControlNet-XS model
+
+    This model inherits from [`ModelMixin`], [`ConfigMixin`] and [`UNet2DConditionLoadersMixin`].
+    Check the superclass documentation for it's generic methods implemented for all models
+    (such as downloading or saving).
+
+    Most of parameters for this model are passed into the [`UNet2DConditionModel`] it creates.
+    Check the documentation of [`UNet2DConditionModel`] for them.
+
+    Parameters:
+        conditioning_channels (`int`, defaults to 3):
+            Number of channels of conditioning input (e.g. an image)
+        controlnet_conditioning_channel_order (`str`, defaults to "rgb"):
+            todo Channel order for controlnet conditioning, e.g., "rgb".
+        time_embedding_input_dim (`int`, defaults to 320):
+            todo  Dimension of input for time embedding.
+        time_embedding_dim (`int`, defaults to 1280):
+            todo Dimension of time embedding.
+        time_control_scale (`float`, defaults to 1.0):
+            todo Scale factor for time control.
+        learn_embedding (`bool`, defaults to `False`):
+            ... Flag to determine if embedding is learnable.
+        base_model_channel_sizes (`Dict[str, List[Tuple[int]]]`):
+            ... Dictionary mapping base model names to lists of channel size tuples.
+    """
 
     # to delete later
     @classmethod
@@ -215,6 +241,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         adjust_time_dims(self.control_model, time_embedding_input_dim, time_embedding_dim)
  
         # 2.2 - Allow for information infusion from base model
+        # todo umer: the assumption that block sizes = changing subblock sizes is false, eg when we have consecutive blocks of same size
         base_block_out_channels = [sz[1] for sz in base_model_channel_sizes['enc'] if sz[0] != sz[1]]
 
         extra_channels = list(zip(
@@ -578,12 +605,12 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             class_emb = base_model.class_embedding(class_labels).to(dtype=self.dtype)
             temb = temb + class_emb
 
-        if self.config.addition_embed_type is not None:
-            if self.config.addition_embed_type == "text":
+        if base_model.config.addition_embed_type is not None:
+            if base_model.config.addition_embed_type == "text":
                 aug_emb = base_model.add_embedding(encoder_hidden_states)
-            elif self.config.addition_embed_type == "text_image":
+            elif base_model.config.addition_embed_type == "text_image":
                 raise NotImplementedError()
-            elif self.config.addition_embed_type == "text_time":
+            elif base_model.config.addition_embed_type == "text_time":
                 # SDXL - style
                 if "text_embeds" not in added_cond_kwargs:
                     raise ValueError(
@@ -600,9 +627,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
                 add_embeds = add_embeds.to(temb.dtype)
                 aug_emb = base_model.add_embedding(add_embeds)
-            elif self.config.addition_embed_type == "image":
+            elif base_model.config.addition_embed_type == "image":
                 raise NotImplementedError()
-            elif self.config.addition_embed_type == "image_hint":
+            elif base_model.config.addition_embed_type == "image_hint":
                 raise NotImplementedError()
 
         temb = temb + aug_emb if aug_emb is not None else temb
