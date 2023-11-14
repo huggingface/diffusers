@@ -43,11 +43,12 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .utils import PatchedLoraProjection, text_encoder_attn_modules, text_encoder_mlp_modules
 
 
 if is_transformers_available():
     from transformers import PreTrainedModel
+
+    from ..models.lora import PatchedLoraProjection, text_encoder_attn_modules, text_encoder_mlp_modules
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
