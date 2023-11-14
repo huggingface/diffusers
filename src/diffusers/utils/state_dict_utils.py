@@ -210,7 +210,6 @@ def convert_state_dict_to_diffusers(state_dict, original_type=None, **kwargs):
     if original_type not in DIFFUSERS_STATE_DICT_MAPPINGS.keys():
         raise ValueError(f"Original type {original_type} is not supported")
 
-    print(f"*******From state_dict_utils.py: {original_type}*******")
     mapping = DIFFUSERS_STATE_DICT_MAPPINGS[original_type]
     return convert_state_dict(state_dict, mapping)
 

@@ -136,7 +136,7 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step):
     diffusers_state_dict = {
         f"{pipeline.unet_name}.{module_name}": param for module_name, param in diffusers_state_dict.items()
     }
-
+    print(list(diffusers_state_dict.keys()))
     pipeline.load_lora_weights(diffusers_state_dict)
     pipeline.fuse_lora()
 
