@@ -85,7 +85,7 @@ import torch
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16, use_safetensors=True)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
@@ -121,7 +121,7 @@ from diffusers.utils import load_image, make_image_grid
 
 image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-img2img.jpg"
-).resize((768, 768))
+)
 
 def get_depth_map(image, depth_estimator):
     image = depth_estimator(image)["depth"]
@@ -145,7 +145,7 @@ import torch
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", torch_dtype=torch.float16, use_safetensors=True)
 pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
@@ -230,7 +230,7 @@ from diffusers import StableDiffusionControlNetInpaintPipeline, ControlNetModel,
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16, use_safetensors=True)
 pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
