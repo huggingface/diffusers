@@ -798,6 +798,15 @@ def main(args):
                 unet_ = accelerator.unwrap_model(unet)
                 # save weights in peft format to be able to load them back
                 unet_.save_pretrained(output_dir)
+                # also save the checkpoints in native `diffusers` format so that it can be easily
+                # be independently loaded via `load_lora_weights()`.
+                peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
+                diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
+                diffusers_state_dict = {
+                    f"{module_name.replace('base_model.model.', '')}.{module_name}": param
+                    for module_name, param in diffusers_state_dict.items()
+                }
+                StableDiffusionXLPipeline.save_lora_weights(output_dir, diffusers_state_dict)
 
                 for _, model in enumerate(models):
                     # make sure to pop weight so that corresponding model is not saved again
