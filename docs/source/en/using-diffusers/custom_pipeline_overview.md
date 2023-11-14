@@ -104,7 +104,7 @@ from showone_unet_3d_condition import ShowOneUNet3DConditionModel
 unet = ShowOneUNet3DConditionModel.from_pretrained(pipe_id, subfolder="unet")
 ```
 
-Then implement the custom `TextToVideoIFPipeline` in another Python script: `pipeline_t2v_base_pixel.py`. This is already available [here](https://github.com/showlab/Show-1/blob/main/showone/pipelines/pipeline_t2v_base_pixel.py). 
+Then implement the custom `TextToVideoIFPipeline` in another Python script: `pipeline_t2v_base_pixel.py`. This is already available [here](https://github.com/showlab/Show-1/blob/main/showone/pipelines/pipeline_t2v_base_pixel.py).
 
 Now that you have all the components, initialize the `TextToVideoIFPipeline`:
 
@@ -113,10 +113,10 @@ from pipeline_t2v_base_pixel import TextToVideoIFPipeline
 import torch
 
 pipeline = TextToVideoIFPipeline(
-    unet=unet, 
-    text_encoder=text_encoder, 
-    tokenizer=tokenizer, 
-    scheduler=scheduler, 
+    unet=unet,
+    text_encoder=text_encoder,
+    tokenizer=tokenizer,
+    scheduler=scheduler,
     feature_extractor=feature_extractor
 )
 pipeline = pipeline.to(device="cuda")
