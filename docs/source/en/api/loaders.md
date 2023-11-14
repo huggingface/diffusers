@@ -12,11 +12,11 @@ specific language governing permissions and limitations under the License.
 
 # Loaders
 
-Adapters (textual inversion, LoRA, hypernetworks) allow you to modify a diffusion model to generate images in a specific style without training or finetuning the entire model. The adapter weights are typically only a tiny fraction of the pretrained model's which making them very portable. 🤗 Diffusers provides an easy-to-use `LoaderMixin` API to load adapter weights.
+Adapters (textual inversion, LoRA, hypernetworks) allow you to modify a diffusion model to generate images in a specific style without training or finetuning the entire model. The adapter weights are very portable because they're typically only a tiny fraction of the pretrained model weights. 🤗 Diffusers provides an easy-to-use `LoaderMixin` API to load adapter weights.
 
 <Tip warning={true}>
 
-🧪 The `LoaderMixins` are highly experimental and prone to future changes. To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `huggingface-cli login`.
+🧪 The `LoaderMixin`s are highly experimental and prone to future changes. To use private or [gated](https://huggingface.co/docs/hub/models-gated#gated-models) models, log-in with `huggingface-cli login`.
 
 </Tip>
 
