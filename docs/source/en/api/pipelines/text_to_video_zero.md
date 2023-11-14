@@ -68,8 +68,8 @@ import numpy as np
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 seed = 0
-video_length = 8
-chunk_size = 4
+video_length = 48  #48 ÷ 8 = 6 seconds
+chunk_size = 8
 prompt = "A panda is playing guitar on times square"
 
 # Generate the video chunk-by-chunk
