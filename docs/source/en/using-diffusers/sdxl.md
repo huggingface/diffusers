@@ -202,7 +202,7 @@ image
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lion_base.png" alt="generated image of a lion on a rock at night" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">base model</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">default base model</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lion_refined.png" alt="generated image of a lion on a rock at night in higher quality" />
