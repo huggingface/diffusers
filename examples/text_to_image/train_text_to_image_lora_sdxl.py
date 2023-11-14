@@ -51,7 +51,6 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import LoraLoaderMixin
-from diffusers.models.lora import LoRALinearLayer, text_encoder_lora_state_dict
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
@@ -619,7 +618,7 @@ def main(args):
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
         # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
-        text_lora_config = LoraConfig(r=args.rank, target_modules=["q_proj", "k_proj", "v_proj"])
+        text_lora_config = LoraConfig(r=args.rank, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"])
         text_encoder_one.add_adapter(text_lora_config)
         text_encoder_two.add_adapter(text_lora_config)
 
@@ -634,11 +633,11 @@ def main(args):
 
             for model in models:
                 if isinstance(model, type(accelerator.unwrap_model(unet))):
-                    unet_lora_layers_to_save = unet_attn_processors_state_dict(model)
+                    unet_lora_layers_to_save = get_peft_model_state_dict(model)
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
-                    text_encoder_one_lora_layers_to_save = text_encoder_lora_state_dict(model)
+                    text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
-                    text_encoder_two_lora_layers_to_save = text_encoder_lora_state_dict(model)
+                    text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
