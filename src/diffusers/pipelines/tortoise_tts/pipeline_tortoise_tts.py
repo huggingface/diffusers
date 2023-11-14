@@ -420,15 +420,15 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         diffusion_attention_mask = torch.ones_like(audio_candidates)
         for i in range(batch_size):
-            num_calm_tokens = 0
+            num_consecutive_calm_tokens = 0
             for k in range(seq_len):
                 if audio_candidates[i, k] == self.calm_token_id:
-                    num_calm_tokens += 1
+                    num_consecutive_calm_tokens += 1
                 else:
-                    num_calm_tokens = 0
+                    num_consecutive_calm_tokens = 0
 
                 # Keep some trailing calm tokens to allow the diffusion model to gracefully terminate speech.
-                if num_calm_tokens > calm_tokens_to_keep:
+                if num_consecutive_calm_tokens > calm_tokens_to_keep:
                     diffusion_attention_mask[i, k:] = 0.0
         return diffusion_attention_mask
 
