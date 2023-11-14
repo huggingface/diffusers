@@ -36,7 +36,7 @@ You can find additional information about Text2Video-Zero on the [project page](
 
 ### Text-To-Video
 
-To generate a video from prompt, run the following python code:
+To generate a video from prompt, run the following Python code:
 ```python
 import torch
 from diffusers import TextToVideoZeroPipeline
