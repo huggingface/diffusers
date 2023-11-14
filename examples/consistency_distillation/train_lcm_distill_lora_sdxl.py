@@ -1329,6 +1329,10 @@ def main(args):
         unet = accelerator.unwrap_model(unet)
         peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
         diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
+        diffusers_state_dict = {
+            f"{module_name.replace('base_model.model', '')}.{module_name}": param
+            for module_name, param in diffusers_state_dict.items()
+        }
         StableDiffusionXLPipeline.save_lora_weights(args.output_dir, diffusers_state_dict)
 
         if args.push_to_hub:
