@@ -49,7 +49,7 @@ pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     torch_dtype=torch.float16,
     safety_checker=None,
     use_safetensors=True,
-).to("cuda")
+)
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
 pipeline.enable_model_cpu_offload()
@@ -59,7 +59,7 @@ pipeline.enable_vae_slicing()
 Load the image to edit:
 
 ```py
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
 raw_image = load_image(img_url).resize((768, 768))
@@ -90,13 +90,14 @@ inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image).latents
 Finally, pass the image mask and inverted latents to the pipeline. The `target_prompt` becomes the `prompt` now, and the `source_prompt` is used as the `negative_prompt`:
 
 ```py
-image = pipeline(
+output_image = pipeline(
     prompt=target_prompt,
     mask_image=mask_image,
     image_latents=inv_latents,
     negative_prompt=source_prompt,
 ).images[0]
-make_image_grid([raw_image.resize((512, 512)), Image.fromarray((mask_image.squeeze()*255).astype("uint8"), "L").resize((512, 512)), image.resize((512, 512))], rows=1, cols=3)
+mask_image = Image.fromarray((mask_image.squeeze()*255).astype("uint8"), "L").resize((768, 768))
+make_image_grid([raw_image, mask_image, output_image], rows=1, cols=3)
 ```
 
 <div class="flex gap-4">
@@ -168,7 +169,7 @@ from diffusers import StableDiffusionDiffEditPipeline
 
 pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 pipeline.enable_vae_slicing()
 
@@ -219,7 +220,7 @@ Finally, pass the embeddings to the [`~StableDiffusionDiffEditPipeline.generate_
       image=raw_image,
   ).latents
 
-  image = pipeline(
+  output_image = pipeline(
       mask_image=mask_image,
       image_latents=inv_latents,
 -     prompt=target_prompt,
@@ -227,7 +228,8 @@ Finally, pass the embeddings to the [`~StableDiffusionDiffEditPipeline.generate_
 +     prompt_embeds=target_embeds,
 +     negative_prompt_embeds=source_embeds,
   ).images[0]
-  make_image_grid([raw_image.resize((512, 512)), Image.fromarray((mask_image.squeeze()*255).astype("uint8"), "L").resize((512, 512)), image.resize((512, 512))], rows=1, cols=3)
+  mask_image = Image.fromarray((mask_image.squeeze()*255).astype("uint8"), "L")
+  make_image_grid([raw_image, mask_image, output_image], rows=1, cols=3)
 ```
 
 ## Generate a caption for inversion
