@@ -15,7 +15,7 @@
 """
 Simple check list from AllenNLP repo: https://github.com/allenai/allennlp/blob/main/setup.py
 
-To create the package for pypi.
+To create the package for PyPI.
 
 1. Run `make pre-release` (or `make pre-patch` for a patch release) then run `make fix-copies` to fix the index of the
    documentation.
@@ -32,7 +32,7 @@ To create the package for pypi.
 
 5. Wait for the tests on main to be completed and be green (otherwise revert and fix bugs).
 
-6. Add a tag in git to mark the release: "git tag v<RELEASE> -m 'Adds tag v<RELEASE> for pypi' "
+6. Add a tag in git to mark the release: "git tag v<RELEASE> -m 'Adds tag v<RELEASE> for PyPI'"
    Push the tag to git: git push --tags origin v<RELEASE>-release
 
 7. Build both the sources and the wheel. Do not change anything in setup.py between
@@ -45,11 +45,11 @@ To create the package for pypi.
    You should now have a /dist directory with both .whl and .tar.gz source versions.
 
    Long story cut short, you need to run both before you can upload the distribution to the 
-   test pypi and the actual pypi servers: 
+   test PyPI and the actual PyPI servers: 
    
    python setup.py bdist_wheel && python setup.py sdist
 
-8. Check that everything looks correct by uploading the package to the pypi test server:
+8. Check that everything looks correct by uploading the package to the PyPI test server:
 
    twine upload dist/* -r pypitest
    (pypi suggests using twine as other methods upload files via plaintext.)
@@ -69,7 +69,7 @@ To create the package for pypi.
    python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('hf-internal-testing/tiny-stable-diffusion-pipe', safety_checker=None); pipe('ah suh du')"
    python -c "from diffusers import *"
 
-9. Upload the final version to actual pypi:
+9. Upload the final version to the actual PyPI:
    twine upload dist/* -r pypi
 
 10. Prepare the release notes and publish them on GitHub once everything is looking hunky-dory.
@@ -279,3 +279,24 @@ setup(
     ],
     cmdclass={"deps_table_update": DepsTableUpdateCommand},
 )
+
+
+# Release checklist
+# 1. Change the version in __init__.py and setup.py.
+# 2. Commit these changes with the message: "Release: Release"
+# 3. Add a tag in git to mark the release: "git tag RELEASE -m 'Adds tag RELEASE for PyPI'"
+#    Push the tag to git: git push --tags origin main
+# 4. Run the following commands in the top-level directory:
+#      python setup.py bdist_wheel
+#      python setup.py sdist
+# 5. Upload the package to the PyPI test server first:
+#      twine upload dist/* -r pypitest
+#      twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
+# 6. Check that you can install it in a virtualenv by running:
+#      pip install -i https://testpypi.python.org/pypi diffusers
+#      diffusers env
+#      diffusers test
+# 7. Upload the final version to the actual PyPI:
+#      twine upload dist/* -r pypi
+# 8. Add release notes to the tag in GitHub once everything is looking hunky-dory.
+# 9. Update the version in __init__.py, setup.py to the new version "-dev" and push to main.
