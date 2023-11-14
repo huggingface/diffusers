@@ -17,7 +17,6 @@ import argparse
 import copy
 import gc
 import hashlib
-import itertools
 import logging
 import math
 import os
@@ -35,6 +34,8 @@ from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
@@ -52,19 +53,9 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import LoraLoaderMixin
-from diffusers.models.attention_processor import (
-    AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
-    SlicedAttnAddedKVProcessor,
-)
-from diffusers.models.lora import LoRALinearLayer, text_encoder_lora_state_dict
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-
-from peft import LoraConfig
-from peft.utils import get_peft_model_state_dict
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -826,7 +817,6 @@ def main(args):
         if args.train_text_encoder:
             text_encoder.gradient_checkpointing_enable()
 
-
     # now we will add new LoRA weights to the attention layers
     unet_lora_config = LoraConfig(r=args.rank, target_modules=["to_k", "to_q", "to_v", "add_k_proj", "add_v_proj"])
     unet.add_adapter(unet_lora_config)
@@ -847,9 +837,9 @@ def main(args):
 
             for model in models:
                 if isinstance(model, type(accelerator.unwrap_model(unet))):
-                    unet_lora_layers_to_save = unet_lora_state_dict(model)
+                    unet_lora_layers_to_save = get_peft_model_state_dict(model)
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
-                    text_encoder_lora_layers_to_save = text_encoder_lora_state_dict(model)
+                    text_encoder_lora_layers_to_save = get_peft_model_state_dict(model)
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
