@@ -150,7 +150,7 @@ class FromSingleFileMixin:
         ```
         """
         # import here to avoid circular dependency
-        from .pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
+        from ..pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
         original_config_file = kwargs.pop("original_config_file", None)
         config_files = kwargs.pop("config_files", None)
@@ -367,10 +367,10 @@ class FromOriginalVAEMixin:
 
         from omegaconf import OmegaConf
 
-        from .models import AutoencoderKL
+        from ..models import AutoencoderKL
 
         # import here to avoid circular dependency
-        from .pipelines.stable_diffusion.convert_from_ckpt import (
+        from ..pipelines.stable_diffusion.convert_from_ckpt import (
             convert_ldm_vae_checkpoint,
             create_vae_diffusers_config,
         )
@@ -545,7 +545,7 @@ class FromOriginalControlnetMixin:
         ```
         """
         # import here to avoid circular dependency
-        from .pipelines.stable_diffusion.convert_from_ckpt import download_controlnet_from_original_ckpt
+        from ..pipelines.stable_diffusion.convert_from_ckpt import download_controlnet_from_original_ckpt
 
         config_file = kwargs.pop("config_file", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
