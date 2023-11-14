@@ -403,7 +403,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def get_diffusion_attention_mask(self, audio_candidates: torch.LongTensor):
+    def get_diffusion_attention_mask(self, audio_candidates: torch.LongTensor, calm_tokens_to_keep: int = 8):
         """
         Calculates the attention mask used for spectrogram diffusion to ignore trailing audio silence.
 
@@ -415,11 +415,21 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             `torch.LongTensor`: Attention mask of the same shape as the input indicating the region of the candidate
             audio sample to mask out.
         """
+        assert audio_candidates.ndim == 2, "Audio candidate sequence input must be of shape (bsz, seq_len)"
+        batch_size, seq_len = audio_candidates.shape
+
         diffusion_attention_mask = torch.ones_like(audio_candidates)
-        diffusion_attention_mask = torch.masked_fill(
-            diffusion_attention_mask, (audio_candidates == self.calm_token_id).bool(), 0
-        )
-        diffusion_attention_mask = torch.cumprod(diffusion_attention_mask, -1)
+        for i in range(batch_size):
+            num_calm_tokens = 0
+            for k in range(seq_len):
+                if audio_candidates[i, k] == self.calm_token_id:
+                    num_calm_tokens += 1
+                else:
+                    num_calm_tokens = 0
+
+                # Keep some trailing calm tokens to allow the diffusion model to gracefully terminate speech.
+                if num_calm_tokens > calm_tokens_to_keep:
+                    diffusion_attention_mask[i, k:] = 0.0
         return diffusion_attention_mask
 
     def calculate_decoder_logits(self, decoder_hidden_states, batch_size, device):
