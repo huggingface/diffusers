@@ -72,19 +72,26 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     Parameters:
         conditioning_channels (`int`, defaults to 3):
             Number of channels of conditioning input (e.g. an image)
-        controlnet_conditioning_channel_order (`str`, defaults to "rgb"):
-            todo Channel order for controlnet conditioning, e.g., "rgb".
+        controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
+            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
         time_embedding_input_dim (`int`, defaults to 320):
-            todo  Dimension of input for time embedding.
+            Dimension of input into time embedding. Needs to be same as in the base model.
         time_embedding_dim (`int`, defaults to 1280):
-            todo Dimension of time embedding.
-        time_control_scale (`float`, defaults to 1.0):
-            todo Scale factor for time control.
+            Dimension of output from time embedding. Needs to be same as in the base model.
         learn_embedding (`bool`, defaults to `False`):
-            ... Flag to determine if embedding is learnable.
+            Wether to use time embedding of the control model. If yes, the time embedding
+            is a linear interpolation of the time embeddings of the control and base model
+            with interpolation parameter `time_control_scale**3`.
+        time_control_scale (`float`, defaults to 1.0):
+            Linear interpolation parameter used if `learn_embedding` is `True`.
         base_model_channel_sizes (`Dict[str, List[Tuple[int]]]`):
-            ... Dictionary mapping base model names to lists of channel size tuples.
+            Channel sizes of each subblock of base model. Use `gather_base_model_sizes` on
+            your base model to compute it.
     """
+
+    # todo: rename enc/mid/dec in variable names (eg connections)
+    # todo: is time_control_scale a good name?
+    # todo: gather_base_model_sizes good name?
 
     # to delete later
     @classmethod
@@ -102,18 +109,18 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if base_or_control not in ['base', 'control']:
             raise ValueError(f"`base_or_control` needs to be either `base` or `control`")
 
-        channel_sizes = {'enc': [], 'mid': [], 'dec': []}
+        channel_sizes = {'down': [], 'mid': [], 'up': []}
 
         # input convolution
-        channel_sizes['enc'].append((unet.conv_in.in_channels, unet.conv_in.out_channels))
+        channel_sizes['down'].append((unet.conv_in.in_channels, unet.conv_in.out_channels))
 
         # encoder blocks
         for module in unet.down_blocks:
             if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
                 for r in module.resnets:
-                    channel_sizes['enc'].append((r.in_channels, r.out_channels))
+                    channel_sizes['down'].append((r.in_channels, r.out_channels))
                 if module.downsamplers:
-                    channel_sizes['enc'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
+                    channel_sizes['down'].append((module.downsamplers[0].channels, module.downsamplers[0].out_channels))
             else:
                 raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
 
@@ -125,7 +132,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             for module in unet.up_blocks:
                 if isinstance(module, (CrossAttnUpBlock2D, UpBlock2D)):
                     for r in module.resnets:
-                        channel_sizes['dec'].append((r.in_channels, r.out_channels))
+                        channel_sizes['up'].append((r.in_channels, r.out_channels))
                 else:
                    raise ValueError(f'Encountered unknown module of type {type(module)} while creating ControlNet-XS.')
 
@@ -141,9 +148,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         time_control_scale:float=1.0,
         learn_embedding: bool =False,
         base_model_channel_sizes: Dict[str, List[Tuple[int]]]={
-            'enc': [(4, 320), (320, 320), (320, 320), (320, 320), (320, 640), (640, 640), (640, 640), (640, 1280), (1280, 1280)],
+            'down':[(4, 320), (320, 320), (320, 320), (320, 320), (320, 640), (640, 640), (640, 640), (640, 1280), (1280, 1280)],
             'mid': [(1280, 1280)],
-            'dec': [(2560, 1280), (2560, 1280), (1920, 1280), (1920, 640), (1280, 640), (960, 640), (960, 320), (640, 320), (640, 320)]
+            'up':  [(2560, 1280), (2560, 1280), (1920, 1280), (1920, 640), (1280, 640), (960, 640), (960, 320), (640, 320), (640, 320)]
         },
         sample_size: Optional[int] = None,
         in_channels: int = 4,
@@ -242,7 +249,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
  
         # 2.2 - Allow for information infusion from base model
         # todo umer: the assumption that block sizes = changing subblock sizes is false, eg when we have consecutive blocks of same size
-        base_block_out_channels = [sz[1] for sz in base_model_channel_sizes['enc'] if sz[0] != sz[1]]
+        base_block_out_channels = [sz[1] for sz in base_model_channel_sizes['down'] if sz[0] != sz[1]]
 
         extra_channels = list(zip(
             base_block_out_channels[0:1] + base_block_out_channels[:-1],
@@ -266,23 +273,23 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.dec_zero_convs_out = nn.ModuleList([])
         self.dec_zero_convs_in = nn.ModuleList([])
 
-        for ch_io_base in self.ch_inout_base['enc']:
+        for ch_io_base in self.ch_inout_base['down']:
             self.enc_zero_convs_in.append(self.make_zero_conv(
                 in_channels=ch_io_base[1], out_channels=ch_io_base[1])
             )
-        for i in range(len(self.ch_inout_ctrl['enc'])):
+        for i in range(len(self.ch_inout_ctrl['down'])):
             self.enc_zero_convs_out.append(
-                self.make_zero_conv(self.ch_inout_ctrl['enc'][i][1], self.ch_inout_base['enc'][i][1])
+                self.make_zero_conv(self.ch_inout_ctrl['down'][i][1], self.ch_inout_base['down'][i][1])
             )       
  
         self.middle_block_out = self.make_zero_conv(self.ch_inout_ctrl['mid'][-1][1], self.ch_inout_base['mid'][-1][1])
         
         self.dec_zero_convs_out.append(
-            self.make_zero_conv(self.ch_inout_ctrl['enc'][-1][1], self.ch_inout_base['mid'][-1][1])
+            self.make_zero_conv(self.ch_inout_ctrl['down'][-1][1], self.ch_inout_base['mid'][-1][1])
         )
-        for i in range(1, len(self.ch_inout_ctrl['enc'])):
+        for i in range(1, len(self.ch_inout_ctrl['down'])):
             self.dec_zero_convs_out.append(
-                self.make_zero_conv(self.ch_inout_ctrl['enc'][-(i + 1)][1], self.ch_inout_base['dec'][i - 1][1])
+                self.make_zero_conv(self.ch_inout_ctrl['down'][-(i + 1)][1], self.ch_inout_base['up'][i - 1][1])
             )
 
         # 5 - Create conditioning hint embedding
@@ -313,12 +320,12 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     def from_unet(
         cls,
         unet: UNet2DConditionModel,
-        controlnet_conditioning_channel_order: str = "rgb",
         conditioning_channels: int = 3,
-        time_control_scale: float =  1.0,
+        controlnet_conditioning_channel_order: str = "rgb",
         learn_embedding: bool = False,
+        time_control_scale: float =  1.0,
         block_out_channels: Optional[Tuple[int]] = None,
-        control_model_ratio: Optional[float] = None,
+        control_model_size_ratio: Optional[float] = None,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
         dim_attention_heads: Optional[int] = None
     ):
@@ -327,12 +334,27 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         Parameters:
             unet (`UNet2DConditionModel`):
-                The UNet model whose configuration are copief to the [`ControlNetXSModel`].
+                The UNet model we want to control. The dimensions of the ControlNetXSModel will be adapted to it.
+            conditioning_channels (`int`, defaults to 3):
+                Number of channels of conditioning input (e.g. an image)
+            controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
+                The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
+            learn_embedding (`bool`, defaults to `False`):
+                Wether to use time embedding of the control model. If yes, the time embedding
+                is a linear interpolation of the time embeddings of the control and base model
+                with interpolation parameter `time_control_scale**3`.
+            time_control_scale (`float`, defaults to 1.0):
+                Linear interpolation parameter used if `learn_embedding` is `True`.
+            block_out_channels (`Tuple[int]`, *optional*):
+                Down blocks output channels in control model. Either this or `block_out_channels` must be given.
+            control_model_size_ratio (float, *optional*):
+                When given, block_out_channels is set to a relative fraction of the base model's block_out_channels.
+                Either this or `control_model_size_ratio` must be given.
         """
 
         # check input
         fixed_size = block_out_channels is not None
-        relative_size = control_model_ratio is not None
+        relative_size = control_model_size_ratio is not None
         if not (fixed_size ^ relative_size):
             raise ValueError("Pass exactly one of `block_out_channels` (for absolute sizing) or `control_model_ratio` (for relative sizing).")
 
@@ -341,7 +363,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # create model
         if block_out_channels is None:
-            block_out_channels = [int(control_model_ratio*c) for c in unet.config.block_out_channels]
+            block_out_channels = [int(control_model_size_ratio*c) for c in unet.config.block_out_channels]
 
         if dim_attention_heads is not None:
             num_attention_heads = [math.ceil(c/dim_attention_heads) for c in block_out_channels]
@@ -539,6 +561,46 @@ class ControlNetXSModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         guess_mode: bool = False, # todo: understand and implement if required
         return_dict: bool = True,
     ) -> Union[ControlNetXSOutput, Tuple]:
+        """
+        The [`ControlNetModel`] forward method.
+
+        Args:
+            base_model (`UNet2DConditionModel`):
+                The base unet model we want to control.
+            sample (`torch.FloatTensor`):
+                The noisy input tensor.
+            timestep (`Union[torch.Tensor, float, int]`):
+                The number of timesteps to denoise an input.
+            encoder_hidden_states (`torch.Tensor`):
+                The encoder hidden states.
+            controlnet_cond (`torch.FloatTensor`):
+                The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            conditioning_scale (`float`, defaults to `1.0`):
+                How much the control model affects the base model outputs.
+            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
+                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
+            timestep_cond (`torch.Tensor`, *optional*, defaults to `None`):
+                Additional conditional embeddings for timestep. If provided, the embeddings will be summed with the
+                timestep_embedding passed through the `self.time_embedding` layer to obtain the final timestep
+                embeddings.
+            attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
+                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
+                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
+                negative values to the attention scores corresponding to "discard" tokens.
+            added_cond_kwargs (`dict`):
+                Additional conditions for the Stable Diffusion XL UNet.
+            cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
+                A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
+            # guess_mode (`bool`, defaults to `False`):
+                # todo
+            return_dict (`bool`, defaults to `True`):
+                Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.controlnetxs.ControlNetXSOutput`] **or** `tuple`:
+                If `return_dict` is `True`, a [`~models.controlnetxs.ControlNetXSOutput`] is returned, otherwise a tuple is
+                returned where the first element is the sample tensor.
+        """
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
 
