@@ -26,7 +26,7 @@ The quicktour will show you how to use the [`DiffusionPipeline`] for inference, 
 
 <Tip>
 
-The quicktour is a simplified version of the introductory 🧨 Diffusers [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) to help you get started quickly. If you want to learn more about 🧨 Diffusers goal, design philosophy, and additional details about it's core API, check out the notebook!
+The quicktour is a simplified version of the introductory 🧨 Diffusers [notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) to help you get started quickly. If you want to learn more about 🧨 Diffusers' goal, design philosophy, and additional details about its core API, check out the notebook!
 
 </Tip>
 
@@ -76,7 +76,7 @@ The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and s
 >>> pipeline
 StableDiffusionPipeline {
   "_class_name": "StableDiffusionPipeline",
-  "_diffusers_version": "0.13.1",
+  "_diffusers_version": "0.21.4",
   ...,
   "scheduler": [
     "diffusers",
@@ -133,7 +133,7 @@ Then load the saved weights into the pipeline:
 >>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5", use_safetensors=True)
 ```
 
-Now you can run the pipeline as you would in the section above.
+Now, you can run the pipeline as you would in the section above.
 
 ### Swapping schedulers
 
@@ -191,7 +191,7 @@ To use the model for inference, create the image shape with random Gaussian nois
 torch.Size([1, 3, 256, 256])
 ```
 
-For inference, pass the noisy image to the model and a `timestep`. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the `sample` method to get the model output:
+For inference, pass the noisy image and a `timestep` to the model. The `timestep` indicates how noisy the input image is, with more noise at the beginning and less at the end. This helps the model determine its position in the diffusion process, whether it is closer to the start or the end. Use the `sample` method to get the model output:
 
 ```py
 >>> with torch.no_grad():
@@ -210,23 +210,28 @@ Schedulers manage going from a noisy sample to a less noisy sample given the mod
 
 </Tip>
 
-For the quicktour, you'll instantiate the [`DDPMScheduler`] with it's [`~diffusers.ConfigMixin.from_config`] method:
+For the quicktour, you'll instantiate the [`DDPMScheduler`] with its [`~diffusers.ConfigMixin.from_config`] method:
 
 ```py
 >>> from diffusers import DDPMScheduler
 
->>> scheduler = DDPMScheduler.from_config(repo_id)
+>>> scheduler = DDPMScheduler.from_pretrained(repo_id)
 >>> scheduler
 DDPMScheduler {
   "_class_name": "DDPMScheduler",
-  "_diffusers_version": "0.13.1",
+  "_diffusers_version": "0.21.4",
   "beta_end": 0.02,
   "beta_schedule": "linear",
   "beta_start": 0.0001,
   "clip_sample": true,
   "clip_sample_range": 1.0,
+  "dynamic_thresholding_ratio": 0.995,
   "num_train_timesteps": 1000,
   "prediction_type": "epsilon",
+  "sample_max_value": 1.0,
+  "steps_offset": 0,
+  "thresholding": false,
+  "timestep_spacing": "leading",
   "trained_betas": null,
   "variance_type": "fixed_small"
 }
@@ -234,13 +239,13 @@ DDPMScheduler {
 
 <Tip>
 
-💡 Notice how the scheduler is instantiated from a configuration. Unlike a model, a scheduler does not have trainable weights and is parameter-free!
+💡 Unlike a model, a scheduler does not have trainable weights and is parameter-free!
 
 </Tip>
 
 Some of the most important parameters are:
 
-* `num_train_timesteps`: the length of the denoising process or in other words, the number of timesteps required to process random Gaussian noise into a data sample.
+* `num_train_timesteps`: the length of the denoising process or, in other words, the number of timesteps required to process random Gaussian noise into a data sample.
 * `beta_schedule`: the type of noise schedule to use for inference and training.
 * `beta_start` and `beta_end`: the start and end noise values for the noise schedule.
 
@@ -249,9 +254,10 @@ To predict a slightly less noisy image, pass the following to the scheduler's [`
 ```py
 >>> less_noisy_sample = scheduler.step(model_output=noisy_residual, timestep=2, sample=noisy_sample).prev_sample
 >>> less_noisy_sample.shape
+torch.Size([1, 3, 256, 256])
 ```
 
-The `less_noisy_sample` can be passed to the next `timestep` where it'll get even less noisier! Let's bring it all together now and visualize the entire denoising process. 
+The `less_noisy_sample` can be passed to the next `timestep` where it'll get even less noisy! Let's bring it all together now and visualize the entire denoising process.
 
 First, create a function that postprocesses and displays the denoised image as a `PIL.Image`:
 
@@ -305,10 +311,10 @@ Sit back and watch as a cat is generated from nothing but noise! 😻
 
 ## Next steps
 
-Hopefully you generated some cool images with 🧨 Diffusers in this quicktour! For your next steps, you can:
+Hopefully, you generated some cool images with 🧨 Diffusers in this quicktour! For your next steps, you can:
 
 * Train or finetune a model to generate your own images in the [training](./tutorials/basic_training) tutorial.
 * See example official and community [training or finetuning scripts](https://github.com/huggingface/diffusers/tree/main/examples#-diffusers-examples) for a variety of use cases.
-* Learn more about loading, accessing, changing and comparing schedulers in the [Using different Schedulers](./using-diffusers/schedulers) guide.
-* Explore prompt engineering, speed and memory optimizations, and tips and tricks for generating higher quality images with the [Stable Diffusion](./stable_diffusion) guide.
+* Learn more about loading, accessing, changing, and comparing schedulers in the [Using different Schedulers](./using-diffusers/schedulers) guide.
+* Explore prompt engineering, speed and memory optimizations, and tips and tricks for generating higher-quality images with the [Stable Diffusion](./stable_diffusion) guide.
 * Dive deeper into speeding up 🧨 Diffusers with guides on [optimized PyTorch on a GPU](./optimization/fp16), and inference guides for running [Stable Diffusion on Apple Silicon (M1/M2)](./optimization/mps) and [ONNX Runtime](./optimization/onnx).

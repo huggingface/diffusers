@@ -23,9 +23,9 @@ import torch.nn.functional as F
 from ..umer_debug_logger import udl
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
-from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
+from .normalization import AdaGroupNorm
 
 
 class Upsample1D(nn.Module):
@@ -786,16 +786,22 @@ class Conv1dBlock(nn.Module):
         out_channels (`int`): Number of output channels.
         kernel_size (`int` or `tuple`): Size of the convolving kernel.
         n_groups (`int`, default `8`): Number of groups to separate the channels into.
+        activation (`str`, defaults `mish`): Name of the activation function.
     """
 
     def __init__(
-        self, inp_channels: int, out_channels: int, kernel_size: Union[int, Tuple[int, int]], n_groups: int = 8
+        self,
+        inp_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int]],
+        n_groups: int = 8,
+        activation: str = "mish",
     ):
         super().__init__()
 
         self.conv1d = nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2)
         self.group_norm = nn.GroupNorm(n_groups, out_channels)
-        self.mish = nn.Mish()
+        self.mish = get_activation(activation)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         intermediate_repr = self.conv1d(inputs)
@@ -816,16 +822,22 @@ class ResidualTemporalBlock1D(nn.Module):
         out_channels (`int`): Number of output channels.
         embed_dim (`int`): Embedding dimension.
         kernel_size (`int` or `tuple`): Size of the convolving kernel.
+        activation (`str`, defaults `mish`): It is possible to choose the right activation function.
     """
 
     def __init__(
-        self, inp_channels: int, out_channels: int, embed_dim: int, kernel_size: Union[int, Tuple[int, int]] = 5
+        self,
+        inp_channels: int,
+        out_channels: int,
+        embed_dim: int,
+        kernel_size: Union[int, Tuple[int, int]] = 5,
+        activation: str = "mish",
     ):
         super().__init__()
         self.conv_in = Conv1dBlock(inp_channels, out_channels, kernel_size)
         self.conv_out = Conv1dBlock(out_channels, out_channels, kernel_size)
 
-        self.time_emb_act = nn.Mish()
+        self.time_emb_act = get_activation(activation)
         self.time_emb = nn.Linear(embed_dim, out_channels)
 
         self.residual_conv = (
