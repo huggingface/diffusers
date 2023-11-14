@@ -22,11 +22,6 @@ A demo for the [SimianLuo/LCM_Dreamshaper_v7](https://huggingface.co/SimianLuo/L
 
 The pipelines were contributed by [luosiallen](https://luosiallen.github.io/), [nagolinc](https://github.com/nagolinc), and [dg845](https://github.com/dg845).
 
-<Tip>
-
-Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
-
-</Tip>
 
 ## LatentConsistencyModelPipeline
 
