@@ -60,18 +60,18 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
     [`~SchedulerMixin.from_pretrained`] functions.
 
     Args:
-        num_train_timesteps (`int`, *optional*, defaults t0 40):
+        num_train_timesteps (`int`, *optional*, defaults to 40):
             Number of diffusion steps used to train the model.
-        prediction_type (`str`, *optional*, defaults to `edm`):
+        prediction_type (`str`, *optional*, defaults to `sample`):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
-        timestep_spacing (`str`, *optional*, defaults to `"linspace"`):
-            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
-            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         precondition_type (`str`, *optional*, defaults to `edm`):
             The preconditioning type for the model, which determines the preconditioning scalings used. See the
             "Network and precondtioning" section of Table 1 in [1]. Currently only `edm` is supported.
+        timestep_spacing (`str`, *optional*, defaults to `"linspace"`):
+            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
+            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         sigma_min (`float`, *optional*, defaults to 0.002):
             Minimum noise magnitude in the sigma schedule. This was set to 0.002 in the EDM paper [1]; a reasonable
             range is [0, 10].
@@ -105,9 +105,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
         num_train_timesteps: int = 40,
-        prediction_type: str = "edm",
-        timestep_spacing: str = "linspace",
+        prediction_type: str = "sample",
         precondition_type: str = "edm",
+        timestep_spacing: str = "linspace",
         sigma_min: float = 0.002,
         sigma_max: float = 80.0,
         sigma_data: float = 0.5,
@@ -528,13 +528,9 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = sample_input - sigma_input * model_output
         elif self.config.prediction_type == "v_prediction":
             # sample * c_out + input * c_skip
-            # TODO: how should this interact with self.precondition_outputs below?
             pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (
                 sample_input / (sigma_input**2 + 1)
             )
-        elif self.config.prediction_type == "edm":
-            # Apply output preconditioning
-            pred_original_sample = self.precondition_outputs(sample_input, model_output, sigma_input)
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
@@ -545,34 +541,37 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
                 -self.config.clip_sample_range, self.config.clip_sample_range
             )
 
-        # 4. Perform a first order (Euler) or second order correction (Heun) step.
-        if self.state_in_first_order:
-            # 4.1. 1st order / Euler's method
-            # 4.l.1. Get Karras ODE derivative (Line 7 in Algorithm 2 in EDM paper)
-            derivative = (self.sample_hat - pred_original_sample) / sigma_hat  # d_i
+        # 4. Precondition outputs following the given denoising model parameterization
+        denoised_sample = self.precondition_outputs(sample_input, pred_original_sample, sigma_input)
 
-            # 4.1.2. Get delta timestep
+        # 5. Perform a first order (Euler) or second order correction (Heun) step.
+        if self.state_in_first_order:
+            # 5.1. 1st order / Euler's method
+            # 5.l.1. Get Karras ODE derivative (Line 7 in Algorithm 2 in EDM paper)
+            derivative = (self.sample_hat - denoised_sample) / sigma_hat  # d_i
+
+            # 5.1.2. Get delta timestep
             dt = sigma_next - sigma_hat
 
-            # 4.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper)
+            # 5.1.3. Take Euler step (Line 8 in Algorithm 2 in EDM paper)
             prev_sample = self.sample_hat + derivative * dt  # x_{i + 1}
 
-            # 4.1.4. Store values for 2nd order step
+            # 5.1.4. Store values for 2nd order step
             self.prev_derivative = derivative
             self.dt = dt
         else:
-            # 4.2. 2nd order / Heun's method
-            # 4.2.1. Get Karras ODE derivative (Line 10 in Algorithm 2 in EDM paper)
+            # 5.2. 2nd order / Heun's method
+            # 5.2.1. Get Karras ODE derivative (Line 10 in Algorithm 2 in EDM paper)
             # NOTE: sample here corresponds to x_{i + 1} in Algorithm 2, which is the output of the Euler step from
             # the previous scheduler step()
-            derivative = (sample - pred_original_sample) / sigma_next  # d_i'
-            # 4.2.2 Get Heun correction to the derivative
+            derivative = (sample - denoised_sample) / sigma_next  # d_i'
+            # 5.2.2 Get Heun correction to the derivative
             derivative = (self.prev_derivative + derivative) / 2
 
-            # 4.2.3. Take Heun step (Line 11 in Algorithm 2 in EDM paper)
+            # 5.2.3. Take Heun step (Line 11 in Algorithm 2 in EDM paper)
             prev_sample = self.sample_hat + derivative * self.dt
 
-            # 4.2.4. Put the scheduler in first order mode by freeing up dt and derivative
+            # 5.2.4. Put the scheduler in first order mode by freeing up dt and derivative
             self.prev_derivative = None
             self.dt = None
             self.sample_hat = None

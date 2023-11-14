@@ -55,7 +55,7 @@ class KarrasEDMSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(clip_sample_range=clip_sample_range, clip_sample=True)
 
     def test_prediction_type(self):
-        for prediction_type in ["edm", "epsilon", "v_prediction", "sample"]:
+        for prediction_type in ["epsilon", "v_prediction", "sample"]:
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_custom_timesteps_increasing_order(self):
