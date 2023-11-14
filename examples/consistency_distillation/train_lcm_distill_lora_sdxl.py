@@ -1169,8 +1169,9 @@ def main(args):
                 # Get teacher model prediction on noisy_latents and conditional embedding
                 # Notice that we're disabling the adapter layers within the `unet` and then it becomes a
                 # regular teacher. This way, we don't have to separately initialize a teacher UNet.
+                using_cuda = "cuda" in str(accelerator.device)
                 with torch.no_grad() and torch.autocast(
-                    str(accelerator.device), dtype=weight_dtype, enabled="cuda" in str(accelerator.device)
+                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.float32, enabled=using_cuda
                 ) and unet.disable_adapter():
                     cond_teacher_output = unet(
                         noisy_model_input.to(weight_dtype),
@@ -1215,7 +1216,7 @@ def main(args):
 
                 # Get target LCM prediction on x_prev, w, c, t_n
                 with torch.no_grad() and torch.autocast(
-                    str(accelerator.device), dtype=weight_dtype, enabled="cuda" in str(accelerator.device)
+                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.float32, enabled=using_cuda
                 ):
                     target_noise_pred = unet(
                         x_prev.float(),
