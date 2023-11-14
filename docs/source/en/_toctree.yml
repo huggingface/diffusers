@@ -129,6 +129,8 @@
         title: LoRA
       - local: training/custom_diffusion
         title: Custom Diffusion
+      - local: training/lcm_distill
+        title: Latent Consistency Distillation
       - local: training/ddpo
         title: Reinforcement learning training with DDPO
       title: Methods
