@@ -40,7 +40,6 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         numpy \
         scipy \
         tensorboard \
-        transformers \
-        peft
+        transformers 
 
 CMD ["/bin/bash"]
