@@ -113,14 +113,15 @@ Load the LoRA weights from your finetuned model *on top of the base model weight
 ```py
 >>> pipe.unet.load_attn_procs(lora_model_path)
 >>> pipe.to("cuda")
-# use half the weights from the LoRA finetuned model and half the weights from the base model
 
+# use half the weights from the LoRA finetuned model and half the weights from the base model
 >>> image = pipe(
 ...     "A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5, cross_attention_kwargs={"scale": 0.5}
 ... ).images[0]
-# use the weights from the fully finetuned LoRA model
 
->>> image = pipe("A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5).images[0]
+# OR, use the weights from the fully finetuned LoRA model
+# >>> image = pipe("A pokemon with blue eyes.", num_inference_steps=25, guidance_scale=7.5).images[0]
+
 >>> image.save("blue_pokemon.png")
 ```
 
@@ -225,17 +226,18 @@ Load the LoRA weights from your finetuned DreamBooth model *on top of the base m
 ```py
 >>> pipe.unet.load_attn_procs(lora_model_path)
 >>> pipe.to("cuda")
-# use half the weights from the LoRA finetuned model and half the weights from the base model
 
+# use half the weights from the LoRA finetuned model and half the weights from the base model
 >>> image = pipe(
 ...     "A picture of a sks dog in a bucket.",
 ...     num_inference_steps=25,
 ...     guidance_scale=7.5,
 ...     cross_attention_kwargs={"scale": 0.5},
 ... ).images[0]
-# use the weights from the fully finetuned LoRA model
 
->>> image = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25, guidance_scale=7.5).images[0]
+# OR, use the weights from the fully finetuned LoRA model
+# >>> image = pipe("A picture of a sks dog in a bucket.", num_inference_steps=25, guidance_scale=7.5).images[0]
+
 >>> image.save("bucket-dog.png")
 ```
 
@@ -527,8 +529,8 @@ base_model_id = "stabilityai/stable-diffusion-xl-base-0.9"
 pipeline = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16).to("cuda")
 pipeline.load_lora_weights(".", weight_name="Kamepan.safetensors")
 
-prompt = "anime screencap, glint, drawing, best quality, light smile, shy, a full body of a girl wearing wedding dress in the middle of the forest beneath the trees, fireflies, big eyes, 2d, cute, anime girl, waifu, cel shading, magical girl, vivid colors, (outline:1.1), manga anime artstyle, masterpiece, offical wallpaper, glint <lora:kame_sdxl_v2:1>"
-negative_prompt = "(deformed, bad quality, sketch, depth of field, blurry:1.1), grainy, bad anatomy, bad perspective, old, ugly, realistic, cartoon, disney, bad propotions"
+prompt = "anime screencap, glint, drawing, best quality, light smile, shy, a full body of a girl wearing wedding dress in the middle of the forest beneath the trees, fireflies, big eyes, 2d, cute, anime girl, waifu, cel shading, magical girl, vivid colors, (outline:1.1), manga anime artstyle, masterpiece, official wallpaper, glint <lora:kame_sdxl_v2:1>"
+negative_prompt = "(deformed, bad quality, sketch, depth of field, blurry:1.1), grainy, bad anatomy, bad perspective, old, ugly, realistic, cartoon, disney, bad proportions"
 generator = torch.manual_seed(2947883060)
 num_inference_steps = 30
 guidance_scale = 7

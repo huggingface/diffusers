@@ -26,9 +26,11 @@ from .constants import (
     FLAX_WEIGHTS_NAME,
     HF_MODULES_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    MIN_PEFT_VERSION,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
+    USE_PEFT_BACKEND,
     WEIGHTS_NAME,
 )
 from .deprecation_utils import deprecate
@@ -86,6 +88,8 @@ from .loading_utils import load_image
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
+    check_peft_version,
+    delete_adapter_layers,
     get_adapter_name,
     get_peft_kwargs,
     recurse_remove_peft_layers,
@@ -95,7 +99,11 @@ from .peft_utils import (
     unscale_lora_layers,
 )
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
-from .state_dict_utils import convert_state_dict_to_diffusers, convert_state_dict_to_peft
+from .state_dict_utils import (
+    convert_state_dict_to_diffusers,
+    convert_state_dict_to_peft,
+    convert_unet_state_dict_to_peft,
+)
 
 
 logger = get_logger(__name__)

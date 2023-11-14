@@ -1,4 +1,4 @@
-__version__ = "0.22.0.dev0"
+__version__ = "0.24.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -77,8 +77,10 @@ else:
             "AsymmetricAutoencoderKL",
             "AutoencoderKL",
             "AutoencoderTiny",
+            "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ModelMixin",
+            "MotionAdapter",
             "MultiAdapter",
             "PriorTransformer",
             "T2IAdapter",
@@ -88,6 +90,7 @@ else:
             "UNet2DConditionModel",
             "UNet2DModel",
             "UNet3DConditionModel",
+            "UNetMotionModel",
             "VQModel",
         ]
     )
@@ -144,6 +147,7 @@ else:
             "KarrasVeScheduler",
             "KDPM2AncestralDiscreteScheduler",
             "KDPM2DiscreteScheduler",
+            "LCMScheduler",
             "PNDMScheduler",
             "RePaintScheduler",
             "SchedulerMixin",
@@ -196,6 +200,7 @@ else:
         [
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
+            "AnimateDiffPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
@@ -228,9 +233,12 @@ else:
             "KandinskyV22Pipeline",
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
+            "LatentConsistencyModelImg2ImgPipeline",
+            "LatentConsistencyModelPipeline",
             "LDMTextToImagePipeline",
             "MusicLDMPipeline",
             "PaintByExamplePipeline",
+            "PixArtAlphaPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
@@ -438,8 +446,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AutoencoderKL,
             AutoencoderTiny,
+            ConsistencyDecoderVAE,
             ControlNetModel,
             ModelMixin,
+            MotionAdapter,
             MultiAdapter,
             PriorTransformer,
             T2IAdapter,
@@ -449,6 +459,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet2DConditionModel,
             UNet2DModel,
             UNet3DConditionModel,
+            UNetMotionModel,
             VQModel,
         )
         from .optimization import (
@@ -503,6 +514,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KarrasVeScheduler,
             KDPM2AncestralDiscreteScheduler,
             KDPM2DiscreteScheduler,
+            LCMScheduler,
             PNDMScheduler,
             RePaintScheduler,
             SchedulerMixin,
@@ -538,6 +550,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
+            AnimateDiffPipeline,
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
@@ -568,9 +581,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
+            LatentConsistencyModelImg2ImgPipeline,
+            LatentConsistencyModelPipeline,
             LDMTextToImagePipeline,
             MusicLDMPipeline,
             PaintByExamplePipeline,
+            PixArtAlphaPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
