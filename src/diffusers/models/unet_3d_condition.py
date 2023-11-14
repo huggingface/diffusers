@@ -20,7 +20,7 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders.unet import UNet2DConditionLoadersMixin
+from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
