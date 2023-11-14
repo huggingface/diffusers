@@ -52,7 +52,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, convert_state_dict_to_diffusers
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -132,8 +132,9 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step):
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    lora_state_dict = get_module_kohya_state_dict(unet, "lora_unet", weight_dtype)
-    pipeline.load_lora_weights(lora_state_dict)
+    peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
+    diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
+    pipeline.load_lora_weights(diffusers_state_dict)
     pipeline.fuse_lora()
 
     if args.enable_xformers_memory_efficient_attention:
@@ -836,8 +837,6 @@ def main(args):
         def save_model_hook(models, weights, output_dir):
             if accelerator.is_main_process:
                 unet_ = accelerator.unwrap_model(unet)
-                lora_state_dict = get_peft_model_state_dict(unet_, adapter_name="default")
-                StableDiffusionXLPipeline.save_lora_weights(os.path.join(output_dir, "unet_lora"), lora_state_dict)
                 # save weights in peft format to be able to load them back
                 unet_.save_pretrained(output_dir)
 
@@ -1341,9 +1340,12 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
-        unet.save_pretrained(args.output_dir)
-        kohya_state_dict = get_module_kohya_state_dict(unet, "lora_unet", dtype=unet.dtype)
-        save_file(kohya_state_dict, os.path.join(args.output_dir, "pytorch_lora_weights.safetensors"))
+        # unet.save_pretrained(args.output_dir)
+        # kohya_state_dict = get_module_kohya_state_dict(unet, "lora_unet", dtype=unet.dtype)
+        # save_file(kohya_state_dict, os.path.join(args.output_dir, "pytorch_lora_weights.safetensors"))
+        peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
+        diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
+        save_file(diffusers_state_dict, os.path.join(args.output_dir, "pytorch_lora_weights.safetensors"))
 
         if args.push_to_hub:
             upload_folder(
