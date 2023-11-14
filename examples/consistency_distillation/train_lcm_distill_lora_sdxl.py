@@ -100,23 +100,6 @@ class DDIMSolver:
         return x_prev
 
 
-def get_module_kohya_state_dict(module, prefix: str, dtype: torch.dtype, adapter_name: str = "default"):
-    kohya_ss_state_dict = {}
-    for peft_key, weight in get_peft_model_state_dict(module, adapter_name=adapter_name).items():
-        kohya_key = peft_key.replace("base_model.model", prefix)
-        kohya_key = kohya_key.replace("lora_A", "lora_down")
-        kohya_key = kohya_key.replace("lora_B", "lora_up")
-        kohya_key = kohya_key.replace(".", "_", kohya_key.count(".") - 2)
-        kohya_ss_state_dict[kohya_key] = weight.to(dtype)
-
-        # Set alpha parameter
-        if "lora_down" in kohya_key:
-            alpha_key = f'{kohya_key.split(".")[0]}.alpha'
-            kohya_ss_state_dict[alpha_key] = torch.tensor(module.peft_config[adapter_name].lora_alpha).to(dtype)
-
-    return kohya_ss_state_dict
-
-
 def log_validation(vae, unet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
 
@@ -134,7 +117,8 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step):
     peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
     diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
     diffusers_state_dict = {
-        f"{module_name.replace('base_model.model', pipeline.unet_name)}.{module_name}": param for module_name, param in diffusers_state_dict.items()
+        f"{module_name.replace('base_model.model', pipeline.unet_name)}.{module_name}": param
+        for module_name, param in diffusers_state_dict.items()
     }
     pipeline.load_lora_weights(diffusers_state_dict)
     pipeline.fuse_lora()
@@ -1343,9 +1327,6 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
-        # unet.save_pretrained(args.output_dir)
-        # kohya_state_dict = get_module_kohya_state_dict(unet, "lora_unet", dtype=unet.dtype)
-        # save_file(kohya_state_dict, os.path.join(args.output_dir, "pytorch_lora_weights.safetensors"))
         peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
         diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
         StableDiffusionXLPipeline.save_lora_weights(args.output_dir, diffusers_state_dict)
