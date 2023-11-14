@@ -43,6 +43,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         "return_dict",
     ]
     test_xformers_attention = False
+    callback_cfg_params = ["image_embeddings", "text_encoder_hidden_states"]
 
     @property
     def text_embedder_hidden_size(self):

@@ -166,7 +166,6 @@ class DiTPipeline(DiffusionPipeline):
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
-
         for t in self.progress_bar(self.scheduler.timesteps):
             if guidance_scale > 1:
                 half = latent_model_input[: len(latent_model_input) // 2]
