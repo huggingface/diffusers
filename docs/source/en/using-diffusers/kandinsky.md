@@ -105,7 +105,7 @@ Use the [`AutoPipelineForText2Image`] to automatically call the combined pipelin
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
@@ -122,7 +122,7 @@ image
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
@@ -233,7 +233,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 import torch
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
@@ -255,7 +255,7 @@ from diffusers import AutoPipelineForImage2Image
 from diffusers.utils import make_image_grid, load_image
 import torch
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
@@ -344,8 +344,9 @@ Now pass the initial image, mask, and prompt and embeddings to the pipeline to g
 <hfoption id="Kandinsky 2.1">
 
 ```py
-image = pipeline(prompt, image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
-make_image_grid([init_image.resize((512, 512)), Image.fromarray((mask*255).astype('uint8'), 'L').resize((512, 512)), image.resize((512, 512))], rows=1, cols=3)
+output_image = pipeline(prompt, image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
+mask = Image.fromarray((mask*255).astype('uint8'), 'L')
+make_image_grid([init_image, mask, output_image], rows=1, cols=3)
 ```
 
 <div class="flex justify-center">
@@ -356,8 +357,9 @@ make_image_grid([init_image.resize((512, 512)), Image.fromarray((mask*255).astyp
 <hfoption id="Kandinsky 2.2">
 
 ```py
-image = pipeline(image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
-make_image_grid([init_image.resize((512, 512)), Image.fromarray((mask*255).astype('uint8'), 'L').resize((512, 512)), image.resize((512, 512))], rows=1, cols=3)
+output_image = pipeline(image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
+mask = Image.fromarray((mask*255).astype('uint8'), 'L')
+make_image_grid([init_image, mask, output_image], rows=1, cols=3)
 ```
 
 <div class="flex justify-center">
@@ -388,8 +390,9 @@ mask = np.zeros((768, 768), dtype=np.float32)
 mask[:250, 250:-250] = 1
 prompt = "a hat"
 
-image = pipe(prompt=prompt, image=init_image, mask_image=mask).images[0]
-make_image_grid([init_image.resize((512, 512)), Image.fromarray((mask*255).astype('uint8'), 'L').resize((512, 512)), image.resize((512, 512))], rows=1, cols=3)
+output_image = pipe(prompt=prompt, image=init_image, mask_image=mask).images[0]
+mask = Image.fromarray((mask*255).astype('uint8'), 'L')
+make_image_grid([init_image, mask, output_image], rows=1, cols=3)
 ```
 
 </hfoption>
@@ -411,8 +414,9 @@ mask = np.zeros((768, 768), dtype=np.float32)
 mask[:250, 250:-250] = 1
 prompt = "a hat"
 
-image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
-make_image_grid([init_image.resize((512, 512)), Image.fromarray((mask*255).astype('uint8'), 'L').resize((512, 512)), image.resize((512, 512))], rows=1, cols=3)
+output_image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
+mask = Image.fromarray((mask*255).astype('uint8'), 'L')
+make_image_grid([init_image, mask, output_image], rows=1, cols=3)
 ```
 
 </hfoption>
