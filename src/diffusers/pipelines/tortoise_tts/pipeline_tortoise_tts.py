@@ -429,6 +429,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
                 # Keep some trailing calm tokens to allow the diffusion model to gracefully terminate speech.
                 if num_consecutive_calm_tokens > calm_tokens_to_keep:
+                    # The remaining tokens should all be silent so mask them out
                     diffusion_attention_mask[i, k:] = 0.0
         return diffusion_attention_mask
 
