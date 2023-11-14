@@ -614,8 +614,7 @@ def main(args):
 
     unet.add_adapter(unet_lora_config)
 
-    # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
-    # So, instead, we monkey-patch the forward calls of its attention-blocks.
+    # The text encoder comes from 🤗 transformers, we will also attach adapters to it.
     if args.train_text_encoder:
         # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
         text_lora_config = LoraConfig(r=args.rank, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"])
@@ -708,7 +707,9 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = filter(lambda p: p.requires_grad, unet.parameters())
+    params_to_optimize = list(filter(lambda p: p.requires_grad, unet.parameters()))
+    if args.train_text_encoder:
+        params_to_optimize = params_to_optimize + list(filter(lambda p: p.requires_grad, text_encoder_one.parameters())) + list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,

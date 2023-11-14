@@ -63,6 +63,9 @@ from diffusers.training_utils import unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
+from peft import LoraConfig
+from peft.utils import get_peft_model_state_dict
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.24.0.dev0")
@@ -823,80 +826,16 @@ def main(args):
         if args.train_text_encoder:
             text_encoder.gradient_checkpointing_enable()
 
+
     # now we will add new LoRA weights to the attention layers
-    # It's important to realize here how many attention weights will be added and of which sizes
-    # The sizes of the attention layers consist only of two different variables:
-    # 1) - the "hidden_size", which is increased according to `unet.config.block_out_channels`.
-    # 2) - the "cross attention size", which is set to `unet.config.cross_attention_dim`.
+    unet_lora_config = LoraConfig(r=args.rank, target_modules=["to_k", "to_q", "to_v", "add_k_proj", "add_v_proj"])
+    unet.add_adapter(unet_lora_config)
 
-    # Let's first see how many attention processors we will have to set.
-    # For Stable Diffusion, it should be equal to:
-    # - down blocks (2x attention layers) * (2x transformer layers) * (3x down blocks) = 12
-    # - mid blocks (2x attention layers) * (1x transformer layers) * (1x mid blocks) = 2
-    # - up blocks (2x attention layers) * (3x transformer layers) * (3x up blocks) = 18
-    # => 32 layers
-
-    # Set correct lora layers
-    unet_lora_parameters = []
-    for attn_processor_name, attn_processor in unet.attn_processors.items():
-        # Parse the attention module.
-        attn_module = unet
-        for n in attn_processor_name.split(".")[:-1]:
-            attn_module = getattr(attn_module, n)
-
-        # Set the `lora_layer` attribute of the attention-related matrices.
-        attn_module.to_q.set_lora_layer(
-            LoRALinearLayer(
-                in_features=attn_module.to_q.in_features, out_features=attn_module.to_q.out_features, rank=args.rank
-            )
-        )
-        attn_module.to_k.set_lora_layer(
-            LoRALinearLayer(
-                in_features=attn_module.to_k.in_features, out_features=attn_module.to_k.out_features, rank=args.rank
-            )
-        )
-        attn_module.to_v.set_lora_layer(
-            LoRALinearLayer(
-                in_features=attn_module.to_v.in_features, out_features=attn_module.to_v.out_features, rank=args.rank
-            )
-        )
-        attn_module.to_out[0].set_lora_layer(
-            LoRALinearLayer(
-                in_features=attn_module.to_out[0].in_features,
-                out_features=attn_module.to_out[0].out_features,
-                rank=args.rank,
-            )
-        )
-
-        # Accumulate the LoRA params to optimize.
-        unet_lora_parameters.extend(attn_module.to_q.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_k.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
-
-        if isinstance(attn_processor, (AttnAddedKVProcessor, SlicedAttnAddedKVProcessor, AttnAddedKVProcessor2_0)):
-            attn_module.add_k_proj.set_lora_layer(
-                LoRALinearLayer(
-                    in_features=attn_module.add_k_proj.in_features,
-                    out_features=attn_module.add_k_proj.out_features,
-                    rank=args.rank,
-                )
-            )
-            attn_module.add_v_proj.set_lora_layer(
-                LoRALinearLayer(
-                    in_features=attn_module.add_v_proj.in_features,
-                    out_features=attn_module.add_v_proj.out_features,
-                    rank=args.rank,
-                )
-            )
-            unet_lora_parameters.extend(attn_module.add_k_proj.lora_layer.parameters())
-            unet_lora_parameters.extend(attn_module.add_v_proj.lora_layer.parameters())
-
-    # The text encoder comes from 🤗 transformers, so we cannot directly modify it.
-    # So, instead, we monkey-patch the forward calls of its attention-blocks.
+    # The text encoder comes from 🤗 transformers, we will also attach adapters to it.
     if args.train_text_encoder:
         # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
-        text_lora_parameters = LoraLoaderMixin._modify_text_encoder(text_encoder, dtype=torch.float32, rank=args.rank)
+        text_lora_config = LoraConfig(r=args.rank, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"])
+        text_encoder.add_adapter(text_lora_config)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -970,11 +909,10 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = (
-        itertools.chain(unet_lora_parameters, text_lora_parameters)
-        if args.train_text_encoder
-        else unet_lora_parameters
-    )
+    params_to_optimize = list(filter(lambda p: p.requires_grad, unet.parameters()))
+    if args.train_text_encoder:
+        params_to_optimize = params_to_optimize + list(filter(lambda p: p.requires_grad, text_encoder.parameters()))
+
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -1217,12 +1155,7 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = (
-                        itertools.chain(unet_lora_parameters, text_lora_parameters)
-                        if args.train_text_encoder
-                        else unet_lora_parameters
-                    )
-                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                    accelerator.clip_grad_norm_(params_to_optimize, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -1344,18 +1277,16 @@ def main(args):
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
         unet = unet.to(torch.float32)
-        unet_lora_layers = unet_lora_state_dict(unet)
 
-        if text_encoder is not None and args.train_text_encoder:
+        unet_lora_state_dict = get_peft_model_state_dict(unet)
+
+        if args.train_text_encoder:
             text_encoder = accelerator.unwrap_model(text_encoder)
-            text_encoder = text_encoder.to(torch.float32)
-            text_encoder_lora_layers = text_encoder_lora_state_dict(text_encoder)
-        else:
-            text_encoder_lora_layers = None
+            text_encoder_lora_layers = get_peft_model_state_dict(text_encoder)
 
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
-            unet_lora_layers=unet_lora_layers,
+            unet_lora_layers=unet_lora_state_dict,
             text_encoder_lora_layers=text_encoder_lora_layers,
         )
 
