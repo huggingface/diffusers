@@ -166,6 +166,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.FloatTensor] = None,
         negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
+        **kwargs,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -193,6 +194,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
         """
 
+        if "mask_feature" in kwargs:
+            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
+            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
+            
         if device is None:
             device = self._execution_device
 
