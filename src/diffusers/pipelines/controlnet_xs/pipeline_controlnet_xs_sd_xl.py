@@ -904,9 +904,6 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        # set current this pipeline's unet as the base model for the controlnet
-        self.controlnet.base_model = self.unet
-
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
@@ -951,12 +948,13 @@ class StableDiffusionXLControlNetXSPipeline(
 
         #todo: if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float): ...
         
-        global_pool_conditions = (
-            controlnet.config.global_pool_conditions
-            if isinstance(controlnet, ControlNetXSModel)
-            else controlnet.nets[0].config.global_pool_conditions
-        )
-        guess_mode = guess_mode or global_pool_conditions
+        # todo umer: understand & implement if needed
+        # global_pool_conditions = (
+        #     controlnet.config.global_pool_conditions
+        #     if isinstance(controlnet, ControlNetXSModel)
+        #     else controlnet.nets[0].config.global_pool_conditions
+        # )
+        # guess_mode = guess_mode or global_pool_conditions
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
@@ -1074,6 +1072,7 @@ class StableDiffusionXLControlNetXSPipeline(
 
                 # predict the noise residual
                 noise_pred = self.controlnet(
+                    base_model=self.unet,
                     sample=latent_model_input,
                     timestep=t,
                     encoder_hidden_states=prompt_embeds,
@@ -1128,9 +1127,6 @@ class StableDiffusionXLControlNetXSPipeline(
 
         # Offload all models
         self.maybe_free_model_hooks()
-
-        # remove the base model from controlnet, which we set above
-        del self.controlnet.base_model
 
         if not return_dict:
             return (image,)
