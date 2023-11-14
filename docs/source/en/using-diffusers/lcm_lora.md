@@ -49,13 +49,13 @@ pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
 
 prompt = "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
 
-generator = torch.manual_seed(0)
+generator = torch.manual_seed(42)
 image = pipe(
     prompt=prompt, num_inference_steps=4, generator=generator, guidance_scale=1.0
 ).images[0]
 ```
 
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_i2i.png)
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdxl_t2i.png)
 
 Notice that we use only 4 steps for generation which is way less than what's typically used for standard SDXL.
 
@@ -91,7 +91,7 @@ image = pipe(
 ).images[0]
 ```
 
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_i2i_finetuned.png)
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdxl_t2i_finetuned.png)
 
 
 ## Image-to-image
@@ -105,10 +105,10 @@ from diffusers.utils import make_image_grid, load_image
 
 pipe = AutoPipelineForImage2Image.from_pretrained(
     "Lykon/dreamshaper-7",
-    scheduler=LCMScheduler.from_pretrained(model_id, subfolder="scheduler"),
+    scheduler=LCMScheduler.from_pretrained("Lykon/dreamshaper-7", subfolder="scheduler"),
     torch_dtype=torch.float16,
     variant="fp16",
-).to(device)
+).to("cuda")
 
 pipe.load_lora_weights("latent-consistency/lcm-lora-sdv1-5")
 
@@ -118,11 +118,12 @@ init_image = load_image(url)
 prompt = "Astronauts in a jungle, cold color palette, muted colors, detailed, 8k"
 
 # pass prompt and image to pipeline
-image = pipe(prompt, image=init_image, num_inference_steps=4, guidance_scale=1, strength=0.6).images[0]
+generator = torch.manual_seed(0)
+image = pipe(prompt, image=init_image, num_inference_steps=4, guidance_scale=1, strength=0.6, generator=generator).images[0]
 make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_i2i.png)
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdv1-5_i2i.png)
 
 
 <Tip>
@@ -153,11 +154,12 @@ pipe.load_lora_weights("TheLastBen/Papercut_SDXL", weight_name="papercut.safeten
 pipe.set_adapters(["lcm", "papercut"], adapter_weights=[1.0, 0.8])
 
 prompt = "papercut, a cute fox"
-image = pipe(prompt, num_inference_steps=4, guidance_scale=1).images[0]
+generator = torch.manual_seed(0)
+image = pipe(prompt, num_inference_steps=4, guidance_scale=1, generator=generator).images[0]
 image
 ```
 
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_i2i_papercut.png)
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdx_lora_mix.png)
 
 
 ## Controlnet/t2iadapter
@@ -201,14 +203,20 @@ pipe = StableDiffusionControlNetPipeline.from_pretrained(
 ).to("cuda")
 
 pipe.load_lora_weights("latent-consistency/lcm-lora-sdv1-5")
-
+generator = torch.manual_seed(0)
 image = pipe(
-    "the mona lisa", image=canny_image, num_inference_steps=4, guidance_scale=1.5, controlnet_conditioning_scale=0.8, cross_attention_kwargs={"scale": 1},
+    "the mona lisa",
+    image=canny_image,
+    num_inference_steps=4,
+    guidance_scale=1.5,
+    controlnet_conditioning_scale=0.8,
+    cross_attention_kwargs={"scale": 1},
+    generator=generator,
 ).images[0]
 make_image_grid([canny_image, image], rows=1, cols=2)
 ```
 
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_i2i_controlnet.png)
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdv1-5_controlnet.png)
 
 
 <Tip>
@@ -246,6 +254,7 @@ canny_image = canny_detector(image, detect_resolution=384, image_resolution=1024
 prompt = "Mystical fairy in real, magic, 4k picture, high quality"
 negative_prompt = "extra digit, fewer digits, cropped, worst quality, low quality, glitch, deformed, mutated, ugly, disfigured"
 
+generator = torch.manual_seed(0)
 image = pipe(
     prompt=prompt,
     negative_prompt=negative_prompt,
@@ -253,12 +262,13 @@ image = pipe(
     num_inference_steps=4,
     guidance_scale=1.5, 
     adapter_conditioning_scale=0.8, 
-    adapter_conditioning_factor=1
+    adapter_conditioning_factor=1,
+    generator=generator,
 ).images[0]
 make_image_grid([canny_image, image], rows=1, cols=2)
 ```
 
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_i2i_t2iadapter.png)
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdxl_t2iadapter.png)
 
 
 ## Inpainting
@@ -285,6 +295,7 @@ mask_image = load_image("https://huggingface.co/datasets/huggingface/documentati
 
 # generator = torch.Generator("cuda").manual_seed(92)
 prompt = "concept art digital painting of an elven castle, inspired by lord of the rings, highly detailed, 8k"
+generator = torch.manual_seed(0)
 image = pipe(
     prompt=prompt,
     image=init_image,
@@ -296,11 +307,12 @@ image = pipe(
 make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ```
 
-![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_inpainting.png)
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdv1-5_inpainting.png)
 
 
-## Animatediff
+## AnimateDiff
 
+[AnimateDiff](https://arxiv.org/abs/2307.04725) allows you to animate images using Stable Diffusion models. To get good results we need to generate multiple frame (16-24) and doing this with standard SD models can be very slow. LCM-LoRA can be used to speed up the process significantly, as you just need to do 4-8 steps for each frame. Let's look at how we can perform animation with LCM-LoRA and AnimateDiff.
 
 ```python
 import torch
@@ -310,7 +322,7 @@ from diffusers.utils import export_to_gif
 adapter = MotionAdapter.from_pretrained("diffusers/animatediff-motion-adapter-v1-5")
 pipe = AnimateDiffPipeline.from_pretrained(
     "frankjoshua/toonyou_beta6",
-    scheduler=LCMScheduler.from_pretrained("Lykon/dreamshaper-7", subfolder="scheduler"),
+    scheduler=LCMScheduler.from_pretrained("frankjoshua/toonyou_beta6", subfolder="scheduler"),
     motion_adapter=adapter,
 ).to("cuda")
 
@@ -320,7 +332,16 @@ pipe.load_lora_weights("guoyww/animatediff-motion-lora-zoom-in", weight_name="di
 pipe.set_adapters(["lcm", "motion-lora"], adapter_weights=[0.55, 1.2])
 
 prompt = "best quality, masterpiece, 1girl, looking at viewer, blurry background, upper body, contemporary, dress"
-output = pipe(prompt=prompt, num_inference_steps=5, guidance_scale=1.25, cross_attention_kwargs={"scale": 1}, num_frames=24)
-frames = output.frames[0]
+generator = torch.manual_seed(0)
+frames = pipe(
+    prompt=prompt,
+    num_inference_steps=5,
+    guidance_scale=1.25,
+    cross_attention_kwargs={"scale": 1},
+    num_frames=24,
+    generator=generator
+).frames[0]
 export_to_gif(frames, "animation.gif")
 ```
+
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdv1-5_animatediff.gif)
