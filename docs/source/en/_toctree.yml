@@ -19,6 +19,8 @@
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
     title: Inference with PEFT
+  -local: tutorials/inference_with_lcm_lora
+    title: Inference with LCM-LoRA
   title: Tutorials
 - sections:
   - sections:
