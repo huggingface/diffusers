@@ -1643,7 +1643,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
 
             # make sure the state_dict has the correct naming in the parameters.
             lora_state_dict = safetensors.torch.load_file(os.path.join(tmpdir, "pytorch_lora_weights.safetensors"))
-            is_lora = all("lora" in k for k in lora_state_dict.keys())
+            is_lora = all("lora_sayak" in k for k in lora_state_dict.keys())
             self.assertTrue(is_lora)
 
     def test_text_to_image_lora_sdxl_with_text_encoder(self):
