@@ -74,7 +74,7 @@ diffuser_pipeline = DiffusionPipeline.from_pretrained(
 diffuser_pipeline.enable_attention_slicing()
 diffuser_pipeline = diffuser_pipeline.to(device)
 
-prompt = ["a photograph of an astronaut riding a horse", 
+prompt = ["a photograph of an astronaut riding a horse",
           "Una casa en la playa",
           "Ein Hund, der Orange isst",
           "Un restaurant parisien"]
