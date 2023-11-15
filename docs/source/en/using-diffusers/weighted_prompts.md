@@ -142,7 +142,7 @@ image
 ## Conjunction
 
 A conjunction diffuses each prompt independently and concatenates their results by their weighted sum. Add `.and()` to the end of a list of prompts to create a conjunction:
-  
+
 ```py
 prompt_embeds = compel_proc('["a red cat", "playing with a", "ball"].and()')
 generator = torch.Generator(device="cuda").manual_seed(55)

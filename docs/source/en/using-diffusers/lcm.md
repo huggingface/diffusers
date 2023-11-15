@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Performing inference with LCM
 
-Latent Consistency Models (LCM) enable quality image generation in typically 2-4 steps making it possible to use diffusion models in almost real-time settings. 
+Latent Consistency Models (LCM) enable quality image generation in typically 2-4 steps making it possible to use diffusion models in almost real-time settings.
 
 From the [official website](https://latent-consistency-models.github.io/):
 
@@ -59,7 +59,7 @@ Some details to keep in mind:
 
 ## Image-to-image
 
-The findings above apply to image-to-image tasks too. Let's look at how we can perform image-to-image generation with LCMs: 
+The findings above apply to image-to-image tasks too. Let's look at how we can perform image-to-image generation with LCMs:
 
 ```python
 from diffusers import AutoPipelineForImage2Image, UNet2DConditionModel, LCMScheduler
@@ -96,8 +96,8 @@ image = pipe(
 
 It is possible to generalize the LCM framework to use with [LoRA](../training/lora.md). It effectively eliminates the need to conduct expensive fine-tuning runs as LoRA training concerns just a few number of parameters compared to full fine-tuning. During inference, the [`LCMScheduler`] comes to the advantage as it enables very few-steps inference without compromising the quality.
 
-We recommend to disable `guidance_scale` by setting it 0. The model is trained to follow prompts accurately 
-even without using guidance scale. You can however, still use guidance scale in which case we recommend 
+We recommend to disable `guidance_scale` by setting it 0. The model is trained to follow prompts accurately
+even without using guidance scale. You can however, still use guidance scale in which case we recommend
 using values between 1.0 and 2.0.
 
 ### Text-to-image
