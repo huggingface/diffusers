@@ -269,6 +269,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                 in_channels,
                 in_channels,
                 dropout=0.1,
+                norm_num_groups=resnet_groups,
             )
         ]
         attentions = []
@@ -316,6 +317,7 @@ class UNetMidBlock3DCrossAttn(nn.Module):
                     in_channels,
                     in_channels,
                     dropout=0.1,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -406,6 +408,7 @@ class CrossAttnDownBlock3D(nn.Module):
                     out_channels,
                     out_channels,
                     dropout=0.1,
+                    norm_num_groups=resnet_groups,
                 )
             )
             attentions.append(
@@ -529,6 +532,7 @@ class DownBlock3D(nn.Module):
                     out_channels,
                     out_channels,
                     dropout=0.1,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -624,6 +628,7 @@ class CrossAttnUpBlock3D(nn.Module):
                     out_channels,
                     out_channels,
                     dropout=0.1,
+                    norm_num_groups=resnet_groups,
                 )
             )
             attentions.append(
@@ -766,6 +771,7 @@ class UpBlock3D(nn.Module):
                     out_channels,
                     out_channels,
                     dropout=0.1,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
