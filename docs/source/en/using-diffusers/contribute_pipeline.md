@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# How to contribute a community pipeline
+# Contribute a community pipeline
 
 <Tip>
 
@@ -49,7 +49,7 @@ To ensure your pipeline and its components (`unet` and `scheduler`) can be saved
 +         self.register_modules(unet=unet, scheduler=scheduler)
 ```
 
-Cool, the `__init__` step is done and you can move to the forward pass now! 🔥 
+Cool, the `__init__` step is done and you can move to the forward pass now! 🔥
 
 ## Define the forward pass
 

@@ -778,16 +778,22 @@ class Conv1dBlock(nn.Module):
         out_channels (`int`): Number of output channels.
         kernel_size (`int` or `tuple`): Size of the convolving kernel.
         n_groups (`int`, default `8`): Number of groups to separate the channels into.
+        activation (`str`, defaults `mish`): Name of the activation function.
     """
 
     def __init__(
-        self, inp_channels: int, out_channels: int, kernel_size: Union[int, Tuple[int, int]], n_groups: int = 8
+        self,
+        inp_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int]],
+        n_groups: int = 8,
+        activation: str = "mish",
     ):
         super().__init__()
 
         self.conv1d = nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2)
         self.group_norm = nn.GroupNorm(n_groups, out_channels)
-        self.mish = nn.Mish()
+        self.mish = get_activation(activation)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         intermediate_repr = self.conv1d(inputs)
@@ -808,16 +814,22 @@ class ResidualTemporalBlock1D(nn.Module):
         out_channels (`int`): Number of output channels.
         embed_dim (`int`): Embedding dimension.
         kernel_size (`int` or `tuple`): Size of the convolving kernel.
+        activation (`str`, defaults `mish`): It is possible to choose the right activation function.
     """
 
     def __init__(
-        self, inp_channels: int, out_channels: int, embed_dim: int, kernel_size: Union[int, Tuple[int, int]] = 5
+        self,
+        inp_channels: int,
+        out_channels: int,
+        embed_dim: int,
+        kernel_size: Union[int, Tuple[int, int]] = 5,
+        activation: str = "mish",
     ):
         super().__init__()
         self.conv_in = Conv1dBlock(inp_channels, out_channels, kernel_size)
         self.conv_out = Conv1dBlock(out_channels, out_channels, kernel_size)
 
-        self.time_emb_act = nn.Mish()
+        self.time_emb_act = get_activation(activation)
         self.time_emb = nn.Linear(embed_dim, out_channels)
 
         self.residual_conv = (
@@ -973,7 +985,7 @@ class TemporalConvLayer(nn.Module):
         dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
     """
 
-    def __init__(self, in_dim: int, out_dim: Optional[int] = None, dropout: float = 0.0):
+    def __init__(self, in_dim: int, out_dim: Optional[int] = None, dropout: float = 0.0, norm_num_groups: int = 32):
         super().__init__()
         out_dim = out_dim or in_dim
         self.in_dim = in_dim
@@ -981,22 +993,22 @@ class TemporalConvLayer(nn.Module):
 
         # conv layers
         self.conv1 = nn.Sequential(
-            nn.GroupNorm(32, in_dim), nn.SiLU(), nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0))
+            nn.GroupNorm(norm_num_groups, in_dim), nn.SiLU(), nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0))
         )
         self.conv2 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv3 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv4 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),

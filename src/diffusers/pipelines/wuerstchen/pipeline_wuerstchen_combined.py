@@ -11,13 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import replace_example_docstring
+from ...utils import deprecate, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from .modeling_paella_vq_model import PaellaVQModel
 from .modeling_wuerstchen_diffnext import WuerstchenDiffNeXt
@@ -161,10 +161,11 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        prior_callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        prior_callback_steps: int = 1,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
+        prior_callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -226,19 +227,23 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-            prior_callback (`Callable`, *optional*):
-                A function that will be called every `prior_callback_steps` steps during inference. The function will
-                be called with the following arguments: `prior_callback(step: int, timestep: int, latents:
-                torch.FloatTensor)`.
-            prior_callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
-            callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
+            prior_callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `prior_callback_on_step_end(self: DiffusionPipeline, step: int, timestep:
+                int, callback_kwargs: Dict)`.
+            prior_callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `prior_callback_on_step_end` function. The tensors specified in the
+                list will be passed as `callback_kwargs` argument. You will only be able to include variables listed in
+                the `._callback_tensor_inputs` attribute of your pipeline class.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
@@ -246,6 +251,22 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+        prior_kwargs = {}
+        if kwargs.get("prior_callback", None) is not None:
+            prior_kwargs["callback"] = kwargs.pop("prior_callback")
+            deprecate(
+                "prior_callback",
+                "1.0.0",
+                "Passing `prior_callback` as an input argument to `__call__` is deprecated, consider use `prior_callback_on_step_end`",
+            )
+        if kwargs.get("prior_callback_steps", None) is not None:
+            deprecate(
+                "prior_callback_steps",
+                "1.0.0",
+                "Passing `prior_callback_steps` as an input argument to `__call__` is deprecated, consider use `prior_callback_on_step_end`",
+            )
+            prior_kwargs["callback_steps"] = kwargs.pop("prior_callback_steps")
+
         prior_outputs = self.prior_pipe(
             prompt=prompt if prompt_embeds is None else None,
             height=height,
@@ -261,8 +282,9 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             latents=latents,
             output_type="pt",
             return_dict=False,
-            callback=prior_callback,
-            callback_steps=prior_callback_steps,
+            callback_on_step_end=prior_callback_on_step_end,
+            callback_on_step_end_tensor_inputs=prior_callback_on_step_end_tensor_inputs,
+            **prior_kwargs,
         )
         image_embeddings = prior_outputs[0]
 
@@ -276,8 +298,9 @@ class WuerstchenCombinedPipeline(DiffusionPipeline):
             generator=generator,
             output_type=output_type,
             return_dict=return_dict,
-            callback=callback,
-            callback_steps=callback_steps,
+            callback_on_step_end=callback_on_step_end,
+            callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            **kwargs,
         )
 
         return outputs

@@ -16,7 +16,7 @@ jobs:
       install_libgl1: true
       package: diffusers
       notebook_folder: diffusers_doc
-      languages: en ko zh
+      languages: en ko zh ja pt
 
     secrets:
       token: ${{ secrets.HUGGINGFACE_PUSH }}

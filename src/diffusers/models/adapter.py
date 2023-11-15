@@ -456,9 +456,8 @@ class AdapterResnetBlock(nn.Module):
         This method takes input tensor x and applies a convolutional layer, ReLU activation, and another convolutional
         layer on the input tensor. It returns addition with the input tensor.
         """
-        h = x
-        h = self.block1(h)
-        h = self.act(h)
+
+        h = self.act(self.block1(x))
         h = self.block2(h)
 
         return h + x
@@ -578,9 +577,8 @@ class LightAdapterResnetBlock(nn.Module):
         This function takes input tensor x and processes it through one convolutional layer, ReLU activation, and
         another convolutional layer and adds it to input tensor.
         """
-        h = x
-        h = self.block1(h)
-        h = self.act(h)
+
+        h = self.act(self.block1(x))
         h = self.block2(h)
 
         return h + x

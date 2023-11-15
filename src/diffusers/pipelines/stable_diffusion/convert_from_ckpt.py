@@ -1145,6 +1145,7 @@ def download_from_original_stable_diffusion_ckpt(
     stable_unclip_prior: Optional[str] = None,
     clip_stats_path: Optional[str] = None,
     controlnet: Optional[bool] = None,
+    adapter: Optional[bool] = None,
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
     local_files_only=False,
@@ -1231,12 +1232,10 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionPipeline,
         StableDiffusionUpscalePipeline,
         StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
     )
-
-    if pipeline_class is None:
-        pipeline_class = StableDiffusionPipeline if not controlnet else StableDiffusionControlNetPipeline
 
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
@@ -1331,6 +1330,13 @@ def download_from_original_stable_diffusion_ckpt(
             model_type = "SDXL-Refiner"
         if image_size is None:
             image_size = 1024
+
+    if pipeline_class is None:
+        # Check if we have a SDXL or SD model and initialize default pipeline
+        if model_type not in ["SDXL", "SDXL-Refiner"]:
+            pipeline_class = StableDiffusionPipeline if not controlnet else StableDiffusionControlNetPipeline
+        else:
+            pipeline_class = StableDiffusionXLPipeline if model_type == "SDXL" else StableDiffusionXLImg2ImgPipeline
 
     if num_in_channels is None and pipeline_class == StableDiffusionInpaintPipeline:
         num_in_channels = 9
@@ -1720,6 +1726,18 @@ def download_from_original_stable_diffusion_ckpt(
                     tokenizer_2=tokenizer_2,
                     unet=unet,
                     controlnet=controlnet,
+                    scheduler=scheduler,
+                    force_zeros_for_empty_prompt=True,
+                )
+            elif adapter:
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=text_encoder_2,
+                    tokenizer_2=tokenizer_2,
+                    unet=unet,
+                    adapter=adapter,
                     scheduler=scheduler,
                     force_zeros_for_empty_prompt=True,
                 )
