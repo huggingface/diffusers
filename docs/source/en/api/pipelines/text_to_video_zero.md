@@ -123,7 +123,6 @@ To generate a video from prompt with additional pose control
     import torch
     from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
-    import numpy as np
 
     model_id = "runwayml/stable-diffusion-v1-5"
     controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose", torch_dtype=torch.float16)
@@ -178,7 +177,6 @@ To perform text-guided video editing (with [InstructPix2Pix](pix2pix)):
     import torch
     from diffusers import StableDiffusionInstructPix2PixPipeline
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
-    import numpy as np
 
     model_id = "timbrooks/instruct-pix2pix"
     pipe = StableDiffusionInstructPix2PixPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
@@ -222,7 +220,6 @@ can run with custom [DreamBooth](../..training/dreambooth) models, as shown belo
     import torch
     from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
-    import numpy as np
 
     # set model id to custom model
     model_id = "PAIR/text2video-zero-controlnet-canny-avatar"
