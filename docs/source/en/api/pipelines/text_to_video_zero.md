@@ -40,7 +40,6 @@ To generate a video from prompt, run the following Python code:
 ```python
 import torch
 from diffusers import TextToVideoZeroPipeline
-from diffusers.utils import export_to_video
 
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
@@ -48,7 +47,7 @@ pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float
 prompt = "A panda is playing guitar on times square"
 result = pipe(prompt=prompt).images
 result = [(r * 255).astype("uint8") for r in result]
-export_to_video(result, "video.mp4")
+imageio.mimsave("video.mp4", result, fps=4)
 ```
 You can change these parameters in the pipeline call:
 * Motion field strength (see the [paper](https://arxiv.org/abs/2303.13439), Sect. 3.3.1):
@@ -62,13 +61,12 @@ We can also generate longer videos by doing the processing in a chunk-by-chunk m
 ```python
 import torch
 from diffusers import TextToVideoZeroPipeline
-from diffusers.utils import export_to_video
 import numpy as np
 
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 seed = 0
-video_length = 48  #48 ÷ 8 = 6 seconds
+video_length = 24  #24 ÷ 4fps = 6 seconds
 chunk_size = 8
 prompt = "A panda is playing guitar on times square"
 
@@ -90,7 +88,7 @@ for i in range(len(chunk_ids)):
 # Concatenate chunks and save
 result = np.concatenate(result)
 result = [(r * 255).astype("uint8") for r in result]
-export_to_video(result, "video.mp4")
+imageio.mimsave("video.mp4", result, fps=4)
 ```
 
 
@@ -125,7 +123,6 @@ To generate a video from prompt with additional pose control
     import torch
     from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
-    from diffusers.utils import export_to_video
     import numpy as np
 
     model_id = "runwayml/stable-diffusion-v1-5"
@@ -143,8 +140,7 @@ To generate a video from prompt with additional pose control
 
     prompt = "Darth Vader dancing in a desert"
     result = pipe(prompt=[prompt] * len(pose_images), image=pose_images, latents=latents).images
-    result_np = np.concatenate([np.array(r)[None, :, :, :] for r in result])
-    export_to_video(result_np, "video.mp4")
+    imageio.mimsave("video.mp4", result, fps=4)
     ```
 
 
@@ -182,7 +178,6 @@ To perform text-guided video editing (with [InstructPix2Pix](pix2pix)):
     import torch
     from diffusers import StableDiffusionInstructPix2PixPipeline
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
-    from diffusers.utils import export_to_video
     import numpy as np
 
     model_id = "timbrooks/instruct-pix2pix"
@@ -191,8 +186,7 @@ To perform text-guided video editing (with [InstructPix2Pix](pix2pix)):
 
     prompt = "make it Van Gogh Starry Night style"
     result = pipe(prompt=[prompt] * len(video), image=video).images
-    result_np = np.concatenate([np.array(r)[None, :, :, :] for r in result])
-    export_to_video(result_np, "video.mp4")
+    imageio.mimsave("edited_video.mp4", result, fps=4)
     ```
 
 
@@ -228,7 +222,6 @@ can run with custom [DreamBooth](../..training/dreambooth) models, as shown belo
     import torch
     from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
     from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
-    from diffusers.utils import export_to_video
     import numpy as np
 
     # set model id to custom model
@@ -247,8 +240,7 @@ can run with custom [DreamBooth](../..training/dreambooth) models, as shown belo
 
     prompt = "oil painting of a beautiful girl avatar style"
     result = pipe(prompt=[prompt] * len(canny_edges), image=canny_edges, latents=latents).images
-    result_np = np.concatenate([np.array(r)[None, :, :, :] for r in result])
-    export_to_video(result_np, "video.mp4")
+    imageio.mimsave("video.mp4", result, fps=4)
     ```
 
 You can filter out some available DreamBooth-trained models with [this link](https://huggingface.co/models?search=dreambooth).
