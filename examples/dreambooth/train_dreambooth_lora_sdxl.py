@@ -1122,7 +1122,7 @@ def main(args):
     )
 
     # Computes additional embeddings/ids required by the SDXL UNet.
-    # regular text emebddings (when `train_text_encoder` is not True)
+    # regular text embeddings (when `train_text_encoder` is not True)
     # pooled text embeddings
     # time ids
 
@@ -1339,17 +1339,19 @@ def main(args):
 
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
-                    elems_to_repeat = bsz // 2 if args.with_prior_preservation else bsz
+                    elems_to_repeat_text_embeds = bsz // 2 if args.with_prior_preservation else bsz
+                    elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
                 else:
-                    elems_to_repeat = 1  # todo - make it smarter
+                    elems_to_repeat_text_embeds = 1
+                    elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 # Predict the noise residual
                 if not args.train_text_encoder:
                     unet_added_conditions = {
-                        "time_ids": add_time_ids.repeat(elems_to_repeat, 1),
-                        "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat, 1),
+                        "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
+                        "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat_text_embeds, 1),
                     }
-                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
@@ -1357,7 +1359,7 @@ def main(args):
                         added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
-                    unet_added_conditions = {"time_ids": add_time_ids.repeat(bsz, 1)}  # todo - make it smarter
+                    unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
                     # unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat, 1)}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
@@ -1365,8 +1367,8 @@ def main(args):
                         prompt=None,
                         text_input_ids_list=[tokens_one, tokens_two],
                     )
-                    unet_added_conditions.update({"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat, 1)})
-                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat, 1, 1)
+                    unet_added_conditions.update({"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat_text_embeds, 1)})
+                    prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
                         noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
                     ).sample
@@ -1406,9 +1408,6 @@ def main(args):
                         # Epsilon and sample both use the same loss weights.
                         mse_loss_weights = base_weight
 
-                    # We calculate the original loss and then we mean over the non-batch dimensions and
-                    # rebalance the sample-wise losses with their respective loss weights.
-                    # Finally, we take the mean of the rebalanced loss.
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
