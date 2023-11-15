@@ -48,7 +48,7 @@ To ensure your pipeline and its components (`unet` and `scheduler`) can be saved
 +         self.register_modules(unet=unet, scheduler=scheduler)
 ```
 
-Cool, the `__init__` step is done and you can move to the forward pass now! 🔥 
+Cool, the `__init__` step is done and you can move to the forward pass now! 🔥
 
 ## Define the forward pass
 

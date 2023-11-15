@@ -241,6 +241,7 @@ negative_prompt = "low quality, bad quality"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 original_image = load_image(url)
+
 original_image.thumbnail((768, 768))
 
 image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=original_image, strength=0.3).images[0]
@@ -263,6 +264,7 @@ negative_prompt = "low quality, bad quality"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
 original_image = load_image(url)
+
 original_image.thumbnail((768, 768))
 
 image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=original_image, strength=0.3).images[0]

@@ -13,7 +13,7 @@ from diffusers.utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEI
 
 class CheckpointMergerPipeline(DiffusionPipeline):
     """
-    A class that that supports merging diffusion models based on the discussion here:
+    A class that supports merging diffusion models based on the discussion here:
     https://github.com/huggingface/diffusers/issues/877
 
     Example usage:-

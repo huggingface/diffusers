@@ -34,6 +34,16 @@ from .image_encoder import PaintByExampleImageEncoder
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(encoder_output, generator):
+    if hasattr(encoder_output, "latent_dist"):
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 def prepare_mask_and_masked_image(image, mask):
     """
     Prepares a pair (image, mask) to be consumed by the Paint by Example pipeline. This means that those inputs will be
@@ -334,12 +344,12 @@ class PaintByExamplePipeline(DiffusionPipeline):
     def _encode_vae_image(self, image: torch.Tensor, generator: torch.Generator):
         if isinstance(generator, list):
             image_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
         image_latents = self.vae.config.scaling_factor * image_latents
 

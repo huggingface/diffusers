@@ -388,6 +388,8 @@ class KandinskyPipeline(DiffusionPipeline):
         # post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
+        self.maybe_free_model_hooks()
+
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
 

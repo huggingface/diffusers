@@ -138,6 +138,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
     def decode(
         self,
         z: torch.FloatTensor,
+        generator: Optional[torch.Generator] = None,
         image: Optional[torch.FloatTensor] = None,
         mask: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
