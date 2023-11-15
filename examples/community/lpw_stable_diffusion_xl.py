@@ -11,6 +11,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DiffusionPipeline, StableDiffusionXLPipeline
 from diffusers.image_processor import VaeImageProcessor
@@ -32,7 +33,6 @@ from diffusers.utils import (
     replace_example_docstring,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 
 if is_invisible_watermark_available():
