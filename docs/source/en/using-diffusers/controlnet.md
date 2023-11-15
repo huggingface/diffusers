@@ -496,12 +496,12 @@ Prepare the human pose estimation conditioning:
 ```py
 from controlnet_aux import OpenposeDetector
 
-original_openpose = OpenposeDetector.from_pretrained("lllyasviel/ControlNet")
-openpose_image = load_image(
+openpose = OpenposeDetector.from_pretrained("lllyasviel/ControlNet")
+original_image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/person.png"
 )
-openpose_image = openpose(original_openpose)
-make_image_grid([original_openpose, openpose_image], rows=1, cols=2)
+openpose_image = openpose(original_image)
+make_image_grid([original_image, openpose_image], rows=1, cols=2)
 ```
 
 <div class="flex gap-4">
