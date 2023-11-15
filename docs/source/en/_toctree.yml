@@ -186,13 +186,21 @@
   - sections:
     - local: api/configuration
       title: Configuration
-    - local: api/loaders
-      title: Loaders
     - local: api/logging
       title: Logging
     - local: api/outputs
       title: Outputs
     title: Main Classes
+  - sections:
+    - local: api/loaders/lora
+      title: LoRA
+    - local: api/loaders/single_file
+      title: Single files
+    - local: api/loaders/textual_inversion
+      title: Textual Inversion
+    - local: api/loaders/unet
+      title: UNet
+    title: Loaders
   - sections:
     - local: api/models/overview
       title: Overview
