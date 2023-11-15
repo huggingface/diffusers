@@ -144,7 +144,14 @@ prompt = "Astronauts in a jungle, cold color palette, muted colors, detailed, 8k
 
 # pass prompt and image to pipeline
 generator = torch.manual_seed(0)
-image = pipe(prompt, image=init_image, num_inference_steps=4, guidance_scale=1, strength=0.6, generator=generator).images[0]
+image = pipe(
+    prompt,
+    image=init_image,
+    num_inference_steps=4,
+    guidance_scale=1,
+    strength=0.6,
+    generator=generator
+).images[0]
 make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
