@@ -700,7 +700,7 @@ class LatentConsistencyModelWalkPipeline(
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         embedding_interpolation_type: str = "lerp",
         latent_interpolation_type: str = "slerp",
-        process_batch_size: int = 8,
+        process_batch_size: int = 4,
         **kwargs,
     ):
         r"""
@@ -759,6 +759,13 @@ class LatentConsistencyModelWalkPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeine class.
+            embedding_interpolation_type (`str`, *optional*, defaults to `"lerp"`):
+                The type of interpolation to use for interpolating between text embeddings. Choose between `"lerp"` and `"slerp"`.
+            latent_interpolation_type (`str`, *optional*, defaults to `"slerp"`):
+                The type of interpolation to use for interpolating between latents. Choose between `"lerp"` and `"slerp"`.
+            process_batch_size (`int`, *optional*, defaults to 4):
+                The batch size to use for processing the images. This is useful when generating a large number of images
+                and you want to avoid running out of memory.
 
         Examples:
 
@@ -815,7 +822,6 @@ class LatentConsistencyModelWalkPipeline(
         device = self._execution_device
         # do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
         lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
@@ -825,8 +831,7 @@ class LatentConsistencyModelWalkPipeline(
         num_channels_latents = self.unet.config.in_channels
         # bs = batch_size * num_images_per_prompt
 
-        # TODO(aryan): Complete this
-        # 5. Prepare latent variables
+        # 3. Encode initial input prompt
         prompt_embeds_1, _ = self.encode_prompt(
             prompt[:1],
             device,
@@ -838,8 +843,9 @@ class LatentConsistencyModelWalkPipeline(
             lora_scale=lora_scale,
             clip_skip=self.clip_skip,
         )
+
+        # 4. Prepare initial latent variables
         latents_1 = self.prepare_latents(
-            # batch_size * num_images_per_prompt,
             1,
             num_channels_latents,
             height,
@@ -855,8 +861,11 @@ class LatentConsistencyModelWalkPipeline(
         self._num_timesteps = len(timesteps)
         images = []
 
+        # 5. Iterate over prompts and perform latent walk. Note that we do this two prompts at a time
+        #    otherwise the memory usage ends up being too high.
         with self.progress_bar(total=batch_size - 1) as prompt_progress_bar:
             for i in range(1, batch_size):
+                # 6. Encode current prompt
                 prompt_embeds_2, _ = self.encode_prompt(
                     prompt[i : i + 1],
                     device,
@@ -868,8 +877,9 @@ class LatentConsistencyModelWalkPipeline(
                     lora_scale=lora_scale,
                     clip_skip=self.clip_skip,
                 )
+
+                # 7. Prepare current latent variables
                 latents_2 = self.prepare_latents(
-                    # batch_size * num_images_per_prompt,
                     1,
                     num_channels_latents,
                     height,
@@ -880,6 +890,7 @@ class LatentConsistencyModelWalkPipeline(
                     latents,
                 )
 
+                # 8. Interpolate between previous and current prompt embeddings and latents
                 inference_embeddings = self.interpolate_embedding(
                     start_embedding=prompt_embeds_1,
                     end_embedding=prompt_embeds_2,
@@ -896,6 +907,9 @@ class LatentConsistencyModelWalkPipeline(
                 next_latents = inference_latents[-1:].detach().clone()
                 bs = num_interpolation_steps
 
+                # 9. Perform inference in batches. Note the use of `process_batch_size` to control the batch size
+                #    of the inference. This is useful for reducing memory usage and can be configured based on the
+                #    available GPU memory.
                 with self.progress_bar(
                     total=(bs + process_batch_size - 1) // process_batch_size
                 ) as batch_progress_bar:
@@ -916,6 +930,7 @@ class LatentConsistencyModelWalkPipeline(
                             w, embedding_dim=self.unet.config.time_cond_proj_dim
                         ).to(device=device, dtype=latents_1.dtype)
 
+                        # 10. Perform inference for current batch
                         with self.progress_bar(total=num_inference_steps) as progress_bar:
                             for index, t in enumerate(timesteps):
                                 batch_inference_latents = batch_inference_latents.to(batch_inference_embedddings.dtype)
@@ -958,8 +973,8 @@ class LatentConsistencyModelWalkPipeline(
 
                         denoised = denoised.to(batch_inference_embedddings.dtype)
 
-                        # This is not supported because you would get black images in your latent walk if
-                        # NSFW concept is detected
+                        # Note: This is not supported because you would get black images in your latent walk if
+                        #       NSFW concept is detected
                         # if not output_type == "latent":
                         #     image = self.vae.decode(denoised / self.vae.config.scaling_factor, return_dict=False)[0]
                         #     image, has_nsfw_concept = self.run_safety_checker(image, device, inference_embeddings.dtype)
@@ -988,6 +1003,7 @@ class LatentConsistencyModelWalkPipeline(
 
                 prompt_progress_bar.update()
 
+        # 11. Determine what should be returned
         if output_type == "pil":
             images = [image for image_list in images for image in image_list]
         elif output_type == "np":
@@ -1001,9 +1017,6 @@ class LatentConsistencyModelWalkPipeline(
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (
-                images,
-                has_nsfw_concept,
-            )
+            return (images, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
