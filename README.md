@@ -77,7 +77,7 @@ Please refer to the [How to use Stable Diffusion in Apple Silicon](https://huggi
 
 ## Quickstart
 
-Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 14000+ checkpoints):
+Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 15000+ checkpoints):
 
 ```python
 from diffusers import DiffusionPipeline
@@ -94,14 +94,13 @@ You can also dig into the models and schedulers toolbox to build your own diffus
 from diffusers import DDPMScheduler, UNet2DModel
 from PIL import Image
 import torch
-import numpy as np
 
 scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
 model = UNet2DModel.from_pretrained("google/ddpm-cat-256").to("cuda")
 scheduler.set_timesteps(50)
 
 sample_size = model.config.sample_size
-noise = torch.randn((1, 3, sample_size, sample_size)).to("cuda")
+noise = torch.randn((1, 3, sample_size, sample_size), device="cuda")
 input = noise
 
 for t in scheduler.timesteps:
