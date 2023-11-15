@@ -1,3 +1,15 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Kandinsky
 
 [[open-in-colab]]
@@ -91,7 +103,7 @@ Use the [`AutoPipelineForText2Image`] to automatically call the combined pipelin
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
@@ -107,7 +119,7 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
@@ -217,14 +229,14 @@ from io import BytesIO
 from PIL import Image
 import os
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
- 
+
 response = requests.get(url)
 original_image = Image.open(BytesIO(response.content)).convert("RGB")
 original_image.thumbnail((768, 768))
@@ -243,14 +255,14 @@ from io import BytesIO
 from PIL import Image
 import os
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
- 
+
 response = requests.get(url)
 original_image = Image.open(BytesIO(response.content)).convert("RGB")
 original_image.thumbnail((768, 768))

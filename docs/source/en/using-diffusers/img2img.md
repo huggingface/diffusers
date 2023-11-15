@@ -27,7 +27,7 @@ from diffusers.utils import load_image, make_image_grid
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -79,7 +79,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -117,7 +117,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -157,7 +157,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -204,7 +204,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -248,7 +248,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -290,7 +290,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -335,7 +335,7 @@ from diffusers.utils import make_image_grid
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -349,7 +349,7 @@ Now you can pass this generated image to the image-to-image pipeline:
 ```py
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -371,7 +371,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -397,7 +397,7 @@ Pass the latent output from this pipeline to the next pipeline to generate an im
 ```py
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "ogkalu/Comic-Diffusion", torch_dtype=torch.float16
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -411,7 +411,7 @@ Repeat one more time to generate the final image in a [pixel art style](https://
 ```py
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "kohbanye/pixel-art-style", torch_dtype=torch.float16
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -434,7 +434,7 @@ from diffusers.utils import make_image_grid, load_image
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -462,7 +462,7 @@ from diffusers import StableDiffusionLatentUpscalePipeline
 
 upscaler = StableDiffusionLatentUpscalePipeline.from_pretrained(
     "stabilityai/sd-x2-latent-upscaler", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 upscaler.enable_model_cpu_offload()
 upscaler.enable_xformers_memory_efficient_attention()
 
@@ -476,7 +476,7 @@ from diffusers import StableDiffusionUpscalePipeline
 
 super_res = StableDiffusionUpscalePipeline.from_pretrained(
     "stabilityai/stable-diffusion-x4-upscaler", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 super_res.enable_model_cpu_offload()
 super_res.enable_xformers_memory_efficient_attention()
 
@@ -500,7 +500,7 @@ import torch
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -537,7 +537,7 @@ import torch
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
@@ -571,7 +571,7 @@ Let's apply a new [style](https://huggingface.co/nitrosocke/elden-ring-diffusion
 ```py
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "nitrosocke/elden-ring-diffusion", torch_dtype=torch.float16,
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 # remove following line if xFormers is not installed or you have PyTorch 2.0 or higher installed
 pipeline.enable_xformers_memory_efficient_attention()
