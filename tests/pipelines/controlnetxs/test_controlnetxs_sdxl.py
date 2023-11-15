@@ -22,12 +22,11 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProject
 
 from diffusers import (
     AutoencoderKL,
-    ControlNetModel,
+    ControlNetXSModel,
     EulerDiscreteScheduler,
-    StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLControlNetXSPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.controlnet_xs.pipeline_controlnet_xs_sd_xl import StableDiffusionXLControlNetXSPipeline
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
 from diffusers.utils.torch_utils import randn_tensor
@@ -44,10 +43,6 @@ from ..test_pipelines_common import (
     PipelineTesterMixin,
     SDXLOptionalComponentsTesterMixin,
 )
-
-
-# TODO UMER
-# these tests are so far only copied from `test_controlnet_sdxl.py` and need to be adapted
 
 
 enable_full_determinism()
@@ -86,20 +81,11 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
             cross_attention_dim=64,
         )
         torch.manual_seed(0)
-        controlnet = ControlNetModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            in_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            conditioning_embedding_out_channels=(16, 32),
-            # SD2-specific config below
-            attention_head_dim=(2, 4),
-            use_linear_projection=True,
-            addition_embed_type="text_time",
-            addition_time_embed_dim=8,
-            transformer_layers_per_block=(1, 2),
-            projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
-            cross_attention_dim=64,
+        controlnet = ControlNetXSModel.from_unet(
+            unet,
+            time_embedding_mix=0.95,
+            learn_embedding=True,
+            size_ratio=0.5,
         )
         torch.manual_seed(0)
         scheduler = EulerDiscreteScheduler(
@@ -151,6 +137,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         }
         return components
 
+    # copied from test_controlnet_sdxl.py
     def get_dummy_inputs(self, device, seed=0):
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
@@ -175,9 +162,11 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         return inputs
 
+    # copied from test_controlnet_sdxl.py
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
+    # copied from test_controlnet_sdxl.py
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
@@ -185,12 +174,15 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(expected_max_diff=2e-3)
 
+    # copied from test_controlnet_sdxl.py
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    # copied from test_controlnet_sdxl.py
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
 
+    # copied from test_controlnet_sdxl.py
     @require_torch_gpu
     def test_stable_diffusion_xl_offloads(self):
         pipes = []
@@ -220,6 +212,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
+    # copied from test_controlnet_sdxl.py
     def test_stable_diffusion_xl_multi_prompts(self):
         components = self.get_dummy_components()
         sd_pipe = self.pipeline_class(**components).to(torch_device)
@@ -312,27 +305,28 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
-    def test_controlnet_sdxl_guess(self):
-        device = "cpu"
+    # TODO Umer: Understand guess mode and enable this test if needed
+    # def test_controlnet_sdxl_guess(self):
+    #     device = "cpu"
 
-        components = self.get_dummy_components()
+    #     components = self.get_dummy_components()
 
-        sd_pipe = self.pipeline_class(**components)
-        sd_pipe = sd_pipe.to(device)
+    #     sd_pipe = self.pipeline_class(**components)
+    #     sd_pipe = sd_pipe.to(device)
 
-        sd_pipe.set_progress_bar_config(disable=None)
+    #     sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_dummy_inputs(device)
-        inputs["guess_mode"] = True
+    #     inputs = self.get_dummy_inputs(device)
+    #     inputs["guess_mode"] = True
 
-        output = sd_pipe(**inputs)
-        image_slice = output.images[0, -3:, -3:, -1]
-        expected_slice = np.array(
-            [0.7330834, 0.590667, 0.5667336, 0.6029023, 0.5679491, 0.5968194, 0.4032986, 0.47612396, 0.5089609]
-        )
+    #     output = sd_pipe(**inputs)
+    #     image_slice = output.images[0, -3:, -3:, -1]
+    #     expected_slice = np.array(
+    #         [0.7330834, 0.590667, 0.5667336, 0.6029023, 0.5679491, 0.5968194, 0.4032986, 0.47612396, 0.5089609]
+    #     )
 
-        # make sure that it's equal
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
+    #     # make sure that it's equal
+    #     assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
 
 
 @slow
@@ -344,9 +338,9 @@ class ControlNetSDXLPipelineXSSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")
+        controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-SDXL-canny")
 
-        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+        pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet
         )
         pipe.enable_sequential_cpu_offload()
@@ -363,28 +357,29 @@ class ControlNetSDXLPipelineXSSlowTests(unittest.TestCase):
         assert images[0].shape == (768, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.4185, 0.4127, 0.4089, 0.4046, 0.4115, 0.4096, 0.4081, 0.4112, 0.3913])
+        expected_image = np.array([0.4359, 0.4335, 0.4609, 0.4515, 0.4669, 0.4494, 0.452 , 0.4493, 0.4382])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
-    def test_depth(self):
-        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0")
+    # ToDo Umer: Implement depth and enable this test
+    # def test_depth(self):
+    #     controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0")
 
-        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet
-        )
-        pipe.enable_sequential_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
+    #     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+    #         "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet
+    #     )
+    #     pipe.enable_sequential_cpu_offload()
+    #     pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "Stormtrooper's lecture"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
-        )
+    #     generator = torch.Generator(device="cpu").manual_seed(0)
+    #     prompt = "Stormtrooper's lecture"
+    #     image = load_image(
+    #         "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+    #     )
 
-        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+    #     images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
 
-        assert images[0].shape == (512, 512, 3)
+    #     assert images[0].shape == (512, 512, 3)
 
-        original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.4399, 0.5112, 0.5478, 0.4314, 0.472, 0.4823, 0.4647, 0.4957, 0.4853])
-        assert np.allclose(original_image, expected_image, atol=1e-04)
+    #     original_image = images[0, -3:, -3:, -1].flatten()
+    #     expected_image = np.array([0.4399, 0.5112, 0.5478, 0.4314, 0.472, 0.4823, 0.4647, 0.4957, 0.4853])
+    #     assert np.allclose(original_image, expected_image, atol=1e-04)

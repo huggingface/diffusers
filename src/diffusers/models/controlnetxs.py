@@ -98,7 +98,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             base_model,
             time_embedding_mix=0.95,
             learn_embedding=True,
-            control_model_size_ratio=0.1,
+            size_ratio=0.1,
             dim_attention_heads=64,
         )
 
@@ -144,6 +144,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         conditioning_channels: int = 3,
+        conditioning_block_sizes: Tuple[int] = (16,32,96,256),
         controlnet_conditioning_channel_order: str = "rgb",
         time_embedding_input_dim: int = 320,
         time_embedding_dim: int = 1280,
@@ -345,9 +346,10 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         learn_embedding: bool = False,
         time_embedding_mix: float = 1.0,
         block_out_channels: Optional[Tuple[int]] = None,
-        control_model_size_ratio: Optional[float] = None,
+        size_ratio: Optional[float] = None,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
         dim_attention_heads: Optional[int] = None,
+        norm_num_groups: Optional[int] = None,
     ):
         r"""
         Instantiate a [`ControlNetXSModel`] from [`UNet2DConditionModel`].
@@ -367,14 +369,17 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 Linear interpolation parameter used if `learn_embedding` is `True`.
             block_out_channels (`Tuple[int]`, *optional*):
                 Down blocks output channels in control model. Either this or `block_out_channels` must be given.
-            control_model_size_ratio (float, *optional*):
+            size_ratio (float, *optional*):
                 When given, block_out_channels is set to a relative fraction of the base model's block_out_channels.
-                Either this or `control_model_size_ratio` must be given.
+                Either this or `size_ratio` must be given.
+            norm_num_groups (int, *optional*, defaults to `None`): The number of groups to use for the normalization of the control unet.
+                If `None`, `int(unet.config.norm_num_groups * size_ratio)` is taken.
+
         """
 
         # check input
         fixed_size = block_out_channels is not None
-        relative_size = control_model_size_ratio is not None
+        relative_size = size_ratio is not None
         if not (fixed_size ^ relative_size):
             raise ValueError(
                 "Pass exactly one of `block_out_channels` (for absolute sizing) or `control_model_ratio` (for relative sizing)."
@@ -385,10 +390,13 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
         # create model
         if block_out_channels is None:
-            block_out_channels = [int(control_model_size_ratio * c) for c in unet.config.block_out_channels]
+            block_out_channels = [int(size_ratio * c) for c in unet.config.block_out_channels]
 
         if dim_attention_heads is not None:
             num_attention_heads = [math.ceil(c / dim_attention_heads) for c in block_out_channels]
+
+        if norm_num_groups is None:
+            norm_num_groups = int(unet.config.norm_num_groups * size_ratio)
 
         def get_time_emb_input_dim(unet: UNet2DConditionModel):
             return unet.time_embedding.linear_1.in_features
@@ -401,6 +409,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         kwargs.update(block_out_channels=block_out_channels)
         if num_attention_heads is not None:
             kwargs.update(attention_head_dim=num_attention_heads)
+        kwargs.update(norm_num_groups=norm_num_groups)
 
         # time embedding of control unet is not used. So remove params for them.
         to_remove = (
