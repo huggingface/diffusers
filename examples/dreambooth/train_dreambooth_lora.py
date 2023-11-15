@@ -57,7 +57,7 @@ from diffusers.models.attention_processor import (
     AttnAddedKVProcessor2_0,
     SlicedAttnAddedKVProcessor,
 )
-from diffusers.models.lora import LoRALinearLayer, text_encoder_lora_state_dict
+from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available

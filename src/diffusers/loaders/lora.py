@@ -95,7 +95,6 @@ def text_encoder_mlp_modules(text_encoder):
     return mlp_modules
 
 
-
 class LoraLoaderMixin:
     r"""
     Load LoRA layers into [`UNet2DConditionModel`] and
@@ -1369,7 +1368,7 @@ class LoraLoaderMixin:
             )
         set_weights_and_activate_adapters(text_encoder, adapter_names, text_encoder_weights)
 
-    def disable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
+    def disable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):  # noqa: F821
         """
         Disables the LoRA layers for the text encoder.
 
@@ -1386,7 +1385,7 @@ class LoraLoaderMixin:
             raise ValueError("Text Encoder not found.")
         set_adapter_layers(text_encoder, enabled=False)
 
-    def enable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
+    def enable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):  # noqa: F821
         """
         Enables the LoRA layers for the text encoder.
 
