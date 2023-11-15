@@ -560,10 +560,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 register_dict = {name: (None, None)}
             else:
                 # register the config from the original module, not the dynamo compiled one
-                if is_compiled_module(module):
-                    not_compiled_module = module._orig_mod
-                else:
-                    not_compiled_module = module
+                not_compiled_module = _unwrap_model(module)
 
                 library = not_compiled_module.__module__.split(".")[0]
 
@@ -666,7 +663,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # Dynamo wraps the original model in a private class.
             # I didn't find a public API to get the original class.
             if is_compiled_module(sub_model):
-                sub_model = sub_model._orig_mod
+                sub_model = _unwrap_model(sub_model)
                 model_cls = sub_model.__class__
 
             save_method_name = None

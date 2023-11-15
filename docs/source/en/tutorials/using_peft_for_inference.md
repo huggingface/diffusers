@@ -58,7 +58,7 @@ image
 ```
 
 ![toy-face](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_8_1.png)
-    
+
 
 With the `adapter_name` parameter, it is really easy to use another adapter for inference! Load the [nerijs/pixel-art-xl](https://huggingface.co/nerijs/pixel-art-xl) adapter that has been fine-tuned to generate pixel art images, and let's call it `"pixel"`.
 
@@ -80,7 +80,7 @@ image
 ```
 
 ![pixel-art](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_12_1.png)
-    
+
 ## Combine multiple adapters
 
 You can also perform multi-adapter inference where you combine different adapter checkpoints for inference.
@@ -112,7 +112,7 @@ image
 ```
 
 ![toy-face-pixel-art](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_16_1.png)
-    
+
 Impressive! As you can see, the model was able to generate an image that mixes the characteristics of both adapters.
 
 If you want to go back to using only one adapter, use the [`~diffusers.loaders.UNet2DConditionLoadersMixin.set_adapters`] method to activate the `"toy"` adapter:

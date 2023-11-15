@@ -40,10 +40,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.attention_processor import (
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-)
+from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
 from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
 from diffusers.utils.testing_utils import (
     floats_tensor,

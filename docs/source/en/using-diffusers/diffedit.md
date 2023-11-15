@@ -160,12 +160,12 @@ Check out the [generation strategy](https://huggingface.co/docs/transformers/mai
 Load the text encoder model used by the [`StableDiffusionDiffEditPipeline`] to encode the text. You'll use the text encoder to compute the text embeddings:
 
 ```py
-import torch 
-from diffusers import StableDiffusionDiffEditPipeline 
+import torch
+from diffusers import StableDiffusionDiffEditPipeline
 
 pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 pipeline.enable_vae_slicing()
 
