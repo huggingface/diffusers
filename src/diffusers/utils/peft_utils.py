@@ -129,7 +129,7 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
         rank_pattern = dict(filter(lambda x: x[1] != r, rank_dict.items()))
         rank_pattern = {k.split(".lora_B.")[0]: v for k, v in rank_pattern.items()}
 
-    if network_alpha_dict is not None:
+    if network_alpha_dict is not None and len(network_alpha_dict) > 0:
         if len(set(network_alpha_dict.values())) > 1:
             # get the alpha occuring the most number of times
             lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
@@ -178,6 +178,28 @@ def set_adapter_layers(model, enabled=True):
                 module.enable_adapters(enabled=enabled)
             else:
                 module.disable_adapters = not enabled
+
+
+def delete_adapter_layers(model, adapter_name):
+    from peft.tuners.tuners_utils import BaseTunerLayer
+
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            if hasattr(module, "delete_adapter"):
+                module.delete_adapter(adapter_name)
+            else:
+                raise ValueError(
+                    "The version of PEFT you are using is not compatible, please use a version that is greater than 0.6.1"
+                )
+
+    # For transformers integration - we need to pop the adapter from the config
+    if getattr(model, "_hf_peft_config_loaded", False) and hasattr(model, "peft_config"):
+        model.peft_config.pop(adapter_name, None)
+        # In case all adapters are deleted, we need to delete the config
+        # and make sure to set the flag to False
+        if len(model.peft_config) == 0:
+            del model.peft_config
+            model._hf_peft_config_loaded = None
 
 
 def set_weights_and_activate_adapters(model, adapter_names, weights):

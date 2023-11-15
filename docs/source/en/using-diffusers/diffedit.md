@@ -1,3 +1,15 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # DiffEdit
 
 [[open-in-colab]]
@@ -148,12 +160,12 @@ Check out the [generation strategy](https://huggingface.co/docs/transformers/mai
 Load the text encoder model used by the [`StableDiffusionDiffEditPipeline`] to encode the text. You'll use the text encoder to compute the text embeddings:
 
 ```py
-import torch 
-from diffusers import StableDiffusionDiffEditPipeline 
+import torch
+from diffusers import StableDiffusionDiffEditPipeline
 
 pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 pipeline.enable_vae_slicing()
 

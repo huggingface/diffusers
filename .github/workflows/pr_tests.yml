@@ -72,7 +72,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m pip install -e .[quality,test]
-        python -m pip install git+https://github.com/huggingface/accelerate.git
+        python -m pip install accelerate
 
     - name: Environment
       run: |
@@ -115,7 +115,7 @@ jobs:
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
-          examples/test_examples.py 
+          examples/test_examples.py
 
     - name: Failure short reports
       if: ${{ failure() }}
