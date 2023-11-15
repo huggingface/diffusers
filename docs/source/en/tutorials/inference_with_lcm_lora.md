@@ -34,6 +34,17 @@ This guide shows how to perform inference with LCM-LoRAs for
 - inpainting
 - animatediff
 
+Before going through this guide, we'll take a look at the general workflow. LCM-LoRAs are similar to other stable diffusion LoRAs so they can be used with any `pipeline` that supports LoRAs. 
+To do inference with LCM-LoRAs, you need to follow these steps:
+
+- Load the task specific pipeline and model.
+- Set the scheduler to [`LCMScheduler`].
+- Load the LCM-LoRA weights for the model.
+- Reduce the `guidance_scale` between `[1.0, 2.0]` and set the `num_inference_steps` between [4, 8].
+- Perform inference with the pipeline with the usual parameters.
+
+Let's look at how we can perform inference with LCM-LoRAs for different tasks.
+
 
 ## Text-to-image
 
