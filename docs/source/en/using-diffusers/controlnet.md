@@ -484,7 +484,7 @@ make_image_grid([original_image, canny_image], rows=1, cols=2)
   </div>
 </div>
 
-You need to install controlnet_aux for the human pose estimation task:
+For human pose estimation, install [controlnet_aux](https://github.com/patrickvonplaten/controlnet_aux):
   
 ```py
 # uncomment to install the necessary library in Colab
