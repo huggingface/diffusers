@@ -488,7 +488,7 @@ For human pose estimation, install [controlnet_aux](https://github.com/patrickvo
   
 ```py
 # uncomment to install the necessary library in Colab
-#!pip install -q controlnet_aux
+#!pip install -q controlnet-aux
 ```
 
 Prepare the human pose estimation conditioning:
