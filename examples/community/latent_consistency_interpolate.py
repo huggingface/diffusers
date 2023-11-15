@@ -28,19 +28,47 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import DiffusionPipeline
         >>> import torch
+        >>> import numpy as np
 
-        >>> pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
+        >>> from diffusers import DiffusionPipeline
+
+        >>> pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_interpolate")
         >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
         >>> pipe.to(torch_device="cuda", torch_dtype=torch.float32)
 
-        >>> prompt = "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k"
-
-        >>> # Can be set to 1~50 steps. LCM support fast inference even <= 4 steps. Recommend: 1~8 steps.
+        >>> prompts = ["A cat", "A dog", "A horse"]
         >>> num_inference_steps = 4
-        >>> images = pipe(prompt=prompt, num_inference_steps=num_inference_steps, guidance_scale=8.0).images
-        >>> images[0].save("image.png")
+        >>> num_interpolation_steps = 24
+        >>> seed = 1337
+
+        >>> torch.manual_seed(seed)
+        >>> np.random.seed(seed)
+
+        >>> images = pipe(
+                prompt=prompts,
+                height=512,
+                width=512,
+                num_inference_steps=num_inference_steps,
+                num_interpolation_steps=num_interpolation_steps,
+                guidance_scale=8.0,
+                embedding_interpolation_type="lerp",
+                latent_interpolation_type="slerp",
+                process_batch_size=4, # Make it higher or lower based on your GPU memory
+                generator=torch.Generator(seed),
+            )
+
+        >>> # Save the images as a video
+        >>> import imageio
+        >>> from PIL import Image
+
+        >>> def pil_to_video(images: List[Image.Image], filename: str, fps: int = 60) -> None:
+                frames = [np.array(image) for image in images]
+                with imageio.get_writer(filename, fps=fps) as video_writer:
+                    for frame in frames:
+                        video_writer.append_data(frame)
+
+        >>> pil_to_video(images, "lcm_interpolate.mp4", fps=24)
         ```
 """
 

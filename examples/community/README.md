@@ -2340,4 +2340,6 @@ images = pipe(
     process_batch_size=4, # Make it higher or lower based on your GPU memory
     generator=torch.Generator(seed),
 )
+
+assert len(images) == (len(prompts) - 1) * num_interpolation_steps
 ```
