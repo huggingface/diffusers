@@ -1006,7 +1006,7 @@ class StableDiffusionControlNetPipeline(
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
-        self._num_timesteps = timesteps
+        self._num_timesteps = len(timesteps)
 
         # 6. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
