@@ -191,7 +191,7 @@ To perform text-guided video editing (with [InstructPix2Pix](pix2pix)):
 ### DreamBooth specialization
 
 Methods **Text-To-Video**, **Text-To-Video with Pose Control** and **Text-To-Video with Edge Control**
-can run with custom [DreamBooth](../..training/dreambooth) models, as shown below for
+can run with custom [DreamBooth](../../training/dreambooth) models, as shown below for
 [Canny edge ControlNet model](https://huggingface.co/lllyasviel/sd-controlnet-canny) and
 [Avatar style DreamBooth](https://huggingface.co/PAIR/text2video-zero-controlnet-canny-avatar) model:
 
