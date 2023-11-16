@@ -55,10 +55,9 @@ jobs:
         with:
           name: test-pipelines.json
           path: reports
-
   run_fast_pipeline_tests:
     name: Torch Pipelines CPU Fast Tests
-    needs: setup_torch_cuda_pipeline_matrix
+    needs: setup_torch_cpu_pipeline_matrix
     strategy:
       fail-fast: false
       max-parallel: 1
