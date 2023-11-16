@@ -288,12 +288,15 @@ class FromSingleFileMixin:
 
 
 class FromOriginalVAEMixin:
+    """
+    Load pretrained ControlNet weights saved in the `.ckpt` or `.safetensors` format into an [`AutoencoderKL`].
+    """
+
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`AutoencoderKL`] from pretrained controlnet weights saved in the original `.ckpt` or
-        `.safetensors` format. The pipeline is format. The pipeline is set in evaluation mode (`model.eval()`) by
-        default.
+        Instantiate a [`AutoencoderKL`] from pretrained ControlNet weights saved in the original `.ckpt` or
+        `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -348,8 +351,8 @@ class FromOriginalVAEMixin:
 
         <Tip warning={true}>
 
-            Make sure to pass both `image_size` and `scaling_factor` to `from_single_file()` if you want to load
-            a VAE that does accompany a stable diffusion model of v2 or higher or SDXL.
+            Make sure to pass both `image_size` and `scaling_factor` to `from_single_file()` if you're loading
+            a VAE from SDXL or a Stable Diffusion v2 model or higher.
 
         </Tip>
 
@@ -482,10 +485,14 @@ class FromOriginalVAEMixin:
 
 
 class FromOriginalControlnetMixin:
+    """
+    Load pretrained ControlNet weights saved in the `.ckpt` or `.safetensors` format into a [`ControlNetModel`].
+    """
+
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`ControlNetModel`] from pretrained controlnet weights saved in the original `.ckpt` or
+        Instantiate a [`ControlNetModel`] from pretrained ControlNet weights saved in the original `.ckpt` or
         `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:

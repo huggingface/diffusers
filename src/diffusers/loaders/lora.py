@@ -68,8 +68,7 @@ LORA_DEPRECATION_MESSAGE = "You are using an old version of LoRA backend. This w
 
 class LoraLoaderMixin:
     r"""
-    Load LoRA layers into [`UNet2DConditionModel`] and
-    [`~transformers.CLIPTextModel`].
+    Load LoRA layers into [`UNet2DConditionModel`] and [`~transformers.CLIPTextModel`].
     """
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
@@ -94,12 +93,28 @@ class LoraLoaderMixin:
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+                A string (model id of a pretrained model hosted on the Hub), a path to a directory containing the model
+                weights saved with [`ModelMixin.save_pretrained`], or a [torch state
+                dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
+                Name for referencing the loaded adapter model. If not specified, it will use `default_{i}` where `i` is
+                the total number of adapters being loaded.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to(
+            "cuda"
+        )
+        pipeline.load_lora_weights(
+            "Yntec/pineappleAnimeMix", weight_name="pineappleAnimeMix_pineapple10.1.safetensors", adapter_name="anime"
+        )
+        ```
         """
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
@@ -141,7 +156,8 @@ class LoraLoaderMixin:
 
         <Tip warning={true}>
 
-        A1111 formatted LoRA checkpoints are supported in a limited capacity. This function is experimental and might change in the future.
+        A1111 formatted LoRA checkpoints are supported in a limited capacity. This function is experimental and might
+        change in the future.
 
         </Tip>
 
@@ -195,7 +211,9 @@ class LoraLoaderMixin:
         from diffusers import DiffusionPipeline
         import torch
 
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         pipeline.lora_state_dict("nerijs/pixel-art-xl")
         ```
         """
@@ -474,25 +492,25 @@ class LoraLoaderMixin:
         cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, adapter_name=None, _pipeline=None
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `unet`.
+        Load LoRA layers specified in `state_dict` into `unet`.
 
         Parameters:
             state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
-                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
-                encoder lora layers.
+                A standard state dict containing the LoRA layer parameters. The keys can either be indexed directly
+                into the `unet` or prefixed with an additional `unet`, which can be used to distinguish between text
+                encoder LoRA layers.
             network_alphas (`Dict[str, float]`):
                 See `LoRALinearLayer` for more details.
             unet (`UNet2DConditionModel`):
                 The UNet model to load the LoRA layers into.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
-                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
-                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
-                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
-                argument to `True` will raise an error.
+                Only load and not initialize the pretrained weights. This can speedup model loading and also tries to
+                not use more than 1x model size in CPU memory (including peak memory) while loading the model. Only
+                supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this argument to
+                `True` will raise an error.
             adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
+                Name for referencing the loaded adapter model. If not specified, it will use `default_{i}` where `i` is
+                the total number of adapters being loaded.
         """
         low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
         # If the serialization format is new (introduced in https://github.com/huggingface/diffusers/pull/2918),
@@ -586,12 +604,12 @@ class LoraLoaderMixin:
         _pipeline=None,
     ):
         """
-        This will load the LoRA layers specified in `state_dict` into `text_encoder`
+        Load LoRA layers specified in `state_dict` into `text_encoder`.
 
         Parameters:
             state_dict (`dict`):
-                A standard state dict containing the lora layer parameters. The key should be prefixed with an
-                additional `text_encoder` to distinguish between unet lora layers.
+                A standard state dict containing the LoRA layer parameters. The key should be prefixed with an
+                additional `text_encoder` to distinguish between UNet LoRA layers.
             network_alphas (`Dict[str, float]`):
                 See `LoRALinearLayer` for more details.
             text_encoder (`CLIPTextModel`):
@@ -599,13 +617,12 @@ class LoraLoaderMixin:
             prefix (`str`):
                 Expected prefix of the `text_encoder` in the `state_dict`.
             lora_scale (`float`):
-                How much to scale the output of the lora linear layer before it is added with the output of the regular
-                lora layer.
+                Scale of `LoRALinearLayer`'s output before it is added with the output of the regular LoRA layer.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
-                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
-                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
-                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
-                argument to `True` will raise an error.
+                Only load and not initialize the pretrained weights. This can speedup model loading and also tries to
+                not use more than 1x model size in CPU memory (including peak memory) while loading the model. Only
+                supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this argument to
+                `True` will raise an error.
             adapter_name (`str`, *optional*):
                 Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
                 `default_{i}` where i is the total number of adapters being loaded.
@@ -905,23 +922,11 @@ class LoraLoaderMixin:
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
                 process to avoid race conditions.
             save_function (`Callable`):
-                The function to use to save the state dict. Useful during distributed training when you need to
-                replace `torch.save` with another method. Can be configured with the environment variable
+                The function to use to save the state dict. Useful during distributed training when you need to replace
+                `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or with `pickle`.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
-        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
-        pipeline.fuse_lora(lora_scale=0.7)
-        pipeline.save_lora_weights("your-username/model")
-        ```
         """
         # Create a flat dictionary.
         state_dict = {}
@@ -1165,7 +1170,9 @@ class LoraLoaderMixin:
         from diffusers import DiffusionPipeline
         import torch
 
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
         pipeline.unload_lora_weights()
         ```
@@ -1212,7 +1219,8 @@ class LoraLoaderMixin:
             lora_scale (`float`, defaults to 1.0):
                 Controls LoRA influence on the outputs.
             safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for `NaN` values before fusing and if values are `NaN`, then don't fuse them.
+                Whether to check fused weights for `NaN` values before fusing and if values are `NaN`, then don't fuse
+                them.
 
         Example:
 
@@ -1220,7 +1228,9 @@ class LoraLoaderMixin:
         from diffusers import DiffusionPipeline
         import torch
 
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
         pipeline.fuse_lora(lora_scale=0.7)
         ```
@@ -1274,7 +1284,6 @@ class LoraLoaderMixin:
         r"""
         Unfuse the LoRA parameters from the original parameters in their corresponding blocks.
 
-
         <Tip warning={true}>
 
         This is an experimental API.
@@ -1293,7 +1302,9 @@ class LoraLoaderMixin:
         from diffusers import DiffusionPipeline
         import torch
 
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
         pipeline.fuse_lora(lora_scale=0.7)
         pipeline.unfuse_lora()
@@ -1349,14 +1360,14 @@ class LoraLoaderMixin:
         text_encoder_weights: List[float] = None,
     ):
         """
-        Only activate an adapter for the text encoder.
+        Set the currently active adapter for use in the text encoder.
 
         Args:
             adapter_names (`List[str]` or `str`):
                 The adapter to activate.
             text_encoder (`torch.nn.Module`, *optional*):
-                The text encoder module to activate the adapter layers for. If `None`, it will try to get the `text_encoder`
-                attribute.
+                The text encoder module to activate the adapter layers for. If `None`, it will try to get the
+                `text_encoder` attribute.
             text_encoder_weights (`List[float]`, *optional*):
                 The weights to use for the text encoder. If `None`, the weights are set to `1.0` for all the adapters.
 
@@ -1366,9 +1377,15 @@ class LoraLoaderMixin:
         from diffusers import DiffusionPipeline
         import torch
 
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
+        )
         pipeline.set_adapters_for_text_encoder("pixel")
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1409,7 +1426,9 @@ class LoraLoaderMixin:
         from diffusers import DiffusionPipeline
         import torch
 
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
         pipeline.disable_lora_for_text_encoder()
         ```
@@ -1437,7 +1456,9 @@ class LoraLoaderMixin:
         from diffusers import DiffusionPipeline
         import torch
 
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
         pipeline.enable_lora_for_text_encoder()
         ```
@@ -1503,7 +1524,9 @@ class LoraLoaderMixin:
         from diffusers import DiffusionPipeline
         import torch
 
-        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
         pipeline.delete_adapters("pixel")
         ```
@@ -1568,7 +1591,10 @@ class LoraLoaderMixin:
         pipeline = DiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
         ).to("cuda")
-        pipeline.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
+        )
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
         pipeline.get_list_adapters()
         ```
         """
@@ -1592,8 +1618,8 @@ class LoraLoaderMixin:
 
     def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
         """
-        Move a LoRA to a target device. Useful for offloading a LoRA to the CPU in case
-        you want to load multiple adapters and free some GPU memory.
+        Move a LoRA to a target device. Useful for offloading a LoRA to the CPU in case you want to load multiple
+        adapters and free some GPU memory.
 
         Args:
             adapter_names (`List[str]`):
@@ -1605,12 +1631,14 @@ class LoraLoaderMixin:
 
         ```py
         from diffusers import DiffusionPipeline
+        import torch
 
         pipeline = DiffusionPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
         ).to("cuda")
         pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
         pipeline.set_lora_device(["pixel"], device="cuda")
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1642,7 +1670,7 @@ class LoraLoaderMixin:
 
 
 class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
-    """This class overrides `LoraLoaderMixin` with LoRA loading/saving code that's specific to SDXL"""
+    """This class overrides [`LoraLoaderMixin`] with LoRA loading/saving code that's specific to SDXL."""
 
     # Overrride to properly handle the loading and unloading of the additional text encoder.
     def load_lora_weights(
@@ -1667,12 +1695,26 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
 
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
-                See [`~loaders.LoraLoaderMixin.lora_state_dict`].
-            adapter_name (`str`, *optional*):
-                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
-                `default_{i}` where i is the total number of adapters being loaded.
+                A string (model id of a pretrained model hosted on the Hub), a path to a directory containing the model
+                weights saved with [`ModelMixin.save_pretrained`], or a [torch state
+                dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
+            adapter_name (`str`, *optional*):
+                Name for referencing the loaded adapter model. If not specified, it will use `default_{i}` where `i` is
+                the total number of adapters being loaded.
+
+        Example:
+
+        ```py
+        from diffusers import StableDiffusionXLPipeline
+        import torch
+
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        ```
         """
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
