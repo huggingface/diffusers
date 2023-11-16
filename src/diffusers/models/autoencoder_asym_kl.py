@@ -65,11 +65,11 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str] = ("DownEncoderBlock2D",),
-        down_block_out_channels: Tuple[int] = (64,),
+        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
+        down_block_out_channels: Tuple[int, ...] = (64,),
         layers_per_down_block: int = 1,
-        up_block_types: Tuple[str] = ("UpDecoderBlock2D",),
-        up_block_out_channels: Tuple[int] = (64,),
+        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
+        up_block_out_channels: Tuple[int, ...] = (64,),
         layers_per_up_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 4,
@@ -109,7 +109,9 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self.use_tiling = False
 
     @apply_forward_hook
-    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
+    def encode(
+        self, x: torch.FloatTensor, return_dict: bool = True
+    ) -> Union[AutoencoderKLOutput, Tuple[torch.FloatTensor]]:
         h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
@@ -125,7 +127,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         image: Optional[torch.FloatTensor] = None,
         mask: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         z = self.post_quant_conv(z)
         dec = self.decoder(z, image, mask)
 
@@ -142,7 +144,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         image: Optional[torch.FloatTensor] = None,
         mask: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         decoded = self._decode(z, image, mask).sample
 
         if not return_dict:
@@ -157,7 +159,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         r"""
         Args:
             sample (`torch.FloatTensor`): Input sample.

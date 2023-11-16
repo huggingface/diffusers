@@ -70,39 +70,39 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        scaling_factor=0.18215,
-        latent_channels=4,
-        encoder_act_fn="silu",
-        encoder_block_out_channels=(128, 256, 512, 512),
-        encoder_double_z=True,
-        encoder_down_block_types=(
+        scaling_factor: float = 0.18215,
+        latent_channels: int = 4,
+        encoder_act_fn: str = "silu",
+        encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        encoder_double_z: bool = True,
+        encoder_down_block_types: Tuple[str, ...] = (
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
         ),
-        encoder_in_channels=3,
-        encoder_layers_per_block=2,
-        encoder_norm_num_groups=32,
-        encoder_out_channels=4,
-        decoder_add_attention=False,
-        decoder_block_out_channels=(320, 640, 1024, 1024),
-        decoder_down_block_types=(
+        encoder_in_channels: int = 3,
+        encoder_layers_per_block: int = 2,
+        encoder_norm_num_groups: int = 32,
+        encoder_out_channels: int = 4,
+        decoder_add_attention: bool = False,
+        decoder_block_out_channels: Tuple[int, ...] = (320, 640, 1024, 1024),
+        decoder_down_block_types: Tuple[str, ...] = (
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
             "ResnetDownsampleBlock2D",
         ),
-        decoder_downsample_padding=1,
-        decoder_in_channels=7,
-        decoder_layers_per_block=3,
-        decoder_norm_eps=1e-05,
-        decoder_norm_num_groups=32,
-        decoder_num_train_timesteps=1024,
-        decoder_out_channels=6,
-        decoder_resnet_time_scale_shift="scale_shift",
-        decoder_time_embedding_type="learned",
-        decoder_up_block_types=(
+        decoder_downsample_padding: int = 1,
+        decoder_in_channels: int = 7,
+        decoder_layers_per_block: int = 3,
+        decoder_norm_eps: float = 1e-05,
+        decoder_norm_num_groups: int = 32,
+        decoder_num_train_timesteps: int = 1024,
+        decoder_out_channels: int = 6,
+        decoder_resnet_time_scale_shift: str = "scale_shift",
+        decoder_time_embedding_type: str = "learned",
+        decoder_up_block_types: Tuple[str, ...] = (
             "ResnetUpsampleBlock2D",
             "ResnetUpsampleBlock2D",
             "ResnetUpsampleBlock2D",
@@ -304,8 +304,8 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         z: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-        num_inference_steps=2,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+        num_inference_steps: int = 2,
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         z = (z * self.config.scaling_factor - self.means) / self.stds
 
         scale_factor = 2 ** (len(self.config.block_out_channels) - 1)
@@ -333,14 +333,14 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=x_0)
 
     # Copied from diffusers.models.autoencoder_kl.AutoencoderKL.blend_v
-    def blend_v(self, a, b, blend_extent):
+    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[2], b.shape[2], blend_extent)
         for y in range(blend_extent):
             b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, y, :] * (y / blend_extent)
         return b
 
     # Copied from diffusers.models.autoencoder_kl.AutoencoderKL.blend_h
-    def blend_h(self, a, b, blend_extent):
+    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[3], b.shape[3], blend_extent)
         for x in range(blend_extent):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
@@ -407,7 +407,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         sample_posterior: bool = False,
         return_dict: bool = True,
         generator: Optional[torch.Generator] = None,
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         r"""
         Args:
             sample (`torch.FloatTensor`): Input sample.
@@ -415,6 +415,12 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
                 Whether to sample from the posterior.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+            generator (`torch.Generator`, *optional*, defaults to `None`):
+                Generator to use for sampling.
+
+        Returns:
+            [`DecoderOutput`] or `tuple`:
+                If return_dict is True, a [`DecoderOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         x = sample
         posterior = self.encode(x).latent_dist
