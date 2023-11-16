@@ -175,7 +175,6 @@ image = cv2.Canny(image, low_threshold, high_threshold)
 image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image)
-canny_image
 
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(

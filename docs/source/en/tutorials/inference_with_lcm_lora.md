@@ -20,7 +20,10 @@ From the [official website](https://latent-consistency-models.github.io/):
 
 For a more technical overview of LCMs, refer to [the paper](https://huggingface.co/papers/2310.04378).
 
-However, each model needs to be distilled separately for latent consistency distillation. The core idea with LCM-LoRA is to train just a small number of adapters, known as LoRA layers, instead of the full model. The resulting LoRAs can then be applied to any fine-tuned version of the model without distilling them separately. Additionally, the LoRAs can be applied to image-to-image, ControlNet/T2I-Adapter, inpainting, AnimateDiff. The LCM-LoRA can also be combined with other LoRAs to generate styled images in very few steps (4-8).
+However, each model needs to be distilled separately for latent consistency distillation. The core idea with LCM-LoRA is to train just a few adapter layers, the adapter being LoRA in this case. 
+This way, we don't have to train the full model and keep the number of trainable parameters manageable. The resulting LoRAs can then be applied to any fine-tuned version of the model without distilling them separately.
+Additionally, the LoRAs can be applied to image-to-image, ControlNet/T2I-Adapter, inpainting, AnimateDiff etc. 
+The LCM-LoRA can also be combined with other LoRAs to generate styled images in very few steps (4-8).
 
 LCM-LoRAs are available for [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and the [SSD-1B](https://huggingface.co/segmind/SSD-1B) model. All the checkpoints can be found in this [collection](https://huggingface.co/collections/latent-consistency/latent-consistency-models-loras-654cdd24e111e16f0865fba6).
 
@@ -34,8 +37,8 @@ This guide shows how to perform inference with LCM-LoRAs for
 - inpainting
 - AnimateDiff
 
-Before going through this guide, we'll take a look at the general workflow. LCM-LoRAs are similar to other stable diffusion LoRAs so they can be used with any `pipeline` that supports LoRAs. 
-To do inference with LCM-LoRAs, you need to follow these steps:
+Before going through this guide, we'll take a look at the general workflow for performing inference with LCM-LoRAs.
+LCM-LoRAs are similar to other Stable Diffusion LoRAs so they can be used with any [`DiffusionPipeline`] that supports LoRAs.
 
 - Load the task specific pipeline and model.
 - Set the scheduler to [`LCMScheduler`].
@@ -45,6 +48,11 @@ To do inference with LCM-LoRAs, you need to follow these steps:
 
 Let's look at how we can perform inference with LCM-LoRAs for different tasks.
 
+First, make sure you have [peft](https://github.com/huggingface/peft) installed, for better LoRA support.
+
+```bash
+pip install -U peft
+```
 
 ## Text-to-image
 
@@ -227,7 +235,6 @@ image = cv2.Canny(image, low_threshold, high_threshold)
 image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image)
-canny_image
 
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
@@ -367,7 +374,7 @@ make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 
 ## AnimateDiff
 
-[AnimateDiff](https://arxiv.org/abs/2307.04725) allows you to animate images using Stable Diffusion models. To get good results, we need to generate multiple frames (16-24), and doing this with standard SD models can be very slow. 
+[`AnimateDiff`] allows you to animate images using Stable Diffusion models. To get good results, we need to generate multiple frames (16-24), and doing this with standard SD models can be very slow. 
 LCM-LoRA can be used to speed up the process significantly, as you just need to do 4-8 steps for each frame. Let's look at how we can perform animation with LCM-LoRA and AnimateDiff.
 
 ```python
