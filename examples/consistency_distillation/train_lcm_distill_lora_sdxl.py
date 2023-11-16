@@ -1283,7 +1283,9 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
                     if global_step % args.validation_steps == 0:
-                        log_validation(vae, unet, args, accelerator, weight_dtype, global_step)
+                        log_validation(
+                            vae, args, accelerator, weight_dtype, global_step, unet=unet, is_final_validation=False
+                        )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
