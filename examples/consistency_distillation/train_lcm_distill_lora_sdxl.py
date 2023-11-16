@@ -761,7 +761,7 @@ def main(args):
             "time_emb_proj",
         ],
     )
-    unet = get_peft_model(unet, lora_config)
+    unet.add_adapter(lora_config)
 
     # 9. Handle mixed precision and device placement
     # For mixed precision training we cast all non-trainable weigths to half-precision
@@ -857,7 +857,7 @@ def main(args):
 
     # 12. Optimizer creation
     optimizer = optimizer_class(
-        unet.parameters(),
+        filter(lambda p: p.requires_grad, unet.parameters()),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -1170,15 +1170,18 @@ def main(args):
                 # Notice that we're disabling the adapter layers within the `unet` and then it becomes a
                 # regular teacher. This way, we don't have to separately initialize a teacher UNet.
                 using_cuda = "cuda" in str(accelerator.device)
+                unet.disable_adapters()
                 with torch.no_grad() and torch.autocast(
                     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
-                ) and unet.disable_adapter():
+                ):
                     cond_teacher_output = unet(
                         noisy_model_input.to(weight_dtype),
                         start_timesteps,
                         encoder_hidden_states=prompt_embeds.to(weight_dtype),
                         added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
                     ).sample
+                    # re-enable unet adapters
+                    unet.enable_adapters()
                     cond_pred_x0 = predicted_origin(
                         cond_teacher_output,
                         start_timesteps,
