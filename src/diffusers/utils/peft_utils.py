@@ -31,10 +31,10 @@ def recurse_remove_peft_layers(model):
 
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            has_base_layer_support = True if hasattr(module, "base_layer") else False
+            has_base_layer_pattern = True if hasattr(module, "base_layer") else False
             break
 
-    if has_base_layer_support:
+    if has_base_layer_pattern:
         from peft.utils import _get_submodules
 
         key_list = [key for key, _ in model.named_modules() if "lora" not in key]
