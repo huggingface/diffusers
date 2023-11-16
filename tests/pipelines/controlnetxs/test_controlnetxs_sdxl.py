@@ -86,7 +86,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
             time_embedding_mix=0.95,
             learn_embedding=True,
             size_ratio=0.5,
-            conditioning_block_sizes=(16,32),
+            conditioning_block_sizes=(16, 32),
         )
         torch.manual_seed(0)
         scheduler = EulerDiscreteScheduler(
@@ -358,7 +358,7 @@ class ControlNetSDXLPipelineXSSlowTests(unittest.TestCase):
         assert images[0].shape == (768, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.4359, 0.4335, 0.4609, 0.4515, 0.4669, 0.4494, 0.452 , 0.4493, 0.4382])
+        expected_image = np.array([0.4359, 0.4335, 0.4609, 0.4515, 0.4669, 0.4494, 0.452, 0.4493, 0.4382])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     # ToDo Umer: Implement depth and enable this test

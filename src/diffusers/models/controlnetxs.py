@@ -24,11 +24,7 @@ from torch.nn.modules.normalization import GroupNorm
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from .attention_processor import (
-    ADDED_KV_ATTENTION_PROCESSORS,
-    CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
-    AttnAddedKVProcessor,
-    AttnProcessor,
 )
 from .lora import LoRACompatibleConv
 from .modeling_utils import ModelMixin
@@ -64,6 +60,7 @@ class ControlNetXSOutput(BaseOutput):
 
 # todo umer: assert in pipe that conditioning_block_sizes matches vae downblocks
 
+
 # todo umer: add sth like FromOriginalControlnetMixin
 class ControlNetXSModel(ModelMixin, ConfigMixin):
     r"""
@@ -79,7 +76,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         conditioning_channels (`int`, defaults to 3):
             Number of channels of conditioning input (e.g. an image)
         controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
-            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.  
+            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
         conditioning_block_sizes (`Tuple[int]`, defaults to `(16,32,96,256))`):
                 TODO
         time_embedding_input_dim (`int`, defaults to 320):
@@ -104,7 +101,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             learn_embedding=True,
             size_ratio=0.1,
             dim_attention_heads=64,
-            conditioning_block_sizes = (16,32,96,256),
+            conditioning_block_sizes=(16, 32, 96, 256),
         )
 
     @classmethod
@@ -149,7 +146,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         conditioning_channels: int = 3,
-        conditioning_block_sizes: Tuple[int] = (16,32,96,256),
+        conditioning_block_sizes: Tuple[int] = (16, 32, 96, 256),
         controlnet_conditioning_channel_order: str = "rgb",
         time_embedding_input_dim: int = 320,
         time_embedding_dim: int = 1280,
@@ -321,21 +318,23 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # 5 - Create conditioning hint embedding
         conditioning_emb_layers = [
             nn.Conv2d(conditioning_channels, conditioning_block_sizes[0], 3, padding=1),
-            nn.SiLU()
+            nn.SiLU(),
         ]
 
-        for i in range(len(conditioning_block_sizes)-1):
+        for i in range(len(conditioning_block_sizes) - 1):
             in_channels = conditioning_block_sizes[i]
-            out_channels = conditioning_block_sizes[i+1]
+            out_channels = conditioning_block_sizes[i + 1]
 
             conditioning_emb_layers += [
                 nn.Conv2d(in_channels, in_channels, 3, padding=1, stride=1),
                 nn.SiLU(),
                 nn.Conv2d(in_channels, out_channels, 3, padding=1, stride=2),
-                nn.SiLU()
+                nn.SiLU(),
             ]
 
-        conditioning_emb_layers.append(zero_module(nn.Conv2d(conditioning_block_sizes[-1], block_out_channels[0], 3, padding=1)))
+        conditioning_emb_layers.append(
+            zero_module(nn.Conv2d(conditioning_block_sizes[-1], block_out_channels[0], 3, padding=1))
+        )
 
         self.input_hint_block = nn.Sequential(*conditioning_emb_layers)
 
@@ -349,7 +348,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         cls,
         unet: UNet2DConditionModel,
         conditioning_channels: int = 3,
-        conditioning_block_sizes: Tuple[int] = (16,32,96,256),
+        conditioning_block_sizes: Tuple[int] = (16, 32, 96, 256),
         controlnet_conditioning_channel_order: str = "rgb",
         learn_embedding: bool = False,
         time_embedding_mix: float = 1.0,
@@ -382,8 +381,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             size_ratio (float, *optional*):
                 When given, block_out_channels is set to a relative fraction of the base model's block_out_channels.
                 Either this or `size_ratio` must be given.
-            norm_num_groups (int, *optional*, defaults to `None`): The number of groups to use for the normalization of the control unet.
-                If `None`, `int(unet.config.norm_num_groups * size_ratio)` is taken.
+            norm_num_groups (int, *optional*, defaults to `None`):
+                The number of groups to use for the normalization of the control unet. If `None`,
+                `int(unet.config.norm_num_groups * size_ratio)` is taken.
 
         """
 
