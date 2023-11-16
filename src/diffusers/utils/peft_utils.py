@@ -23,6 +23,10 @@ from packaging import version
 from .import_utils import is_peft_available, is_torch_available
 
 
+if is_torch_available():
+    import torch
+
+
 def recurse_remove_peft_layers(model):
     r"""
     Recursively replace all instances of `LoraLayer` with corresponding new layers in `model`.
@@ -49,9 +53,6 @@ def recurse_remove_peft_layers(model):
     else:
         # This is for backwards compatibility with PEFT <= 0.6.2.
         # TODO can be removed once that PEFT version is no longer supported.
-        if is_torch_available():
-            import torch
-
         from peft.tuners.lora import LoraLayer
 
         for name, module in model.named_children():
