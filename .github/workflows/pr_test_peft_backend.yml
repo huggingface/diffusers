@@ -26,6 +26,7 @@ jobs:
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_lora
+        peft-version: ["main", "latest"]
 
 
     name: ${{ matrix.config.name }}
@@ -52,7 +53,11 @@ jobs:
         python -m pip install -e .[quality,test]
         python -m pip install git+https://github.com/huggingface/accelerate.git
         python -m pip install -U git+https://github.com/huggingface/transformers.git
-        python -m pip install -U git+https://github.com/huggingface/peft.git
+        if [ "${{ matrix.peft-version }}" == "main" ]; then
+            pip install -U git+https://github.com/huggingface/peft.git
+        else
+            pip install -U peft
+        fi
 
     - name: Environment
       run: |
