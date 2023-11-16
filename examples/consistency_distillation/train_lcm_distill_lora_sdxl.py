@@ -1169,7 +1169,7 @@ def main(args):
                 using_cuda = "cuda" in str(accelerator.device)
                 unet.disable_adapters()
                 with torch.no_grad() and torch.autocast(
-                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16
+                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 ):
                     cond_teacher_output = unet(
                         noisy_model_input.to(weight_dtype),
@@ -1217,7 +1217,7 @@ def main(args):
 
                 # Get target LCM prediction on x_prev, w, c, t_n
                 with torch.no_grad() and torch.autocast(
-                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16
+                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 ):
                     target_noise_pred = unet(
                         x_prev.float(),
