@@ -20,7 +20,6 @@ from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
-from ..umer_debug_logger import udl
 from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate
 from .attention import BasicTransformerBlock
 from .embeddings import CaptionProjection, PatchEmbed
@@ -436,8 +435,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             output = hidden_states.reshape(
                 shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
             )
-
-        udl.log_if("proj_out", output, condition="SUBBLOCK-MINUS-1")
 
         if not return_dict:
             return (output,)
