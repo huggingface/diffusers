@@ -73,6 +73,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .utils import AttnProcsLayers
 
         if is_transformers_available():
+            from .ip_adapter import IPAdapterMixin
             from .lora import LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin
