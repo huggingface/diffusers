@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
+import argparse
 import gc
 import hashlib
 import itertools
@@ -23,20 +24,19 @@ import shutil
 import warnings
 from pathlib import Path
 
-import argparse
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
-from PIL import Image
-from PIL.ImageOps import exif_transpose
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
+from PIL import Image
+from PIL.ImageOps import exif_transpose
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -53,9 +53,10 @@ from diffusers import (
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.models.lora import LoRALinearLayer, text_encoder_lora_state_dict
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import unet_lora_state_dict, compute_snr
+from diffusers.training_utils import compute_snr, unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.24.0.dev0")
@@ -64,8 +65,7 @@ logger = get_logger(__name__)
 
 
 def save_model_card(
-        repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None,
-        vae_path=None
+    repo_id: str, images=None, base_model=str, train_text_encoder=False, prompt=str, repo_folder=None, vae_path=None
 ):
     img_str = ""
     for i, image in enumerate(images):
@@ -101,7 +101,7 @@ Special VAE used for training: {vae_path}.
 
 
 def import_model_class_from_model_name_or_path(
-        pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
         pretrained_model_name_or_path, subfolder=subfolder, revision=revision
@@ -177,9 +177,12 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
-        "--image_column", type=str, default="image", help="The column of the dataset containing the target image. By "
-                                                          "default, the standard Image Dataset maps out 'file_name' "
-                                                          "to 'image'."
+        "--image_column",
+        type=str,
+        default="image",
+        help="The column of the dataset containing the target image. By "
+        "default, the standard Image Dataset maps out 'file_name' "
+        "to 'image'.",
     )
     parser.add_argument(
         "--caption_column",
@@ -188,10 +191,7 @@ def parse_args(input_args=None):
         help="The column of the dataset containing the instance prompt for each image",
     )
 
-    parser.add_argument("--repeats",
-                        type=int,
-                        default=100,
-                        help="How many times to repeat the training data.")
+    parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
 
     parser.add_argument(
         "--class_data_dir",
@@ -374,7 +374,7 @@ def parse_args(input_args=None):
         "--snr_gamma",
         type=float,
         help="SNR weighting gamma to be used if rebalancing the loss. Recommended value is 5.0. "
-             "More details here: https://arxiv.org/abs/2303.09556.",
+        "More details here: https://arxiv.org/abs/2303.09556.",
     )
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
@@ -399,36 +399,53 @@ def parse_args(input_args=None):
         "--optimizer",
         type=str,
         default="prodigy",
-        help=(
-            'The optimizer type to use. Choose between ["AdamW", "prodigy"]'
-        ),
+        help=('The optimizer type to use. Choose between ["AdamW", "prodigy"]'),
     )
 
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes. Ignored if "
-                                                     "optimizer is not set to AdamW"
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes. Ignored if " "optimizer is not set to AdamW",
     )
 
-    parser.add_argument("--adam_beta1", type=float, default=0.9,
-                        help="The beta1 parameter for the Adam and Prodigy optimizers.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999,
-                        help="The beta2 parameter for the Adam and Prodigy optimizers.")
-    parser.add_argument("--prodigy_beta3", type=float, default=None,
-                        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
-                             "uses the value of square root of beta2")
-    parser.add_argument("--prodigy_decouple", type=bool, default=True,
-                        help="Use AdamW style decoupled weight decay")
+    parser.add_argument(
+        "--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam and Prodigy optimizers."
+    )
+    parser.add_argument(
+        "--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam and Prodigy optimizers."
+    )
+    parser.add_argument(
+        "--prodigy_beta3",
+        type=float,
+        default=None,
+        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
+        "uses the value of square root of beta2",
+    )
+    parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
-    parser.add_argument("--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for "
-                                                                                            "text_encoder")
+    parser.add_argument(
+        "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for " "text_encoder"
+    )
 
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08,
-                        help="Epsilon value for the Adam optimizer and Prodigy optimizers.")
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer and Prodigy optimizers.",
+    )
 
-    parser.add_argument("--prodigy_use_bias_correction ", type=bool, default=True,
-                        help="Turn on Adam's bias correction. True by default.")
-    parser.add_argument("--prodigy_safeguard_warmup ", type=bool, default=True,
-                        help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default.")
+    parser.add_argument(
+        "--prodigy_use_bias_correction ",
+        type=bool,
+        default=True,
+        help="Turn on Adam's bias correction. True by default.",
+    )
+    parser.add_argument(
+        "--prodigy_safeguard_warmup ",
+        type=bool,
+        default=True,
+        help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default.",
+    )
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
@@ -533,15 +550,15 @@ class DreamBoothDataset(Dataset):
     """
 
     def __init__(
-            self,
-            instance_data_root,
-            instance_prompt,
-            class_prompt,
-            class_data_root=None,
-            class_num=None,
-            size=1024,
-            repeats=1,
-            center_crop=False,
+        self,
+        instance_data_root,
+        instance_prompt,
+        class_prompt,
+        class_data_root=None,
+        class_num=None,
+        size=1024,
+        repeats=1,
+        center_crop=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -557,7 +574,7 @@ class DreamBoothDataset(Dataset):
             # See more about loading custom images at
             # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
             dataset = load_dataset(
-                instance_dataset_name,
+                args.dataset_name,
                 args.dataset_config_name,
                 cache_dir=args.cache_dir,
             )
@@ -565,9 +582,10 @@ class DreamBoothDataset(Dataset):
             if not self.instance_data_root.exists():
                 raise ValueError("Instance images root doesn't exists.")
 
-            dataset = load_dataset(instance_data_root,
-                                   cache_dir=args.cache_dir,
-                                   )
+            dataset = load_dataset(
+                instance_data_root,
+                cache_dir=args.cache_dir,
+            )
 
         # Preprocessing the datasets.
         column_names = dataset["train"].column_names
@@ -585,9 +603,11 @@ class DreamBoothDataset(Dataset):
         self.instance_images_path = dataset["train"][image_column]
 
         if args.caption_column is None:
-            logger.info(f"No caption column provided, defaulting to instance_prompt for all images. If your dataset "
-                        f"contains captions/prompts for the images, make sure to specify the "
-                        f"column as --caption_column")
+            logger.info(
+                "No caption column provided, defaulting to instance_prompt for all images. If your dataset "
+                "contains captions/prompts for the images, make sure to specify the "
+                "column as --caption_column"
+            )
             self.custom_instance_prompts = None
         else:
             if args.caption_column not in column_names:
@@ -797,7 +817,7 @@ def main(args):
             pipeline.to(accelerator.device)
 
             for example in tqdm(
-                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
                 images = pipeline(example["prompt"]).images
 
@@ -1018,33 +1038,44 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Optimization parameters
     unet_lora_parameters_with_lr = {"params": unet_lora_parameters, "lr": args.learning_rate}
     if args.train_text_encoder:
         # different learning rate for text encoder and unet
-        text_lora_parameters_one_with_lr = {"params": text_lora_parameters_one,
-                                            "weight_decay": args.adam_weight_decay_text_encoder,
-                                            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate}
-        text_lora_parameters_two_with_lr = {"params": text_lora_parameters_two,
-                                            "weight_decay": args.adam_weight_decay_text_encoder,
-                                            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate}
-        params_to_optimize = [unet_lora_parameters_with_lr, text_lora_parameters_one_with_lr,
-                              text_lora_parameters_two_with_lr]
+        text_lora_parameters_one_with_lr = {
+            "params": text_lora_parameters_one,
+            "weight_decay": args.adam_weight_decay_text_encoder,
+            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+        }
+        text_lora_parameters_two_with_lr = {
+            "params": text_lora_parameters_two,
+            "weight_decay": args.adam_weight_decay_text_encoder,
+            "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
+        }
+        params_to_optimize = [
+            unet_lora_parameters_with_lr,
+            text_lora_parameters_one_with_lr,
+            text_lora_parameters_two_with_lr,
+        ]
     else:
         params_to_optimize = [unet_lora_parameters_with_lr]
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
-        logger.warn(f"Unsupported choice of optimizer: {args.optimizer}.Supported optimizers include [adamW, prodigy]."
-                    "Defaulting to adamW")
+        logger.warn(
+            f"Unsupported choice of optimizer: {args.optimizer}.Supported optimizers include [adamW, prodigy]."
+            "Defaulting to adamW"
+        )
         args.optimizer = "adamw"
 
     if args.use_8bit_adam and not args.optimizer.lower() == "adamw":
-        logger.warn(f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
-                    f"set to {args.optimizer.lower()}")
+        logger.warn(
+            f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
+            f"set to {args.optimizer.lower()}"
+        )
 
     if args.optimizer.lower() == "adamw":
         if args.use_8bit_adam:
@@ -1076,14 +1107,13 @@ def main(args):
 
         if args.learning_rate <= 0.1:
             logger.warn(
-                f"Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
+                "Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
             )
         if args.train_text_encoder and args.text_encoder_lr:
             logger.warn(
                 f"Learning rates were provided both for the unet and the text encoder- e.g. text_encoder_lr:"
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
-
             )
             # changes the learning rate of text_encoder_parameters_one and text_encoder_parameters_two to be
             # --learning_rate
@@ -1303,10 +1333,10 @@ def main(args):
 
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
-
                     if not args.train_text_encoder:
                         prompt_embeds, unet_add_text_embeds = compute_text_embeddings(
-                            prompts, text_encoders, tokenizers)
+                            prompts, text_encoders, tokenizers
+                        )
                         if args.with_prior_preservation:
                             prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
                             unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
@@ -1368,7 +1398,8 @@ def main(args):
                         text_input_ids_list=[tokens_one, tokens_two],
                     )
                     unet_added_conditions.update(
-                        {"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat_text_embeds, 1)})
+                        {"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat_text_embeds, 1)}
+                    )
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
                         noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
@@ -1398,8 +1429,7 @@ def main(args):
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)
                     base_weight = (
-                            torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[
-                                0] / snr
+                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                     )
 
                     if noise_scheduler.config.prediction_type == "v_prediction":
