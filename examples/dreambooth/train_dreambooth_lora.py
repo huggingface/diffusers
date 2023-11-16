@@ -1271,14 +1271,14 @@ def main(args):
 
         if args.train_text_encoder:
             text_encoder = accelerator.unwrap_model(text_encoder)
-            text_encoder_lora_layers = get_peft_model_state_dict(text_encoder)
+            text_encoder_state_dict = get_peft_model_state_dict(text_encoder)
         else:
-            text_encoder_lora_layers = None
+            text_encoder_state_dict = None
 
         LoraLoaderMixin.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_state_dict,
-            text_encoder_lora_layers=text_encoder_lora_layers,
+            text_encoder_lora_layers=text_encoder_state_dict,
         )
 
         # Final inference
