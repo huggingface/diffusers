@@ -173,6 +173,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             attention_head_dim=attention_head_dim,
             in_channels=block_out_channels[0],
             num_layers=1,
+            norm_num_groups=norm_num_groups,
         )
 
         # class embedding

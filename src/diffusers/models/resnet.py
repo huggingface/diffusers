@@ -985,7 +985,7 @@ class TemporalConvLayer(nn.Module):
         dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
     """
 
-    def __init__(self, in_dim: int, out_dim: Optional[int] = None, dropout: float = 0.0):
+    def __init__(self, in_dim: int, out_dim: Optional[int] = None, dropout: float = 0.0, norm_num_groups: int = 32):
         super().__init__()
         out_dim = out_dim or in_dim
         self.in_dim = in_dim
@@ -993,22 +993,22 @@ class TemporalConvLayer(nn.Module):
 
         # conv layers
         self.conv1 = nn.Sequential(
-            nn.GroupNorm(32, in_dim), nn.SiLU(), nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0))
+            nn.GroupNorm(norm_num_groups, in_dim), nn.SiLU(), nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0))
         )
         self.conv2 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv3 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv4 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
