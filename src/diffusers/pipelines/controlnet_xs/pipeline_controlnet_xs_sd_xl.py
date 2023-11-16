@@ -133,8 +133,8 @@ class StableDiffusionXLControlNetXSPipeline(
             watermarker is used.
     """
     # leave controlnet out on purpose because it iterates with unet
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae->controlnet"
+    _optional_components = ["tokenizer_2", "text_encoder_2"]
 
     def __init__(
         self,
@@ -638,10 +638,8 @@ class StableDiffusionXLControlNetXSPipeline(
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        print('Image dims:', image.shape)
         image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
-        print('Latents dims:', image.shape)
 
         if image_batch_size == 1:
             repeat_by = batch_size
@@ -661,7 +659,6 @@ class StableDiffusionXLControlNetXSPipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
-        print("Preparing latents: shape to be =",shape)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -675,8 +672,7 @@ class StableDiffusionXLControlNetXSPipeline(
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
-        print("Preparing latents: shape =",latents.shape)
-        
+
         return latents
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids

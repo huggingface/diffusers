@@ -62,6 +62,8 @@ class ControlNetXSOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
+# todo umer: assert in pipe that conditioning_block_sizes matches vae downblocks
+
 # todo umer: add sth like FromOriginalControlnetMixin
 class ControlNetXSModel(ModelMixin, ConfigMixin):
     r"""
@@ -77,7 +79,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         conditioning_channels (`int`, defaults to 3):
             Number of channels of conditioning input (e.g. an image)
         controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
-            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
+            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.  
+        conditioning_block_sizes (`Tuple[int]`, defaults to `(16,32,96,256))`):
+                TODO
         time_embedding_input_dim (`int`, defaults to 320):
             Dimension of input into time embedding. Needs to be same as in the base model.
         time_embedding_dim (`int`, defaults to 1280):
@@ -100,6 +104,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             learn_embedding=True,
             size_ratio=0.1,
             dim_attention_heads=64,
+            conditioning_block_sizes = (16,32,96,256),
         )
 
     @classmethod
@@ -314,23 +319,25 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             )
 
         # 5 - Create conditioning hint embedding
-        self.input_hint_block = nn.Sequential(
-            nn.Conv2d(conditioning_channels, 16, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(16, 16, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(16, 32, 3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(32, 32, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(32, 96, 3, padding=1, stride=2),
-            nn.SiLU(),
-            nn.Conv2d(96, 96, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv2d(96, 256, 3, padding=1, stride=2),
-            nn.SiLU(),
-            zero_module(nn.Conv2d(256, block_out_channels[0], 3, padding=1)),
-        )
+        conditioning_emb_layers = [
+            nn.Conv2d(conditioning_channels, conditioning_block_sizes[0], 3, padding=1),
+            nn.SiLU()
+        ]
+
+        for i in range(len(conditioning_block_sizes)-1):
+            in_channels = conditioning_block_sizes[i]
+            out_channels = conditioning_block_sizes[i+1]
+
+            conditioning_emb_layers += [
+                nn.Conv2d(in_channels, in_channels, 3, padding=1, stride=1),
+                nn.SiLU(),
+                nn.Conv2d(in_channels, out_channels, 3, padding=1, stride=2),
+                nn.SiLU()
+            ]
+
+        conditioning_emb_layers.append(zero_module(nn.Conv2d(conditioning_block_sizes[-1], block_out_channels[0], 3, padding=1)))
+
+        self.input_hint_block = nn.Sequential(*conditioning_emb_layers)
 
         # In the mininal implementation setting, we only need the control model up to the mid block
         del self.control_model.up_blocks
@@ -342,6 +349,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         cls,
         unet: UNet2DConditionModel,
         conditioning_channels: int = 3,
+        conditioning_block_sizes: Tuple[int] = (16,32,96,256),
         controlnet_conditioning_channel_order: str = "rgb",
         learn_embedding: bool = False,
         time_embedding_mix: float = 1.0,
@@ -359,6 +367,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 The UNet model we want to control. The dimensions of the ControlNetXSModel will be adapted to it.
             conditioning_channels (`int`, defaults to 3):
                 Number of channels of conditioning input (e.g. an image)
+            conditioning_block_sizes (`Tuple[int]`, defaults to `(16,32,96,256))`):
+                TODO
             controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
                 The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
             learn_embedding (`bool`, defaults to `False`):
@@ -434,36 +444,20 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             time_embedding_mix=time_embedding_mix,
             learn_embedding=learn_embedding,
             base_model_channel_sizes=ControlNetXSModel.gather_subblock_sizes(unet, base_or_control="base"),
+            conditioning_block_sizes=conditioning_block_sizes,
         )
 
         return cls(**kwargs)
 
     @property
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
             `dict` of attention processors: A dictionary containing all attention processors used in the model with
             indexed by its weight name.
         """
-        # set recursively
-        processors = {}
+        return self.control_model.attn_processors
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
-            if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
-
-            for sub_name, child in module.named_children():
-                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
-
-            return processors
-
-        for name, module in self.named_children():
-            fn_recursive_add_processors(name, module, processors)
-
-        return processors
-
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(
         self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
     ):
@@ -479,44 +473,14 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 processor. This is strongly recommended when setting trainable attention processors.
 
         """
-        count = len(self.attn_processors.keys())
+        self.control_model.set_attn_processor(processor, _remove_lora)
 
-        if isinstance(processor, dict) and len(processor) != count:
-            raise ValueError(
-                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
-                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
-            )
-
-        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
-            if hasattr(module, "set_processor"):
-                if not isinstance(processor, dict):
-                    module.set_processor(processor, _remove_lora=_remove_lora)
-                else:
-                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
-
-            for sub_name, child in module.named_children():
-                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
-
-        for name, module in self.named_children():
-            fn_recursive_attn_processor(name, module, processor)
-
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnAddedKVProcessor()
-        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnProcessor()
-        else:
-            raise ValueError(
-                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
-            )
+        self.control_model.set_default_attn_processor()
 
-        self.set_attn_processor(processor, _remove_lora=True)
-
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
     def set_attention_slice(self, slice_size):
         r"""
         Enable sliced attention computation.
@@ -531,57 +495,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
                 must be a multiple of `slice_size`.
         """
-        sliceable_head_dims = []
+        self.control_model.set_attention_slice(slice_size)
 
-        def fn_recursive_retrieve_sliceable_dims(module: torch.nn.Module):
-            if hasattr(module, "set_attention_slice"):
-                sliceable_head_dims.append(module.sliceable_head_dim)
-
-            for child in module.children():
-                fn_recursive_retrieve_sliceable_dims(child)
-
-        # retrieve number of attention layers
-        for module in self.children():
-            fn_recursive_retrieve_sliceable_dims(module)
-
-        num_sliceable_layers = len(sliceable_head_dims)
-
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = [dim // 2 for dim in sliceable_head_dims]
-        elif slice_size == "max":
-            # make smallest slice possible
-            slice_size = num_sliceable_layers * [1]
-
-        slice_size = num_sliceable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
-
-        if len(slice_size) != len(sliceable_head_dims):
-            raise ValueError(
-                f"You have provided {len(slice_size)}, but {self.config} has {len(sliceable_head_dims)} different"
-                f" attention layers. Make sure to match `len(slice_size)` to be {len(sliceable_head_dims)}."
-            )
-
-        for i in range(len(slice_size)):
-            size = slice_size[i]
-            dim = sliceable_head_dims[i]
-            if size is not None and size > dim:
-                raise ValueError(f"size {size} has to be smaller or equal to {dim}.")
-
-        # Recursively walk through all the children.
-        # Any children which exposes the set_attention_slice method
-        # gets the message
-        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
-            if hasattr(module, "set_attention_slice"):
-                module.set_attention_slice(slice_size.pop())
-
-            for child in module.children():
-                fn_recursive_set_attention_slice(child, slice_size)
-
-        reversed_slice_size = list(reversed(slice_size))
-        for module in self.children():
-            fn_recursive_set_attention_slice(module, reversed_slice_size)
-
+    # todo umer: understand & either remove or adapt
     # Copied from diffusers.models.controlnet.ControlNetModel._set_gradient_checkpointing
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
