@@ -17,8 +17,8 @@ import os
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
 from packaging import version
 
-from .import_utils import is_peft_available, is_transformers_available
 from ..dependency_versions_check import dep_version_check
+from .import_utils import is_peft_available, is_transformers_available
 
 
 default_cache_path = HUGGINGFACE_HUB_CACHE
