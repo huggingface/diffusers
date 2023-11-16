@@ -18,6 +18,7 @@ from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
 from packaging import version
 
 from .import_utils import is_peft_available, is_transformers_available
+from ..dependency_versions_check import dep_version_check
 
 
 default_cache_path = HUGGINGFACE_HUB_CACHE
@@ -50,3 +51,6 @@ _required_transformers_version = is_transformers_available() and version.parse(
 ) >= version.parse(MIN_TRANSFORMERS_VERSION)
 
 USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
+
+if USE_PEFT_BACKEND:
+    dep_version_check("peft")
