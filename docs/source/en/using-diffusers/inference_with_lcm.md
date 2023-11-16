@@ -158,11 +158,12 @@ For this example, we'll use the [LCM_Dreamshaper_v7](https://huggingface.co/Simi
 
 ```python
 import torch
-from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, LCMScheduler
-from diffusers.utils import load_image
-from PIL import Image
 import cv2
 import numpy as np
+from PIL import Image
+
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, LCMScheduler
+from diffusers.utils import load_image, make_image_grid
 
 image = load_image(
     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
@@ -194,8 +195,6 @@ image = pipe(
     "the mona lisa",
     image=canny_image,
     num_inference_steps=4,
-    guidance_scale=1,
-    controlnet_conditioning_scale=0.75,
     generator=generator,
 ).images[0]
 make_image_grid([canny_image, image], rows=1, cols=2)
@@ -235,7 +234,7 @@ high_threshold = 200
 image = cv2.Canny(image, low_threshold, high_threshold)
 image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
-canny_image = Image.fromarray(image).resize((1024, 1024))
+canny_image = Image.fromarray(image).resize((1024, 1216))
 
 # load adapter
 adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, varient="fp16").to("cuda")
@@ -264,12 +263,12 @@ image = pipe(
     negative_prompt=negative_prompt,
     image=canny_image,
     num_inference_steps=4,
-    guidance_scale=1.5, 
+    guidance_scale=5,
     adapter_conditioning_scale=0.8, 
     adapter_conditioning_factor=1,
     generator=generator,
 ).images[0]
-make_image_grid([canny_image, image], rows=1, cols=2)
+grid = make_image_grid([canny_image, image], rows=1, cols=2)
 ```
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_full_sdxl_t2iadapter.png)
