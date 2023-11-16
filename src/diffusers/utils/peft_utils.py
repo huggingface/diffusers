@@ -29,9 +29,10 @@ def recurse_remove_peft_layers(model):
     """
     from peft.tuners.tuners_utils import BaseTunerLayer
 
+    has_base_layer_pattern = False
     for module in model.modules():
         if isinstance(module, BaseTunerLayer):
-            has_base_layer_pattern = True if hasattr(module, "base_layer") else False
+            has_base_layer_pattern = hasattr(module, "base_layer")
             break
 
     if has_base_layer_pattern:
@@ -46,6 +47,8 @@ def recurse_remove_peft_layers(model):
             if hasattr(target, "base_layer"):
                 setattr(parent, target_name, target.get_base_layer())
     else:
+        # This is for backwards compatibility with PEFT <= 0.6.2.
+        # TODO can be removed once that PEFT version is no longer supported.
         if is_torch_available():
             import torch
 
