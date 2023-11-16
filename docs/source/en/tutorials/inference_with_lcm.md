@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Performing inference with LCM
+# Latent Consistency Model
 
 Latent Consistency Models (LCM) enable quality image generation in typically 2-4 steps making it possible to use diffusion models in almost real-time settings. 
 
@@ -26,11 +26,11 @@ This guide shows how to perform inference with LCMs for
 - text-to-image
 - image-to-image
 - combined with style LoRAs
-- controlent/t2iadapter
+- ControlNet/T2I-Adapter
 
 ## Text-to-image
 
-You'll use the [`StableDiffusionXLPipeline`] pipeline with the scheduler: [`LCMScheduler`] and then load the LCM-LoRA. Together with the LCM-LoRA and the scheduler, the pipeline enables a fast inference workflow overcoming the slow iterative nature of diffusion models.
+You'll use the [`StableDiffusionXLPipeline`] pipeline with the [`LCMScheduler`] and then load the LCM-LoRA. Together with the LCM-LoRA and the scheduler, the pipeline enables a fast inference workflow, overcoming the slow iterative nature of diffusion models.
 
 ```python
 from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, LCMScheduler
@@ -66,7 +66,7 @@ Some details to keep in mind:
 
 ## Image-to-image
 
-LCMs can be applied to image-to-image tasks too. Let's look at how we can perform image-to-image generation with LCMs. For this example we'll use the [LCM_Dreamshaper_v7](https://huggingface.co/SimianLuo/LCM_Dreamshaper_v7) model, but the same steps can be applied to other LCM models as well.
+LCMs can be applied to image-to-image tasks too. For this example, we'll use the [LCM_Dreamshaper_v7](https://huggingface.co/SimianLuo/LCM_Dreamshaper_v7) model, but the same steps can be applied to other LCM models as well.
 
 ```python
 import torch
@@ -110,14 +110,14 @@ make_image_grid([init_image, image], rows=1, cols=2)
 
 <Tip>
 
-Based on your prompt and the image you provide, you can get different results. To get the best results, we recommend you to try different values for `num_inference_steps`, `strength` and `guidance_scale` parameters and choose the best one.
+You can get different results based on your prompt and the image you provide. To get the best results, we recommend trying different values for `num_inference_steps`, `strength`, and `guidance_scale` parameters and choose the best one.
 
 </Tip>
 
 
-## Combined with style LoRAs
+## Combine with style LoRAs
 
-LCMs can be used with other style LoRAs, generating styled-images in very few steps. (4-8). In the following example we'll use the [papercut LoRA](TheLastBen/Papercut_SDXL). 
+LCMs can be used with other styled LoRAs to generate styled-images in very few steps (4-8). In the following example, we'll use the [papercut LoRA](TheLastBen/Papercut_SDXL). 
 
 ```python
 from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, LCMScheduler
@@ -147,12 +147,12 @@ image
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_full_sdx_lora_mix.png)
 
 
-## Controlnet/t2iadapter
+## ControlNet/T2I-Adapter
 
-LCM can be used with controlnet/t2iadapter. Let's look at how we can perform inference with controlnet/t2iadapter. 
+Let's look at how we can perform inference with ControlNet/T2I-Adapter and a LCM. 
 
-### Controlnet with SD-v1-5 and LCM-LoRA
-For this example we'll use the [LCM_Dreamshaper_v7](https://huggingface.co/SimianLuo/LCM_Dreamshaper_v7) model with canny controlnet, but the same steps can be applied to other LCM models as well.
+### ControlNet
+For this example, we'll use the [LCM_Dreamshaper_v7](https://huggingface.co/SimianLuo/LCM_Dreamshaper_v7) model with canny ControlNet, but the same steps can be applied to other LCM models as well.
 
 ```python
 import torch
@@ -204,12 +204,12 @@ make_image_grid([canny_image, image], rows=1, cols=2)
 
 
 <Tip>
-The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one. 
+The inference parameters in this example might not work for all examples, so we recommend trying different values for the `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale`, and `cross_attention_kwargs` parameters and choosing the best one. 
 </Tip>
 
-### T2IAdapter with SDXL and LCM-LoRA
+### T2I-Adapter
 
-This example shows how to use the `lcm-sdxl` with the [Canny T2IAdapter](TencentARC/t2i-adapter-canny-sdxl-1.0).
+This example shows how to use the `lcm-sdxl` with the [Canny T2I-Adapter](TencentARC/t2i-adapter-canny-sdxl-1.0).
 
 Before running this example, you need to install the `controlnet_aux` package.
 

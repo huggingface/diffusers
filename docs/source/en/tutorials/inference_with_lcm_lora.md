@@ -20,7 +20,7 @@ From the [official website](https://latent-consistency-models.github.io/):
 
 For a more technical overview of LCMs, refer to [the paper](https://huggingface.co/papers/2310.04378).
 
-However, for latent consistency distillation, each model needs to be distilled separately. The core idea with LCM-LoRA is to train just a small number of adapters, known as LoRA layers, instead of the full model. The resulting LoRAs can then be applied to any fine-tuned version of the model without having to distil them separately. Additionally, the LoRAs can be applied to other tasks, such as image-to-image generation, controlnet/t2iadapter, inpainting, animatediff. The LCM-LoRA can also be combined with other style LoRAs, generating styled-images in very few steps. (4-8)
+However, each model needs to be distilled separately for latent consistency distillation. The core idea with LCM-LoRA is to train just a small number of adapters, known as LoRA layers, instead of the full model. The resulting LoRAs can then be applied to any fine-tuned version of the model without distilling them separately. Additionally, the LoRAs can be applied to image-to-image, ControlNet/T2I-Adapter, inpainting, AnimateDiff. The LCM-LoRA can also be combined with other LoRAs to generate styled images in very few steps (4-8).
 
 LCM-LoRAs are available for [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), and the [SSD-1B](https://huggingface.co/segmind/SSD-1B) model. All the checkpoints can be found in this [collection](https://huggingface.co/collections/latent-consistency/latent-consistency-models-loras-654cdd24e111e16f0865fba6).
 
@@ -29,10 +29,10 @@ For more details about LCM-LoRA, refer to [the technical report](https://hugging
 This guide shows how to perform inference with LCM-LoRAs for 
 - text-to-image
 - image-to-image
-- combined with style LoRAs
-- controlent/t2iadapter
+- combined with styled LoRAs
+- ControlNet/T2I-Adapter
 - inpainting
-- animatediff
+- AnimateDiff
 
 Before going through this guide, we'll take a look at the general workflow. LCM-LoRAs are similar to other stable diffusion LoRAs so they can be used with any `pipeline` that supports LoRAs. 
 To do inference with LCM-LoRAs, you need to follow these steps:
@@ -88,7 +88,7 @@ You can also use guidance with LCM-LoRA, but due to the nature of training the m
 
 ### Inference with a fine-tuned model
 
-As mentioned above, the LCM-LoRA can be applied to any fine-tuned version of the model without having to distil them separately. Let's look at how we can perform inference with a fine-tuned model. In this example we'll use the [animagine-xl](https://huggingface.co/Linaqruf/animagine-xl) model, which is a fine-tuned version of the SDXL model for generating anime.
+As mentioned above, the LCM-LoRA can be applied to any fine-tuned version of the model without having to distill them separately. Let's look at how we can perform inference with a fine-tuned model. In this example, we'll use the [animagine-xl](https://huggingface.co/Linaqruf/animagine-xl) model, which is a fine-tuned version of the SDXL model for generating anime.
 
 ```python
 from diffusers import DiffusionPipeline, LCMScheduler
@@ -160,14 +160,14 @@ make_image_grid([init_image, image], rows=1, cols=2)
 
 <Tip>
 
-Based on your prompt and the image you provide, you can get different results. To get the best results, we recommend you to try different values for `num_inference_steps`, `strength` and `guidance_scale` parameters and choose the best one.
+You can get different results based on your prompt and the image you provide. To get the best results, we recommend trying different values for `num_inference_steps`, `strength`, and `guidance_scale` parameters and choose the best one.
 
 </Tip>
 
 
-## Combined with style LoRAs
+## Combine with styled LoRAs
 
-LCM-LoRA can be combined with other style LoRAs, generating styled-images in very few steps. (4-8). In the following example we'll use the LCM-LoRA with the [papercut LoRA](TheLastBen/Papercut_SDXL). 
+LCM-LoRA can be combined with other LoRAs to generate styled-images in very few steps (4-8). In the following example, we'll use the LCM-LoRA with the [papercut LoRA](TheLastBen/Papercut_SDXL). 
 To learn more about how to combine LoRAs, refer to [this guide](https://huggingface.co/docs/diffusers/tutorials/using_peft_for_inference#combine-multiple-adapters).
 
 ```python
@@ -199,12 +199,12 @@ image
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lcm/lcm_sdx_lora_mix.png)
 
 
-## Controlnet/t2iadapter
+## ControlNet/T2I-Adapter
 
-LCM-LoRA can be used with controlnet/t2iadapter. Let's look at how we can perform inference with controlnet/t2iadapter and LCM-LoRA. 
+Let's look at how we can perform inference with ControlNet/T2I-Adapter and LCM-LoRA. 
 
-### Controlnet with SD-v1-5 and LCM-LoRA
-For this example we'll use SD-v1-5 model and the LCM-LoRA for SD-v1-5 with canny controlnet.
+### ControlNet
+For this example, we'll use the SD-v1-5 model and the LCM-LoRA for SD-v1-5 with canny ControlNet.
 
 ```python
 import torch
@@ -264,9 +264,9 @@ make_image_grid([canny_image, image], rows=1, cols=2)
 The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one. 
 </Tip>
 
-### T2IAdapter with SDXL and LCM-LoRA
+### T2I-Adapter
 
-This example shows how to use the LCM-LoRA with the [Canny T2IAdapter](TencentARC/t2i-adapter-canny-sdxl-1.0) and SDXL.
+This example shows how to use the LCM-LoRA with the [Canny T2I-Adapter](TencentARC/t2i-adapter-canny-sdxl-1.0) and SDXL.
 
 Before running this example, you need to install the `controlnet_aux` package.
 
@@ -325,7 +325,7 @@ make_image_grid([canny_image, image], rows=1, cols=2)
 
 ## Inpainting
 
-LCM-LoRA can be used for inpainting as well. Let's look at how we can perform inpainting with LCM-LoRA. 
+LCM-LoRA can be used for inpainting as well. 
 
 ```python
 import torch
@@ -367,7 +367,7 @@ make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 
 ## AnimateDiff
 
-[AnimateDiff](https://arxiv.org/abs/2307.04725) allows you to animate images using Stable Diffusion models. To get good results we need to generate multiple frame (16-24) and doing this with standard SD models can be very slow. 
+[AnimateDiff](https://arxiv.org/abs/2307.04725) allows you to animate images using Stable Diffusion models. To get good results, we need to generate multiple frames (16-24), and doing this with standard SD models can be very slow. 
 LCM-LoRA can be used to speed up the process significantly, as you just need to do 4-8 steps for each frame. Let's look at how we can perform animation with LCM-LoRA and AnimateDiff.
 
 ```python
