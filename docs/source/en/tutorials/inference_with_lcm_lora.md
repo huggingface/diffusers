@@ -216,11 +216,12 @@ For this example, we'll use the SD-v1-5 model and the LCM-LoRA for SD-v1-5 with 
 
 ```python
 import torch
-from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, LCMScheduler
-from diffusers.utils import load_image
-from PIL import Image
 import cv2
 import numpy as np
+from PIL import Image
+
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, LCMScheduler
+from diffusers.utils import load_image
 
 image = load_image(
     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
@@ -275,17 +276,30 @@ The inference parameters in this example might not work for all examples, so we 
 
 This example shows how to use the LCM-LoRA with the [Canny T2I-Adapter](TencentARC/t2i-adapter-canny-sdxl-1.0) and SDXL.
 
-Before running this example, you need to install the `controlnet_aux` package.
-
-```bash
-pip install controlnet_aux
-```
-
 ```python
+import torch
+import cv2
+import numpy as np
+from PIL import Image
+
 from diffusers import StableDiffusionXLAdapterPipeline, T2IAdapter, LCMScheduler
 from diffusers.utils import load_image, make_image_grid
-from controlnet_aux.canny import CannyDetector
-import torch
+
+# Prepare image
+# Detect the canny map in low resolution to avoid high-frequency details
+image = load_image(
+    "https://huggingface.co/Adapter/t2iadapter/resolve/main/figs_SDXLV1.0/org_canny.jpg"
+).resize((384, 384))
+
+image = np.array(image)
+
+low_threshold = 100
+high_threshold = 200
+
+image = cv2.Canny(image, low_threshold, high_threshold)
+image = image[:, :, None]
+image = np.concatenate([image, image, image], axis=2)
+canny_image = Image.fromarray(image).resize((1024, 1024))
 
 # load adapter
 adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-canny-sdxl-1.0", torch_dtype=torch.float16, varient="fp16").to("cuda")
@@ -296,19 +310,12 @@ pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
     torch_dtype=torch.float16,
     variant="fp16", 
 ).to("cuda")
-canny_detector = CannyDetector()
 
 # set scheduler
 pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
 # load LCM-LoRA
 pipe.load_lora_weights("latent-consistency/lcm-lora-sdxl")
-
-url = "https://huggingface.co/Adapter/t2iadapter/resolve/main/figs_SDXLV1.0/org_canny.jpg"
-image = load_image(url)
-
-# Detect the canny map in low resolution to avoid high-frequency details
-canny_image = canny_detector(image, detect_resolution=384, image_resolution=1024)
 
 prompt = "Mystical fairy in real, magic, 4k picture, high quality"
 negative_prompt = "extra digit, fewer digits, cropped, worst quality, low quality, glitch, deformed, mutated, ugly, disfigured"
