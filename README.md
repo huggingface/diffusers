@@ -47,7 +47,7 @@ limitations under the License.
 
 ## Installation
 
-We recommend installing 🤗 Diffusers in a virtual environment from PyPi or Conda. For more details about installing [PyTorch](https://pytorch.org/get-started/locally/) and [Flax](https://flax.readthedocs.io/en/latest/#installation), please refer to their official documentation.
+We recommend installing 🤗 Diffusers in a virtual environment from PyPI or Conda. For more details about installing [PyTorch](https://pytorch.org/get-started/locally/) and [Flax](https://flax.readthedocs.io/en/latest/#installation), please refer to their official documentation.
 
 ### PyTorch
 
@@ -77,7 +77,7 @@ Please refer to the [How to use Stable Diffusion in Apple Silicon](https://huggi
 
 ## Quickstart
 
-Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 14000+ checkpoints):
+Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 15000+ checkpoints):
 
 ```python
 from diffusers import DiffusionPipeline
@@ -94,14 +94,13 @@ You can also dig into the models and schedulers toolbox to build your own diffus
 from diffusers import DDPMScheduler, UNet2DModel
 from PIL import Image
 import torch
-import numpy as np
 
 scheduler = DDPMScheduler.from_pretrained("google/ddpm-cat-256")
 model = UNet2DModel.from_pretrained("google/ddpm-cat-256").to("cuda")
 scheduler.set_timesteps(50)
 
 sample_size = model.config.sample_size
-noise = torch.randn((1, 3, sample_size, sample_size)).to("cuda")
+noise = torch.randn((1, 3, sample_size, sample_size), device="cuda")
 input = noise
 
 for t in scheduler.timesteps:
@@ -136,8 +135,7 @@ You can look out for [issues](https://github.com/huggingface/diffusers/issues) y
 - See [New model/pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) to contribute exciting new diffusion models / diffusion pipelines
 - See [New scheduler](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22)
 
-Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a>. We discuss the hottest trends about diffusion models, help each other with contributions, personal projects or
-just hang out ☕.
+Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a>. We discuss the hottest trends about diffusion models, help each other with contributions, personal projects or just hang out ☕.
 
 
 ## Popular Tasks & Pipelines
