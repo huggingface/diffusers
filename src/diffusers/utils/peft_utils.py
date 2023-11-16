@@ -18,10 +18,9 @@ import collections
 import importlib
 from typing import Optional
 
-import torch
 from packaging import version
 
-from .import_utils import is_peft_available
+from .import_utils import is_peft_available, is_torch_available
 
 
 def recurse_remove_peft_layers(model):
@@ -41,6 +40,9 @@ def recurse_remove_peft_layers(model):
             if hasattr(target, "base_layer"):
                 setattr(parent, target_name, target.get_base_layer())
     else:
+        if is_torch_available():
+            import torch
+
         from peft.tuners.lora import LoraLayer
 
         for name, module in model.named_children():
