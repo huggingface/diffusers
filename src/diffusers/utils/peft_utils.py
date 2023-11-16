@@ -27,8 +27,14 @@ def recurse_remove_peft_layers(model):
     r"""
     Recursively replace all instances of `LoraLayer` with corresponding new layers in `model`.
     """
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
-    if version.parse(importlib.metadata.version("peft")) > version.parse("0.6.2"):
+    for module in model.modules():
+        if isinstance(module, BaseTunerLayer):
+            has_base_layer_support = True if hasattr(module, "base_layer") else False
+            break
+
+    if has_base_layer_support:
         from peft.utils import _get_submodules
 
         key_list = [key for key, _ in model.named_modules() if "lora" not in key]
