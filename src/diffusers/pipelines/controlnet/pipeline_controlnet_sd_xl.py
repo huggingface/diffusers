@@ -1302,7 +1302,6 @@ class StableDiffusionXLControlNetPipeline(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
                     timestep_cond=timestep_cond,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     down_block_additional_residuals=down_block_res_samples,
