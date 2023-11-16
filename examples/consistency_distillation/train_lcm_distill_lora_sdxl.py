@@ -51,7 +51,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -96,27 +96,29 @@ class DDIMSolver:
         return x_prev
 
 
-def log_validation(vae, unet, args, accelerator, weight_dtype, step):
+def log_validation(vae, args, accelerator, weight_dtype, step, unet=None, is_final_validation=False):
     logger.info("Running validation... ")
 
-    unet = accelerator.unwrap_model(unet)
     pipeline = StableDiffusionXLPipeline.from_pretrained(
         args.pretrained_teacher_model,
         vae=vae,
         scheduler=LCMScheduler.from_pretrained(args.pretrained_teacher_model, subfolder="scheduler"),
         revision=args.revision,
         torch_dtype=weight_dtype,
-    )
-    pipeline = pipeline.to(accelerator.device)
+    ).to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
-    diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
-    diffusers_state_dict = {
-        f"{module_name.replace('base_model.model', pipeline.unet_name)}.{module_name}": param
-        for module_name, param in diffusers_state_dict.items()
-    }
-    pipeline.load_lora_weights(diffusers_state_dict)
+    to_load = None
+    if not is_final_validation:
+        if unet is None:
+            raise ValueError("Must provide a `unet` when doing intermediate validation.")
+        unet = accelerator.unwrap_model(unet)
+        state_dict = get_peft_model_state_dict(unet)
+        to_load = state_dict
+    else:
+        to_load = args.output_dir
+
+    pipeline.load_lora_weights(to_load)
     pipeline.fuse_lora()
 
     if args.enable_xformers_memory_efficient_attention:
@@ -169,8 +171,8 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step):
                 for image in images:
                     image = wandb.Image(image, caption=validation_prompt)
                     formatted_images.append(image)
-
-            tracker.log({"validation": formatted_images})
+            logger_name = "test" if is_final_validation else "validation"
+            tracker.log({logger_name: formatted_images})
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
 
@@ -792,17 +794,10 @@ def main(args):
         def save_model_hook(models, weights, output_dir):
             if accelerator.is_main_process:
                 unet_ = accelerator.unwrap_model(unet)
-                # save weights in peft format to be able to load them back
-                unet_.save_pretrained(output_dir)
                 # also save the checkpoints in native `diffusers` format so that it can be easily
                 # be independently loaded via `load_lora_weights()`.
-                peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
-                diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
-                diffusers_state_dict = {
-                    f"{module_name.replace('base_model.model.', '')}.{module_name}": param
-                    for module_name, param in diffusers_state_dict.items()
-                }
-                StableDiffusionXLPipeline.save_lora_weights(output_dir, diffusers_state_dict)
+                state_dict = get_peft_model_state_dict(unet_)
+                StableDiffusionXLPipeline.save_lora_weights(output_dir, unet_lora_layers=state_dict)
 
                 for _, model in enumerate(models):
                     # make sure to pop weight so that corresponding model is not saved again
@@ -811,7 +806,8 @@ def main(args):
         def load_model_hook(models, input_dir):
             # load the LoRA into the model
             unet_ = accelerator.unwrap_model(unet)
-            unet_.load_adapter(input_dir, "default", is_trainable=True)
+            lora_state_dict, network_alphas = StableDiffusionXLPipeline.lora_state_dict(input_dir)
+            StableDiffusionXLPipeline.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
 
             for _ in range(len(models)):
                 # pop models so that they are not loaded again
@@ -856,8 +852,9 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # 12. Optimizer creation
+    params_to_optimize = list(filter(lambda p: p.requires_grad, unet.parameters()))
     optimizer = optimizer_class(
-        filter(lambda p: p.requires_grad, unet.parameters()),
+        params_to_optimize,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -1172,7 +1169,7 @@ def main(args):
                 using_cuda = "cuda" in str(accelerator.device)
                 unet.disable_adapters()
                 with torch.no_grad() and torch.autocast(
-                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
+                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16
                 ):
                     cond_teacher_output = unet(
                         noisy_model_input.to(weight_dtype),
@@ -1180,8 +1177,6 @@ def main(args):
                         encoder_hidden_states=prompt_embeds.to(weight_dtype),
                         added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
                     ).sample
-                    # re-enable unet adapters
-                    unet.enable_adapters()
                     cond_pred_x0 = predicted_origin(
                         cond_teacher_output,
                         start_timesteps,
@@ -1217,9 +1212,12 @@ def main(args):
                     pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
                     x_prev = solver.ddim_step(pred_x0, pred_noise, index)
 
+                # re-enable unet adapters
+                unet.enable_adapters()
+
                 # Get target LCM prediction on x_prev, w, c, t_n
                 with torch.no_grad() and torch.autocast(
-                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
+                    str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16
                 ):
                     target_noise_pred = unet(
                         x_prev.float(),
@@ -1248,7 +1246,7 @@ def main(args):
                 # Backpropagate on the online student model (`unet`)
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    accelerator.clip_grad_norm_(params_to_optimize, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
@@ -1298,13 +1296,8 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
-        peft_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
-        diffusers_state_dict = convert_state_dict_to_diffusers(peft_state_dict)
-        diffusers_state_dict = {
-            f"{module_name.replace('base_model.model.', '')}.{module_name}": param
-            for module_name, param in diffusers_state_dict.items()
-        }
-        StableDiffusionXLPipeline.save_lora_weights(args.output_dir, diffusers_state_dict)
+        unet_lora_state_dict = get_peft_model_state_dict(unet)
+        StableDiffusionXLPipeline.save_lora_weights(args.output_dir, unet_lora_layers=unet_lora_state_dict)
 
         if args.push_to_hub:
             upload_folder(
@@ -1313,6 +1306,13 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+
+        del unet
+        torch.cuda.empty_cache()
+
+        # Final inference.
+        if args.validation_steps is not None:
+            log_validation(vae, args, accelerator, weight_dtype, step=global_step, unet=None, is_final_validation=True)
 
     accelerator.end_training()
 
