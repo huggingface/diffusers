@@ -47,6 +47,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     nightly,
     require_peft_backend,
+    require_peft_version,
     require_torch_gpu,
     slow,
     torch_device,
@@ -1092,6 +1093,7 @@ class PeftLoraLoaderMixinTests:
                 {"unet": ["adapter-1", "adapter-2", "adapter-3"], "text_encoder": ["adapter-1", "adapter-2"]},
             )
 
+    @require_peft_version(peft_version="0.6.2")
     def test_simple_inference_with_text_lora_unet_fused_multi(self):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
