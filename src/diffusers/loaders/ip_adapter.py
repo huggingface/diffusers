@@ -17,10 +17,6 @@ from typing import Dict, Union
 import safetensors
 import torch
 
-from ..models.attention_processor import (
-    IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
-)
 from ..utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -145,6 +141,11 @@ class IPAdapterMixin:
         self.unet._load_ip_adapter_weights(state_dict)
 
     def set_ip_adapter_scale(self, scale):
+        from ..models.attention_processor import (
+            IPAdapterAttnProcessor,
+            IPAdapterAttnProcessor2_0,
+        )
+
         for attn_processor in self.unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = scale
