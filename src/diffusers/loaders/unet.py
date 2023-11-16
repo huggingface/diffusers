@@ -21,12 +21,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..models.attention_processor import (
-    AttnProcessor,
-    AttnProcessor2_0,
-    IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
-)
 from ..models.embeddings import ImageProjection
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
@@ -578,6 +572,13 @@ class UNet2DConditionLoadersMixin:
                 self.peft_config.pop(adapter_name, None)
 
     def _load_ip_adapter_weights(self, state_dict):
+        from ..models.attention_processor import (
+            AttnProcessor,
+            AttnProcessor2_0,
+            IPAdapterAttnProcessor,
+            IPAdapterAttnProcessor2_0,
+        )
+
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 1
