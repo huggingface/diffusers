@@ -36,7 +36,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
-from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
+from peft import LoraConfig, get_peft_model_state_dict
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
