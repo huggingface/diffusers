@@ -428,6 +428,59 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
         return latents
 
+    def set_mel_padding(self, mel_input_tokens, wav_lengths, mel_length_compression):
+        """
+        Given mel tokens that are derived from a padded audio clip and the actual lengths of each batch element in
+        that audio clip, reformats the tokens with STOP_MEL_TOKEN in place of the zero padding. This is required
+        preformatting to create a working TTS model.
+        """
+        # Set padding areas within MEL (currently it is coded with the MEL code for <zero>).
+        mel_lengths = torch.div(wav_lengths, mel_length_compression, rounding_mode='trunc')
+        for b in range(len(mel_lengths)):
+            actual_end = mel_lengths[b] + 1  # Due to the convolutional nature of how these tokens are generated, it would be best if the model predicts a token past the actual last token.
+            if actual_end < mel_input_tokens.shape[-1]:
+                mel_input_tokens[b, actual_end:] = self.audio_candidate_model.config.decoder_config.eos_token_id
+        return mel_input_tokens
+
+    def recal_decoder_latents(self, input_features, text_tokens, mel_codes, mel_length_compression):
+        # recalculate conditioning embedding again because the eos token is added at the end now
+        text_tokens = torch.nn.functional.pad(text_tokens, (0, 1), value=self.audio_candidate_model.config.text_config.eos_token_id)
+        cond_embeddings = self.audio_candidate_model.conditioning_encoder(input_features=input_features, input_ids=text_tokens)
+
+        wav_lenghts = torch.tensor([mel_codes.shape[-1] * mel_length_compression], device=text_tokens.device)
+        mel_codes = self.set_mel_padding(mel_codes, wav_lenghts, mel_length_compression)
+        mel_codes = torch.nn.functional.pad(mel_codes, (0, 1),
+                                            value=self.audio_candidate_model.config.decoder_config.eos_token_id)
+        mel_codes = torch.nn.functional.pad(mel_codes, (1, 0),
+                                            value=self.audio_candidate_model.config.decoder_config.bos_token_id)
+
+        mel_emb = self.audio_candidate_model.speech_decoder_model.model.decoder.input_embeds_layer(mel_codes) + \
+                  self.audio_candidate_model.speech_decoder_model.model.decoder.position_embeds_layer(torch.repeat_interleave(torch.arange(mel_codes.shape[1], device=mel_codes.device).reshape(1, -1), mel_codes.shape[0], dim=0))
+
+        # repeat if there is either (1 cond vs N mel) or (N cond vs 1 mel)
+        if cond_embeddings.shape[0] == 1 and mel_emb.shape[0] != 1:
+            cond_embeddings = cond_embeddings.repeat(mel_emb.shape[0], 1, 1)
+        elif cond_embeddings.shape[0] != 1 and mel_emb.shape[0] == 1:
+            mel_emb = mel_emb.repeat(cond_embeddings.shape[0], 1, 1)
+        # If there is N cond and M mel we will raise error since the number of text and audio must be same.
+        elif cond_embeddings.shape[0] != mel_emb.shape[0]:
+            raise ValueError(
+                f"The number of cond_embeddings and number of mel_emb must be same. "
+                f"Found {cond_embeddings.shape[0]} texts vs {mel_emb.shape[0]} audios"
+            )
+
+        total_emb = torch.cat([cond_embeddings, mel_emb], dim=1)
+
+        # zero out weight of position embeddings
+        self.audio_candidate_model.speech_decoder_model.model.decoder.position_embeds_layer.weight.data.zero_()
+        decoder_model_out = self.audio_candidate_model.speech_decoder_model.model(inputs_embeds=total_emb, return_dict=True)
+        decoder_model_last_hidden_state = decoder_model_out.last_hidden_state[:, 1:] # The first logit is tied to the speech_conditioning_input
+
+        decoder_model_last_hidden_state = self.audio_candidate_model.speech_decoder_model.final_norm(decoder_model_last_hidden_state)
+        decoder_model_last_hidden_state_mel_part = decoder_model_last_hidden_state[:, -mel_codes.shape[1]:]
+
+        return decoder_model_last_hidden_state_mel_part[:, :-2]  # Despite the name, these are not logits. Strip off the two tokens added by this forward pass.
+
     def check_inputs(
         self,
         prompt,
@@ -484,9 +537,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_waveforms_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
+        mel_length_compression=1024,
         # Autoregressive generation parameters
         autoregressive_generation_config: Optional[GenerationConfig] = None,
         autoregressive_generation_kwargs: Optional[Dict[str, Any]] = None,
+        recalculate_decoder_latents: Optional[bool] = True,
         # General Tortoise TTS parameters
         latent_averaging_mode: int = 0,
         # diffusers pipeline arguments
@@ -660,8 +715,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             input_ids=prompt_input_ids, # these input_ids are for the text encoder.
             attention_mask=prompt_attention_mask,
             input_features=audio_features,
+            pad_to_max_mel_tokens=500,
             # conditioning_encoder_inputs_embeds=prompt_embeds, # these embeds are for the clvp conditioning encoder.
             output_hidden_states=True, # because we want to resuse the logits of the decoder(autoregressive) model
+            **autoregressive_generation_kwargs,
         )
 
         audio_candidates = audio_candidates_and_scores.speech_ids
@@ -670,6 +727,12 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                                                                audio_candidates.shape[0],
                                                                device,
                                                                )
+
+        # if recalculate_decoder_latents is set to True, then we will recalculate the decoder latents as same as the official repo.
+        # BUT THIS IS NOT REQUIRED TO GET GOOD ENOUGH QUALITY GENERATION, as a tip make it False to make the whole process faster.
+        if recalculate_decoder_latents:
+            autoregressive_latents = self.recal_decoder_latents(audio_features, prompt_input_ids, audio_candidates, mel_length_compression)
+
 
         if do_classifier_free_guidance and has_negative_prompts:
             neg_audio_candidates, audio_candidates = audio_candidates.chunk(2)
