@@ -41,7 +41,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet3DConditionModel,
 )
-from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin, PatchedLoraProjection, text_encoder_attn_modules
+from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
 from diffusers.models.attention_processor import (
     Attention,
     AttnProcessor,
@@ -51,6 +51,7 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
+from diffusers.models.lora import PatchedLoraProjection, text_encoder_attn_modules
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     deprecate_after_peft_backend,
