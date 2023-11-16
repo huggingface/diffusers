@@ -20,21 +20,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config:
-          - name: LoRA
-            framework: lora
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_lora
         lib-versions: ["main", "latest"]
 
 
-    name: ${{ matrix.config.name }}
+    name: LoRA - ${{ matrix.lib-versions }}
 
-    runs-on: ${{ matrix.config.runner }}
+    runs-on: docker-cpu
 
     container:
-      image: ${{ matrix.config.image }}
+      image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     defaults:
