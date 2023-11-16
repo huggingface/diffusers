@@ -69,7 +69,7 @@ LORA_DEPRECATION_MESSAGE = "You are using an old version of LoRA backend. This w
 class LoraLoaderMixin:
     r"""
     Load LoRA layers into [`UNet2DConditionModel`] and
-    [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
+    [`~transformers.CLIPTextModel`].
     """
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
@@ -137,13 +137,11 @@ class LoraLoaderMixin:
         **kwargs,
     ):
         r"""
-        Return state dict for lora weights and the network alphas.
+        Return state dict and network alphas of the LoRA weights.
 
         <Tip warning={true}>
 
-        We support loading A1111 formatted LoRA checkpoints in a limited capacity.
-
-        This function is experimental and might change in the future.
+        A1111 formatted LoRA checkpoints are supported in a limited capacity. This function is experimental and might change in the future.
 
         </Tip>
 
@@ -191,6 +189,15 @@ class LoraLoaderMixin:
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
 
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.lora_state_dict("nerijs/pixel-art-xl")
+        ```
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -883,11 +890,11 @@ class LoraLoaderMixin:
         safe_serialization: bool = True,
     ):
         r"""
-        Save the LoRA parameters corresponding to the UNet and text encoder.
+        Save the UNet and text encoder LoRA parameters.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
-                Directory to save LoRA parameters to. Will be created if it doesn't exist.
+                Directory to save LoRA parameters to (will be created if it doesn't exist).
             unet_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
                 State dict of the LoRA layers corresponding to the `unet`.
             text_encoder_lora_layers (`Dict[str, torch.nn.Module]` or `Dict[str, torch.Tensor]`):
@@ -898,11 +905,23 @@ class LoraLoaderMixin:
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
                 process to avoid race conditions.
             save_function (`Callable`):
-                The function to use to save the state dictionary. Useful during distributed training when you need to
+                The function to use to save the state dict. Useful during distributed training when you need to
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+                Whether to save the model using `safetensors` or with `pickle`.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.fuse_lora(lora_scale=0.7)
+        pipeline.save_lora_weights("your-username/model")
+        ```
         """
         # Create a flat dictionary.
         state_dict = {}
@@ -1138,14 +1157,17 @@ class LoraLoaderMixin:
 
     def unload_lora_weights(self):
         """
-        Unloads the LoRA parameters.
+        Unload the LoRA parameters from a pipeline.
 
         Examples:
 
-        ```python
-        >>> # Assuming `pipeline` is already loaded with the LoRA parameters.
-        >>> pipeline.unload_lora_weights()
-        >>> ...
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.unload_lora_weights()
         ```
         """
         if not USE_PEFT_BACKEND:
@@ -1174,7 +1196,7 @@ class LoraLoaderMixin:
         safe_fusing: bool = False,
     ):
         r"""
-        Fuses the LoRA parameters into the original parameters of the corresponding blocks.
+        Fuse the LoRA parameters with the original parameters in their corresponding blocks.
 
         <Tip warning={true}>
 
@@ -1188,9 +1210,20 @@ class LoraLoaderMixin:
                 Whether to fuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
             lora_scale (`float`, defaults to 1.0):
-                Controls how much to influence the outputs with the LoRA parameters.
+                Controls LoRA influence on the outputs.
             safe_fusing (`bool`, defaults to `False`):
-                Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
+                Whether to check fused weights for `NaN` values before fusing and if values are `NaN`, then don't fuse them.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.fuse_lora(lora_scale=0.7)
+        ```
         """
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
@@ -1239,8 +1272,8 @@ class LoraLoaderMixin:
 
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
-        Reverses the effect of
-        [`pipe.fuse_lora()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.fuse_lora).
+        Unfuse the LoRA parameters from the original parameters in their corresponding blocks.
+
 
         <Tip warning={true}>
 
@@ -1253,6 +1286,18 @@ class LoraLoaderMixin:
             unfuse_text_encoder (`bool`, defaults to `True`):
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.fuse_lora(lora_scale=0.7)
+        pipeline.unfuse_lora()
+        ```
         """
         if unfuse_unet:
             if not USE_PEFT_BACKEND:
@@ -1304,16 +1349,26 @@ class LoraLoaderMixin:
         text_encoder_weights: List[float] = None,
     ):
         """
-        Sets the adapter layers for the text encoder.
+        Only activate an adapter for the text encoder.
 
         Args:
             adapter_names (`List[str]` or `str`):
-                The names of the adapters to use.
+                The adapter to activate.
             text_encoder (`torch.nn.Module`, *optional*):
-                The text encoder module to set the adapter layers for. If `None`, it will try to get the `text_encoder`
+                The text encoder module to activate the adapter layers for. If `None`, it will try to get the `text_encoder`
                 attribute.
             text_encoder_weights (`List[float]`, *optional*):
                 The weights to use for the text encoder. If `None`, the weights are set to `1.0` for all the adapters.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.set_adapters_for_text_encoder("pixel")
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1341,12 +1396,23 @@ class LoraLoaderMixin:
 
     def disable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
         """
-        Disables the LoRA layers for the text encoder.
+        Disable the text encoder's LoRA layers.
 
         Args:
             text_encoder (`torch.nn.Module`, *optional*):
                 The text encoder module to disable the LoRA layers for. If `None`, it will try to get the
                 `text_encoder` attribute.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.disable_lora_for_text_encoder()
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1358,12 +1424,23 @@ class LoraLoaderMixin:
 
     def enable_lora_for_text_encoder(self, text_encoder: Optional["PreTrainedModel"] = None):
         """
-        Enables the LoRA layers for the text encoder.
+        Enables the text encoder's LoRA layers.
 
         Args:
             text_encoder (`torch.nn.Module`, *optional*):
                 The text encoder module to enable the LoRA layers for. If `None`, it will try to get the `text_encoder`
                 attribute.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.enable_lora_for_text_encoder()
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1414,10 +1491,22 @@ class LoraLoaderMixin:
 
     def delete_adapters(self, adapter_names: Union[List[str], str]):
         """
+        Delete an adapter's LoRA layers from the UNet and text encoder(s).
+
         Args:
-        Deletes the LoRA layers of `adapter_name` for the unet and text-encoder(s).
             adapter_names (`Union[List[str], str]`):
-                The names of the adapter to delete. Can be a single string or a list of strings
+                The names (single string or list of strings) of the adapter to delete.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.delete_adapters("pixel")
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -1437,7 +1526,7 @@ class LoraLoaderMixin:
 
     def get_active_adapters(self) -> List[str]:
         """
-        Gets the list of the current active adapters.
+        Get a list of currently active adapters.
 
         Example:
 
@@ -1469,7 +1558,19 @@ class LoraLoaderMixin:
 
     def get_list_adapters(self) -> Dict[str, List[str]]:
         """
-        Gets the current list of all available adapters in the pipeline.
+        Get a list of all currently available adapters for each component in the pipeline.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+        ).to("cuda")
+        pipeline.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
+        pipeline.get_list_adapters()
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError(
@@ -1491,14 +1592,25 @@ class LoraLoaderMixin:
 
     def set_lora_device(self, adapter_names: List[str], device: Union[torch.device, str, int]) -> None:
         """
-        Moves the LoRAs listed in `adapter_names` to a target device. Useful for offloading the LoRA to the CPU in case
+        Move a LoRA to a target device. Useful for offloading a LoRA to the CPU in case
         you want to load multiple adapters and free some GPU memory.
 
         Args:
             adapter_names (`List[str]`):
-                List of adapters to send device to.
+                List of adapters to send to device.
             device (`Union[torch.device, str, int]`):
-                Device to send the adapters to. Can be either a torch device, a str or an integer.
+                Device (can be a `torch.device`, `str` or `int`) to place adapters on.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+        ).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.set_lora_device(["pixel"], device="cuda")
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
