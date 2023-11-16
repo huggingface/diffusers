@@ -692,9 +692,9 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         assert model.config.encoder_hid_dim_type == "ip_image_proj"
         assert model.encoder_hid_proj is not None
 
-        assert (
-            model.down_blocks[0].attentions[0].transformer_blocks[0].attn2.processor.__class__.__name__
-            == "IPAdapterAttnProcessor"
+        assert model.down_blocks[0].attentions[0].transformer_blocks[0].attn2.processor.__class__.__name__ in (
+            "IPAdapterAttnProcessor",
+            "IPAdapterAttnProcessor2_0",
         )
 
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
