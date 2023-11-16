@@ -393,8 +393,8 @@ class StableDiffusionXLAdapterPipelineFastTests(
 class StableDiffusionXLMultiAdapterPipelineFastTests(
     StableDiffusionXLAdapterPipelineFastTests, PipelineTesterMixin, unittest.TestCase
 ):
-    def get_dummy_components(self):
-        return super().get_dummy_components("multi_adapter")
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        return super().get_dummy_components("multi_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
     def get_dummy_components_with_full_downscaling(self):
         return super().get_dummy_components_with_full_downscaling("multi_adapter")
