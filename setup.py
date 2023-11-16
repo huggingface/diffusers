@@ -113,7 +113,7 @@ _deps = [
     "numpy",
     "omegaconf",
     "parameterized",
-    "peft==~0.6",
+    "peft<=0.6.2",
     "protobuf>=3.20.3,<4",
     "pytest",
     "pytest-timeout",
@@ -202,7 +202,6 @@ extras = {}
 extras["quality"] = deps_list("urllib3", "black", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
-extras["peft"] = deps_list("peft")
 extras["test"] = deps_list(
     "compel",
     "datasets",
