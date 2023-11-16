@@ -22,19 +22,12 @@ You can find additional information about MultiDiffusion on the [project page](h
 
 ## Tips
 
-While calling [`StableDiffusionPanoramaPipeline`], it's possible to specify the `view_batch_size` parameter to be > 1. 
+While calling [`StableDiffusionPanoramaPipeline`], it's possible to specify the `view_batch_size` parameter to be > 1.
 For some GPUs with high performance, this can speedup the generation process and increase VRAM usage.
 
 To generate panorama-like images make sure you pass the width parameter accordingly. We recommend a width value of 2048 which is the default.
 
-Circular padding is applied to ensure there are no stitching artifacts when working with 
-panoramas to ensure a seamless transition from the rightmost part to the leftmost part. 
-By enabling circular padding (set `circular_padding=True`), the operation applies additional 
-crops after the rightmost point of the image, allowing the model to "see” the transition 
-from the rightmost part to the leftmost part. This helps maintain visual consistency in 
-a 360-degree sense and creates a proper “panorama” that can be viewed using 360-degree 
-panorama viewers. When decoding latents in Stable Diffusion, circular padding is applied 
-to ensure that the decoded latents match in the RGB space.
+Circular padding is applied to ensure there are no stitching artifacts when working with panoramas to ensure a seamless transition from the rightmost part to the leftmost part. By enabling circular padding (set `circular_padding=True`), the operation applies additional crops after the rightmost point of the image, allowing the model to "see” the transition from the rightmost part to the leftmost part. This helps maintain visual consistency in a 360-degree sense and creates a proper “panorama” that can be viewed using 360-degree panorama viewers. When decoding latents in Stable Diffusion, circular padding is applied to ensure that the decoded latents match in the RGB space.
 
 For example, without circular padding, there is a stitching artifact (default):
 ![img](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/indoor_%20no_circular_padding.png)

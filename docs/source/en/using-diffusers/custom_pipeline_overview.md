@@ -117,10 +117,10 @@ from pipeline_t2v_base_pixel import TextToVideoIFPipeline
 import torch
 
 pipeline = TextToVideoIFPipeline(
-    unet=unet, 
-    text_encoder=text_encoder, 
-    tokenizer=tokenizer, 
-    scheduler=scheduler, 
+    unet=unet,
+    text_encoder=text_encoder,
+    tokenizer=tokenizer,
+    scheduler=scheduler,
     feature_extractor=feature_extractor
 )
 pipeline = pipeline.to(device="cuda")

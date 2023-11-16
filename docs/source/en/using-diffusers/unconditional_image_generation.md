@@ -35,7 +35,7 @@ from diffusers import DiffusionPipeline
 generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128", use_safetensors=True)
 ```
 
-The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
+The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components.
 Because the model consists of roughly 1.4 billion parameters, we strongly recommend running it on a GPU.
 You can move the generator object to a GPU, just like you would in PyTorch:
 
