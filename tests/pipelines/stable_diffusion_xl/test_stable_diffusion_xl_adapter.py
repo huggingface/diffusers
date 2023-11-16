@@ -26,6 +26,7 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     EulerDiscreteScheduler,
+    LCMScheduler,
     MultiAdapter,
     StableDiffusionXLAdapterPipeline,
     T2IAdapter,
@@ -59,7 +60,7 @@ class StableDiffusionXLAdapterPipelineFastTests(
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
-    def get_dummy_components(self, adapter_type="full_adapter_xl"):
+    def get_dummy_components(self, adapter_type="full_adapter_xl", time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -77,6 +78,7 @@ class StableDiffusionXLAdapterPipelineFastTests(
             transformer_layers_per_block=(1, 2),
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
+            time_cond_proj_dim=time_cond_proj_dim,
         )
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
@@ -309,9 +311,9 @@ class StableDiffusionXLAdapterPipelineFastTests(
     @parameterized.expand(
         [
             # (dim=144) The internal feature map will be 9x9 after initial pixel unshuffling (downscaled x16).
-            ((4 * 2 + 1) * 16),
+            (((4 * 2 + 1) * 16),),
             # (dim=160) The internal feature map will be 5x5 after the first T2I down block (downscaled x32).
-            ((4 * 1 + 1) * 32),
+            (((4 * 1 + 1) * 32),),
         ]
     )
     def test_multiple_image_dimensions(self, dim):
@@ -366,6 +368,26 @@ class StableDiffusionXLAdapterPipelineFastTests(
 
     def test_save_load_optional_components(self):
         return self._test_save_load_optional_components()
+
+    def test_adapter_sdxl_lcm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLAdapterPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.5425, 0.5385, 0.4964, 0.5045, 0.6149, 0.4974, 0.5469, 0.5332, 0.5426])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 class StableDiffusionXLMultiAdapterPipelineFastTests(
