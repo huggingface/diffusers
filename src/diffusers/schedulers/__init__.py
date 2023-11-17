@@ -38,8 +38,7 @@ except OptionalDependencyNotAvailable:
     _dummy_modules.update(get_objects_from_module(dummy_pt_objects))
 
 else:
-    _import_structure["deprecated"] = ["scheduling_karras_ve", "KarrasVeScheduler"]
-    _import_structure["deprecated"] = ["scheduling_sde_vp", "ScoreSdeVpScheduler"]
+    _import_structure["deprecated"] = ["KarrasVeScheduler", "ScoreSdeVpScheduler"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
@@ -129,8 +128,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .deprecated.scheduling_karras_ve import KarrasVeScheduler
-        from .deprecated.scheduling_sde_vp import ScoreSdeVpScheduler
+        from .deprecated import KarrasVeScheduler, ScoreSdeVpScheduler
         from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
         from .scheduling_ddim import DDIMScheduler
