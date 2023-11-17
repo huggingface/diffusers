@@ -14,7 +14,7 @@ PROMPT = "ghibli style, a fantasy landscape with castles"
 BASE_PATH = "benchmark_outputs"
 
 
-def load_pipeline(run_compile=False, with_tensorrt=False):
+def load_pipeline(run_compile=False):
     pipe = DiffusionPipeline.from_pretrained(
         CKPT, torch_dtype=torch.float16, use_safetensors=True
     )
@@ -37,9 +37,7 @@ def run_inference(pipe, args):
     )
 
 def main(args):
-    pipeline = load_pipeline(
-        run_compile=args.run_compile, with_tensorrt=args.with_tensorrt
-    )
+    pipeline = load_pipeline(run_compile=args.run_compile)
     
     time = benchmark_fn(run_inference, pipeline, args) # in seconds.
     memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated()) # in GBs.
