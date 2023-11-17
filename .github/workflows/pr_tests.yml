@@ -47,10 +47,9 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: test_fetched
-        path: /diffusers/test_preparation.txt
+        path: test_preparation.txt
     - id: set-matrix
       name: Create Test Matrix
-      working-directory: /diffusers
       # The `keys` is used as GitHub actions matrix for jobs, i.e. `models`, `pipelines`, etc.
       # The `test_map` is used to get the actual identified test files under each key.
       # If no test to run (so no `test_map.json` file), create a dummy map (empty matrix will fail)
