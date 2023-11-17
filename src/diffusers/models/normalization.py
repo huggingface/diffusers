@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from .activations import get_activation
-from .embeddings import CombinedTimestepLabelEmbeddings
+from .embeddings import CombinedTimestepLabelEmbeddings, CombinedTimestepSizeEmbeddings
 
 
 class AdaLayerNorm(nn.Module):
@@ -75,6 +75,39 @@ class AdaLayerNormZero(nn.Module):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = emb.chunk(6, dim=1)
         x = self.norm(x) * (1 + scale_msa[:, None]) + shift_msa[:, None]
         return x, gate_msa, shift_mlp, scale_mlp, gate_mlp
+
+
+class AdaLayerNormSingle(nn.Module):
+    r"""
+    Norm layer adaptive layer norm single (adaLN-single).
+
+    As proposed in PixArt-Alpha (see: https://arxiv.org/abs/2310.00426; Section 2.3).
+
+    Parameters:
+        embedding_dim (`int`): The size of each embedding vector.
+        use_additional_conditions (`bool`): To use additional conditions for normalization or not.
+    """
+
+    def __init__(self, embedding_dim: int, use_additional_conditions: bool = False):
+        super().__init__()
+
+        self.emb = CombinedTimestepSizeEmbeddings(
+            embedding_dim, size_emb_dim=embedding_dim // 3, use_additional_conditions=use_additional_conditions
+        )
+
+        self.silu = nn.SiLU()
+        self.linear = nn.Linear(embedding_dim, 6 * embedding_dim, bias=True)
+
+    def forward(
+        self,
+        timestep: torch.Tensor,
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+        batch_size: Optional[int] = None,
+        hidden_dtype: Optional[torch.dtype] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        # No modulation happening here.
+        embedded_timestep = self.emb(timestep, **added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_dtype)
+        return self.linear(self.silu(embedded_timestep)), embedded_timestep
 
 
 class AdaGroupNorm(nn.Module):

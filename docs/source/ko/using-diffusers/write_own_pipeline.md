@@ -71,7 +71,7 @@ specific language governing permissions and limitations under the License.
     >>> import torch
 
     >>> sample_size = model.config.sample_size
-    >>> noise = torch.randn((1, 3, sample_size, sample_size)).to("cuda")
+    >>> noise = torch.randn((1, 3, sample_size, sample_size), device="cuda")
     ```
 
 5. 이제 timestep을 반복하는 루프를 작성합니다. 각 timestep에서 모델은 [`UNet2DModel.forward`]를 통해 noisy residual을 반환합니다. 스케줄러의 [`~DDPMScheduler.step`] 메서드는 noisy residual, timestep, 그리고 입력을 받아 이전 timestep에서 이미지를 예측합니다. 이 출력은 노이즈 제거 루프의 모델에 대한 다음 입력이 되며, `timesteps` 배열의 끝에 도달할 때까지 반복됩니다.
@@ -212,8 +212,8 @@ Stable Diffusion 은 text-to-image *latent diffusion* 모델입니다. latent di
 >>> latents = torch.randn(
 ...     (batch_size, unet.in_channels, height // 8, width // 8),
 ...     generator=generator,
+...     device=torch_device,
 ... )
->>> latents = latents.to(torch_device)
 ```
 
 ### 이미지 노이즈 제거

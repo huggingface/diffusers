@@ -14,7 +14,6 @@
 from typing import List, Optional, Union
 
 import torch
-from diffuser.utils.torch_utils import randn_tensor
 from packaging import version
 from PIL import Image
 from transformers import CLIPTextModel, CLIPTokenizer
@@ -33,6 +32,7 @@ from diffusers.utils import (
     logging,
     replace_example_docstring,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

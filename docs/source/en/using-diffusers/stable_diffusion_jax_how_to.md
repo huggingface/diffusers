@@ -38,25 +38,20 @@ device_type = jax.devices()[0].device_kind
 
 print(f"Found {num_devices} JAX devices of type {device_type}.")
 assert (
-    "TPU" in device_type, 
-    "Available device is not a TPU, please select TPU from Edit > Notebook settings > Hardware accelerator"
+    "TPU" in device_type,
+    "Available device is not a TPU, please select TPU from Runtime > Change runtime type > Hardware accelerator"
 )
-"Found 8 JAX devices of type Cloud TPU."
+# Found 8 JAX devices of type Cloud TPU.
 ```
 
 Great, now you can import the rest of the dependencies you'll need:
 
 ```python
-import numpy as np
 import jax.numpy as jnp
-
-from pathlib import Path
 from jax import pmap
 from flax.jax_utils import replicate
 from flax.training.common_utils import shard
-from PIL import Image
 
-from huggingface_hub import notebook_login
 from diffusers import FlaxStableDiffusionPipeline
 ```
 
@@ -90,7 +85,7 @@ prompt = "A cinematic film still of Morgan Freeman starring as Jimi Hendrix, por
 prompt = [prompt] * jax.device_count()
 prompt_ids = pipeline.prepare_inputs(prompt)
 prompt_ids.shape
-"(8, 77)"
+# (8, 77)
 ```
 
 Model parameters and inputs have to be replicated across the 8 parallel devices. The parameters dictionary is replicated with [`flax.jax_utils.replicate`](https://flax.readthedocs.io/en/latest/api_reference/flax.jax_utils.html#flax.jax_utils.replicate) which traverses the dictionary and changes the shape of the weights so they are repeated 8 times. Arrays are replicated using `shard`.
@@ -102,7 +97,7 @@ p_params = replicate(params)
 # arrays
 prompt_ids = shard(prompt_ids)
 prompt_ids.shape
-"(8, 1, 77)"
+# (8, 1, 77)
 ```
 
 This shape means each one of the 8 devices receives as an input a `jnp` array with shape `(1, 77)`, where `1` is the batch size per device. On TPUs with sufficient memory, you could have a batch size larger than `1` if you want to generate multiple images (per chip) at once.
@@ -127,7 +122,7 @@ To take advantage of JAX's optimized speed on a TPU, pass `jit=True` to the pipe
 
 <Tip warning={true}>
 
-You need to ensure all your inputs have the same shape in subsequent calls, other JAX will need to recompile the code which is slower.
+You need to ensure all your inputs have the same shape in subsequent calls, otherwise JAX will need to recompile the code which is slower.
 
 </Tip>
 
@@ -137,18 +132,18 @@ The first inference run takes more time because it needs to compile the code, bu
 %%time
 images = pipeline(prompt_ids, p_params, rng, jit=True)[0]
 
-"CPU times: user 56.2 s, sys: 42.5 s, total: 1min 38s"
-"Wall time: 1min 29s"
+# CPU times: user 56.2 s, sys: 42.5 s, total: 1min 38s
+# Wall time: 1min 29s
 ```
 
 The returned array has shape `(8, 1, 512, 512, 3)` which should be reshaped to remove the second dimension and get 8 images of `512 × 512 × 3`. Then you can use the [`~utils.numpy_to_pil`] function to convert the arrays into images.
 
 ```python
-from diffusers import make_image_grid
+from diffusers.utils import make_image_grid
 
 images = images.reshape((images.shape[0] * images.shape[1],) + images.shape[-3:])
 images = pipeline.numpy_to_pil(images)
-make_image_grid(images, 2, 4)
+make_image_grid(images, rows=2, cols=4)
 ```
 
 ![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/stable_diffusion_jax_how_to_cell_38_output_0.jpeg)
@@ -181,7 +176,6 @@ make_image_grid(images, 2, 4)
 
 ![img](https://huggingface.co/datasets/YiYiXu/test-doc-assets/resolve/main/stable_diffusion_jax_how_to_cell_43_output_0.jpeg)
 
-
 ## How does parallelization work?
 
 The Flax pipeline in 🤗 Diffusers automatically compiles the model and runs it in parallel on all available devices. Let's take a closer look at how that process works.
@@ -202,7 +196,7 @@ p_generate = pmap(pipeline._generate)
 After calling `pmap`, the prepared function `p_generate` will:
 
 1. Make a copy of the underlying function, `pipeline._generate`, on each device.
-2. Send each device a different portion of the input arguments (this is why its necessary to call the *shard* function). In this case, `prompt_ids` has shape `(8, 1, 77, 768)` so the array is split into 8 and each copy of `_generate` receives an input with shape `(1, 77, 768)`.
+2. Send each device a different portion of the input arguments (this is why it's necessary to call the *shard* function). In this case, `prompt_ids` has shape `(8, 1, 77, 768)` so the array is split into 8 and each copy of `_generate` receives an input with shape `(1, 77, 768)`.
 
 The most important thing to pay attention to here is the batch size (1 in this example), and the input dimensions that make sense for your code. You don't have to change anything else to make the code work in parallel.
 
@@ -212,13 +206,14 @@ The first time you call the pipeline takes more time, but the calls afterward ar
 %%time
 images = p_generate(prompt_ids, p_params, rng)
 images = images.block_until_ready()
-"CPU times: user 1min 15s, sys: 18.2 s, total: 1min 34s"
-"Wall time: 1min 15s"
+
+# CPU times: user 1min 15s, sys: 18.2 s, total: 1min 34s
+# Wall time: 1min 15s
 ```
 
 Check your image dimensions to see if they're correct:
 
 ```python
 images.shape
-"(8, 1, 512, 512, 3)"
+# (8, 1, 512, 512, 3)
 ```

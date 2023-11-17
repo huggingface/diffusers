@@ -1,3 +1,15 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Reduce memory usage
 
 A barrier to using diffusion models is the large amount of memory required. To overcome this challenge, there are several memory-reducing techniques you can use to run even some of the largest models on free-tier or consumer GPUs. Some of these techniques can even be combined to further reduce memory usage.
@@ -18,10 +30,9 @@ The results below are obtained from generating a single 512x512 image from the p
 | traced UNet      | 3.21s   | x2.96   |
 | memory-efficient attention  | 2.63s  | x3.61   |
 
-
 ## Sliced VAE
 
-Sliced VAE enables decoding large batches of images with limited VRAM or batches with 32 images or more by decoding the batches of latents one image at a time. You'll likely want to couple this with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to further reduce memory use.
+Sliced VAE enables decoding large batches of images with limited VRAM or batches with 32 images or more by decoding the batches of latents one image at a time. You'll likely want to couple this with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to reduce memory use further if you have xFormers installed.
 
 To use sliced VAE, call [`~StableDiffusionPipeline.enable_vae_slicing`] on your pipeline before inference:
 
@@ -38,6 +49,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 pipe.enable_vae_slicing()
+#pipe.enable_xformers_memory_efficient_attention()
 images = pipe([prompt] * 32).images
 ```
 
@@ -45,7 +57,7 @@ You may see a small performance boost in VAE decoding on multi-image batches, an
 
 ## Tiled VAE
 
-Tiled VAE processing also enables working with large images on limited VRAM (for example, generating 4k images on 8GB of VRAM) by splitting the image into overlapping tiles, decoding the tiles, and then blending the outputs together to compose the final image. You should also used tiled VAE with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to further reduce memory use.
+Tiled VAE processing also enables working with large images on limited VRAM (for example, generating 4k images on 8GB of VRAM) by splitting the image into overlapping tiles, decoding the tiles, and then blending the outputs together to compose the final image. You should also used tiled VAE with [`~ModelMixin.enable_xformers_memory_efficient_attention`] to reduce memory use further if you have xFormers installed.
 
 To use tiled VAE processing, call [`~StableDiffusionPipeline.enable_vae_tiling`] on your pipeline before inference:
 
@@ -62,7 +74,7 @@ pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 prompt = "a beautiful landscape photograph"
 pipe.enable_vae_tiling()
-pipe.enable_xformers_memory_efficient_attention()
+#pipe.enable_xformers_memory_efficient_attention()
 
 image = pipe([prompt], width=3840, height=2224, num_inference_steps=20).images[0]
 ```
@@ -98,24 +110,6 @@ Consider using [model offloading](#model-offloading) if you want to optimize for
 
 </Tip>
 
-CPU offloading can also be chained with attention slicing to reduce memory consumption to less than 2GB.
-
-```Python
-import torch
-from diffusers import StableDiffusionPipeline
-
-pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
-    torch_dtype=torch.float16,
-    use_safetensors=True,
-)
-
-prompt = "a photo of an astronaut riding a horse on mars"
-pipe.enable_sequential_cpu_offload()
-
-image = pipe(prompt).images[0]
-```
-
 <Tip warning={true}>
 
 When using [`~StableDiffusionPipeline.enable_sequential_cpu_offload`], don't move the pipeline to CUDA beforehand or else the gain in memory consumption will only be minimal (see this [issue](https://github.com/huggingface/diffusers/issues/1934) for more information).
@@ -146,23 +140,6 @@ import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",  
-    torch_dtype=torch.float16,
-    use_safetensors=True,
-)
-
-prompt = "a photo of an astronaut riding a horse on mars"
-pipe.enable_model_cpu_offload()
-image = pipe(prompt).images[0]
-```
-
-Model offloading can also be combined with attention slicing for additional memory savings.
-
-```Python
-import torch
-from diffusers import StableDiffusionPipeline
-
-pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     use_safetensors=True,
@@ -170,14 +147,12 @@ pipe = StableDiffusionPipeline.from_pretrained(
 
 prompt = "a photo of an astronaut riding a horse on mars"
 pipe.enable_model_cpu_offload()
-
 image = pipe(prompt).images[0]
 ```
 
 <Tip warning={true}>
 
-In order to properly offload models after they're called, it is required to run the entire pipeline and models are called in the pipeline's expected order. Exercise caution if models are reused outside the context of the pipeline after hooks have been installed. See [Removing Hooks](https://huggingface.co/docs/accelerate/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module)
-for more information.
+In order to properly offload models after they're called, it is required to run the entire pipeline and models are called in the pipeline's expected order. Exercise caution if models are reused outside the context of the pipeline after hooks have been installed. See [Removing Hooks](https://huggingface.co/docs/accelerate/en/package_reference/big_modeling#accelerate.hooks.remove_hook_from_module) for more information.
 
 [`~StableDiffusionPipeline.enable_model_cpu_offload`] is a stateful operation that installs hooks on the models and state on the pipeline.
 
@@ -219,9 +194,9 @@ unet_runs_per_experiment = 50
 
 # load inputs
 def generate_inputs():
-    sample = torch.randn(2, 4, 64, 64).half().cuda()
-    timestep = torch.rand(1).half().cuda() * 999
-    encoder_hidden_states = torch.randn(2, 77, 768).half().cuda()
+    sample = torch.randn((2, 4, 64, 64), device="cuda", dtype=torch.float16)
+    timestep = torch.rand(1, device="cuda", dtype=torch.float16) * 999
+    encoder_hidden_states = torch.randn((2, 77, 768), device="cuda", dtype=torch.float16)
     return sample, timestep, encoder_hidden_states
 
 
@@ -303,7 +278,7 @@ unet_traced = torch.jit.load("unet_traced.pt")
 class TracedUNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.in_channels = pipe.unet.in_channels
+        self.in_channels = pipe.unet.config.in_channels
         self.device = pipe.unet.device
 
     def forward(self, latent_model_input, t, encoder_hidden_states):
@@ -319,7 +294,7 @@ with torch.inference_mode():
 
 ## Memory-efficient attention
 
-Recent work on optimizing bandwidth in the attention block has generated huge speed-ups and reductions in GPU memory usage. The most recent type of memory-efficient attention is [Flash Attention](https://arxiv.org/pdf/2205.14135.pdf) (you can check out the original code at [HazyResearch/flash-attention](https://github.com/HazyResearch/flash-attention)).
+Recent work on optimizing bandwidth in the attention block has generated huge speed-ups and reductions in GPU memory usage. The most recent type of memory-efficient attention is [Flash Attention](https://arxiv.org/abs/2205.14135) (you can check out the original code at [HazyResearch/flash-attention](https://github.com/HazyResearch/flash-attention)).
 
 <Tip>
 
@@ -354,4 +329,4 @@ with torch.inference_mode():
 # pipe.disable_xformers_memory_efficient_attention()
 ```
 
-The iteration speed when using `xformers` should match the iteration speed of Torch 2.0 as described [here](torch2.0).
+The iteration speed when using `xformers` should match the iteration speed of PyTorch 2.0 as described [here](torch2.0).

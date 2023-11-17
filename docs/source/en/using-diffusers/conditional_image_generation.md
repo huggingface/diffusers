@@ -30,6 +30,7 @@ You can generate images from a prompt in 🤗 Diffusers in two steps:
 
 ```py
 from diffusers import AutoPipelineForText2Image
+import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
 	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16"
@@ -42,6 +43,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 image = pipeline(
 	"stained glass of darth vader, backlight, centered composition, masterpiece, photorealistic, 8k"
 ).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -65,6 +67,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 ).to("cuda")
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
+image
 ```
 
 ### Stable Diffusion XL
@@ -80,6 +83,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 ).to("cuda")
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
+image
 ```
 
 ### Kandinsky 2.2
@@ -93,15 +97,16 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
-	"kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16, variant="fp16"
+	"kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
 ).to("cuda")
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", generator=generator).images[0]
+image
 ```
 
 ### ControlNet
 
-ControlNet are auxiliary models or adapters that are finetuned on top of text-to-image models, such as [Stable Diffusion V1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5). Using ControlNet models in combination with text-to-image models offers diverse options for more explicit control over how to generate an image. With ControlNet's, you add an additional conditioning input image to the model. For example, if you provide an image of a human pose (usually represented as multiple keypoints that are connected into a skeleton) as a conditioning input, the model generates an image that follows the pose of the image. Check out the more in-depth [ControlNet](controlnet) guide to learn more about other conditioning inputs and how to use them.
+ControlNet models are auxiliary models or adapters that are finetuned on top of text-to-image models, such as [Stable Diffusion v1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5). Using ControlNet models in combination with text-to-image models offers diverse options for more explicit control over how to generate an image. With ControlNet, you add an additional conditioning input image to the model. For example, if you provide an image of a human pose (usually represented as multiple keypoints that are connected into a skeleton) as a conditioning input, the model generates an image that follows the pose of the image. Check out the more in-depth [ControlNet](controlnet) guide to learn more about other conditioning inputs and how to use them.
 
 In this example, let's condition the ControlNet with a human pose estimation image. Load the ControlNet model pretrained on human pose estimations:
 
@@ -124,6 +129,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 ).to("cuda")
 generator = torch.Generator("cuda").manual_seed(31)
 image = pipeline("Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", image=pose_image, generator=generator).images[0]
+image
 ```
 
 <div class="flex flex-row gap-4">
@@ -163,6 +169,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", height=768, width=512
 ).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -171,7 +178,7 @@ image = pipeline(
 
 <Tip warning={true}>
 
-Other models may have different default image sizes depending on the image size's in the training dataset. For example, SDXL's default image size is 1024x1024 and using lower `height` and `width` values may result in lower quality images. Make sure you check the model's API reference first!
+Other models may have different default image sizes depending on the image sizes in the training dataset. For example, SDXL's default image size is 1024x1024 and using lower `height` and `width` values may result in lower quality images. Make sure you check the model's API reference first!
 
 </Tip>
 
@@ -189,6 +196,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 image = pipeline(
 	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", guidance_scale=3.5
 ).images[0]
+image
 ```
 
 <div class="flex flex-row gap-4">
@@ -218,19 +226,20 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
 ).to("cuda")
 image = pipeline(
-	prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", 
+	prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 	negative_prompt="ugly, deformed, disfigured, poor details, bad anatomy",
 ).images[0]
+image
 ```
 
 <div class="flex flex-row gap-4">
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/text2img-neg-prompt-1.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">negative prompt = "ugly, deformed, disfigured, poor details, bad anatomy"</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">negative_prompt = "ugly, deformed, disfigured, poor details, bad anatomy"</figcaption>
   </div>
   <div class="flex-1">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/text2img-neg-prompt-2.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">negative prompt = "astronaut"</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">negative_prompt = "astronaut"</figcaption>
   </div>
 </div>
 
@@ -249,9 +258,10 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 ).to("cuda")
 generator = torch.Generator(device="cuda").manual_seed(30)
 image = pipeline(
-	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", 
+	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 	generator=generator,
 ).images[0]
+image
 ```
 
 ## Control image generation
@@ -278,14 +288,14 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
 ).to("cuda")
 image = pipeline(
-	prompt_emebds=prompt_embeds, # generated from Compel
+	prompt_embeds=prompt_embeds, # generated from Compel
 	negative_prompt_embeds=negative_prompt_embeds, # generated from Compel
 ).images[0]
 ```
 
 ### ControlNet
 
-As you saw in the [ControlNet](#controlnet) section, these models offer a more flexible and accurate way to generate images by incorporating an additional conditioning image input. Each ControlNet model is pretrained on a particular type of conditioning image to generate new images that resemble it. For example, if you take a ControlNet pretrained on depth maps, you can give the model a depth map as a conditioning input and it'll generate an image that preserves the spatial information in it. This is quicker and easier than specifying the depth information in a prompt. You can even combine multiple conditioning inputs with a [MultiControlNet](controlnet#multicontrolnet)!
+As you saw in the [ControlNet](#controlnet) section, these models offer a more flexible and accurate way to generate images by incorporating an additional conditioning image input. Each ControlNet model is pretrained on a particular type of conditioning image to generate new images that resemble it. For example, if you take a ControlNet model pretrained on depth maps, you can give the model a depth map as a conditioning input and it'll generate an image that preserves the spatial information in it. This is quicker and easier than specifying the depth information in a prompt. You can even combine multiple conditioning inputs with a [MultiControlNet](controlnet#multicontrolnet)!
 
 There are many types of conditioning inputs you can use, and 🤗 Diffusers supports ControlNet for Stable Diffusion and SDXL models. Take a look at the more comprehensive [ControlNet](controlnet) guide to learn how you can use these models.
 
@@ -300,7 +310,7 @@ from diffusers import AutoPipelineForText2Image
 import torch
 
 pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16").to("cuda")
-pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overheard", fullgraph=True)
+pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
 For more tips on how to optimize your code to save memory and speed up inference, read the [Memory and speed](../optimization/fp16) and [Torch 2.0](../optimization/torch2.0) guides.

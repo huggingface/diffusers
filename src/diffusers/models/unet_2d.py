@@ -117,6 +117,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         add_attention: bool = True,
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
+        num_train_timesteps: Optional[int] = None,
     ):
         super().__init__()
 
@@ -143,6 +144,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             timestep_input_dim = 2 * block_out_channels[0]
         elif time_embedding_type == "positional":
             self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
+            timestep_input_dim = block_out_channels[0]
+        elif time_embedding_type == "learned":
+            self.time_proj = nn.Embedding(num_train_timesteps, block_out_channels[0])
             timestep_input_dim = block_out_channels[0]
 
         self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
