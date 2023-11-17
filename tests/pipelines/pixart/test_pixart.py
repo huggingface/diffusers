@@ -410,3 +410,22 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         no_res_bin_image_slice = no_res_bin_image[0, -3:, -3:, -1]
 
         assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)
+
+    def test_pixart_512_without_resolution_binning(self):
+        generator = torch.manual_seed(0)
+
+        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-512x512", torch_dtype=torch.float16)
+        pipe.enable_model_cpu_offload()
+
+        prompt = "A small cactus with a happy face in the Sahara desert."
+
+        image = pipe(prompt, generator=generator, num_inference_steps=5, output_type="np").images
+        image_slice = image[0, -3:, -3:, -1]
+
+        generator = torch.manual_seed(0)
+        no_res_bin_image = pipe(
+            prompt, generator=generator, num_inference_steps=5, output_type="np", use_resolution_binning=False
+        ).images
+        no_res_bin_image_slice = no_res_bin_image[0, -3:, -3:, -1]
+
+        assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)
