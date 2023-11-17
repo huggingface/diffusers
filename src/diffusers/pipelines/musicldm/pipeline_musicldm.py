@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import scipy
 
-        >>> repo_id = "cvssp/audioldm-s-full-v2"
+        >>> repo_id = "sanchit-gandhi/musicldm-full"
         >>> pipe = MusicLDMPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
         >>> pipe = pipe.to("cuda")
 
