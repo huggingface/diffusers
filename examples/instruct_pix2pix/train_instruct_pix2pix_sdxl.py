@@ -87,6 +87,48 @@ def import_model_class_from_model_name_or_path(
         return CLIPTextModelWithProjection
     else:
         raise ValueError(f"{model_class} is not supported.")
+    
+
+def tokenize_prompt(tokenizer, prompt):
+    text_inputs = tokenizer(
+        prompt,
+        padding="max_length",
+        max_length=tokenizer.model_max_length,
+        truncation=True,
+        return_tensors="pt",
+    )
+    text_input_ids = text_inputs.input_ids
+    return text_input_ids
+
+
+# Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
+def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
+    prompt_embeds_list = []
+
+    for i, text_encoder in enumerate(text_encoders):
+        if tokenizers is not None:
+            tokenizer = tokenizers[i]
+            text_input_ids = tokenize_prompt(tokenizer, prompt)
+        else:
+            assert text_input_ids_list is not None
+            text_input_ids = text_input_ids_list[i]
+
+        prompt_embeds = text_encoder(
+            text_input_ids.to(text_encoder.device),
+            output_hidden_states=True,
+        )
+
+        # We are only ALWAYS interested in the pooled output of the final text encoder
+        pooled_prompt_embeds = prompt_embeds[0]
+        prompt_embeds = prompt_embeds.hidden_states[-2]
+        bs_embed, seq_len, _ = prompt_embeds.shape
+        prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
+        prompt_embeds_list.append(prompt_embeds)
+
+    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
+    pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
+    return prompt_embeds, pooled_prompt_embeds
+
 
 
 def parse_args():
@@ -689,12 +731,28 @@ def main():
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
     # Preprocessing the datasets.
+    def tokenize_captions(examples, is_train=True):
+        captions = []
+        for caption in examples[edit_prompt_column]:
+            if isinstance(caption, str):
+                captions.append(caption)
+            elif isinstance(caption, (list, np.ndarray)):
+                # take a random caption if there are multiple
+                captions.append(random.choice(caption) if is_train else caption[0])
+            else:
+                raise ValueError(
+                    f"Caption column `{edit_prompt_column}` should contain either strings or lists of strings."
+                )
+        tokens_one = tokenize_prompt(tokenizer_1, captions)
+        tokens_two = tokenize_prompt(tokenizer_2, captions)
+        return tokens_one, tokens_two
+    
     train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
     normalize = transforms.Normalize([0.5], [0.5])
 
-    def preprocess_image(samples):
+    def preprocess_train(samples):
         orig_images = [image.convert("RGB") for image in samples[original_image_column]]
         edited_images = [image.convert("RGB") for image in samples[edited_image_column]]
         resized_edited_images = []
@@ -755,6 +813,32 @@ def main():
         samples["input_ids_one"] = tokens_one
         samples["input_ids_two"] = tokens_two
         return samples
+    
+    with accelerator.main_process_first():
+        if args.max_train_samples is not None:
+            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+        # Set the training transforms
+        train_dataset = dataset["train"].with_transform(preprocess_train)
+
+    def collate_fn(examples):
+        original_pixel_values = torch.stack([example["original_pixel_values"] for example in examples])
+        original_pixel_values = original_pixel_values.to(memory_format=torch.contiguous_format).float()
+
+        edited_pixel_values = torch.stack([example["edited_pixel_values"] for example in examples])
+        edited_pixel_values = edited_pixel_values.to(memory_format=torch.contiguous_format).float()
+
+        original_sizes = [example["original_sizes"] for example in examples]
+        crop_top_lefts = [example["crop_top_lefts"] for example in examples]
+        input_ids_one = torch.stack([example["input_ids_one"] for example in examples])
+        input_ids_two = torch.stack([example["input_ids_two"] for example in examples])
+        return {
+            "original_pixel_values": original_pixel_values,
+            "edited_pixel_values": edited_pixel_values,
+            "input_ids_one": input_ids_one,
+            "input_ids_two": input_ids_two,
+            "original_sizes": original_sizes,
+            "crop_top_lefts": crop_top_lefts,
+        }
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -845,46 +929,6 @@ def main():
             first_epoch = global_step // num_update_steps_per_epoch
     else:
         initial_global_step = 0
-
-    def tokenize_captions(captions, tokenizer):
-        inputs = tokenizer(
-            captions,
-            max_length=tokenizer.model_max_length,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt",
-        )
-        return inputs.input_ids
-
-    # Adapted from diffusers.pipelines.StableDiffusionXLPipeline.encode_prompt
-    def encode_prompt(prompts, text_encoders, tokenizers):
-        prompt_embeds_list = []
-
-        with torch.no_grad():
-            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-                text_input_ids = tokenize_captions(prompts, tokenizer=tokenizer)
-                prompt_embeds = text_encoder(
-                    text_input_ids.to(text_encoder.device),
-                    output_hidden_states=True,
-                )
-
-                # We are only ALWAYS interested in the pooled output of the final text encoder
-                pooled_prompt_embeds = prompt_embeds[0]
-                prompt_embeds = prompt_embeds.hidden_states[-2]
-                bs_embed, seq_len, _ = prompt_embeds.shape
-                prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
-                prompt_embeds_list.append(prompt_embeds)
-
-        prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
-        pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
-        return prompt_embeds, pooled_prompt_embeds
-
-    def compute_embeddings_for_prompts(prompts, text_encoders, tokenizers):
-        prompt_embeds_all, pooled_prompt_embeds_all = encode_prompt(prompts, text_encoders, tokenizers)
-        prompt_embeds_all = prompt_embeds_all.to(accelerator.device)
-        pooled_prompt_embeds_all = pooled_prompt_embeds_all.to(accelerator.device)
-        return prompt_embeds_all, pooled_prompt_embeds_all
-
 
     # Get null conditioning.
     # Remains fixed throughout training.
