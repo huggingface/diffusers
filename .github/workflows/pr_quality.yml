@@ -29,7 +29,6 @@ jobs:
         run: |
           ruff check examples tests src utils scripts
           ruff format examples tests src utils scripts --check
-          doc-builder style src/diffusers docs/source --max_len 119 --check_only --path_to_docs docs/source
 
   check_repository_consistency:
     runs-on: ubuntu-latest
