@@ -19,49 +19,64 @@ env:
   PYTEST_TIMEOUT: 60
 
 jobs:
-  run_fast_tests:
+  setup_pr_tests:
+    name: Setup PR Tests
+    runner: docker-cpu
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+    - name: Install dependencies
+      run: |
+        apt-get update && apt-get install libsndfile1-dev libgl1 -y
+        python -m pip install -e .
+    - name: Environment
+      run: |
+        python utils/print_env.py
+    - name: Fetch Tests
+      run: |
+        python utils/tests_fetcher.py | tee test_preparation.txt
+    - name: Report fetched tests
+      uses: actions/upload-artifact@v3
+      with:
+        name: test_fetched
+        path: /diffusers/test_preparation.txt
+    - id: set-matrix
+      name: Create Test Matrix
+      working-directory: /diffusers
+      # The `keys` is used as GitHub actions matrix for jobs, i.e. `models`, `pipelines`, etc.
+      # The `test_map` is used to get the actual identified test files under each key.
+      # If no test to run (so no `test_map.json` file), create a dummy map (empty matrix will fail)
+      run: |
+        if [ -f test_map.json ]; then
+            keys=$(python3 -c 'import json; fp = open("test_map.json"); test_map = json.load(fp); fp.close(); d = list(test_map.keys()); print(d)')
+            test_map=$(python3 -c 'import json; fp = open("test_map.json"); test_map = json.load(fp); fp.close(); print(test_map)')
+        else
+            keys=$(python3 -c 'keys = ["dummy"]; print(keys)')
+            test_map=$(python3 -c 'test_map = {"dummy": []}; print(test_map)')
+        fi
+        echo $keys
+        echo $test_map
+        echo "matrix=$keys" >> $GITHUB_OUTPUT
+        echo "test_map=$test_map" >> $GITHUB_OUTPUT
+
+  run_pr_tests:
+    name: Run PR Tests
+    needs: setup_pr_tests
+    # `dummy` means there is no test to run
+    if: contains(fromJson(needs.setup_pr_tests.outputs.matrix), 'dummy') != true
     strategy:
       fail-fast: false
       matrix:
-        config:
-          - name: Fast PyTorch Pipeline CPU tests
-            framework: pytorch_pipelines
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_pipelines
-          - name: Fast PyTorch Models & Schedulers CPU tests
-            framework: pytorch_models
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_models_schedulers
-          - name: LoRA
-            framework: lora
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_lora
-          - name: Fast Flax CPU tests
-            framework: flax
-            runner: docker-cpu
-            image: diffusers/diffusers-flax-cpu
-            report: flax_cpu
-          - name: PyTorch Example CPU tests
-            framework: pytorch_examples
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_example_cpu
-
-    name: ${{ matrix.config.name }}
-
-    runs-on: ${{ matrix.config.runner }}
-
+        modules: ${{ fromJson(needs.setup.outputs.matrix) }}
+    runs-on: docker-cpu
     container:
-      image: ${{ matrix.config.image }}
+      image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
-
     defaults:
       run:
         shell: bash
-
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
@@ -78,55 +93,27 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run fast PyTorch Pipeline CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
+    - name: Run all selected tests on CPU
+      working-directory: /diffusers
       run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/pipelines
-
-    - name: Run fast PyTorch Model Scheduler CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_models' }}
-      run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and not Dependency" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/models tests/schedulers tests/others
-
-    - name: Run fast PyTorch LoRA CPU tests
-      if: ${{ matrix.config.framework == 'lora' }}
-      run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and not Dependency" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/lora
-
-    - name: Run fast Flax TPU tests
-      if: ${{ matrix.config.framework == 'flax' }}
-      run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "Flax" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests
-
-    - name: Run example PyTorch CPU tests
-      if: ${{ matrix.config.framework == 'pytorch_examples' }}
-      run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          --make-reports=tests_${{ matrix.config.report }} \
-          examples/test_examples.py
+        python -m pytest -n 2 \
+        --dist=loadfile -v \
+        --make-reports=${{ matrix.modules }}_tests_cpu \
+        ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
 
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
+      continue-on-error: true
+      run: |
+        cat reports/${{ matrix.modules }}_tests_cpu_stats.txt
+        cat /diffusers/reports/${{ matrix.modules }}_tests_cpu/failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
-        name: pr_${{ matrix.config.report }}_test_reports
-        path: reports
+          name: pipeline_${{ matrix.modules }}_test_reports
+          path: reports
 
   run_staging_tests:
     strategy:
@@ -140,9 +127,7 @@ jobs:
             report: torch_hub
 
     name: ${{ matrix.config.name }}
-
     runs-on: ${{ matrix.config.runner }}
-
     container:
       image: ${{ matrix.config.image }}
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
