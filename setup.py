@@ -113,7 +113,7 @@ _deps = [
     "numpy",
     "omegaconf",
     "parameterized",
-    "peft<=0.6.2",
+    "peft>=0.6.0",
     "protobuf>=3.20.3,<4",
     "pytest",
     "pytest-timeout",
