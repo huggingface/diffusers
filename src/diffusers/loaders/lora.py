@@ -1227,7 +1227,7 @@ class LoraLoaderMixin:
             if version.parse(__version__) > version.parse("0.23"):
                 deprecate("fuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
 
-            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, **kwargs):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
                     if isinstance(attn_module.q_proj, PatchedLoraProjection):
                         attn_module.q_proj._fuse_lora(lora_scale, safe_fusing)
@@ -1242,9 +1242,9 @@ class LoraLoaderMixin:
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
-                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing, adapter_names)
+                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing, adapter_names=adapter_names)
             if hasattr(self, "text_encoder_2"):
-                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing, adapter_names)
+                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing, adapter_names=adapter_names)
 
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
