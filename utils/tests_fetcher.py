@@ -776,12 +776,7 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
     # For inits, we don't do the reverse deps but the direct deps: if modifying an init, we want to make sure we test
     # all the modules impacted by that init.
     for m in [f for f in all_modules if f.endswith("__init__.py")]:
-        try:
-            direct_deps = get_module_dependencies(m, cache=cache)
-        except Exception as e:
-            import ipdb
-
-            ipdb.set_trace()
+        direct_deps = get_module_dependencies(m, cache=cache)
         deps = sum([reverse_map[d] for d in direct_deps if not d.endswith("__init__.py")], direct_deps)
         reverse_map[m] = list(set(deps) - {m})
 
