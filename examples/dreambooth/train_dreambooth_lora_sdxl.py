@@ -191,7 +191,7 @@ def parse_args(input_args=None):
         help="The column of the dataset containing the instance prompt for each image",
     )
 
-    parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
+    parser.add_argument("--repeats", type=int, default=1, help="How many times to repeat the training data.")
 
     parser.add_argument(
         "--class_data_dir",
