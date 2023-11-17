@@ -117,10 +117,10 @@ from pipeline_t2v_base_pixel import TextToVideoIFPipeline
 import torch
 
 pipeline = TextToVideoIFPipeline(
-    unet=unet, 
-    text_encoder=text_encoder, 
-    tokenizer=tokenizer, 
-    scheduler=scheduler, 
+    unet=unet,
+    text_encoder=text_encoder,
+    tokenizer=tokenizer,
+    scheduler=scheduler,
     feature_extractor=feature_extractor
 )
 pipeline = pipeline.to(device="cuda")
@@ -165,4 +165,25 @@ video_frames = pipeline(
     guidance_scale=9.0,
     output_type="pt"
 ).frames
+```
+
+As an additional reference example, you can refer to the repository structure of [stabilityai/japanese-stable-diffusion-xl](https://huggingface.co/stabilityai/japanese-stable-diffusion-xl/), that makes use of the `trust_remote_code` feature:
+
+```python
+
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/japanese-stable-diffusion-xl", trust_remote_code=True
+)
+pipeline.to("cuda")
+
+# if using torch < 2.0
+# pipeline.enable_xformers_memory_efficient_attention()
+
+prompt = "柴犬、カラフルアート"
+
+image = pipeline(prompt=prompt).images[0]
+
 ```

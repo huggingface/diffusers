@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # PNDM
 
-[Pseudo Numerical methods for Diffusion Models on manifolds](https://huggingface.co/papers/2202.09778) (PNDM) is by Luping Liu, Yi Ren, Zhijie Lin and Zhou Zhao.
+[Pseudo Numerical Methods for Diffusion Models on Manifolds](https://huggingface.co/papers/2202.09778) (PNDM) is by Luping Liu, Yi Ren, Zhijie Lin and Zhou Zhao.
 
 The abstract from the paper is:
 

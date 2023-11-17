@@ -14,8 +14,6 @@ specific language governing permissions and limitations under the License.
 
 [Audio Diffusion](https://github.com/teticio/audio-diffusion) is by Robert Dargavel Smith, and it leverages the recent advances in image generation from diffusion models by converting audio samples to and from Mel spectrogram images.
 
-The original codebase, training scripts and example notebooks can be found at [teticio/audio-diffusion](https://github.com/teticio/audio-diffusion).
-
 <Tip>
 
 Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
