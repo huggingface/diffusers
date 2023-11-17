@@ -35,11 +35,11 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
-## Running the `PixArtAlphaPipeline` in under 8GB GPU VRAM
+## Inference with under 8GB GPU VRAM
 
-It is possible to run the [`PixArtAlphaPipeline`] under 8GB GPU VRAM by loading the text encoder in 8-bit numerical precision. Let's walk through a full-fledged example. 
+Run the [`PixArtAlphaPipeline`] with under 8GB GPU VRAM by loading the text encoder in 8-bit precision. Let's walk through a full-fledged example. 
 
-First, install the `bitsandbytes` library:
+First, install the [bitsandbytes](https://github.com/TimDettmers/bitsandbytes) library:
 
 ```bash
 pip install -U bitsandbytes
@@ -78,7 +78,7 @@ del pipe
 flush()
 ```
 
-`flush()` is just a utility function to clear the GPU VRAM and is implemented like so:
+Free up some GPU VRAM with the `flush()` utility function:
 
 ```python
 import gc 
@@ -88,7 +88,7 @@ def flush():
     torch.cuda.empty_cache()
 ```
 
-Then compute the latents providing the prompt embeddings as inputs:
+Then compute the latents with the prompt embeddings as inputs:
 
 ```python
 pipe = PixArtAlphaPipeline.from_pretrained(
@@ -111,9 +111,13 @@ del pipe.transformer
 flush()
 ```
 
-Notice that while initializing `pipe`, you're setting `text_encoder` to `None` so that it's not loaded. 
+<Tip>
 
-Once the latents are computed, pass it off the VAE to decode into a real image:
+Notice that while initializing `pipe`, you're setting `text_encoder` to `None` so that it's not loaded.
+
+</Tip>
+
+Once the latents are computed, pass it off to the VAE to decode into a real image:
 
 ```python
 with torch.no_grad():
@@ -122,15 +126,15 @@ image = pipe.image_processor.postprocess(image, output_type="pil")
 image.save("cat.png")
 ```
 
-All of this, put together, should allow you to run [`PixArtAlphaPipeline`] under 8GB GPU VRAM.
+By deleting components you aren't using and flushing the GPU VRAM, you should be able to run [`PixArtAlphaPipeline`] with under 8GB GPU VRAM.
 
 ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pixart/8bits_cat.png)
 
-Find the script [here](https://gist.github.com/sayakpaul/3ae0f847001d342af27018a96f467e4e) that can be run end-to-end to report the memory being used.
+If you want a report of your memory-usage, run this [script](https://gist.github.com/sayakpaul/3ae0f847001d342af27018a96f467e4e).
 
 <Tip warning={true}>
 
-Text embeddings computed in 8-bit can have an impact on the quality of the generated images because of the information loss in the representation space induced by the reduced precision. It's recommended to compare the outputs with and without 8-bit.
+Text embeddings computed in 8-bit can impact the quality of the generated images because of the information loss in the representation space caused by the reduced precision. It's recommended to compare the outputs with and without 8-bit.
 
 </Tip>
 
