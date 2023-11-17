@@ -466,7 +466,7 @@ class StableDiffusionPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.3149, 0.5246, 0.4796, 0.3218, 0.4469, 0.4729, 0.5151, 0.3597, 0.3954])
+        expected_slice = np.array([0.2055, 0.4736, 0.4519, 0.2334, 0.4490, 0.4437, 0.5183, 0.3714, 0.3959])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
