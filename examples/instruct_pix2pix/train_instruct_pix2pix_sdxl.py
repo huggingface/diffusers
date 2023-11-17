@@ -42,6 +42,9 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+from torchvision import transforms
+from torchvision.transforms.functional import crop
+import random
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
@@ -198,7 +201,7 @@ def parse_args():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="instruct-pix2pix-model",
+        default="instruct-pix2pix-sdxl",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
     parser.add_argument(
@@ -215,18 +218,6 @@ def parse_args():
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this resolution."
         ),
-    )
-    parser.add_argument(
-        "--crops_coords_top_left_h",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
-        "--crops_coords_top_left_w",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
     )
     parser.add_argument(
         "--center_crop",
@@ -672,26 +663,52 @@ def main():
         return inputs.input_ids
 
     # Preprocessing the datasets.
-    train_transforms = transforms.Compose(
-        [
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
-            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
-        ]
-    )
+    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+    train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
+    train_flip = transforms.RandomHorizontalFlip(p=1.0)
+    normalize = transforms.Normalize([0.5], [0.5])
 
-    def preprocess_images(examples):
-        original_images = np.concatenate(
-            [convert_to_np(image, args.resolution) for image in examples[original_image_column]]
+
+    def preprocess_image(sample):
+        orig_image = sample[original_image_column]
+        edited_image = sample[edited_image_column]
+        if edited_image.size != orig_image.size:
+            edited_image = edited_image.resize(orig_image.size)
+        images = torch.stack(
+            [
+                transforms.ToTensor()(orig_image),
+                transforms.ToTensor()(edited_image)
+            ]
         )
-        edited_images = np.concatenate(
-            [convert_to_np(image, args.resolution) for image in examples[edited_image_column]]
-        )
-        # We need to ensure that the original and the edited images undergo the same
-        # augmentation transforms.
-        images = np.concatenate([original_images, edited_images])
-        images = torch.tensor(images)
-        images = 2 * (images / 255) - 1
-        return train_transforms(images)
+        images = train_resize(images)
+        if args.center_crop:
+            y1 = max(0, int(round((orig_image.height - args.resolution) / 2.0)))
+            x1 = max(0, int(round((orig_image.width - args.resolution) / 2.0)))
+            images = train_crop(images)
+        else:
+            y1, x1, h, w = train_crop.get_params(images, (args.resolution, args.resolution))
+            images = crop(images, y1, x1, h, w)
+
+        if args.random_flip and random.random() < 0.5:
+            # flip
+            x1 = orig_image.width - x1
+            images = train_flip(images)
+        crop_top_left = (y1, x1)
+
+        transformed_images = normalize(images)
+
+        # Separate the original and edited images and the edit prompt.
+        original_image, edited_image = transformed_images.chunk(2)
+        original_image = original_image.squeeze(0)
+        edited_image = edited_image.squeeze(0)
+
+        return {
+            "original_image": original_image,
+            "edited_image": edited_image,
+            "edit_prompt": sample[edit_prompt_column],
+            "original_size": (orig_image.height, orig_image.width),
+            "crop_top_left": crop_top_left,
+        }
 
     # Load scheduler, tokenizer and models.
     tokenizer_1 = AutoTokenizer.from_pretrained(
@@ -728,134 +745,6 @@ def main():
 
     # Set UNet to trainable.
     unet.train()
-
-    # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-    def encode_prompt(text_encoders, tokenizers, prompt):
-        prompt_embeds_list = []
-
-        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-            text_inputs = tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=tokenizer.model_max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
-            untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-            if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                text_input_ids, untruncated_ids
-            ):
-                removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
-                logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {tokenizer.model_max_length} tokens: {removed_text}"
-                )
-
-            prompt_embeds = text_encoder(
-                text_input_ids.to(text_encoder.device),
-                output_hidden_states=True,
-            )
-
-            # We are only ALWAYS interested in the pooled output of the final text encoder
-            pooled_prompt_embeds = prompt_embeds[0]
-            prompt_embeds = prompt_embeds.hidden_states[-2]
-            bs_embed, seq_len, _ = prompt_embeds.shape
-            prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
-            prompt_embeds_list.append(prompt_embeds)
-
-        prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
-        pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
-        return prompt_embeds, pooled_prompt_embeds
-
-    # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
-    def encode_prompts(text_encoders, tokenizers, prompts):
-        prompt_embeds_all = []
-        pooled_prompt_embeds_all = []
-
-        for prompt in prompts:
-            prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
-            prompt_embeds_all.append(prompt_embeds)
-            pooled_prompt_embeds_all.append(pooled_prompt_embeds)
-
-        return torch.stack(prompt_embeds_all), torch.stack(pooled_prompt_embeds_all)
-
-    # Adapted from examples.dreambooth.train_dreambooth_lora_sdxl
-    # Here, we compute not just the text embeddings but also the additional embeddings
-    # needed for the SD XL UNet to operate.
-    def compute_embeddings_for_prompts(prompts, text_encoders, tokenizers):
-        with torch.no_grad():
-            prompt_embeds_all, pooled_prompt_embeds_all = encode_prompts(text_encoders, tokenizers, prompts)
-            add_text_embeds_all = pooled_prompt_embeds_all
-
-            prompt_embeds_all = prompt_embeds_all.to(accelerator.device)
-            add_text_embeds_all = add_text_embeds_all.to(accelerator.device)
-        return prompt_embeds_all, add_text_embeds_all
-
-    # Get null conditioning
-    def compute_null_conditioning():
-        null_conditioning_list = []
-        for a_tokenizer, a_text_encoder in zip(tokenizers, text_encoders):
-            null_conditioning_list.append(
-                a_text_encoder(
-                    tokenize_captions([""], tokenizer=a_tokenizer).to(accelerator.device),
-                    output_hidden_states=True,
-                ).hidden_states[-2]
-            )
-        return torch.concat(null_conditioning_list, dim=-1)
-
-    null_conditioning = compute_null_conditioning()
-
-    def compute_time_ids():
-        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
-        original_size = target_size = (args.resolution, args.resolution)
-        add_time_ids = list(original_size + crops_coords_top_left + target_size)
-        add_time_ids = torch.tensor([add_time_ids], dtype=weight_dtype)
-        return add_time_ids.to(accelerator.device).repeat(args.train_batch_size, 1)
-
-    add_time_ids = compute_time_ids()
-
-    def preprocess_train(examples):
-        # Preprocess images.
-        preprocessed_images = preprocess_images(examples)
-        # Since the original and edited images were concatenated before
-        # applying the transformations, we need to separate them and reshape
-        # them accordingly.
-        original_images, edited_images = preprocessed_images.chunk(2)
-        original_images = original_images.reshape(-1, 3, args.resolution, args.resolution)
-        edited_images = edited_images.reshape(-1, 3, args.resolution, args.resolution)
-
-        # Collate the preprocessed images into the `examples`.
-        examples["original_pixel_values"] = original_images
-        examples["edited_pixel_values"] = edited_images
-
-        # Preprocess the captions.
-        captions = list(examples[edit_prompt_column])
-        prompt_embeds_all, add_text_embeds_all = compute_embeddings_for_prompts(captions, text_encoders, tokenizers)
-        examples["prompt_embeds"] = prompt_embeds_all
-        examples["add_text_embeds"] = add_text_embeds_all
-        return examples
-
-    with accelerator.main_process_first():
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
-
-    def collate_fn(examples):
-        original_pixel_values = torch.stack([example["original_pixel_values"] for example in examples])
-        original_pixel_values = original_pixel_values.to(memory_format=torch.contiguous_format).float()
-        edited_pixel_values = torch.stack([example["edited_pixel_values"] for example in examples])
-        edited_pixel_values = edited_pixel_values.to(memory_format=torch.contiguous_format).float()
-        prompt_embeds = torch.concat([example["prompt_embeds"] for example in examples], dim=0)
-        add_text_embeds = torch.concat([example["add_text_embeds"] for example in examples], dim=0)
-        return {
-            "original_pixel_values": original_pixel_values,
-            "edited_pixel_values": edited_pixel_values,
-            "prompt_embeds": prompt_embeds,
-            "add_text_embeds": add_text_embeds,
-        }
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -946,6 +835,52 @@ def main():
             first_epoch = global_step // num_update_steps_per_epoch
     else:
         initial_global_step = 0
+
+        def tokenize_captions(captions, tokenizer):
+        inputs = tokenizer(
+            captions,
+            max_length=tokenizer.model_max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        )
+        return inputs.input_ids
+
+    # Adapted from diffusers.pipelines.StableDiffusionXLPipeline.encode_prompt
+    def encode_prompt(prompts, text_encoders, tokenizers):
+        prompt_embeds_list = []
+
+        with torch.no_grad():
+            for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                text_input_ids = tokenize_captions(prompts, tokenizer=tokenizer)
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(text_encoder.device),
+                    output_hidden_states=True,
+                )
+
+                # We are only ALWAYS interested in the pooled output of the final text encoder
+                pooled_prompt_embeds = prompt_embeds[0]
+                prompt_embeds = prompt_embeds.hidden_states[-2]
+                bs_embed, seq_len, _ = prompt_embeds.shape
+                prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
+                prompt_embeds_list.append(prompt_embeds)
+
+        prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
+        pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
+        return prompt_embeds, pooled_prompt_embeds
+
+    def compute_embeddings_for_prompts(prompts, text_encoders, tokenizers):
+        prompt_embeds_all, pooled_prompt_embeds_all = encode_prompt(prompts, text_encoders, tokenizers)
+        prompt_embeds_all = prompt_embeds_all.to(accelerator.device)
+        pooled_prompt_embeds_all = pooled_prompt_embeds_all.to(accelerator.device)
+        return prompt_embeds_all, pooled_prompt_embeds_all
+
+
+    # Get null conditioning.
+    # Remains fixed throughout training.
+    null_conditioning_prompt_embeds, null_conditioning_pooled_prompt_embeds = encode_prompt(
+        [""], text_encoders, tokenizers
+    )
 
     progress_bar = tqdm(
         range(0, args.max_train_steps),
