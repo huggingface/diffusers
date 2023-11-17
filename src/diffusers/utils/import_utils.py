@@ -284,6 +284,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _peft_available = False
 
+_pytest_available = importlib.util.find_spec("pytest") is not None
+try:
+    _pytest_version = importlib_metadata.version("pytest")
+    logger.debug(f"Successfully imported pytest version {_pytest_version}")
+except importlib_metadata.PackageNotFoundError:
+    _pytest_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -375,6 +382,10 @@ def is_invisible_watermark_available():
 
 def is_peft_available():
     return _peft_available
+
+
+def is_pytest_available():
+    return _pytest_available
 
 
 # docstyle-ignore
