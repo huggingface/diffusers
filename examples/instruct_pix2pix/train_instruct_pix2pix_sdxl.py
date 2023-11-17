@@ -650,66 +650,6 @@ def main():
         weight_dtype = torch.bfloat16
         warnings.warn(f"weight_dtype {weight_dtype} may cause nan during vae encoding", UserWarning)
 
-    # Preprocessing the datasets.
-    # We need to tokenize input captions and transform the images.
-    def tokenize_captions(captions, tokenizer):
-        inputs = tokenizer(
-            captions,
-            max_length=tokenizer.model_max_length,
-            padding="max_length",
-            truncation=True,
-            return_tensors="pt",
-        )
-        return inputs.input_ids
-
-    # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
-    train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
-    train_flip = transforms.RandomHorizontalFlip(p=1.0)
-    normalize = transforms.Normalize([0.5], [0.5])
-
-
-    def preprocess_image(sample):
-        orig_image = sample[original_image_column]
-        edited_image = sample[edited_image_column]
-        if edited_image.size != orig_image.size:
-            edited_image = edited_image.resize(orig_image.size)
-        images = torch.stack(
-            [
-                transforms.ToTensor()(orig_image),
-                transforms.ToTensor()(edited_image)
-            ]
-        )
-        images = train_resize(images)
-        if args.center_crop:
-            y1 = max(0, int(round((orig_image.height - args.resolution) / 2.0)))
-            x1 = max(0, int(round((orig_image.width - args.resolution) / 2.0)))
-            images = train_crop(images)
-        else:
-            y1, x1, h, w = train_crop.get_params(images, (args.resolution, args.resolution))
-            images = crop(images, y1, x1, h, w)
-
-        if args.random_flip and random.random() < 0.5:
-            # flip
-            x1 = orig_image.width - x1
-            images = train_flip(images)
-        crop_top_left = (y1, x1)
-
-        transformed_images = normalize(images)
-
-        # Separate the original and edited images and the edit prompt.
-        original_image, edited_image = transformed_images.chunk(2)
-        original_image = original_image.squeeze(0)
-        edited_image = edited_image.squeeze(0)
-
-        return {
-            "original_image": original_image,
-            "edited_image": edited_image,
-            "edit_prompt": sample[edit_prompt_column],
-            "original_size": (orig_image.height, orig_image.width),
-            "crop_top_left": crop_top_left,
-        }
-
     # Load scheduler, tokenizer and models.
     tokenizer_1 = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
@@ -745,6 +685,76 @@ def main():
 
     # Set UNet to trainable.
     unet.train()
+
+    # Preprocessing the datasets.
+    # We need to tokenize input captions and transform the images.
+    # Preprocessing the datasets.
+    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+    train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
+    train_flip = transforms.RandomHorizontalFlip(p=1.0)
+    normalize = transforms.Normalize([0.5], [0.5])
+
+    def preprocess_image(samples):
+        orig_images = [image.convert("RGB") for image in samples[original_image_column]]
+        edited_images = [image.convert("RGB") for image in samples[edited_image_column]]
+        resized_edited_images = []
+        
+        # Resize edited images if necessary.
+        for edited_image, orig_image in zip(edited_images, orig_images):
+            if edited_image.size != orig_image.size:
+                edited_image = edited_image.resize(orig_image.size)
+                resized_edited_images.append(edited_image)
+            else:
+                resized_edited_images.append(edited_image)
+        
+        # Main image processing.
+        final_original_images = []
+        final_edited_images = []
+        original_sizes = []
+        crop_top_lefts = []
+        for edited_image, orig_image in zip(resized_edited_images, orig_images):
+            original_sizes.append((orig_image.height, orig_image.width))
+            
+            images = torch.stack(
+                [
+                    transforms.ToTensor()(orig_image),
+                    transforms.ToTensor()(edited_image)
+                ]
+            )
+            images = train_resize(images)
+            if args.center_crop:
+                y1 = max(0, int(round((orig_image.height - args.resolution) / 2.0)))
+                x1 = max(0, int(round((orig_image.width - args.resolution) / 2.0)))
+                images = train_crop(images)
+            else:
+                y1, x1, h, w = train_crop.get_params(images, (args.resolution, args.resolution))
+                images = crop(images, y1, x1, h, w)
+
+            if args.random_flip and random.random() < 0.5:
+                # flip
+                x1 = orig_image.width - x1
+                images = train_flip(images)
+            crop_top_left = (y1, x1)
+            crop_top_lefts.append(crop_top_left)
+            
+            transformed_images = normalize(images)
+
+            # Separate the original and edited images and the edit prompt.
+            original_image, edited_image = transformed_images.chunk(2)
+            original_image = original_image.squeeze(0)
+            edited_image = edited_image.squeeze(0)
+            final_original_images.append(original_image)
+            final_edited_images.append(edited_image)
+
+        # Pack the values.
+        samples["original_sizes"] = original_sizes
+        samples["crop_top_lefts"] = crop_top_lefts
+        samples["original_pixel_values"] = final_original_images
+        samples["edited_pixel_values"] = final_original_images
+        tokens_one, tokens_two = tokenize_captions(samples)
+        samples["input_ids_one"] = tokens_one
+        samples["input_ids_two"] = tokens_two
+        return samples
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -836,7 +846,7 @@ def main():
     else:
         initial_global_step = 0
 
-        def tokenize_captions(captions, tokenizer):
+    def tokenize_captions(captions, tokenizer):
         inputs = tokenizer(
             captions,
             max_length=tokenizer.model_max_length,
