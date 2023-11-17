@@ -2,7 +2,12 @@ import argparse
 import os
 import torch
 from diffusers import DiffusionPipeline
-from .benchmark_utils import benchmark_fn, bytes_to_giga_bytes, BenchmarkInfo, generate_markdown_table
+
+import sys 
+
+sys.path.append(".")
+
+from benchmark_utils import benchmark_fn, bytes_to_giga_bytes, BenchmarkInfo, generate_markdown_table
 
 CKPT = "CompVis/stable-diffusion-v1-4"
 PROMPT = "ghibli style, a fantasy landscape with castles"
