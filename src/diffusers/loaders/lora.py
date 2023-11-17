@@ -500,7 +500,9 @@ class LoraLoaderMixin:
                 into the `unet` or prefixed with an additional `unet`, which can be used to distinguish between text
                 encoder LoRA layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
+                See
+                [`LoRALinearLayer`](https://github.com/huggingface/diffusers/blob/c697f524761abd2314c030221a3ad2f7791eab4e/src/diffusers/models/lora.py#L182)
+                for more details.
             unet (`UNet2DConditionModel`):
                 The UNet model to load the LoRA layers into.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
@@ -611,7 +613,9 @@ class LoraLoaderMixin:
                 A standard state dict containing the LoRA layer parameters. The key should be prefixed with an
                 additional `text_encoder` to distinguish between UNet LoRA layers.
             network_alphas (`Dict[str, float]`):
-                See `LoRALinearLayer` for more details.
+                See
+                [`LoRALinearLayer`](https://github.com/huggingface/diffusers/blob/c697f524761abd2314c030221a3ad2f7791eab4e/src/diffusers/models/lora.py#L182)
+                for more details.
             text_encoder (`CLIPTextModel`):
                 The text encoder model to load the LoRA layers into.
             prefix (`str`):
