@@ -36,7 +36,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
@@ -725,6 +725,7 @@ def main():
             args.dataset_config_name,
             cache_dir=args.cache_dir,
         )
+        dataset = concatenate_datasets([dataset["validation"], dataset["test"]])
     else:
         data_files = {}
         if args.train_data_dir is not None:
@@ -739,7 +740,7 @@ def main():
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
-    column_names = dataset["train"].column_names
+    column_names = dataset.column_names
 
     # 6. Get the column names for input/target.
     dataset_columns = DATASET_NAME_MAPPING.get(args.dataset_name, None)
@@ -898,9 +899,9 @@ def main():
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+            dataset = dataset.shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        train_dataset = dataset.with_transform(preprocess_train)
 
     def collate_fn(examples):
         original_pixel_values = torch.stack([example["original_pixel_values"] for example in examples])
