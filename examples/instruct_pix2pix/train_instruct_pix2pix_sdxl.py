@@ -1016,7 +1016,7 @@ def main():
     # Get null conditioning.
     # Remains fixed throughout training.
     null_conditioning_prompt_embeds, null_conditioning_pooled_prompt_embeds = encode_prompt(
-        [""], text_encoders, tokenizers
+        text_encoders, tokenizers, [""]
     )
 
     progress_bar = tqdm(
