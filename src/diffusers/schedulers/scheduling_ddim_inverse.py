@@ -331,13 +331,13 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
                 returned, otherwise a tuple is returned where the first element is the sample tensor.
 
         """
-        # 1. get previous step value (=t+1)
-        prev_timestep = min(timestep + self.config.num_train_timesteps // self.num_inference_steps, self.num_train_timesteps - 1)
+        # 1. get next step value (=t+1)
+        timestep_next = min(timestep + self.config.num_train_timesteps // self.num_inference_steps, self.num_train_timesteps - 1)
 
         # 2. compute alphas, betas
         # change original implementation to exactly match noise levels for analogous forward process
         alpha_prod_t = self.alphas_cumprod[timestep] if timestep >= 0 else self.initial_alpha_cumprod
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep]
+        alpha_prod_t_next = self.alphas_cumprod[timestep_next]
 
         beta_prod_t = 1 - alpha_prod_t
 
@@ -365,10 +365,10 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # 5. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_sample_direction = (1 - alpha_prod_t_prev) ** (0.5) * pred_epsilon
+        pred_sample_direction = (1 - alpha_prod_t_next) ** (0.5) * pred_epsilon
 
         # 6. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+        prev_sample = alpha_prod_t_next ** (0.5) * pred_original_sample + pred_sample_direction
 
         if not return_dict:
             return (prev_sample, pred_original_sample)
