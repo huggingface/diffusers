@@ -18,6 +18,7 @@ import argparse
 import logging
 import math
 import os
+import random
 import shutil
 import warnings
 from pathlib import Path
@@ -40,11 +41,9 @@ from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
 from torchvision import transforms
+from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-from torchvision import transforms
-from torchvision.transforms.functional import crop
-import random
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
@@ -57,6 +56,10 @@ from diffusers.utils import check_min_version, deprecate, is_wandb_available, lo
 from diffusers.utils.import_utils import is_xformers_available
 
 
+if is_wandb_available():
+    import wandb
+
+
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.24.0.dev0")
 
@@ -65,7 +68,7 @@ logger = get_logger(__name__, log_level="INFO")
 DATASET_NAME_MAPPING = {
     "fusing/instructpix2pix-1000-samples": ("file_name", "edited_image", "edit_prompt"),
 }
-WANDB_TABLE_COL_NAMES = ["file_name", "edited_image", "edit_prompt"]
+WANDB_TABLE_COL_NAMES = ["original_image", "edited_image", "edit_prompt"]
 TORCH_DTYPE_MAPPING = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
 
 
@@ -87,7 +90,7 @@ def import_model_class_from_model_name_or_path(
         return CLIPTextModelWithProjection
     else:
         raise ValueError(f"{model_class} is not supported.")
-    
+
 
 def tokenize_prompt(tokenizer, prompt):
     text_inputs = tokenizer(
@@ -129,6 +132,91 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
     return prompt_embeds, pooled_prompt_embeds
 
+
+def log_validation(
+    vae,
+    unet,
+    text_encoder_1,
+    text_encoder_2,
+    tokenizer_1,
+    tokenizer_2,
+    args,
+    accelerator,
+    weight_dtype,
+    global_step,
+):
+    logger.info(
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
+
+    # The models need unwrapping because for compatibility in distributed training mode.
+    pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        unet=accelerator.unwrap_model(unet),
+        text_encoder=text_encoder_1,
+        text_encoder_2=text_encoder_2,
+        tokenizer=tokenizer_1,
+        tokenizer_2=tokenizer_2,
+        vae=vae,
+        revision=args.revision,
+        torch_dtype=weight_dtype,
+    )
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    if args.enable_xformers_memory_efficient_attention:
+        pipeline.enable_xformers_memory_efficient_attention()
+
+    if args.seed is None:
+        generator = None
+    else:
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
+
+    # run inference
+    # Save validation images
+    val_save_dir = os.path.join(args.output_dir, "validation_images")
+    if not os.path.exists(val_save_dir):
+        os.makedirs(val_save_dir)
+
+    original_image = (
+        lambda image_url_or_path: load_image(image_url_or_path)
+        if urlparse(image_url_or_path).scheme
+        else Image.open(image_url_or_path).convert("RGB")
+    )(args.val_image_url_or_path)
+    original_image = original_image.resize((args.resolution, args.resolution))
+
+    with torch.autocast("cuda"):
+        edited_images = []
+        for val_img_idx in range(args.num_validation_images):
+            a_val_img = pipeline(
+                args.validation_prompt,
+                height=args.resolution,
+                width=args.resolution,
+                image=original_image,
+                num_inference_steps=25,
+                image_guidance_scale=1.5,
+                guidance_scale=5.0,
+                generator=generator,
+            ).images[0]
+            edited_images.append(a_val_img)
+            a_val_img.save(
+                os.path.join(
+                    val_save_dir,
+                    f"step_{global_step}_val_img_{val_img_idx}.png",
+                )
+            )
+
+    formatted_images = [wandb.Image(original_image, caption="Original Image")]
+    for edited_image in edited_images:
+        formatted_images.append(wandb.Image(edited_image, caption=args.validation_prompt))
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "wandb":
+            tracker.log({"validation": formatted_images})
+
+    del pipeline
+    torch.cuda.empty_cache()
 
 
 def parse_args():
@@ -476,7 +564,6 @@ def main():
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -746,7 +833,7 @@ def main():
         tokens_one = tokenize_prompt(tokenizer_1, captions)
         tokens_two = tokenize_prompt(tokenizer_2, captions)
         return tokens_one, tokens_two
-    
+
     train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
@@ -756,7 +843,7 @@ def main():
         orig_images = [image.convert("RGB") for image in samples[original_image_column]]
         edited_images = [image.convert("RGB") for image in samples[edited_image_column]]
         resized_edited_images = []
-        
+
         # Resize edited images if necessary.
         for edited_image, orig_image in zip(edited_images, orig_images):
             if edited_image.size != orig_image.size:
@@ -764,7 +851,7 @@ def main():
                 resized_edited_images.append(edited_image)
             else:
                 resized_edited_images.append(edited_image)
-        
+
         # Main image processing.
         final_original_images = []
         final_edited_images = []
@@ -772,13 +859,8 @@ def main():
         crop_top_lefts = []
         for edited_image, orig_image in zip(resized_edited_images, orig_images):
             original_sizes.append((orig_image.height, orig_image.width))
-            
-            images = torch.stack(
-                [
-                    transforms.ToTensor()(orig_image),
-                    transforms.ToTensor()(edited_image)
-                ]
-            )
+
+            images = torch.stack([transforms.ToTensor()(orig_image), transforms.ToTensor()(edited_image)])
             images = train_resize(images)
             if args.center_crop:
                 y1 = max(0, int(round((orig_image.height - args.resolution) / 2.0)))
@@ -794,7 +876,7 @@ def main():
                 images = train_flip(images)
             crop_top_left = (y1, x1)
             crop_top_lefts.append(crop_top_left)
-            
+
             transformed_images = normalize(images)
 
             # Separate the original and edited images and the edit prompt.
@@ -813,7 +895,7 @@ def main():
         samples["input_ids_one"] = tokens_one
         samples["input_ids_two"] = tokens_two
         return samples
-    
+
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
@@ -971,9 +1053,13 @@ def main():
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # SDXL additional inputs
-                encoder_hidden_states = batch["prompt_embeds"]
-                add_text_embeds = batch["add_text_embeds"]
+                # Encode prompts.
+                prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                    text_encoders=[text_encoder_1, text_encoder_2],
+                    tokenizers=None,
+                    prompt=None,
+                    text_input_ids_list=[batch["input_ids_one"], batch["input_ids_two"]],
+                )
 
                 # Get the additional image embedding for conditioning.
                 # Instead of getting a diagonal Gaussian here, we simply take the mode.
@@ -981,7 +1067,7 @@ def main():
                     original_pixel_values = batch["original_pixel_values"].to(dtype=weight_dtype)
                 else:
                     original_pixel_values = batch["original_pixel_values"]
-                original_image_embeds = vae.encode(original_pixel_values).latent_dist.sample()
+                original_image_embeds = vae.encode(original_pixel_values).latent_dist.mode()
                 if args.pretrained_vae_model_name_or_path is None:
                     original_image_embeds = original_image_embeds.to(weight_dtype)
 
@@ -992,8 +1078,13 @@ def main():
                     # Sample masks for the edit prompts.
                     prompt_mask = random_p < 2 * args.conditioning_dropout_prob
                     prompt_mask = prompt_mask.reshape(bsz, 1, 1)
+                    pooled_prompt_mask = prompt_mask.reshape(bsz, 1)
+
                     # Final text conditioning.
-                    encoder_hidden_states = torch.where(prompt_mask, null_conditioning, encoder_hidden_states)
+                    prompt_embeds = torch.where(prompt_mask, null_conditioning_prompt_embeds, prompt_embeds)
+                    pooled_prompt_embeds = torch.where(
+                        pooled_prompt_mask, null_conditioning_pooled_prompt_embeds, pooled_prompt_embeds
+                    )
 
                     # Sample masks for the original images.
                     image_mask_dtype = original_image_embeds.dtype
@@ -1016,11 +1107,24 @@ def main():
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                # Predict the noise residual and compute loss
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                # Compute additional embedding inputs.
+                # time ids
+                def compute_time_ids(original_size, crops_coords_top_left):
+                    # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
+                    target_size = (args.resolution, args.resolution)
+                    add_time_ids = list(original_size + crops_coords_top_left + target_size)
+                    add_time_ids = torch.tensor([add_time_ids])
+                    add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
+                    return add_time_ids
 
+                add_time_ids = torch.cat(
+                    [compute_time_ids(s, c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
+                )
+                unet_added_conditions = {"time_ids": add_time_ids, "text_embeds": pooled_prompt_embeds}
+
+                # Predict the noise residual and compute loss
                 model_pred = unet(
-                    concatenated_noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+                    concatenated_noisy_latents, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
                 ).sample
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
@@ -1088,62 +1192,23 @@ def main():
                         ema_unet.store(unet.parameters())
                         ema_unet.copy_to(unet.parameters())
 
-                    # The models need unwrapping because for compatibility in distributed training mode.
-                    pipeline = StableDiffusionXLInstructPix2PixPipeline.from_pretrained(
-                        args.pretrained_model_name_or_path,
-                        unet=accelerator.unwrap_model(unet),
-                        text_encoder=text_encoder_1,
-                        text_encoder_2=text_encoder_2,
-                        tokenizer=tokenizer_1,
-                        tokenizer_2=tokenizer_2,
+                    log_validation(
                         vae=vae,
-                        revision=args.revision,
-                        torch_dtype=weight_dtype,
+                        unet=unet,
+                        text_encoder_1=text_encoder_1,
+                        text_encoder_2=text_encoder_2,
+                        tokenizer_1=tokenizer_1,
+                        tokenizer_2=tokenizer_2,
+                        args=args,
+                        accelerator=accelerator,
+                        weight_dtype=weight_dtype,
+                        global_step=global_step,
                     )
-                    pipeline = pipeline.to(accelerator.device)
-                    pipeline.set_progress_bar_config(disable=True)
 
-                    # run inference
-                    # Save validation images
-                    val_save_dir = os.path.join(args.output_dir, "validation_images")
-                    if not os.path.exists(val_save_dir):
-                        os.makedirs(val_save_dir)
-
-                    original_image = (
-                        lambda image_url_or_path: load_image(image_url_or_path)
-                        if urlparse(image_url_or_path).scheme
-                        else Image.open(image_url_or_path).convert("RGB")
-                    )(args.val_image_url_or_path)
-                    with torch.autocast(
-                        str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
-                    ):
-                        edited_images = []
-                        for val_img_idx in range(args.num_validation_images):
-                            a_val_img = pipeline(
-                                args.validation_prompt,
-                                image=original_image,
-                                num_inference_steps=20,
-                                image_guidance_scale=1.5,
-                                guidance_scale=7,
-                                generator=generator,
-                            ).images[0]
-                            edited_images.append(a_val_img)
-                            a_val_img.save(os.path.join(val_save_dir, f"step_{global_step}_val_img_{val_img_idx}.png"))
-
-                    for tracker in accelerator.trackers:
-                        if tracker.name == "wandb":
-                            wandb_table = wandb.Table(columns=WANDB_TABLE_COL_NAMES)
-                            for edited_image in edited_images:
-                                wandb_table.add_data(
-                                    wandb.Image(original_image), wandb.Image(edited_image), args.validation_prompt
-                                )
-                            tracker.log({"validation": wandb_table})
                     if args.use_ema:
                         # Switch back to the original UNet parameters.
                         ema_unet.restore(unet.parameters())
 
-                    del pipeline
-                    torch.cuda.empty_cache()
             ### END: Perform validation every `validation_epochs` steps
 
             if global_step >= args.max_train_steps:
@@ -1178,8 +1243,15 @@ def main():
 
         if args.validation_prompt is not None:
             edited_images = []
+            original_image = (
+                lambda image_url_or_path: load_image(image_url_or_path)
+                if urlparse(image_url_or_path).scheme
+                else Image.open(image_url_or_path).convert("RGB")
+            )(args.val_image_url_or_path)
+            original_image = original_image.resize((args.resolution, args.resolution))
+
             pipeline = pipeline.to(accelerator.device)
-            with torch.autocast(str(accelerator.device).replace(":0", "")):
+            with torch.autocast(str(accelerator.device)):
                 for _ in range(args.num_validation_images):
                     edited_images.append(
                         pipeline(
@@ -1187,7 +1259,7 @@ def main():
                             image=original_image,
                             num_inference_steps=20,
                             image_guidance_scale=1.5,
-                            guidance_scale=7,
+                            guidance_scale=5.0,
                             generator=generator,
                         ).images[0]
                     )
