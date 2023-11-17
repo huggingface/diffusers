@@ -189,12 +189,6 @@ class TextualInversionLoaderMixin:
                 f" `{self.load_textual_inversion.__name__}`"
             )
 
-        if len(pretrained_model_name_or_paths) != len(tokens):
-            raise ValueError(
-                f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)} "
-                f"Make sure both lists have the same length."
-            )
-
         valid_tokens = [t for t in tokens if t is not None]
         if len(set(valid_tokens)) < len(valid_tokens):
             raise ValueError(f"You have passed a list of tokens that contains duplicates: {tokens}")
@@ -382,13 +376,16 @@ class TextualInversionLoaderMixin:
             if not isinstance(pretrained_model_name_or_path, list)
             else pretrained_model_name_or_path
         )
-        tokens = len(pretrained_model_name_or_paths) * [token] if (isinstance(token, str) or token is None) else token
+        tokens = [token] if (isinstance(token, str) or token is None) else token
 
         # 3. Check inputs
         self._check_text_inv_inputs(tokenizer, text_encoder, pretrained_model_name_or_paths, tokens)
 
         # 4. Load state dicts of textual embeddings
         state_dicts = load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
+
+        state_dicts = state_dicts * len(tokens)
+        tokens = [token for token in tokens for _ in range(len(pretrained_model_name_or_paths))]
 
         # 4. Retrieve tokens and embeddings
         tokens, embeddings = self._retrieve_tokens_and_embeddings(tokens, state_dicts, tokenizer)
