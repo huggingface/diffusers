@@ -17,7 +17,7 @@ try:
     if not (is_transformers_available() and is_torch_available()):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ..utils import dummy_pt_objects  # noqa F403
+    from ...utils import dummy_pt_objects  # noqa F403
 
     _dummy_objects.update(get_objects_from_module(dummy_pt_objects))
 else:
