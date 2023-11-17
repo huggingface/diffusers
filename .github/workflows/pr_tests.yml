@@ -69,7 +69,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        modules: ${{ fromJson(needs.setup.outputs.matrix) }}
+        modules: ${{ fromJson(needs.setup_pr_tests.outputs.matrix) }}
     runs-on: docker-cpu
     container:
       image: diffusers/diffusers-pytorch-cpu
