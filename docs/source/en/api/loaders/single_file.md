@@ -16,7 +16,7 @@ Diffusers supports loading pretrained pipeline (or model) weights stored in a si
 
 - [`FromSingleFileMixin`] supports loading pretrained pipeline weights stored in a single file, which can either be a `ckpt` or `safetensors` file.
 - [`FromOriginalVAEMixin`] supports loading a pretrained [`AutoencoderKL`] from pretrained ControlNet weights stored in a single file, which can either be a `ckpt` or `safetensors` file.
-- [`FromOriginalControlnetMixin`] supports loading pretrained [`ControlNet`] weights stored in a single file, which can either be a `ckpt` or `safetensors` file.
+- [`FromOriginalControlnetMixin`] supports loading pretrained ControlNet weights stored in a single file, which can either be a `ckpt` or `safetensors` file.
 
 <Tip>
 
