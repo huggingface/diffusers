@@ -361,26 +361,25 @@ class ControlNetSDXLPipelineXSSlowTests(unittest.TestCase):
         expected_image = np.array([0.4359, 0.4335, 0.4609, 0.4515, 0.4669, 0.4494, 0.452, 0.4493, 0.4382])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
-    # ToDo Umer: Implement depth and enable this test
-    # def test_depth(self):
-    #     controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0")
+    def test_depth(self):
+        controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-SDXL-depth")
 
-    #     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-    #         "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet
-    #     )
-    #     pipe.enable_sequential_cpu_offload()
-    #     pipe.set_progress_bar_config(disable=None)
+        pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet
+        )
+        pipe.enable_sequential_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
 
-    #     generator = torch.Generator(device="cpu").manual_seed(0)
-    #     prompt = "Stormtrooper's lecture"
-    #     image = load_image(
-    #         "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
-    #     )
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
 
-    #     images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
 
-    #     assert images[0].shape == (512, 512, 3)
+        assert images[0].shape == (512, 512, 3)
 
-    #     original_image = images[0, -3:, -3:, -1].flatten()
-    #     expected_image = np.array([0.4399, 0.5112, 0.5478, 0.4314, 0.472, 0.4823, 0.4647, 0.4957, 0.4853])
-    #     assert np.allclose(original_image, expected_image, atol=1e-04)
+        original_image = images[0, -3:, -3:, -1].flatten()
+        expected_image = np.array([0.4411, 0.3617, 0.2654, 0.266 , 0.3449, 0.3898, 0.3745, 0.353 , 0.326])
+        assert np.allclose(original_image, expected_image, atol=1e-04)
