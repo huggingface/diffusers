@@ -405,8 +405,24 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         if dim_attention_heads is not None:
             num_attention_heads = [math.ceil(c / dim_attention_heads) for c in block_out_channels]
 
+        def group_norms_match_channel_sizes(num_groups, channel_sizes):
+            return all(c % num_groups == 0 for c in channel_sizes)
+
         if norm_num_groups is None:
-            norm_num_groups = int(unet.config.norm_num_groups * size_ratio)
+            if group_norms_match_channel_sizes(unet.config.norm_num_groups, block_out_channels):
+                norm_num_groups = unet.config.norm_num_groups
+            else:
+                if not size_ratio:
+                    raise ValueError(
+                        f"`block_out_channels` ({block_out_channels}) don't match the base models `norm_num_groups` ({unet.config.norm_num_groups}). Pass `norm_num_groups` explicitly so it divides all block_out_channels."
+                    )
+
+                # try to scale down `norm_num_groups` by `size_ratio`
+                norm_num_groups = int(unet.config.norm_num_groups * size_ratio)
+                if not group_norms_match_channel_sizes(norm_num_groups, block_out_channels):
+                    raise ValueError(
+                        f"`block_out_channels` ({block_out_channels}) don't match the base models `norm_num_groups` ({unet.config.norm_num_groups}). Dividing `norm_num_groups` by `size_ratio` ({size_ratio}) didn't fix this. Pass `norm_num_groups` explicitly so it divides all block_out_channels."
+                    )
 
         def get_time_emb_input_dim(unet: UNet2DConditionModel):
             return unet.time_embedding.linear_1.in_features
