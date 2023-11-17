@@ -940,7 +940,7 @@ def infer_tests_to_run(
     print(f"\n### IMPACTED FILES ###\n{_print_list(impacted_files)}")
 
     # Grab the corresponding test files:
-    if any(x in modified_files for x in ["setup.py", ".circleci/create_circleci_config.py"]):
+    if any(x in modified_files for x in ["setup.py"]):
         test_files_to_run = ["tests", "examples"]
         repo_utils_launch = True
     # in order to trigger pipeline tests even if no code change at all
@@ -958,19 +958,10 @@ def infer_tests_to_run(
             if f in test_map:
                 test_files_to_run.extend(test_map[f])
         test_files_to_run = sorted(set(test_files_to_run))
-        # Remove repo utils tests
-        test_files_to_run = [f for f in test_files_to_run if not f.split(os.path.sep)[1] == "repo_utils"]
-        # Remove SageMaker tests
-        test_files_to_run = [f for f in test_files_to_run if not f.split(os.path.sep)[1] == "sagemaker"]
         # Make sure we did not end up with a test file that was removed
         test_files_to_run = [f for f in test_files_to_run if (PATH_TO_REPO / f).exists()]
 
         repo_utils_launch = any(f.split(os.path.sep)[0] == "utils" for f in modified_files)
-
-    if repo_utils_launch:
-        repo_util_file = Path(output_file).parent / "test_repo_utils.txt"
-        with open(repo_util_file, "w", encoding="utf-8") as f:
-            f.write("tests/repo_utils")
 
     examples_tests_to_run = [f for f in test_files_to_run if f.startswith("examples")]
     test_files_to_run = [f for f in test_files_to_run if not f.startswith("examples")]
@@ -996,14 +987,6 @@ def infer_tests_to_run(
         example_file = Path(output_file).parent / "examples_test_list.txt"
         with open(example_file, "w", encoding="utf-8") as f:
             f.write(" ".join(examples_tests_to_run))
-
-    doctest_list = get_doctest_files()
-
-    print(f"\n### DOCTEST TO RUN ###\n{_print_list(doctest_list)}")
-    if len(doctest_list) > 0:
-        doctest_file = Path(output_file).parent / "doctest_list.txt"
-        with open(doctest_file, "w", encoding="utf-8") as f:
-            f.write(" ".join(doctest_list))
 
 
 def filter_tests(output_file: str, filters: List[str]):
