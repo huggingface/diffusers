@@ -19,7 +19,6 @@
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
     title: Inference with PEFT
-  title: Tutorials
 - sections:
   - sections:
     - local: using-diffusers/loading_overview
@@ -72,8 +71,6 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
-    - local: using-diffusers/lcm
-      title: Latent Consistency Models
     - local: using-diffusers/kandinsky
       title: Kandinsky
     - local: using-diffusers/controlnet
@@ -92,6 +89,10 @@
       title: Community pipelines
     - local: using-diffusers/contribute_pipeline
       title: Contribute a community pipeline
+    - local: using-diffusers/inference_with_lcm_lora
+      title: Latent Consistency Model-LoRA
+    - local: using-diffusers/inference_with_lcm
+      title: Latent Consistency Model
     title: Specific pipeline examples
   - sections:
     - local: training/overview
