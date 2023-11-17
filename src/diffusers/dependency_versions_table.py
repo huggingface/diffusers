@@ -25,7 +25,7 @@ deps = {
     "numpy": "numpy",
     "omegaconf": "omegaconf",
     "parameterized": "parameterized",
-    "peft": "peft<=0.6.2",
+    "peft": "peft>=0.6.0",
     "protobuf": "protobuf>=3.20.3,<4",
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
