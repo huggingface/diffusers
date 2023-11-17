@@ -54,7 +54,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     markdown_report = main(args)
 
-    name = CKPT + f"-batch_sze@{args.batch_size}-num_inference_steps@{args.num_inference_steps}--run_compile@{args.run_compile}.md"
+    name = CKPT.replace("/", "_") + f"-batch_sze@{args.batch_size}-num_inference_steps@{args.num_inference_steps}--run_compile@{args.run_compile}.md"
     filepath = os.path.join(BASE_PATH, name)
     with open(filepath, "w") as f:
         f.write(markdown_report)
