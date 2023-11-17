@@ -426,6 +426,20 @@ class UNet2DConditionLoadersMixin:
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or with `pickle`.
+
+        Example:
+
+        ```py
+        import torch
+        from diffusers import DiffusionPipeline
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            torch_dtype=torch.float16,
+        ).to("cuda")
+        pipeline.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
+        pipeline.unet.save_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
+        ```
         """
         from ..models.attention_processor import (
             CustomDiffusionAttnProcessor,

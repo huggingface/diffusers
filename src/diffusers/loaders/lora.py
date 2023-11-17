@@ -94,13 +94,13 @@ class LoraLoaderMixin:
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 A string (model id of a pretrained model hosted on the Hub), a path to a directory containing the model
-                weights saved with [`ModelMixin.save_pretrained`], or a [torch state
+                weights, or a [torch state
                 dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Name for referencing the loaded adapter model. If not specified, it will use `default_{i}` where `i` is
-                the total number of adapters being loaded.
+                the total number of adapters being loaded. Must have PEFT installed to use.
 
         Example:
 
@@ -154,21 +154,13 @@ class LoraLoaderMixin:
         r"""
         Return state dict and network alphas of the LoRA weights.
 
-        <Tip warning={true}>
-
-        A1111 formatted LoRA checkpoints are supported in a limited capacity. This function is experimental and might
-        change in the future.
-
-        </Tip>
-
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 Can be either:
 
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
                       the Hub.
-                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights saved
-                      with [`ModelMixin.save_pretrained`].
+                    - A path to a *directory* (for example `./my_model_directory`) containing the model weights.
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
 
@@ -204,18 +196,6 @@ class LoraLoaderMixin:
                 Mirror source to resolve accessibility issues if you're downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
-
-        Example:
-
-        ```py
-        from diffusers import DiffusionPipeline
-        import torch
-
-        pipeline = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ).to("cuda")
-        pipeline.lora_state_dict("nerijs/pixel-art-xl")
-        ```
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
@@ -931,6 +911,25 @@ class LoraLoaderMixin:
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or with `pickle`.
+
+        Example:
+
+        ```py
+        from diffusers import StableDiffusionXLPipeline
+        from peft.utils import get_peft_model_state_dict
+        import torch
+
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.fuse_lora()
+
+        # get and save unet state dict
+        unet_state_dict = get_peft_model_state_dict(pipeline.unet, adapter_name="pixel")
+        pipeline.save_lora_weights("fused-model", unet_lora_layers=unet_state_dict)
+        pipeline.load_lora_weights("fused-model", weight_name="pytorch_lora_weights.safetensors")
+        ```
         """
         # Create a flat dictionary.
         state_dict = {}
@@ -1700,13 +1699,13 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         Parameters:
             pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 A string (model id of a pretrained model hosted on the Hub), a path to a directory containing the model
-                weights saved with [`ModelMixin.save_pretrained`], or a [torch state
+                weights, or a [torch state
                 dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
             kwargs (`dict`, *optional*):
                 See [`~loaders.LoraLoaderMixin.lora_state_dict`].
             adapter_name (`str`, *optional*):
                 Name for referencing the loaded adapter model. If not specified, it will use `default_{i}` where `i` is
-                the total number of adapters being loaded.
+                the total number of adapters being loaded. Must have PEFT installed to use.
 
         Example:
 
