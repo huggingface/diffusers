@@ -141,10 +141,13 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
                 hidden_channels,
                 n_heads=num_attention_heads,
                 dim_head=hidden_channels // num_attention_heads,
+                relative_attention_num_buckets=32,
+                relative_attention_max_distance=64,
             )
             for _ in range(latent_attention_layers)
         ]
         self.latent_conditioner_attn_blocks = nn.ModuleList(latent_attentions)
+        self.latent_conditioner_norm = nn.GroupNorm(32, 1024, eps=1e-05, affine=True)
 
         # The unconditional embedding used for Tortoise TTS spectrogram diffusion classifier-free guidance.
         self.unconditional_embedding = nn.Parameter(torch.randn(1, hidden_channels, 1))
@@ -171,7 +174,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
                 # Average across all samples (original Tortoise TTS behavior)
                 audio_sample = pad_or_truncate(audio_sample, chunk_size).to("cuda")
                 # spectrogram = self.get_mel_spectrogram(audio_sample[None])
-                spectrogram = torch.load("/home/susnato/PycharmProjects/tortoise/check/mel_spec.pth") # use this until the Feature Extractor problem is solved.
+                spectrogram = torch.load("/home/susnato/PycharmProjects/tortoise/check/mel_spec_dont_change.pth") # use this until the Feature Extractor problem is solved.
                 audio_spectrograms.append(spectrogram)
             else:
                 if latent_averaging_mode == 2:
@@ -181,7 +184,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
                     current_chunk = pad_or_truncate(current_chunk, chunk_size).to("cuda")
                     # chunk_spectrogram = self.get_mel_spectrogram(current_chunk[None])
                     chunk_spectrogram = torch.load(
-                        "/home/susnato/PycharmProjects/tortoise/check/mel_spec.pth")  # use this until the Feature Extractor problem is solved.
+                        "/home/susnato/PycharmProjects/tortoise/check/mel_spec_dont_change.pth")  # use this until the Feature Extractor problem is solved.
 
                     if latent_averaging_mode == 1:
                         # Average across all chunks of all samples
@@ -200,7 +203,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         # the diffusion model expects the audio to be at 24 kHz so resample it.
         audio = check_and_resample(torch.from_numpy(audio), audio_sr, target_sr)
         audio_spectrograms = self.convert_and_average_audio_samples(audio, latent_averaging_mode, chunk_size)
-        audio_spectrograms = audio_spectrograms[0, ...]
+        audio_spectrograms = audio_spectrograms[:, 0, 0]
 
         audio_embedding = self.contextual_embedder_conv(audio_spectrograms)
         audio_embedding = self.contextual_embedder_attention(audio_embedding.transpose(1, 2))
@@ -215,8 +218,9 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         attention_mask,
         unconditional: bool = False,
         batch_size: int = 1,
-        target_size: Optional[int] = None,
     ):
+        target_size = autoregressive_latents.shape[1] * 4 * 24000 // 22050  # This diffusion model converts from 22kHz spectrogram codes to a 24kHz spectrogram signal.
+
         if unconditional:
             cond_embedding = self.unconditional_embedding
             if target_size is not None:
@@ -226,7 +230,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
 
             # apply the conv layer first and carefully handle the attention mask
             if attention_mask is not None:
-                autoregressive_latents = torch.masked_fill(autoregressive_latents, attention_mask[..., None].bool().logical_not(), 0.0)
+                autoregressive_latents = autoregressive_latents[:, :, :attention_mask.argmin(dim=1)[0], :]
 
             autoregressive_latents = autoregressive_latents[:, 0, :, :]
             cond_embedding = self.latent_conditioner_conv(autoregressive_latents.transpose(1, 2))
@@ -236,12 +240,12 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
             # Note that because the previous conv layer had kernel_size=3 and padding=1, we don't need to change the
             # attention_mask to make sure the shapes match.
             for attn_block in self.latent_conditioner_attn_blocks:
-                cond_embedding = attn_block(cond_embedding, attention_mask)
+                cond_embedding = attn_block(cond_embedding)
 
             cond_embedding = cond_embedding.transpose(1, 2)
-            cond_embedding = (1 + cond_scale.unsqueeze(-1)) * cond_embedding + cond_shift.unsqueeze(-1)
-            if target_size is not None:
-                cond_embedding = F.interpolate(cond_embedding, size=target_size, mode="nearest")
+            cond_embedding = self.latent_conditioner_norm(cond_embedding) * (1 + cond_scale.unsqueeze(-1)) + cond_shift.unsqueeze(-1)
+            cond_embedding = torch.nn.functional.interpolate(cond_embedding, size=autoregressive_latents.shape[1] * 4 * 24000 // 22050, mode="nearest")
+
         return cond_embedding
 
     def forward(

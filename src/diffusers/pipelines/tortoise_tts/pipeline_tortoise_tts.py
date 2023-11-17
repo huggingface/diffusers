@@ -362,10 +362,8 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
                 diffusion_audio_emb = self.diffusion_random_latent_converter(latents).latents
 
-        target_size = target_size * 4 * 24000 // 22050  # This diffusion model converts from 22kHz spectrogram codes to a 24kHz spectrogram signal.
-
         diffusion_cond_emb = self.diffusion_conditioning_encoder.diffusion_cond_embedding(
-            diffusion_audio_emb, autoregressive_latents, attention_mask, unconditional, batch_size, target_size
+            diffusion_audio_emb, autoregressive_latents, attention_mask, unconditional, batch_size,
         )
 
         return diffusion_cond_emb
@@ -415,7 +413,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             `torch.LongTensor`: Attention mask of the same shape as the input indicating the region of the candidate
             audio sample to mask out.
         """
-        assert audio_candidates.ndim == 2, "Audio candidate sequence input must be of shape (bsz, seq_len)"
+        audio_candidates = audio_candidates.squeeze(1)
         batch_size, seq_len = audio_candidates.shape
 
         diffusion_attention_mask = torch.ones_like(audio_candidates)
@@ -734,19 +732,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             prompt_input_ids = prompt_inputs.input_ids
             prompt_attention_mask = prompt_inputs.attention_mask
 
-        # # 5. Generate candidates and similarity scores using the decoder(autoregressive) model + CLVP
-        # text_encoder_input_ids = tokenizer(prompt,
-        #                                    padding="max_length",
-        #                                    return_tensors="pt",
-        #                                    add_special_tokens=False,
-        #                                    ).input_ids.to(device)
-
         audio_candidates_and_scores = self.audio_candidate_model.generate(
             input_ids=prompt_input_ids, # these input_ids are for the text encoder.
             attention_mask=prompt_attention_mask,
             input_features=audio_features,
             pad_to_max_mel_tokens=500,
-            # conditioning_encoder_inputs_embeds=prompt_embeds, # these embeds are for the clvp conditioning encoder.
             output_hidden_states=True, # because we want to resuse the logits of the decoder(autoregressive) model
             **autoregressive_generation_kwargs,
         )
