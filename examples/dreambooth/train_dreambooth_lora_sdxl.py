@@ -1337,17 +1337,9 @@ def main(args):
                         prompt_embeds, unet_add_text_embeds = compute_text_embeddings(
                             prompts, text_encoders, tokenizers
                         )
-                        if args.with_prior_preservation:
-                            prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
-                            unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
                     else:
                         tokens_one = tokenize_prompt(tokenizer_one, prompts)
                         tokens_two = tokenize_prompt(tokenizer_two, prompts)
-                        if args.with_prior_preservation:
-                            class_tokens_one = tokenize_prompt(tokenizer_one, args.class_prompt)
-                            class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt)
-                            tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
-                            tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
