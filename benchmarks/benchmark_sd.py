@@ -43,8 +43,7 @@ def main(args):
     memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated()) # in GBs.
     benchmark_info = BenchmarkInfo(time=time, memory=memory)
     
-    markdown_report = ""
-    markdown_report = generate_markdown_table(pipeline_name=CKPT, args=args, benchmark_info=benchmark_info, markdown_report=markdown_report)  
+    markdown_report = generate_markdown_table(pipeline_name=CKPT, args=args, benchmark_info=benchmark_info)  
     return markdown_report
 
 if __name__ == "__main__":
