@@ -138,6 +138,8 @@ Text embeddings computed in 8-bit can impact the quality of the generated images
 
 </Tip>
 
+While loading the `text_encoder`, you set `load_in_8bit` to `True`. Instead of `load_in_8bit`, if you specify `load_in_4bit`, the memory requirements will be down under 7GB. 
+
 ## PixArtAlphaPipeline
 
 [[autodoc]] PixArtAlphaPipeline
