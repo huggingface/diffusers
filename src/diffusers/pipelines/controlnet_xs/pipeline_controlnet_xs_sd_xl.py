@@ -151,8 +151,6 @@ class StableDiffusionXLControlNetXSPipeline(
     ):
         super().__init__()
 
-        # todo: add multi contronet?
-
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -163,7 +161,6 @@ class StableDiffusionXLControlNetXSPipeline(
             controlnet=controlnet,
             scheduler=scheduler,
         )
-
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
@@ -536,8 +533,6 @@ class StableDiffusionXLControlNetXSPipeline(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
-        # todo: multi control net?
-
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
@@ -548,7 +543,6 @@ class StableDiffusionXLControlNetXSPipeline(
             and isinstance(self.controlnet._orig_mod, ControlNetXSModel)
         ):
             self.check_image(image, prompt, prompt_embeds)
-        # elif # todo: multi control net?
         else:
             assert False
 
@@ -560,32 +554,18 @@ class StableDiffusionXLControlNetXSPipeline(
         ):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-        # elif # todo: multi control net?
         else:
             assert False
 
-        if not isinstance(control_guidance_start, (tuple, list)):
-            control_guidance_start = [control_guidance_start]
-
-        if not isinstance(control_guidance_end, (tuple, list)):
-            control_guidance_end = [control_guidance_end]
-
-        if len(control_guidance_start) != len(control_guidance_end):
+        start, end = control_guidance_start, control_guidance_end
+        if start >= end:
             raise ValueError(
-                f"`control_guidance_start` has {len(control_guidance_start)} elements, but `control_guidance_end` has {len(control_guidance_end)} elements. Make sure to provide the same number of elements to each list."
+                f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}."
             )
-
-        # if isinstance(self.controlnet, MultiControlNetModel): # todo?
-
-        for start, end in zip(control_guidance_start, control_guidance_end):
-            if start >= end:
-                raise ValueError(
-                    f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}."
-                )
-            if start < 0.0:
-                raise ValueError(f"control guidance start: {start} can't be smaller than 0.")
-            if end > 1.0:
-                raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
+        if start < 0.0:
+            raise ValueError(f"control guidance start: {start} can't be smaller than 0.")
+        if end > 1.0:
+            raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
 
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
@@ -769,8 +749,8 @@ class StableDiffusionXLControlNetXSPipeline(
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         guess_mode: bool = False,
-        control_guidance_start: Union[float, List[float]] = 0.0,
-        control_guidance_end: Union[float, List[float]] = 1.0,
+        control_guidance_start: float = 0.0,
+        control_guidance_end: float = 1.0,
         original_size: Tuple[int, int] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Tuple[int, int] = None,
@@ -861,9 +841,9 @@ class StableDiffusionXLControlNetXSPipeline(
             guess_mode (`bool`, *optional*, defaults to `False`):
                 The ControlNet encoder tries to recognize the content of the input image even if you remove all
                 prompts. A `guidance_scale` value between 3.0 and 5.0 is recommended.
-            control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
+            control_guidance_start (`float`, *optional*, defaults to 0.0):
                 The percentage of total steps at which the ControlNet starts applying.
-            control_guidance_end (`float` or `List[float]`, *optional*, defaults to 1.0):
+            control_guidance_end (`float`, *optional*, defaults to 1.0):
                 The percentage of total steps at which the ControlNet stops applying.
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
@@ -904,17 +884,6 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        # align format for control guidance
-        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
-            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
-        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
-            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
-        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
-            mult = 1  # len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
-            control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
-                control_guidance_end
-            ]
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
@@ -945,16 +914,6 @@ class StableDiffusionXLControlNetXSPipeline(
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-
-        # todo: if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float): ...
-
-        # todo umer: understand & implement if needed
-        # global_pool_conditions = (
-        #     controlnet.config.global_pool_conditions
-        #     if isinstance(controlnet, ControlNetXSModel)
-        #     else controlnet.nets[0].config.global_pool_conditions
-        # )
-        # guess_mode = guess_mode or global_pool_conditions
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
@@ -995,7 +954,6 @@ class StableDiffusionXLControlNetXSPipeline(
                 guess_mode=guess_mode,
             )
             height, width = image.shape[-2:]
-        # elif isinstance(controlnet, MultiControlNetModel): todo?
         else:
             assert False
 
@@ -1019,16 +977,7 @@ class StableDiffusionXLControlNetXSPipeline(
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7.1 Create tensor stating which controlnets to keep
-        controlnet_keep = []
-        for i in range(len(timesteps)):
-            keeps = [
-                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
-                for s, e in zip(control_guidance_start, control_guidance_end)
-            ]
-            controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetXSModel) else keeps)
-
-        # 7.2 Prepare added time ids & embeddings
+        # 7.1 Prepare added time ids & embeddings
         if isinstance(image, list):
             original_size = original_size or image[0].shape[-2:]
         else:
@@ -1055,6 +1004,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 negative_crops_coords_top_left,
                 negative_target_size,
                 dtype=prompt_embeds.dtype,
+                text_encoder_projection_dim=text_encoder_projection_dim,
             )
         else:
             negative_add_time_ids = add_time_ids
@@ -1086,17 +1036,30 @@ class StableDiffusionXLControlNetXSPipeline(
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 # predict the noise residual
-                noise_pred = self.controlnet(
-                    base_model=self.unet,
-                    sample=latent_model_input,
-                    timestep=t,
-                    encoder_hidden_states=prompt_embeds,
-                    controlnet_cond=image,
-                    conditioning_scale=controlnet_conditioning_scale,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=True,
-                ).sample
+                dont_control = (
+                    i / len(timesteps) < control_guidance_start or (i + 1) / len(timesteps) > control_guidance_end
+                )
+                if dont_control:
+                    noise_pred = self.unet(
+                        sample=latent_model_input,
+                        timestep=t,
+                        encoder_hidden_states=prompt_embeds,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=True,
+                    ).sample
+                else:
+                    noise_pred = self.controlnet(
+                        base_model=self.unet,
+                        sample=latent_model_input,
+                        timestep=t,
+                        encoder_hidden_states=prompt_embeds,
+                        controlnet_cond=image,
+                        conditioning_scale=controlnet_conditioning_scale,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=True,
+                    ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
