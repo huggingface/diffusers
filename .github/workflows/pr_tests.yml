@@ -21,7 +21,13 @@ env:
 jobs:
   setup_pr_tests:
     name: Setup PR Tests
-    runner: docker-cpu
+    runs-on: docker-cpu
+    container:
+      image: diffusers/diffusers-pytorch-cpu
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+    defaults:
+      run:
+        shell: bash
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
