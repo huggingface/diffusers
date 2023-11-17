@@ -36,7 +36,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset, concatenate_datasets
+from datasets import concatenate_datasets, load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
@@ -310,15 +310,7 @@ def parse_args():
         default=4,
         help="Number of images that should be generated during validation with `validation_prompt`.",
     )
-    parser.add_argument(
-        "--validation_steps",
-        type=int,
-        default=100,
-        help=(
-            "Run fine-tuning validation every X steps. The validation process consists of running the prompt"
-            " `args.validation_prompt` multiple times: `args.num_validation_images`."
-        ),
-    )
+    parser.add_argument("--validation_epochs", type=int, default=1, help="Run fine-tuning validation every X epochs.")
     parser.add_argument(
         "--max_train_samples",
         type=int,
@@ -1147,9 +1139,10 @@ def main():
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
+                accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
-                if accelerator.is_main_process :
+                if accelerator.is_main_process:
                     if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1175,40 +1168,39 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-                    ### BEGIN: Perform validation every `validation_steps` steps
-                    if global_step % args.validation_steps == 0:
-                        if (args.val_image_url_or_path is not None) and (args.validation_prompt is not None):
-                            # create pipeline
-                            if args.use_ema:
-                                # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                                ema_unet.store(unet.parameters())
-                                ema_unet.copy_to(unet.parameters())
-
-                            log_validation(
-                                vae=vae,
-                                unet=unet,
-                                text_encoder_1=text_encoder_1,
-                                text_encoder_2=text_encoder_2,
-                                tokenizer_1=tokenizer_1,
-                                tokenizer_2=tokenizer_2,
-                                args=args,
-                                accelerator=accelerator,
-                                weight_dtype=weight_dtype,
-                                global_step=global_step,
-                            )
-
-                            if args.use_ema:
-                                # Switch back to the original UNet parameters.
-                                ema_unet.restore(unet.parameters())
-
-                    ### END: Perform validation every `validation_epochs` steps
-
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
-            accelerator.log(logs, step=global_step)
 
             if global_step >= args.max_train_steps:
                 break
+
+        if accelerator.is_main_process:
+            if (
+                (args.val_image_url is not None)
+                and (args.validation_prompt is not None)
+                and (epoch % args.validation_epochs == 0)
+            ):
+                if args.use_ema:
+                    # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                    ema_unet.store(unet.parameters())
+                    ema_unet.copy_to(unet.parameters())
+
+                log_validation(
+                    vae=vae,
+                    unet=unet,
+                    text_encoder_1=text_encoder_1,
+                    text_encoder_2=text_encoder_2,
+                    tokenizer_1=tokenizer_1,
+                    tokenizer_2=tokenizer_2,
+                    args=args,
+                    accelerator=accelerator,
+                    weight_dtype=weight_dtype,
+                    global_step=global_step,
+                )
+
+                if args.use_ema:
+                    # Switch back to the original UNet parameters.
+                    ema_unet.restore(unet.parameters())
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
