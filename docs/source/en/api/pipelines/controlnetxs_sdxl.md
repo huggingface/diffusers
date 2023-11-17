@@ -12,15 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # ControlNet with Stable Diffusion XL
 
-ControlNet was introduced in [Adding Conditional Control to Text-to-Image Diffusion Models](https://huggingface.co/papers/2302.05543) by Lvmin Zhang, Anyi Rao, and Maneesh Agrawala.
+ControlNet-XS was introduced in [ControlNet-XS](https://vislearn.github.io/ControlNet-XS/) by Denis Zavadski and Carsten Rother. It is based on the observation that the control model in the [original ControlNet](https://huggingface.co/papers/2302.05543) can be made much smaller and still produces good results.
 
-With a ControlNet model, you can provide an additional control image to condition and control Stable Diffusion generation. For example, if you provide a depth map, the ControlNet model generates an image that'll preserve the spatial information from the depth map. It is a more flexible and accurate way to control the image generation process.
-
-The abstract from the paper is:
-
-*We present ControlNet, a neural network architecture to add spatial conditioning controls to large, pretrained text-to-image diffusion models. ControlNet locks the production-ready large diffusion models, and reuses their deep and robust encoding layers pretrained with billions of images as a strong backbone to learn a diverse set of conditional controls. The neural architecture is connected with "zero convolutions" (zero-initialized convolution layers) that progressively grow the parameters from zero and ensure that no harmful noise could affect the finetuning. We test various conditioning controls, eg, edges, depth, segmentation, human pose, etc, with Stable Diffusion, using single or multiple conditions, with or without prompts. We show that the training of ControlNets is robust with small (<50k) and large (>1m) datasets. Extensive results show that ControlNet may facilitate wider applications to control image diffusion models.*
-
-You can find additional smaller Stable Diffusion XL (SDXL) ControlNet checkpoints from the 🤗 [Diffusers](https://huggingface.co/diffusers) Hub organization, and browse [community-trained](https://huggingface.co/models?other=stable-diffusion-xl&other=controlnet) checkpoints on the Hub.
+As with the original ControlNet model, you can provide an additional control image to condition and control Stable Diffusion generation. For example, if you provide a depth map, the ControlNet model generates an image that'll preserve the spatial information from the depth map. It is a more flexible and accurate way to control the image generation process.
 
 <Tip warning={true}>
 
@@ -36,18 +30,8 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
-## StableDiffusionXLControlNetPipeline
-[[autodoc]] StableDiffusionXLControlNetPipeline
-	- all
-	- __call__
-
-## StableDiffusionXLControlNetImg2ImgPipeline
-[[autodoc]] StableDiffusionXLControlNetImg2ImgPipeline
-	- all
-	- __call__
-
-## StableDiffusionXLControlNetInpaintPipeline
-[[autodoc]] StableDiffusionXLControlNetInpaintPipeline
+## StableDiffusionXLControlNetXSPipeline
+[[autodoc]] StableDiffusionXLControlNetXSPipeline
 	- all
 	- __call__
 
