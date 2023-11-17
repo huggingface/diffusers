@@ -464,9 +464,7 @@ def main(args):
     unet = gemini_zero_dpp(unet, args.placement)
 
     # config optimizer for colossalai zero
-    optimizer = GeminiAdamOptimizer(
-        unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm
-    )
+    optimizer = GeminiAdamOptimizer(unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm)
 
     # load noise_scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")

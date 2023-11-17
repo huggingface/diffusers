@@ -181,6 +181,7 @@ class AutoPipelineForText2Image(ConfigMixin):
           diffusion pipeline's components.
 
     """
+
     config_name = "model_index.json"
 
     def __init__(self, *args, **kwargs):
@@ -451,6 +452,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
           diffusion pipeline's components.
 
     """
+
     config_name = "model_index.json"
 
     def __init__(self, *args, **kwargs):
@@ -726,6 +728,7 @@ class AutoPipelineForInpainting(ConfigMixin):
           diffusion pipeline's components.
 
     """
+
     config_name = "model_index.json"
 
     def __init__(self, *args, **kwargs):
