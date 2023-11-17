@@ -118,7 +118,7 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v3
       with:
-          name: pipeline_${{ matrix.modules }}_test_reports
+          name: ${{ matrix.modules }}_test_reports
           path: reports
 
   run_staging_tests:
