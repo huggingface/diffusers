@@ -583,7 +583,6 @@ def get_module_dependencies(module_fname: str, cache: Dict[str, List[str]] = Non
     """
     dependencies = []
     imported_modules = extract_imports(module_fname, cache=cache)
-
     # The while loop is to recursively traverse all inits we may encounter: we will add things as we go.
     while len(imported_modules) > 0:
         new_modules = []
@@ -745,7 +744,6 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
     # Add all modules and all tests to all examples
     all_modules = list(PATH_TO_DIFFUSERS.glob("**/*.py")) + list(PATH_TO_TESTS.glob("**/*.py")) + examples
     all_modules = [str(mod.relative_to(PATH_TO_REPO)) for mod in all_modules]
-
     # Compute the direct dependencies of all modules.
     direct_deps = {m: get_module_dependencies(m, cache=cache) for m in all_modules}
     direct_deps.update(example_deps)
