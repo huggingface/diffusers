@@ -61,6 +61,21 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
+def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
+    """
+    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
+    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
+    """
+    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
+    # rescale the results from guidance (fixes overexposure)
+    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
+    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
+    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
+    return noise_cfg
+
+
 class LatentConsistencyModelPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
@@ -537,6 +552,7 @@ class LatentConsistencyModelPipeline(
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -586,6 +602,10 @@ class LatentConsistencyModelPipeline(
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
+                Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
+                using zero terminal SNR.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
@@ -645,6 +665,7 @@ class LatentConsistencyModelPipeline(
 
         device = self._execution_device
         # do_classifier_free_guidance = guidance_scale > 1.0
+        do_guidance_rescale = guidance_rescale > 0.0
 
         # 3. Encode input prompt
         lora_scale = (
@@ -692,6 +713,12 @@ class LatentConsistencyModelPipeline(
         w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=self.unet.config.time_cond_proj_dim).to(
             device=device, dtype=latents.dtype
         )
+        if do_guidance_rescale:
+            w_0 = torch.zeros_like(w)
+            no_cfg_embedding = self.get_guidance_scale_embedding(w_0, embedding_dim=self.unet.config.time_cond_proj_dim).to(
+                device=device, dtype=latents.dtype
+            )
+            w_embedding = torch.cat([no_cfg_embedding, w_embedding])
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, None)
@@ -701,17 +728,25 @@ class LatentConsistencyModelPipeline(
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                latents = latents.to(prompt_embeds.dtype)
+                # Expand the latents and conditioning if we are doing guidance rescaling
+                latent_model_input = torch.cat([latents] * 2) if do_guidance_rescale else latents
+                conditioning_input = torch.cat([prompt_embeds] * 2) if do_guidance_rescale else prompt_embeds
 
                 # model prediction (v-prediction, eps, x)
                 model_pred = self.unet(
-                    latents,
+                    latent_model_input,
                     t,
                     timestep_cond=w_embedding,
-                    encoder_hidden_states=prompt_embeds,
+                    encoder_hidden_states=conditioning_input,
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     return_dict=False,
                 )[0]
+
+                # Do guidance rescaling, if necessary
+                if do_guidance_rescale:
+                    noise_pred_cond, noise_pred_cfg = model_pred.chunk(2)
+                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                    model_pred = rescale_noise_cfg(noise_pred_cfg, noise_pred_cond, guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents, denoised = self.scheduler.step(model_pred, t, latents, **extra_step_kwargs, return_dict=False)
