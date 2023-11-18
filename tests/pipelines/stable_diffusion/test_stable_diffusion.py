@@ -470,6 +470,32 @@ class StableDiffusionPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_edm_stochastic(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        # Default settings do not use noise (deterministic sampling)
+        sd_pipe.scheduler = KarrasEDMScheduler(
+            num_train_timesteps=sd_pipe.scheduler.config.num_train_timesteps,
+            prediction_type=sd_pipe.scheduler.config.prediction_type,
+            precondition_type="edm",
+            sigma_min=0.05,
+            sigma_max=50,
+            s_churn=40.0,
+            s_noise=1.003,
+        )
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        # Only test the shape for now since we can't control the randomness for stochastic sampling
+        # within the pipeline currently
+        assert image.shape == (1, 64, 64, 3)
+
     def test_stable_diffusion_vae_slicing(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()

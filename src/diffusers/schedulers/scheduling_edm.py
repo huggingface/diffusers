@@ -252,13 +252,11 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         if self.state_in_first_order:
             if sigma_hat > sigma:  # equivalent to gamma > 0
                 # Store eps so that we can recalculate sample_hat in step()
-                self.eps = self.config.s_noise * randn_tensor(sample.shape, generator=generator).to(sample.device)
-                sample = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * self.eps)
-            else:
-                # No noise
-                self.eps = 0
+                noise = randn_tensor(sample.shape, generator=generator).to(device=sample.device, dtype=sample.dtype)
+                eps = self.config.s_noise * noise
+                sample = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
 
-            # self.sample_hat = sample
+            self.sample_hat = sample
 
         # 3. Precondition the input sample and timestep.
         sample = self.precondition_inputs(sample, sigma_hat)
@@ -386,7 +384,6 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         self.prev_derivative = None
         self.dt = None
         self.sample_hat = None
-        self.eps = None
 
         # 7. Reset step_index
         self._step_index = None
@@ -512,8 +509,12 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             sigma = self.sigmas[self.step_index]
             sigma_hat = self.sigma_hats[self.step_index]
             sigma_next = self.sigmas[self.step_index + 1]
-            # Recalculate sample_hat to avoid problems with CFG when scaling the model input
-            self.sample_hat = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * self.eps)
+            # Check if CFG is being used; if so, trim down self.sample_hat
+            if sample.shape[0] != self.sample_hat.shape[0]:
+                # If the batch shapes don't match, we are doing CFG; take the last sample.shape[0]
+                # items in the batch
+                self.sample_hat = self.sample_hat[-sample.shape[0]:, ...]
+            # self.sample_hat = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * self.eps)
         else:
             # 2nd order / Heun's method
             # sigma = self.sigmas[self.step_index - 1]
@@ -523,7 +524,6 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
         # hack in case self.sample_hat and self.eps aren't set yet
         if self.sample_hat is None:
             self.sample_hat = sample
-            self.eps = 0
 
         # 3. Compute predicted original sample (x_0) from sigma-scaled predicted noise
         # NOTE: "original_sample" should not be an expected prediction_type but is left in for
@@ -583,7 +583,6 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
             self.prev_derivative = None
             self.dt = None
             self.sample_hat = None
-            self.eps = None
 
         # upon completion increase step index by one
         self._step_index += 1
