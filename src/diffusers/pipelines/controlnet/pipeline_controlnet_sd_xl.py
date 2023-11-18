@@ -1118,7 +1118,7 @@ class StableDiffusionXLControlNetPipeline(
         # 3.2 Encode ip_adapter_image
         if ip_adapter_image is not None:
             image_embeds, negative_image_embeds = self.encode_image(ip_adapter_image, device, num_images_per_prompt)
-            if do_classifier_free_guidance:
+            if self.do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 4. Prepare image
