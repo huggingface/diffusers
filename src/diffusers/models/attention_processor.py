@@ -1984,18 +1984,18 @@ class IPAdapterAttnProcessor(nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        text_context_len (`int`, defaults to 77):
-            The context length of the text features.
+        num_tokens (`int`, defaults to 4):
+            The context length of the image features.
         scale (`float`, defaults to 1.0):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, text_context_len=77, scale=1.0):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4, scale=1.0):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
-        self.text_context_len = text_context_len
+        self.num_tokens = num_tokens
         self.scale = scale
 
         self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
@@ -2039,9 +2039,10 @@ class IPAdapterAttnProcessor(nn.Module):
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         # split hidden states
+        end_pos = encoder_hidden_states.shape[1] - self.num_tokens
         encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, : self.text_context_len, :],
-            encoder_hidden_states[:, self.text_context_len :, :],
+            encoder_hidden_states[:, :end_pos, :],
+            encoder_hidden_states[:, end_pos:, :],
         )
 
         key = attn.to_k(encoder_hidden_states)
@@ -2093,13 +2094,13 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        text_context_len (`int`, defaults to 77):
-            The context length of the text features.
+        num_tokens (`int`, defaults to 4):
+            The context length of the image features.
         scale (`float`, defaults to 1.0):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, text_context_len=77, scale=1.0):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4, scale=1.0):
         super().__init__()
 
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2109,7 +2110,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
-        self.text_context_len = text_context_len
+        self.num_tokens = num_tokens
         self.scale = scale
 
         self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
@@ -2158,9 +2159,10 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         # split hidden states
+        end_pos = encoder_hidden_states.shape[1] - self.num_tokens
         encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, : self.text_context_len, :],
-            encoder_hidden_states[:, self.text_context_len :, :],
+            encoder_hidden_states[:, :end_pos, :],
+            encoder_hidden_states[:, end_pos:, :],
         )
 
         key = attn.to_k(encoder_hidden_states)
