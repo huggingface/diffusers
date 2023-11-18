@@ -214,7 +214,6 @@ Stable Diffusion 은 text-to-image *latent diffusion* 모델입니다. latent di
 ...     generator=generator,
 ...     device=torch_device,
 ... )
->>> latents = latents.to(torch_device)
 ```
 
 ### 이미지 노이즈 제거
