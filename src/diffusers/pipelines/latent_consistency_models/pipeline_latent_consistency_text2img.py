@@ -715,9 +715,9 @@ class LatentConsistencyModelPipeline(
         )
         if do_guidance_rescale:
             w_0 = torch.zeros_like(w)
-            no_cfg_embedding = self.get_guidance_scale_embedding(w_0, embedding_dim=self.unet.config.time_cond_proj_dim).to(
-                device=device, dtype=latents.dtype
-            )
+            no_cfg_embedding = self.get_guidance_scale_embedding(
+                w_0, embedding_dim=self.unet.config.time_cond_proj_dim
+            ).to(device=device, dtype=latents.dtype)
             w_embedding = torch.cat([no_cfg_embedding, w_embedding])
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
