@@ -791,6 +791,46 @@ class StableDiffusionXLControlNetPipeline(
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
 
+    # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
+    def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
+        """
+        See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
+
+        Args:
+            timesteps (`torch.Tensor`):
+                generate embedding vectors at these timesteps
+            embedding_dim (`int`, *optional*, defaults to 512):
+                dimension of the embeddings to generate
+            dtype:
+                data type of the generated embeddings
+
+        Returns:
+            `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+        """
+        assert len(w.shape) == 1
+        w = w * 1000.0
+
+        half_dim = embedding_dim // 2
+        emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, dtype=dtype) * -emb)
+        emb = w.to(dtype)[:, None] * emb[None, :]
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
+        if embedding_dim % 2 == 1:  # zero pad
+            emb = torch.nn.functional.pad(emb, (0, 1))
+        assert emb.shape == (w.shape[0], embedding_dim)
+        return emb
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+    # corresponds to doing no classifier free guidance.
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -986,6 +1026,8 @@ class StableDiffusionXLControlNetPipeline(
             control_guidance_end,
         )
 
+        self._guidance_scale = guidance_scale
+
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -995,10 +1037,6 @@ class StableDiffusionXLControlNetPipeline(
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
 
         if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
@@ -1024,7 +1062,7 @@ class StableDiffusionXLControlNetPipeline(
             prompt_2,
             device,
             num_images_per_prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds=prompt_embeds,
@@ -1045,7 +1083,7 @@ class StableDiffusionXLControlNetPipeline(
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
-                do_classifier_free_guidance=do_classifier_free_guidance,
+                do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
             height, width = image.shape[-2:]
@@ -1061,7 +1099,7 @@ class StableDiffusionXLControlNetPipeline(
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
-                    do_classifier_free_guidance=do_classifier_free_guidance,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
 
@@ -1088,6 +1126,14 @@ class StableDiffusionXLControlNetPipeline(
             generator,
             latents,
         )
+
+        # 6.5 Optionally get Guidance Scale Embedding
+        timestep_cond = None
+        if self.unet.config.time_cond_proj_dim is not None:
+            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+            timestep_cond = self.get_guidance_scale_embedding(
+                guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
+            ).to(device=device, dtype=latents.dtype)
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -1133,7 +1179,7 @@ class StableDiffusionXLControlNetPipeline(
         else:
             negative_add_time_ids = add_time_ids
 
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
@@ -1154,13 +1200,13 @@ class StableDiffusionXLControlNetPipeline(
                 if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 # controlnet(s) inference
-                if guess_mode and do_classifier_free_guidance:
+                if guess_mode and self.do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
                     control_model_input = latents
                     control_model_input = self.scheduler.scale_model_input(control_model_input, t)
@@ -1193,7 +1239,7 @@ class StableDiffusionXLControlNetPipeline(
                     return_dict=False,
                 )
 
-                if guess_mode and do_classifier_free_guidance:
+                if guess_mode and self.do_classifier_free_guidance:
                     # Infered ControlNet only for the conditional batch.
                     # To apply the output of ControlNet to both the unconditional and conditional batches,
                     # add 0 to the unconditional batch to keep it unchanged.
@@ -1205,6 +1251,7 @@ class StableDiffusionXLControlNetPipeline(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
+                    timestep_cond=timestep_cond,
                     cross_attention_kwargs=cross_attention_kwargs,
                     down_block_additional_residuals=down_block_res_samples,
                     mid_block_additional_residual=mid_block_res_sample,
@@ -1213,7 +1260,7 @@ class StableDiffusionXLControlNetPipeline(
                 )[0]
 
                 # perform guidance
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
