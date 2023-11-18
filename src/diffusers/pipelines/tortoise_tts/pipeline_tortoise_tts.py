@@ -804,16 +804,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             latents=latents,
         )
 
-        # 11. Prepare noisy latent variables for vocoder sampling
-        vocoder_latents = self.prepare_vocoder_latents(
-            batch_size * num_waveforms_per_prompt,
-            noise_length=diffusion_cond_emb.shape[2],
-            dtype=autoregressive_latents.dtype,
-            device=device,
-            generator=generator,
-            latents=vocoder_latents,
-        )
-
         # if do_classifier_free_guidance:
         #     if has_negative_prompts:
         #         neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
@@ -858,7 +848,9 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 # TODO: modify classifier-free guidance code as necessary
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                # latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+
+                latent_model_input = latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
@@ -867,20 +859,45 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                     t,
                     diffusion_cond_emb,
                 ).sample
+                noise_pred, variance_pred = noise_pred.chunk(2, dim=1)
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                    # noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
+                    # noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                    neg_diffusion_cond_emb = self.diffusion_conditioning_encoder.unconditional_embedding.repeat(diffusion_cond_emb.shape[0], 1, diffusion_cond_emb.shape[-1])
+                    noise_pred_uncond = self.diffusion_denoising_model(latent_model_input, t, neg_diffusion_cond_emb).sample
+                    noise_pred_uncond, _ = noise_pred_uncond.chunk(2, dim=1)
+
+                    cfk =  1 - ((num_inference_steps - i - 1) / num_inference_steps)
+                    cfk = cfk * guidance_scale
+                    noise_pred = (1 + cfk) * noise_pred - cfk * noise_pred_uncond
 
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(
+                    model_output=torch.cat([noise_pred, variance_pred], dim=1),
+                    timestep=num_inference_steps - i - 1,
+                    sample=latents,
+                    **extra_step_kwargs,
+                ).prev_sample
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
+
+        # 11. Prepare noisy latent variables for vocoder sampling
+        vocoder_latents = self.prepare_vocoder_latents(
+            batch_size * num_waveforms_per_prompt,
+            noise_length=diffusion_cond_emb.shape[2],
+            dtype=autoregressive_latents.dtype,
+            device=device,
+            generator=generator,
+            latents=vocoder_latents,
+        )
+
+
 
         # 14. Post-processing
         # TODO: support vocoders which don't use a input noise?
