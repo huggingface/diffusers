@@ -60,7 +60,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     model_cpu_offload_seq = (
         # "autoregressive_random_latent_converter->audio_candidate_model->diffusion_random_latent_converter"
         "audio_candidate_model->diffusion_random_latent_converter"
-        "->diffusion_conditioning_encoder->unet->vocoder"
+        "->diffusion_conditioning_encoder->diffusion_denoising_model->vocoder"
     )
 
     # TODO: get appropriate type annotations for __init__ args
@@ -73,7 +73,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         # autoregressive_random_latent_converter: RandomLatentConverter,
         diffusion_conditioning_encoder: DiffusionConditioningEncoder,
         diffusion_random_latent_converter: RandomLatentConverter,
-        unet: TortoiseTTSDenoisingModel,
+        diffusion_denoising_model: TortoiseTTSDenoisingModel,
         scheduler: KarrasDiffusionSchedulers,
 
         output_sampling_rate: int = 24000,
@@ -88,14 +88,14 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             # autoregressive_random_latent_converter=autoregressive_random_latent_converter,
             diffusion_conditioning_encoder=diffusion_conditioning_encoder,
             diffusion_random_latent_converter=diffusion_random_latent_converter,
-            unet=unet,
+            diffusion_denoising_model=diffusion_denoising_model,
             scheduler=scheduler,
         )
 
         self.text_encoder = audio_candidate_model.conditioning_encoder.text_token_embedding
         self.decoder_final_norm = audio_candidate_model.speech_decoder_model.final_norm
         self.autoregressive_hidden_dim = audio_candidate_model.config.decoder_config.hidden_size
-        self.diffusion_input_dim = unet.config.in_channels
+        self.diffusion_input_dim = diffusion_denoising_model.config.in_channels
         # self.audio_sampling_rate = audio_processor.sampling_rate
 
         # if self.autoregressive_hidden_dim != autoregressive_random_latent_converter.config.channels:
@@ -112,29 +112,29 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 f" {diffusion_random_latent_converter.config.channels}"
             )
 
-        if unet.config.in_channels != vocoder.config.num_mel_bins:
+        if diffusion_denoising_model.config.in_channels != vocoder.config.num_mel_bins:
             raise ValueError(
-                f"The diffusion denoising model has {self.unet.config.in_channels} input channels and the vocoder"
+                f"The diffusion denoising model has {self.diffusion_denoising_model.config.in_channels} input channels and the vocoder"
                 f" takes in spectrograms with {self.vocoder.config.num_mel_bins} MEL bins, but these are expected to"
                 f" be equal."
             )
 
-        self.num_mel_bins = self.unet.config.in_channels
+        self.num_mel_bins = self.diffusion_denoising_model.config.in_channels
         self.input_sampling_rate = audio_processor.sampling_rate
         self.output_sampling_rate = output_sampling_rate
         self.calm_token_id = audio_candidate_model.speech_decoder_model.config.decoder_fixing_codes[0]
 
     @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device with unet->diffusion_denoising_model
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
         `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
         hooks.
         """
-        if not hasattr(self.unet, "_hf_hook"):
+        if not hasattr(self.diffusion_denoising_model, "_hf_hook"):
             return self.device
-        for module in self.unet.modules():
+        for module in self.diffusion_denoising_model.modules():
             if (
                 hasattr(module, "_hf_hook")
                 and hasattr(module._hf_hook, "execution_device")
@@ -333,8 +333,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         latent_averaging_mode: int = 0,
         chunk_size: Optional[int] = None,  # DURS_CONST in original code
         unconditional: bool = False,
-        target_size: Optional[int] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        # latents: Optional[torch.FloatTensor] = None,
     ):
         """
         Prepare the diffusion conditioning embedding from the conditioning audio samples and autoregressive latents.
@@ -355,12 +354,12 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                         f" size of {batch_size}. Make sure the batch size matches the length of the generators."
                     )
 
-                if latents is None:
-                    latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-                else:
-                    latents = latents.to(device)
-
-                diffusion_audio_emb = self.diffusion_random_latent_converter(latents).latents
+                # if latents is None:
+                #     latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                # else:
+                #     latents = latents.to(device)
+                #
+                # diffusion_audio_emb = self.diffusion_random_latent_converter(latents).latents
 
         diffusion_cond_emb = self.diffusion_conditioning_encoder.diffusion_cond_embedding(
             diffusion_audio_emb, autoregressive_latents, attention_mask, unconditional, batch_size,
@@ -381,7 +380,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         spectrogram diffusion based on the autoregressive latents sequence length.
         """
         # Convert from self.input_sampling_rate spectrogram codes to self.output_sampling_rate spectrogram signals
-        return autoregressive_latents.shape[1] * 4 * self.output_sampling_rate // self.input_sampling_rate
+        return autoregressive_latents.shape[2] * 4 * self.output_sampling_rate // self.input_sampling_rate
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -775,43 +774,11 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             # prepare negative attention_mask from audio_candidates to be used in diffusion model
             diffusion_neg_attention_mask = self.get_diffusion_attention_mask(neg_top_k_audio_candidates)
 
-        # # 7. Trim audio candidates
-        # top_k_autoregressive_latents = self.trim_autoregressive_latents(
-        #     top_k_audio_candidates, top_k_autoregressive_latents
-        # )
-        #
-        # if do_classifier_free_guidance and has_negative_prompts:
-        #     neg_top_k_autoregressive_latents = self.trim_autoregressive_latents(
-        #         neg_top_k_audio_candidates, neg_top_k_autoregressive_latents
-        #     )
-
         # 8. Prepare timesteps for diffusion scheduler
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 9. Prepare noisy latent variables for diffusion denoising loop
-        diffusion_seq_len = self.diffusion_output_sequence_length(top_k_autoregressive_latents)
-        latents = self.prepare_latents(
-            batch_size * num_waveforms_per_prompt,
-            diffusion_seq_len,
-            diffusion_temperature,
-            autoregressive_latents.dtype,
-            device,
-            generator,
-            latents=latents,
-        )
-
-        # 10. Prepare noisy latent variables for vocoder sampling
-        vocoder_latents = self.prepare_vocoder_latents(
-            batch_size * num_waveforms_per_prompt,
-            noise_length=diffusion_seq_len,
-            dtype=autoregressive_latents.dtype,
-            device=device,
-            generator=generator,
-            latents=vocoder_latents,
-        )
-
-        # 11. Get conditioning embeddings for the diffusion model
+        # 9. Get conditioning embeddings for the diffusion model
         diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
             audio,
             audio_sampling_rate,
@@ -822,43 +789,64 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             generator,
             batch_size,
             latent_averaging_mode=latent_averaging_mode,
-            target_size=latents.shape[1],
-            latents=audio_diff_latents,
+            # target_size=latents.shape[1],
+            # latents=audio_diff_latents,
         )
 
-        if do_classifier_free_guidance:
-            if has_negative_prompts:
-                neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
-                    audio,
-                    audio_sampling_rate,
-                    neg_top_k_autoregressive_latents,
-                    diffusion_neg_attention_mask,
-                    autoregressive_latents.dtype,
-                    device,
-                    generator,
-                    batch_size,
-                    latent_averaging_mode=latent_averaging_mode,
-                    target_size=latents.shape[1],
-                    latents=audio_diff_latents,
-                )
-            else:
-                # Fall back to self.diffusion_conditioning_encoder.unconditional_embedding
-                # NOTE: this does not depend on either conditional audio nor autoregressive latents
-                neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
-                    None,
-                    None,
-                    None,
-                    None,
-                    autoregressive_latents.dtype,
-                    device,
-                    generator,
-                    batch_size,
-                    latent_averaging_mode=latent_averaging_mode,
-                    unconditional=True,
-                    target_size=latents.shape[1],
-                    latents=None,
-                )
-            diffusion_cond_emb = torch.cat([neg_diffusion_cond_emb, diffusion_cond_emb])
+        # 10. Prepare noisy latent variables for diffusion denoising loop
+        latents = self.prepare_latents(
+            batch_size * num_waveforms_per_prompt,
+            diffusion_cond_emb.shape[2],
+            diffusion_temperature,
+            autoregressive_latents.dtype,
+            device,
+            generator,
+            latents=latents,
+        )
+
+        # 11. Prepare noisy latent variables for vocoder sampling
+        vocoder_latents = self.prepare_vocoder_latents(
+            batch_size * num_waveforms_per_prompt,
+            noise_length=diffusion_cond_emb.shape[2],
+            dtype=autoregressive_latents.dtype,
+            device=device,
+            generator=generator,
+            latents=vocoder_latents,
+        )
+
+        # if do_classifier_free_guidance:
+        #     if has_negative_prompts:
+        #         neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
+        #             audio,
+        #             audio_sampling_rate,
+        #             neg_top_k_autoregressive_latents,
+        #             diffusion_neg_attention_mask,
+        #             autoregressive_latents.dtype,
+        #             device,
+        #             generator,
+        #             batch_size,
+        #             latent_averaging_mode=latent_averaging_mode,
+        #             target_size=latents.shape[1],
+        #             latents=audio_diff_latents,
+        #         )
+        #     else:
+        #         # Fall back to self.diffusion_conditioning_encoder.unconditional_embedding
+        #         # NOTE: this does not depend on either conditional audio nor autoregressive latents
+        #         neg_diffusion_cond_emb = self.prepare_diffusion_cond_embedding(
+        #             None,
+        #             None,
+        #             None,
+        #             None,
+        #             autoregressive_latents.dtype,
+        #             device,
+        #             generator,
+        #             batch_size,
+        #             latent_averaging_mode=latent_averaging_mode,
+        #             unconditional=True,
+        #             target_size=latents.shape[1],
+        #             latents=None,
+        #         )
+        #     diffusion_cond_emb = torch.cat([neg_diffusion_cond_emb, diffusion_cond_emb])
 
         # 12. Prepare extra step kwargs
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)

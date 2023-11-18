@@ -473,10 +473,12 @@ class UNetBlock1D(nn.Module):
                 )
             )
             attentions.append(
-                TortoiseTTSAttention(
+                TortoiseTTSSelfAttention(
                     query_dim=in_channels,
                     n_heads=num_heads,
                     dim_head=in_channels//num_heads,
+                    relative_attention_num_buckets=32,
+                    relative_attention_max_distance=64,
                 )
             )
 
@@ -488,7 +490,9 @@ class UNetBlock1D(nn.Module):
 
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb)
+            hidden_states = hidden_states.transpose(1, 2)
             hidden_states = attn(hidden_states)
+            hidden_states = hidden_states.transpose(1, 2)
             output_states = output_states + (hidden_states,)
 
         return hidden_states, output_states
@@ -620,8 +624,7 @@ class TortoiseTTSDenoisingModel(ModelMixin, ConfigMixin):
         hidden_states = self.conv_add_cond_emb_to_hidden(hidden_states)
 
         # 5. Run the hidden states through the trunk of the denoising model
-        for unet_block in self.blocks:
-            hidden_states = unet_block(hidden_states, temb=emb)[0]
+        hidden_states = self.blocks(hidden_states, temb=emb)[0]
         for post_res_block in self.post_res_blocks:
             hidden_states = post_res_block(hidden_states, emb)
 
