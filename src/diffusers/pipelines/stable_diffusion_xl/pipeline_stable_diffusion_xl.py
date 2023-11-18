@@ -576,10 +576,9 @@ class StableDiffusionXLPipeline(
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         if text_encoder_projection_dim is not None:
-
             passed_add_embed_dim = (
                 self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
-        )
+            )
         else:
             # Handle the case when text_encoder_projection_dim is None
             passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids)
