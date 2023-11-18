@@ -506,14 +506,14 @@ class KarrasEDMScheduler(SchedulerMixin, ConfigMixin):
 
         if self.state_in_first_order:
             # 1st order / Euler's method
-            sigma = self.sigmas[self.step_index]
+            # sigma = self.sigmas[self.step_index]
             sigma_hat = self.sigma_hats[self.step_index]
             sigma_next = self.sigmas[self.step_index + 1]
             # Check if CFG is being used; if so, trim down self.sample_hat
             if sample.shape[0] != self.sample_hat.shape[0]:
                 # If the batch shapes don't match, we are doing CFG; take the last sample.shape[0]
                 # items in the batch
-                self.sample_hat = self.sample_hat[-sample.shape[0]:, ...]
+                self.sample_hat = self.sample_hat[-sample.shape[0] :, ...]
             # self.sample_hat = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * self.eps)
         else:
             # 2nd order / Heun's method
