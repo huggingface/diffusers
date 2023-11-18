@@ -388,7 +388,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # LCM Inference Steps Schedule
         lcm_origin_timesteps = lcm_origin_timesteps[::-1].copy()
         # Select (approximately) evenly spaced indices from lcm_origin_timesteps.
-        inference_indices = np.linspace(0, len(lcm_origin_timesteps) - 1, num=num_inference_steps)
+        inference_indices = np.linspace(0, len(lcm_origin_timesteps), num=num_inference_steps, endpoint=False)
         inference_indices = np.floor(inference_indices).astype(np.int64)
         timesteps = lcm_origin_timesteps[inference_indices]
 
