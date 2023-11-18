@@ -14,8 +14,8 @@
 import os
 from typing import Dict, Union
 
-import safetensors
 import torch
+from safetensors import safe_open
 
 from ..utils import (
     DIFFUSERS_CACHE,
@@ -46,6 +46,8 @@ class IPAdapterMixin:
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        subfolder: str,
+        weight_name: str,
         **kwargs,
     ):
         """
@@ -93,8 +95,6 @@ class IPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None)
-        weight_name = kwargs.pop("weight_name", None)
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -116,7 +116,13 @@ class IPAdapterMixin:
                 user_agent=user_agent,
             )
             if weight_name.endswith(".safetensors"):
-                state_dict = safetensors.torch.load_file(model_file, device="cpu")
+                state_dict = {"image_proj": {}, "ip_adapter": {}}
+                with safe_open(model_file, framework="pt", device="cpu") as f:
+                    for key in f.keys():
+                        if key.startswith("image_proj."):
+                            state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
+                        elif key.startswith("ip_adapter."):
+                            state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
             else:
                 state_dict = torch.load(model_file, map_location="cpu")
         else:
