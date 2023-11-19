@@ -250,10 +250,7 @@ class TortoiseTTSPipeline(DiffusionPipeline):
     # Based on diffusers.pipelines.audioldm.pipeline_audioldm.AudioLDMPipeline.mel_spectrogram_to_waveform
     # Modified to accept a noise argument in case the vocoder uses input noise (like UnivNet does).
     def mel_spectrogram_to_waveform(self, mel_spectrogram, noise=None):
-        if mel_spectrogram.dim() == 4:
-            mel_spectrogram = mel_spectrogram.squeeze(1)
-
-        waveform = self.vocoder(mel_spectrogram, noise)
+        waveform = self.vocoder(mel_spectrogram, noise).waveforms
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         waveform = waveform.cpu().float()
         return waveform
@@ -469,6 +466,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
                 mel_input_tokens[b, actual_end:] = self.audio_candidate_model.config.decoder_config.eos_token_id
         return mel_input_tokens
 
+    def vocoder_preprocessing(self, mel, vocoder_mel_min, vocoder_mel_max):
+        mel = ((mel + 1) / 2) * (vocoder_mel_max - vocoder_mel_min) + vocoder_mel_min
+        return mel
+
     def recal_decoder_latents(self, input_features, text_tokens, mel_codes, mel_length_compression):
         # recalculate conditioning embedding again because the eos token is added at the end now
         text_tokens = torch.nn.functional.pad(text_tokens, (0, 1), value=self.audio_candidate_model.config.text_config.eos_token_id)
@@ -569,6 +570,9 @@ class TortoiseTTSPipeline(DiffusionPipeline):
         autoregressive_generation_config: Optional[GenerationConfig] = None,
         autoregressive_generation_kwargs: Optional[Dict[str, Any]] = None,
         recalculate_decoder_latents: Optional[bool] = True,
+        # Vocoder parameters
+        vocoder_mel_min: float = -11.512925148010254,
+        vocoder_mel_max: float = 2.3143386840820312,
         # General Tortoise TTS parameters
         latent_averaging_mode: int = 0,
         # diffusers pipeline arguments
@@ -865,8 +869,6 @@ class TortoiseTTSPipeline(DiffusionPipeline):
 
                 # perform guidance
                 if do_classifier_free_guidance:
-                    # noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
-                    # noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
                     neg_diffusion_cond_emb = self.diffusion_conditioning_encoder.unconditional_embedding.repeat(diffusion_cond_emb.shape[0], 1, diffusion_cond_emb.shape[-1])
                     noise_pred_uncond = self.diffusion_denoising_model(latent_model_input, model_timesteps[timestep], neg_diffusion_cond_emb).sample
                     noise_pred_uncond, _ = noise_pred_uncond.chunk(2, dim=1)
@@ -899,7 +901,10 @@ class TortoiseTTSPipeline(DiffusionPipeline):
             latents=vocoder_latents,
         )
 
-
+        # prepare latents for the vocoder
+        output_seq_length = diffusion_cond_emb.shape[-1]
+        latents = self.vocoder_preprocessing(latents, vocoder_mel_min, vocoder_mel_max)[:, :, :output_seq_length]
+        latents = latents.transpose(1, 2)
 
         # 14. Post-processing
         # TODO: support vocoders which don't use a input noise?
