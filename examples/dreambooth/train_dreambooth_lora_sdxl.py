@@ -523,10 +523,10 @@ def parse_args(input_args=None):
     else:
         args = parser.parse_args()
 
-    if args.dataset_name is None and args.train_data_dir is None:
+    if args.dataset_name is None and args.instance_data_dir is None:
         raise ValueError("Specify either `--dataset_name` or `--instance_data_dir`")
 
-    if args.dataset_name is not None and args.train_data_dir is not None:
+    if args.dataset_name is not None and args.instance_data_dir is not None:
         raise ValueError("Specify only one of `--dataset_name` or `--instance_data_dir`")
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
