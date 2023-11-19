@@ -161,9 +161,7 @@ def parse_args(input_args=None):
         "--instance_data_dir",
         type=str,
         default=None,
-        help=(
-            "A folder containing the training data. "
-        ),
+        help=("A folder containing the training data. "),
     )
 
     parser.add_argument(
@@ -171,9 +169,9 @@ def parse_args(input_args=None):
         type=str,
         default="metadata.jsonl",
         help="file name(relative path) of a jsonl metadata file located in --instance_data_dir. In particular, "
-             "if you wish to use custom captions, a `metadata.jsonl` file must exist to provide captions for the "
-             "images. Ignored if `dataset_name` is specified. see "
-             "https://huggingface.co/docs/datasets/image_dataset#imagefolder for more information"
+        "if you wish to use custom captions, a `metadata.jsonl` file must exist to provide captions for the "
+        "images. Ignored if `dataset_name` is specified. see "
+        "https://huggingface.co/docs/datasets/image_dataset#imagefolder for more information",
     )
 
     parser.add_argument(
@@ -557,15 +555,15 @@ class DreamBoothDataset(Dataset):
     """
 
     def __init__(
-            self,
-            instance_data_root,
-            instance_prompt,
-            class_prompt,
-            class_data_root=None,
-            class_num=None,
-            size=1024,
-            repeats=1,
-            center_crop=False,
+        self,
+        instance_data_root,
+        instance_prompt,
+        class_prompt,
+        class_data_root=None,
+        class_num=None,
+        size=1024,
+        repeats=1,
+        center_crop=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -582,6 +580,7 @@ class DreamBoothDataset(Dataset):
         # we load the training data using load_dataset
         if args.dataset_name is not None:
             from datasets import load_dataset
+
             # Downloading and loading a dataset from the hub.
             # See more about loading custom images at
             # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
@@ -597,11 +596,12 @@ class DreamBoothDataset(Dataset):
 
             if args.instance_data_metadata_file_name in os.listdir(instance_data_root):
                 from datasets import load_dataset
+
                 dataset = load_dataset(
                     instance_data_root,
                     cache_dir=args.cache_dir,
                 )
-                self.load_as_dataset = True
+                load_as_dataset = True
 
         if load_as_dataset:
             # Preprocessing the datasets.
