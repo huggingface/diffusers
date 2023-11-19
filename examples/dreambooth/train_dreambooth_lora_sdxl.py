@@ -617,7 +617,7 @@ class DreamBoothDataset(Dataset):
                     raise ValueError(
                         f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
                     )
-            self.instance_images = dataset["train"][image_column]
+            instance_images = dataset["train"][image_column]
 
             if args.caption_column is None:
                 logger.info(
@@ -631,14 +631,21 @@ class DreamBoothDataset(Dataset):
                     raise ValueError(
                         f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
                     )
-                self.custom_instance_prompts = dataset["train"][args.caption_column]
+                custom_instance_prompts = dataset["train"][args.caption_column]
+                # create final list of captions according to --repeats
+                self.custom_instance_prompts = []
+                for caption in custom_instance_prompts:
+                    self.custom_instance_prompts.extend(itertools.repeat(caption, repeats))
 
         else:
-            self.instance_images = [Image.open(path) for path in list(Path(instance_data_root).iterdir())]
+            instance_images = [Image.open(path) for path in list(Path(instance_data_root).iterdir())]
             self.custom_instance_prompts = None
 
+        self.instance_images = []
+        for img in instance_images:
+            self.instance_images.extend(itertools.repeat(img, repeats))
         self.num_instance_images = len(self.instance_images)
-        self._length = self.num_instance_images * repeats
+        self._length = self.num_instance_images
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
