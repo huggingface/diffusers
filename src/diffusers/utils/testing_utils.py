@@ -270,7 +270,7 @@ def require_peft_version(peft_version):
             version.parse(importlib.metadata.version("peft")).base_version
         ) > version.parse(peft_version)
         return unittest.skipUnless(
-            correct_peft_version, f"test requires PEFT backend with the version greater than {version}"
+            correct_peft_version, f"test requires PEFT backend with the version greater than {peft_version}"
         )(test_case)
 
     return decorator
