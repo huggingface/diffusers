@@ -1225,7 +1225,8 @@ class LoraLoaderMixin:
                             merge_kwargs["adapter_names"] = adapter_names
                         elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
                             raise ValueError(
-                                "The `adapter_names` argument is not supported with your PEFT version. Please upgrade to the latest version of PEFT. `pip install -U peft`"
+                                "The `adapter_names` argument is not supported with your PEFT version. "
+                                "Please upgrade to the latest version of PEFT. `pip install -U peft`"
                             )
 
                         module.merge(**merge_kwargs)
@@ -1237,7 +1238,8 @@ class LoraLoaderMixin:
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, **kwargs):
                 if "adapter_names" in kwargs and kwargs["adapter_names"] is not None:
                     raise ValueError(
-                        "The `adapter_names` argument is not supported in your environment. Please switch to PEFT backend to use this argument by installing latest PEFT and transformers."
+                        "The `adapter_names` argument is not supported in your environment. Please switch to PEFT "
+                        "backend to use this argument by installing latest PEFT and transformers."
                         " `pip install -U peft transformers`"
                     )
 
