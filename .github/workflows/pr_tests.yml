@@ -51,7 +51,7 @@ jobs:
       # If no test to run (so no `test_map.json` file), create a dummy map (empty matrix will fail)
       run: |
         if [ -f test_map.json ]; then
-            keys=$(python3 -c 'import json; fp = open("test_map.json"); test_map = json.load(fp); fp.close(); d = list(test_map.keys()); print(d)')
+            keys=$(python3 -c 'import json; fp = open("test_map.json"); test_map = json.load(fp); fp.close(); d = list(test_map.keys()); print(json.dumps(d))')
             test_map=$(python3 -c 'import json; fp = open("test_map.json"); test_map = json.load(fp); fp.close(); print(json.dumps(test_map))')
         else
             keys=$(python3 -c 'keys = ["dummy"]; print(keys)')
