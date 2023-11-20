@@ -89,6 +89,7 @@ else:
     )
     _import_structure["controlnet_xs"].extend(
         [
+            "StableDiffusionControlNetXSPipeline",
             "StableDiffusionXLControlNetXSPipeline",
         ]
     )
@@ -321,6 +322,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetPipeline,
         )
         from .controlnet_xs import (
+            StableDiffusionControlNetXSPipeline,
             StableDiffusionXLControlNetXSPipeline,
         )
         from .deepfloyd_if import (

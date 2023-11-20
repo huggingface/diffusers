@@ -94,15 +94,25 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
     # to delete later
     @classmethod
-    def create_as_in_paper(cls, base_model: UNet2DConditionModel):
-        return ControlNetXSModel.from_unet(
-            base_model,
-            time_embedding_mix=0.95,
-            learn_embedding=True,
-            size_ratio=0.1,
-            dim_attention_heads=64,
-            conditioning_block_sizes=(16, 32, 96, 256),
-        )
+    def create_as_in_paper(cls, base_model: UNet2DConditionModel, sdxl=True):
+        if sdxl:
+            return ControlNetXSModel.from_unet(
+                base_model,
+                time_embedding_mix=0.95,
+                learn_embedding=True,
+                size_ratio=0.1,
+                dim_attention_heads=64,
+                conditioning_block_sizes=(16, 32, 96, 256),
+            )
+        else:
+            return ControlNetXSModel.from_unet(
+                base_model,
+                time_embedding_mix=0.95,
+                learn_embedding=True,
+                size_ratio=0.0125,
+                dim_attention_heads=8,
+                conditioning_block_sizes=(16, 32, 96, 256),
+            )
 
     @classmethod
     def gather_subblock_sizes(cls, unet: UNet2DConditionModel, base_or_control):
@@ -273,8 +283,24 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         adjust_time_dims(self.control_model, time_embedding_input_dim, time_embedding_dim)
 
         # 2.2 - Allow for information infusion from base model
-        # todo umer: the assumption that block sizes = changing subblock sizes is false, eg when we have consecutive blocks of same size
-        base_block_out_channels = [sz[1] for sz in base_model_channel_sizes["down"] if sz[0] != sz[1]]
+        def compute_block_out_channels(subblock_channels, layers_per_block):
+            channels = []
+            for i, (_, subblock_out_channels) in enumerate(subblock_channels):
+                # first subblock is the conv_in
+                if i==0:
+                    continue
+                # every block consists of `layers_per_block` resnet/attention subblocks and a down sample subblock
+                if i %(layers_per_block+1)==0:
+                    channels.append(subblock_out_channels)
+                # the last block doesn't have a down conv, so is handled separately
+                if i==len(subblock_channels)-1:
+                    channels.append(subblock_out_channels)
+            return channels
+
+        base_block_out_channels = compute_block_out_channels(
+            subblock_channels=base_model_channel_sizes["down"],
+            layers_per_block=layers_per_block
+        )
 
         extra_channels = list(
             zip(base_block_out_channels[0:1] + base_block_out_channels[:-1], base_block_out_channels)
@@ -405,6 +431,18 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         if dim_attention_heads is not None:
             num_attention_heads = [math.ceil(c / dim_attention_heads) for c in block_out_channels]
 
+        # check that attention heads and group norms match channel sizes
+        # - attention heads
+        def attn_heads_match_channel_sizes(attn_heads, channel_sizes):
+            return all(c % a == 0 for a,c in zip(attn_heads,channel_sizes))
+
+        attention_head_dim = num_attention_heads or unet.config.attention_head_dim
+        if not attn_heads_match_channel_sizes(attention_head_dim, block_out_channels):
+            raise ValueError(
+                f"The number of attention heads ({attention_head_dim}) must divide `block_out_channels` ({block_out_channels}). If you didn't set `num_attention_heads` or `attention_head_dim` the default settings don't match your model. Set one of them  manually."
+            )
+
+        # - group norms
         def group_norms_match_channel_sizes(num_groups, channel_sizes):
             return all(c % num_groups == 0 for c in channel_sizes)
 
@@ -412,16 +450,15 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             if group_norms_match_channel_sizes(unet.config.norm_num_groups, block_out_channels):
                 norm_num_groups = unet.config.norm_num_groups
             else:
-                if not size_ratio:
-                    raise ValueError(
-                        f"`block_out_channels` ({block_out_channels}) don't match the base models `norm_num_groups` ({unet.config.norm_num_groups}). Pass `norm_num_groups` explicitly so it divides all block_out_channels."
-                    )
+                norm_num_groups = min(block_out_channels)
 
-                # try to scale down `norm_num_groups` by `size_ratio`
-                norm_num_groups = int(unet.config.norm_num_groups * size_ratio)
-                if not group_norms_match_channel_sizes(norm_num_groups, block_out_channels):
+                if group_norms_match_channel_sizes(norm_num_groups, block_out_channels):
+                    print(
+                        f"`norm_num_groups` was set to `min(block_out_channels)` (={norm_num_groups}) so it divides all block_out_channels` ({block_out_channels}). Set it explicitly to remove this information."
+                    )
+                else:
                     raise ValueError(
-                        f"`block_out_channels` ({block_out_channels}) don't match the base models `norm_num_groups` ({unet.config.norm_num_groups}). Dividing `norm_num_groups` by `size_ratio` ({size_ratio}) didn't fix this. Pass `norm_num_groups` explicitly so it divides all block_out_channels."
+                        f"`block_out_channels` ({block_out_channels}) don't match the base models `norm_num_groups` ({unet.config.norm_num_groups}). Setting `norm_num_groups` to `min(norm_num_groups)` ({norm_num_groups}) didn't fix this. Pass `norm_num_groups` explicitly so it divides all block_out_channels."
                     )
 
         def get_time_emb_input_dim(unet: UNet2DConditionModel):
@@ -434,7 +471,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         kwargs = dict(unet.config)
         kwargs.update(block_out_channels=block_out_channels)
         if num_attention_heads is not None:
-            kwargs.update(attention_head_dim=num_attention_heads)
+            kwargs.update(attention_head_dim=attention_head_dim)
         kwargs.update(norm_num_groups=norm_num_groups)
 
         # time embedding of control unet is not used. So remove params for them.
@@ -883,26 +920,37 @@ def is_iterable(o):
 def to_sub_blocks(blocks):
     if not is_iterable(blocks):
         blocks = [blocks]
+
     sub_blocks = []
+
     for b in blocks:
-        current_subblocks = []
         if hasattr(b, "resnets"):
             if hasattr(b, "attentions") and b.attentions is not None:
-                current_subblocks = list(zip_longest(b.resnets, b.attentions))
-                # if we have 1 more resnets than attentions, let the last subblock only be the resnet, not (resnet, None)
-                if current_subblocks[-1][1] is None:
-                    current_subblocks[-1] = current_subblocks[-1][0]
-            else:
-                current_subblocks = list(b.resnets)
-        # upsamplers are part of the same block # q: what if we have multiple upsamplers?
-        if hasattr(b, "upsamplers") and b.upsamplers is not None:
-            current_subblocks[-1] = list(current_subblocks[-1]) + list(b.upsamplers)
-        # downsamplers are own block
-        if hasattr(b, "downsamplers") and b.downsamplers is not None:
-            current_subblocks.append(list(b.downsamplers))
-        sub_blocks += current_subblocks
-    return list(map(EmbedSequential, sub_blocks))
+                for r,a in zip(b.resnets, b.attentions):
+                    sub_blocks.append([r,a])
 
+                num_resnets = len(b.resnets)
+                num_attns = len(b.attentions)
+                
+                if num_resnets > num_attns:
+                    # we can have more resnets than attentions, so add each resnet as separate subblock
+                    for i in range(num_attns, num_resnets):
+                        sub_blocks.append([b.resnets[i]])                
+            else:
+                for r in b.resnets:
+                    sub_blocks.append([r])
+
+        # upsamplers are part of the same subblock
+        if hasattr(b, "upsamplers") and b.upsamplers is not None:
+            for u in b.upsamplers:
+                sub_blocks[-1].extend([u])
+                
+        # downsamplers are own subblock
+        if hasattr(b, "downsamplers") and b.downsamplers is not None:
+            for d in b.downsamplers:
+                sub_blocks.append([d])
+
+    return list(map(EmbedSequential, sub_blocks))
 
 def zero_module(module):
     for p in module.parameters():

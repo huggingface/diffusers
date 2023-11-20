@@ -22,6 +22,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
+    _import_structure["pipeline_controlnet_xs"] = ["StableDiffusionControlNetXSPipeline"]
     _import_structure["pipeline_controlnet_xs_sd_xl"] = ["StableDiffusionXLControlNetXSPipeline"]
 try:
     if not (is_transformers_available() and is_flax_available()):
@@ -42,6 +43,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
+        from .pipeline_controlnet_xs import StableDiffusionControlNetXSPipeline
         from .pipeline_controlnet_xs_sd_xl import StableDiffusionXLControlNetXSPipeline
 
     try:
