@@ -30,7 +30,7 @@ from transformers import (
 )
 
 from ... import DiffusionPipeline
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import (
     FromSingleFileMixin,
     LoraLoaderMixin,
@@ -1273,8 +1273,8 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(DiffusionPipeline, FromS
         prompt_2: Optional[Union[str, list[str]]] = None,
         image: Optional[Union[torch.Tensor, PIL.Image.Image]] = None,
         mask_image: Optional[Union[torch.Tensor, PIL.Image.Image]] = None,
-        adapter_image: Optional[Union[torch.Tensor, PIL.Image.Image, list[PIL.Image.Image]]] = None,
-        control_image: Optional[Union[torch.Tensor, PIL.Image.Image, list[PIL.Image.Image]]] = None,
+        adapter_image: PipelineImageInput = None,
+        control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         strength: float = 0.9999,

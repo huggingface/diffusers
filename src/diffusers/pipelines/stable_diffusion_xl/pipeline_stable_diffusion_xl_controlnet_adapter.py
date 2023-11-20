@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ControlNetModel, MultiAdapter, T2IAdapter, UNet2DConditionModel
 from ...models.attention_processor import (
@@ -927,8 +927,8 @@ class StableDiffusionXLControlNetAdapterPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        adapter_image: Optional[Union[torch.Tensor, PIL.Image.Image, List[PIL.Image.Image]]] = None,
-        control_image: Optional[Union[torch.Tensor, PIL.Image.Image, list[PIL.Image.Image]]] = None,
+        adapter_image: PipelineImageInput = None,
+        control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -961,8 +961,8 @@ class StableDiffusionXLControlNetAdapterPipeline(
         clip_skip: Optional[int] = None,
         controlnet_conditioning_scale=1.0,
         guess_mode: bool = False,
-        control_guidance_start=0.0,
-        control_guidance_end=1.0,
+        control_guidance_start: float = 0.0,
+        control_guidance_end: float = 1.0,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
