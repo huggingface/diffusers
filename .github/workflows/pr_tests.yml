@@ -68,9 +68,10 @@ jobs:
   run_pr_tests:
     name: Run PR Tests
     needs: setup_pr_tests
+    if: contains(fromJson(needs.setup_pr_tests.outputs.matrix), 'dummy') != true
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 4
       matrix:
         modules: ${{ fromJson(needs.setup_pr_tests.outputs.matrix) }}
     runs-on: docker-cpu
