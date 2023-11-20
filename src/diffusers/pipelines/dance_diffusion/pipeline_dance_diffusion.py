@@ -39,6 +39,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded audio latents. Can be one of
             [`IPNDMScheduler`].
     """
+
     model_cpu_offload_seq = "unet"
 
     def __init__(self, unet, scheduler):
