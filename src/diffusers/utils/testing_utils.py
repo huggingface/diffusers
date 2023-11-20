@@ -259,7 +259,7 @@ def require_peft_backend(test_case):
     return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
 
 
-def require_peft_version(peft_version):
+def require_peft_version_greater(peft_version):
     """
     Decorator marking a test that requires PEFT backend with a specific version, this would require some specific
     versions of PEFT and transformers.
