@@ -2360,9 +2360,7 @@ Two checkpoints are available for use:
 from PIL import Image
 import os
 import torch
-from diffusers import StableDiffusionLDM3DPipeline
-from diffusers.pipelines import StableDiffusionUpscaleLDM3DPipeline 
-
+from diffusers import StableDiffusionLDM3DPipeline, DiffusionPipeline
 
 #Generate a rgb/depth output from LDM3D
 pipe_ldm3d = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d-4c")
@@ -2376,7 +2374,8 @@ depth_image[0].save(f"lemons_ldm3d_depth.png")
 
 
 #Upscale the previous output to a resolution of (1024, 1024)
-pipe_ldm3d_upscale = StableDiffusionUpscaleLDM3DPipeline.from_pretrained("Intel/ldm3d-sr")
+pipe_ldm3d_upscale = DiffusionPipeline.from_pretrained("Intel/ldm3d-sr", custom_pipeline="pipeline_stable_diffusion_upscale_ldm3d")
+
 pipe_ldm3d_upscale.to("cuda")
 
 low_res_img = Image.open(f"lemons_ldm3d_rgb.jpg").convert("RGB")
