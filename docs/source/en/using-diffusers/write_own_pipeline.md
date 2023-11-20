@@ -71,7 +71,7 @@ tensor([980, 960, 940, 920, 900, 880, 860, 840, 820, 800, 780, 760, 740, 720,
 >>> import torch
 
 >>> sample_size = model.config.sample_size
->>> noise = torch.randn((1, 3, sample_size, sample_size)).to("cuda")
+>>> noise = torch.randn((1, 3, sample_size, sample_size), device="cuda")
 ```
 
 5. Now write a loop to iterate over the timesteps. At each timestep, the model does a [`UNet2DModel.forward`] pass and returns the noisy residual. The scheduler's [`~DDPMScheduler.step`] method takes the noisy residual, timestep, and input and it predicts the image at the previous timestep. This output becomes the next input to the model in the denoising loop, and it'll repeat until it reaches the end of the `timesteps` array.
@@ -216,8 +216,8 @@ Next, generate some initial random noise as a starting point for the diffusion p
 >>> latents = torch.randn(
 ...     (batch_size, unet.config.in_channels, height // 8, width // 8),
 ...     generator=generator,
+...     device=torch_device,
 ... )
->>> latents = latents.to(torch_device)
 ```
 
 ### Denoise the image
