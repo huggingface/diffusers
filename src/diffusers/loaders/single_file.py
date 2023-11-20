@@ -194,8 +194,8 @@ class FromSingleFileMixin:
             "StableDiffusionControlNetImg2ImgPipeline",
             "StableDiffusionControlNetInpaintPipeline",
         ]:
-            from .models.controlnet import ControlNetModel
-            from .pipelines.controlnet.multicontrolnet import MultiControlNetModel
+            from ..models.controlnet import ControlNetModel
+            from ..pipelines.controlnet.multicontrolnet import MultiControlNetModel
 
             #  list/tuple or a single instance of ControlNetModel or MultiControlNetModel
             if not (
