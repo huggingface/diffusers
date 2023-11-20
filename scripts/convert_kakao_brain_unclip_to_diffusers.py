@@ -11,7 +11,7 @@ from diffusers.pipelines.unclip.text_proj import UnCLIPTextProjModel
 from diffusers.schedulers.scheduling_unclip import UnCLIPScheduler
 
 
-"""
+r"""
 Example - From the diffusers root directory:
 
 Download weights:

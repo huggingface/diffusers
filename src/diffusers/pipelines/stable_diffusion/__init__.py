@@ -47,7 +47,6 @@ else:
     _import_structure["pipeline_stable_diffusion_paradigms"] = ["StableDiffusionParadigmsPipeline"]
     _import_structure["pipeline_stable_diffusion_sag"] = ["StableDiffusionSAGPipeline"]
     _import_structure["pipeline_stable_diffusion_upscale"] = ["StableDiffusionUpscalePipeline"]
-    _import_structure["pipeline_stable_diffusion_upscale_ldm3d"] = ["StableDiffusionUpscaleLDM3DPipeline"]
     _import_structure["pipeline_stable_unclip"] = ["StableUnCLIPPipeline"]
     _import_structure["pipeline_stable_unclip_img2img"] = ["StableUnCLIPImg2ImgPipeline"]
     _import_structure["safety_checker"] = ["StableDiffusionSafetyChecker"]
@@ -152,7 +151,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion_paradigms import StableDiffusionParadigmsPipeline
         from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
         from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
-        from .pipeline_stable_diffusion_upscale_ldm3d import StableDiffusionUpscaleLDM3DPipeline
         from .pipeline_stable_unclip import StableUnCLIPPipeline
         from .pipeline_stable_unclip_img2img import StableUnCLIPImg2ImgPipeline
         from .safety_checker import StableDiffusionSafetyChecker

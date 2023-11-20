@@ -34,7 +34,7 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             Supported tasks
             </th>
             <th class="px-4 py-2 font-medium text-gray-900 text-left">
-            Space
+            🤗 Space
             </th>
         </tr>
         </thead>

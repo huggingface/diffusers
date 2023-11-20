@@ -423,7 +423,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
@@ -531,14 +531,10 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         # if negative prompt has been defined, we retrieve split the image embedding into two
         if negative_prompt is None:
             zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
-
-            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-                self.final_offload_hook.offload()
         else:
             image_embeddings, zero_embeds = image_embeddings.chunk(2)
 
-            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-                self.prior_hook.offload()
+        self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")

@@ -160,6 +160,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
@@ -933,9 +934,10 @@ class StableDiffusionControlNetImg2ImgPipeline(
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
         elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
             mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
-            control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
-                control_guidance_end
-            ]
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -996,7 +998,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare image
-        image = self.image_processor.preprocess(image).to(dtype=torch.float32)
+        image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
 
         # 5. Prepare controlnet_conditioning_image
         if isinstance(controlnet, ControlNetModel):
@@ -1138,7 +1140,9 @@ class StableDiffusionControlNetImg2ImgPipeline(
             torch.cuda.empty_cache()
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
+                0
+            ]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents

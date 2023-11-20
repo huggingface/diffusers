@@ -339,6 +339,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
+            height, width = hidden_states.shape[-2] // self.patch_size, hidden_states.shape[-1] // self.patch_size
             hidden_states = self.pos_embed(hidden_states)
 
             if self.adaln_single is not None:
@@ -425,7 +426,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 hidden_states = hidden_states.squeeze(1)
 
             # unpatchify
-            height = width = int(hidden_states.shape[1] ** 0.5)
+            if self.adaln_single is None:
+                height = width = int(hidden_states.shape[1] ** 0.5)
             hidden_states = hidden_states.reshape(
                 shape=(-1, height, width, self.patch_size, self.patch_size, self.out_channels)
             )
