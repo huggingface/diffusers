@@ -814,9 +814,48 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
 
-class StableDiffusionSSD1BControlNetPipelineFastTests(
-    StableDiffusionXLControlNetPipelineFastTests
-):
+class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNetPipelineFastTests):
+    def test_controlnet_sdxl_guess(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+
+        sd_pipe = self.pipeline_class(**components)
+        sd_pipe = sd_pipe.to(device)
+
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["guess_mode"] = True
+
+        output = sd_pipe(**inputs)
+        image_slice = output.images[0, -3:, -3:, -1]
+        expected_slice = np.array(
+            [0.6831671, 0.5702532, 0.5459845, 0.6299793, 0.58563006, 0.6033695, 0.4493941, 0.46132287, 0.5035841]
+        )
+
+        # make sure that it's equal
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
+
+    def test_controlnet_sdxl_lcm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLControlNetPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.6850, 0.5135, 0.5545, 0.7033, 0.6617, 0.5971, 0.4165, 0.5480, 0.5070])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_conditioning_channels(self):
         unet = UNet2DConditionModel(
@@ -842,9 +881,9 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(
         controlnet = ControlNetModel.from_unet(unet, conditioning_channels=4)
         assert type(controlnet.mid_block) == UNetMidBlock2D
         assert controlnet.conditioning_channels == 4
-    
 
     def get_dummy_components(self, time_cond_proj_dim=None):
+        torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
