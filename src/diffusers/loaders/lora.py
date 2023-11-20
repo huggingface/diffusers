@@ -72,6 +72,7 @@ class LoraLoaderMixin:
     Load LoRA layers into [`UNet2DConditionModel`] and
     [`CLIPTextModel`](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel).
     """
+
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
     num_fused_loras = 0

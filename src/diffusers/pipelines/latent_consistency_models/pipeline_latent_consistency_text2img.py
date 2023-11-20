@@ -97,6 +97,7 @@ class LatentConsistencyModelPipeline(
         requires_safety_checker (`bool`, *optional*, defaults to `True`):
             Whether the pipeline requires a safety checker component.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
