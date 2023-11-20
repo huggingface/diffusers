@@ -327,7 +327,8 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 
 ...             # 각 이미지를 위한 랜덤한 타임스텝(timestep)을 샘플링합니다.
 ...             timesteps = torch.randint(
-...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device
+...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device,
+...                 dtype=torch.int64
 ...             )
 
 ...             # 각 타임스텝의 노이즈 크기에 따라 깨끗한 이미지에 노이즈를 추가합니다.

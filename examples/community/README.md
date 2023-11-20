@@ -47,6 +47,7 @@ sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint m
 prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) | 
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
 |   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
+|   Latent Consistency Interpolation Pipeline                                                                                                    | Interpolate the latent space of Latent Consistency Models with multiple prompts                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Interpolation Pipeline](#latent-consistency-interpolation-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pK3NrLWJSiJsBynLns1K1-IDTW9zbPvl?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -2294,4 +2295,51 @@ strength = 0.5 #strength =0 (no change) strength=1 (completely overwrite image)
 num_inference_steps = 4 
 
 images = pipe(prompt=prompt, image=input_image, strength=strength, num_inference_steps=num_inference_steps, guidance_scale=8.0, lcm_origin_steps=50, output_type="pil").images
+```
+
+
+
+### Latent Consistency Interpolation Pipeline
+
+This pipeline extends the Latent Consistency Pipeline to allow for interpolation of the latent space between multiple prompts. It is similar to the [Stable Diffusion Interpolate](https://github.com/huggingface/diffusers/blob/main/examples/community/interpolate_stable_diffusion.py) and [unCLIP Interpolate](https://github.com/huggingface/diffusers/blob/main/examples/community/unclip_text_interpolation.py) community pipelines.
+
+```py
+import torch
+import numpy as np
+
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_interpolate")
+
+# To save GPU memory, torch.float16 can be used, but it may compromise image quality.
+pipe.to(torch_device="cuda", torch_dtype=torch.float32)
+
+prompts = [
+    "Self-portrait oil painting, a beautiful cyborg with golden hair, Margot Robbie, 8k",
+    "Self-portrait oil painting, an extremely strong man, body builder, Huge Jackman, 8k",
+    "An astronaut floating in space, renaissance art, realistic, high quality, 8k",
+    "Oil painting of a cat, cute, dream-like",
+    "Hugging face emoji, cute, realistic"
+]
+num_inference_steps = 4
+num_interpolation_steps = 60
+seed = 1337
+
+torch.manual_seed(seed)
+np.random.seed(seed)
+
+images = pipe(
+    prompt=prompts,
+    height=512,
+    width=512,
+    num_inference_steps=num_inference_steps,
+    num_interpolation_steps=num_interpolation_steps,
+    guidance_scale=8.0,
+    embedding_interpolation_type="lerp",
+    latent_interpolation_type="slerp",
+    process_batch_size=4, # Make it higher or lower based on your GPU memory
+    generator=torch.Generator(seed),
+)
+
+assert len(images) == (len(prompts) - 1) * num_interpolation_steps
 ```

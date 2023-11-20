@@ -1,33 +1,18 @@
-# Copyright 2023 Stanford University Team and The HuggingFace Team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# DISCLAIMER: This code is strongly influenced by https://github.com/pesser/pytorch_diffusion
-# and https://github.com/hojonathanho/diffusion
-
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import PIL.Image
+import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import LCMScheduler
-from ...utils import (
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.schedulers import LCMScheduler
+from diffusers.utils import (
     USE_PEFT_BACKEND,
     deprecate,
     logging,
@@ -35,55 +20,180 @@ from ...utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
-from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
+from diffusers.utils.torch_utils import randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(encoder_output, generator):
-    if hasattr(encoder_output, "latent_dist"):
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
-
-
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusers import AutoPipelineForImage2Image
         >>> import torch
-        >>> import PIL
+        >>> import numpy as np
 
-        >>> pipe = AutoPipelineForImage2Image.from_pretrained("SimianLuo/LCM_Dreamshaper_v7")
+        >>> from diffusers import DiffusionPipeline
+
+        >>> pipe = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7", custom_pipeline="latent_consistency_interpolate")
         >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
         >>> pipe.to(torch_device="cuda", torch_dtype=torch.float32)
 
-        >>> prompt = "High altitude snowy mountains"
-        >>> image = PIL.Image.open("./snowy_mountains.png")
-
-        >>> # Can be set to 1~50 steps. LCM support fast inference even <= 4 steps. Recommend: 1~8 steps.
+        >>> prompts = ["A cat", "A dog", "A horse"]
         >>> num_inference_steps = 4
+        >>> num_interpolation_steps = 24
+        >>> seed = 1337
+
+        >>> torch.manual_seed(seed)
+        >>> np.random.seed(seed)
+
         >>> images = pipe(
-        ...     prompt=prompt, image=image, num_inference_steps=num_inference_steps, guidance_scale=8.0
-        ... ).images
+                prompt=prompts,
+                height=512,
+                width=512,
+                num_inference_steps=num_inference_steps,
+                num_interpolation_steps=num_interpolation_steps,
+                guidance_scale=8.0,
+                embedding_interpolation_type="lerp",
+                latent_interpolation_type="slerp",
+                process_batch_size=4, # Make it higher or lower based on your GPU memory
+                generator=torch.Generator(seed),
+            )
 
-        >>> images[0].save("image.png")
+        >>> # Save the images as a video
+        >>> import imageio
+        >>> from PIL import Image
+
+        >>> def pil_to_video(images: List[Image.Image], filename: str, fps: int = 60) -> None:
+                frames = [np.array(image) for image in images]
+                with imageio.get_writer(filename, fps=fps) as video_writer:
+                    for frame in frames:
+                        video_writer.append_data(frame)
+
+        >>> pil_to_video(images, "lcm_interpolate.mp4", fps=24)
         ```
-
 """
 
 
-class LatentConsistencyModelImg2ImgPipeline(
+def lerp(
+    v0: Union[torch.Tensor, np.ndarray],
+    v1: Union[torch.Tensor, np.ndarray],
+    t: Union[float, torch.Tensor, np.ndarray],
+) -> Union[torch.Tensor, np.ndarray]:
+    """
+    Linearly interpolate between two vectors/tensors.
+
+    Args:
+        v0 (`torch.Tensor` or `np.ndarray`): First vector/tensor.
+        v1 (`torch.Tensor` or `np.ndarray`): Second vector/tensor.
+        t: (`float`, `torch.Tensor`, or `np.ndarray`):
+            Interpolation factor. If float, must be between 0 and 1. If np.ndarray or
+            torch.Tensor, must be one dimensional with values between 0 and 1.
+
+    Returns:
+        Union[torch.Tensor, np.ndarray]
+            Interpolated vector/tensor between v0 and v1.
+    """
+    inputs_are_torch = False
+    t_is_float = False
+
+    if isinstance(v0, torch.Tensor):
+        inputs_are_torch = True
+        input_device = v0.device
+        v0 = v0.cpu().numpy()
+        v1 = v1.cpu().numpy()
+
+    if isinstance(t, torch.Tensor):
+        inputs_are_torch = True
+        input_device = t.device
+        t = t.cpu().numpy()
+    elif isinstance(t, float):
+        t_is_float = True
+        t = np.array([t])
+
+    t = t[..., None]
+    v0 = v0[None, ...]
+    v1 = v1[None, ...]
+    v2 = (1 - t) * v0 + t * v1
+
+    if t_is_float and v0.ndim > 1:
+        assert v2.shape[0] == 1
+        v2 = np.squeeze(v2, axis=0)
+    if inputs_are_torch:
+        v2 = torch.from_numpy(v2).to(input_device)
+
+    return v2
+
+
+def slerp(
+    v0: Union[torch.Tensor, np.ndarray],
+    v1: Union[torch.Tensor, np.ndarray],
+    t: Union[float, torch.Tensor, np.ndarray],
+    DOT_THRESHOLD=0.9995,
+) -> Union[torch.Tensor, np.ndarray]:
+    """
+    Spherical linear interpolation between two vectors/tensors.
+
+    Args:
+        v0 (`torch.Tensor` or `np.ndarray`): First vector/tensor.
+        v1 (`torch.Tensor` or `np.ndarray`): Second vector/tensor.
+        t: (`float`, `torch.Tensor`, or `np.ndarray`):
+            Interpolation factor. If float, must be between 0 and 1. If np.ndarray or
+            torch.Tensor, must be one dimensional with values between 0 and 1.
+        DOT_THRESHOLD (`float`, *optional*, default=0.9995):
+            Threshold for when to use linear interpolation instead of spherical interpolation.
+
+    Returns:
+        `torch.Tensor` or `np.ndarray`:
+            Interpolated vector/tensor between v0 and v1.
+    """
+    inputs_are_torch = False
+    t_is_float = False
+
+    if isinstance(v0, torch.Tensor):
+        inputs_are_torch = True
+        input_device = v0.device
+        v0 = v0.cpu().numpy()
+        v1 = v1.cpu().numpy()
+
+    if isinstance(t, torch.Tensor):
+        inputs_are_torch = True
+        input_device = t.device
+        t = t.cpu().numpy()
+    elif isinstance(t, float):
+        t_is_float = True
+        t = np.array([t], dtype=v0.dtype)
+
+    dot = np.sum(v0 * v1 / (np.linalg.norm(v0) * np.linalg.norm(v1)))
+    if np.abs(dot) > DOT_THRESHOLD:
+        # v1 and v2 are close to parallel
+        # Use linear interpolation instead
+        v2 = lerp(v0, v1, t)
+    else:
+        theta_0 = np.arccos(dot)
+        sin_theta_0 = np.sin(theta_0)
+        theta_t = theta_0 * t
+        sin_theta_t = np.sin(theta_t)
+        s0 = np.sin(theta_0 - theta_t) / sin_theta_0
+        s1 = sin_theta_t / sin_theta_0
+        s0 = s0[..., None]
+        s1 = s1[..., None]
+        v0 = v0[None, ...]
+        v1 = v1[None, ...]
+        v2 = s0 * v0 + s1 * v1
+
+    if t_is_float and v0.ndim > 1:
+        assert v2.shape[0] == 1
+        v2 = np.squeeze(v2, axis=0)
+    if inputs_are_torch:
+        v2 = torch.from_numpy(v2).to(input_device)
+
+    return v2
+
+
+class LatentConsistencyModelWalkPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
-    Pipeline for image-to-image generation using a latent consistency model.
+    Pipeline for text-to-image generation using a latent consistency model.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -134,16 +244,6 @@ class LatentConsistencyModelImg2ImgPipeline(
     ):
         super().__init__()
 
-        self.register_modules(
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            unet=unet,
-            scheduler=scheduler,
-            safety_checker=safety_checker,
-            feature_extractor=feature_extractor,
-        )
-
         if safety_checker is None and requires_safety_checker:
             logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
@@ -154,8 +254,24 @@ class LatentConsistencyModelImg2ImgPipeline(
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
 
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
+
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
+        )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -415,66 +531,24 @@ class LatentConsistencyModelImg2ImgPipeline(
             )
         return image, has_nsfw_concept
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
-        if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
-                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        image = image.to(device=device, dtype=dtype)
-
-        batch_size = batch_size * num_images_per_prompt
-
-        if image.shape[1] == 4:
-            init_latents = image
-
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
+            latents = latents.to(device)
 
-            elif isinstance(generator, list):
-                init_latents = [
-                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
-                    for i in range(batch_size)
-                ]
-                init_latents = torch.cat(init_latents, dim=0)
-            else:
-                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
-
-            init_latents = self.vae.config.scaling_factor * init_latents
-
-        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            deprecation_message = (
-                f"You have passed {batch_size} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
-                " images (`image`). Initial images are now duplicating to match the number of text prompts. Note"
-                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
-                " your script to pass as many initial images as text prompts to suppress this warning."
-            )
-            deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
-            additional_image_per_prompt = batch_size // init_latents.shape[0]
-            init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
-        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
-            )
-        else:
-            init_latents = torch.cat([init_latents], dim=0)
-
-        shape = init_latents.shape
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-
-        # get latents
-        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
-        latents = init_latents
-
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
@@ -521,26 +595,18 @@ class LatentConsistencyModelImg2ImgPipeline(
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength, device):
-        # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
-
-        t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-
-        return timesteps, num_inference_steps - t_start
-
+    # Currently StableDiffusionPipeline.check_inputs with negative prompt stuff removed
     def check_inputs(
         self,
         prompt: Union[str, List[str]],
-        strength: float,
+        height: int,
+        width: int,
         callback_steps: int,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if strength < 0 or strength > 1:
-            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
@@ -567,6 +633,63 @@ class LatentConsistencyModelImg2ImgPipeline(
         elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
+    @torch.no_grad()
+    def interpolate_embedding(
+        self,
+        start_embedding: torch.FloatTensor,
+        end_embedding: torch.FloatTensor,
+        num_interpolation_steps: Union[int, List[int]],
+        interpolation_type: str,
+    ) -> torch.FloatTensor:
+        if interpolation_type == "lerp":
+            interpolation_fn = lerp
+        elif interpolation_type == "slerp":
+            interpolation_fn = slerp
+        else:
+            raise ValueError(
+                f"embedding_interpolation_type must be one of ['lerp', 'slerp'], got {interpolation_type}."
+            )
+
+        embedding = torch.cat([start_embedding, end_embedding])
+        steps = torch.linspace(0, 1, num_interpolation_steps, dtype=embedding.dtype).cpu().numpy()
+        steps = np.expand_dims(steps, axis=tuple(range(1, embedding.ndim)))
+        interpolations = []
+
+        # Interpolate between text embeddings
+        # TODO(aryan): Think of a better way of doing this
+        # See if it can be done parallelly instead
+        for i in range(embedding.shape[0] - 1):
+            interpolations.append(interpolation_fn(embedding[i], embedding[i + 1], steps).squeeze(dim=1))
+
+        interpolations = torch.cat(interpolations)
+        return interpolations
+
+    @torch.no_grad()
+    def interpolate_latent(
+        self,
+        start_latent: torch.FloatTensor,
+        end_latent: torch.FloatTensor,
+        num_interpolation_steps: Union[int, List[int]],
+        interpolation_type: str,
+    ) -> torch.FloatTensor:
+        if interpolation_type == "lerp":
+            interpolation_fn = lerp
+        elif interpolation_type == "slerp":
+            interpolation_fn = slerp
+
+        latent = torch.cat([start_latent, end_latent])
+        steps = torch.linspace(0, 1, num_interpolation_steps, dtype=latent.dtype).cpu().numpy()
+        steps = np.expand_dims(steps, axis=tuple(range(1, latent.ndim)))
+        interpolations = []
+
+        # Interpolate between latents
+        # TODO: Think of a better way of doing this
+        # See if it can be done parallelly instead
+        for i in range(latent.shape[0] - 1):
+            interpolations.append(interpolation_fn(latent[i], latent[i + 1], steps).squeeze(dim=1))
+
+        return torch.cat(interpolations)
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -588,9 +711,10 @@ class LatentConsistencyModelImg2ImgPipeline(
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: PipelineImageInput = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 4,
-        strength: float = 0.8,
+        num_interpolation_steps: int = 8,
         original_inference_steps: int = None,
         guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
@@ -603,6 +727,9 @@ class LatentConsistencyModelImg2ImgPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        embedding_interpolation_type: str = "lerp",
+        latent_interpolation_type: str = "slerp",
+        process_batch_size: int = 4,
         **kwargs,
     ):
         r"""
@@ -660,7 +787,14 @@ class LatentConsistencyModelImg2ImgPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeline class.
+                `._callback_tensor_inputs` attribute of your pipeine class.
+            embedding_interpolation_type (`str`, *optional*, defaults to `"lerp"`):
+                The type of interpolation to use for interpolating between text embeddings. Choose between `"lerp"` and `"slerp"`.
+            latent_interpolation_type (`str`, *optional*, defaults to `"slerp"`):
+                The type of interpolation to use for interpolating between latents. Choose between `"lerp"` and `"slerp"`.
+            process_batch_size (`int`, *optional*, defaults to 4):
+                The batch size to use for processing the images. This is useful when generating a large number of images
+                and you want to avoid running out of memory.
 
         Examples:
 
@@ -671,6 +805,7 @@ class LatentConsistencyModelImg2ImgPipeline(
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
+
         callback = kwargs.pop("callback", None)
         callback_steps = kwargs.pop("callback_steps", None)
 
@@ -687,8 +822,12 @@ class LatentConsistencyModelImg2ImgPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
 
+        # 0. Default height and width to unet
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
+
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, strength, callback_steps, prompt_embeds, callback_on_step_end_tensor_inputs)
+        self.check_inputs(prompt, height, width, callback_steps, prompt_embeds, callback_on_step_end_tensor_inputs)
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
@@ -700,23 +839,33 @@ class LatentConsistencyModelImg2ImgPipeline(
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+        if batch_size < 2:
+            raise ValueError(f"`prompt` must have length of atleast 2 but found {batch_size}")
+        if num_images_per_prompt != 1:
+            raise ValueError("`num_images_per_prompt` must be `1` as no other value is supported yet")
+        if prompt_embeds is not None:
+            raise ValueError("`prompt_embeds` must be None since it is not supported yet")
+        if latents is not None:
+            raise ValueError("`latents` must be None since it is not supported yet")
 
         device = self._execution_device
         # do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
         lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
 
-        # NOTE: when a LCM is distilled from an LDM via latent consistency distillation (Algorithm 1) with guided
-        # distillation, the forward pass of the LCM learns to approximate sampling from the LDM using CFG with the
-        # unconditional prompt "" (the empty string). Due to this, LCMs currently do not support negative prompts.
-        prompt_embeds, _ = self.encode_prompt(
-            prompt,
+        self.scheduler.set_timesteps(num_inference_steps, device, original_inference_steps=original_inference_steps)
+        timesteps = self.scheduler.timesteps
+        num_channels_latents = self.unet.config.in_channels
+        # bs = batch_size * num_images_per_prompt
+
+        # 3. Encode initial input prompt
+        prompt_embeds_1, _ = self.encode_prompt(
+            prompt[:1],
             device,
-            num_images_per_prompt,
-            False,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=False,
             negative_prompt=None,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=None,
@@ -724,95 +873,179 @@ class LatentConsistencyModelImg2ImgPipeline(
             clip_skip=self.clip_skip,
         )
 
-        # 4. Encode image
-        image = self.image_processor.preprocess(image)
-
-        # 5. Prepare timesteps
-        self.scheduler.set_timesteps(
-            num_inference_steps, device, original_inference_steps=original_inference_steps, strength=strength
-        )
-        timesteps = self.scheduler.timesteps
-
-        # 6. Prepare latent variables
-        original_inference_steps = (
-            original_inference_steps
-            if original_inference_steps is not None
-            else self.scheduler.config.original_inference_steps
-        )
-        latent_timestep = timesteps[:1]
-        latents = self.prepare_latents(
-            image, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
-        )
-        bs = batch_size * num_images_per_prompt
-
-        # 6. Get Guidance Scale Embedding
-        # NOTE: We use the Imagen CFG formulation that StableDiffusionPipeline uses rather than the original LCM paper
-        # CFG formulation, so we need to subtract 1 from the input guidance_scale.
-        # LCM CFG formulation:  cfg_noise = noise_cond + cfg_scale * (noise_cond - noise_uncond), (cfg_scale > 0.0 using CFG)
-        w = torch.tensor(self.guidance_scale - 1).repeat(bs)
-        w_embedding = self.get_guidance_scale_embedding(w, embedding_dim=self.unet.config.time_cond_proj_dim).to(
-            device=device, dtype=latents.dtype
+        # 4. Prepare initial latent variables
+        latents_1 = self.prepare_latents(
+            1,
+            num_channels_latents,
+            height,
+            width,
+            prompt_embeds_1.dtype,
+            device,
+            generator,
+            latents,
         )
 
-        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, None)
-
-        # 8. LCM Multistep Sampling Loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                latents = latents.to(prompt_embeds.dtype)
+        images = []
 
-                # model prediction (v-prediction, eps, x)
-                model_pred = self.unet(
+        # 5. Iterate over prompts and perform latent walk. Note that we do this two prompts at a time
+        #    otherwise the memory usage ends up being too high.
+        with self.progress_bar(total=batch_size - 1) as prompt_progress_bar:
+            for i in range(1, batch_size):
+                # 6. Encode current prompt
+                prompt_embeds_2, _ = self.encode_prompt(
+                    prompt[i : i + 1],
+                    device,
+                    num_images_per_prompt=num_images_per_prompt,
+                    do_classifier_free_guidance=False,
+                    negative_prompt=None,
+                    prompt_embeds=prompt_embeds,
+                    negative_prompt_embeds=None,
+                    lora_scale=lora_scale,
+                    clip_skip=self.clip_skip,
+                )
+
+                # 7. Prepare current latent variables
+                latents_2 = self.prepare_latents(
+                    1,
+                    num_channels_latents,
+                    height,
+                    width,
+                    prompt_embeds_2.dtype,
+                    device,
+                    generator,
                     latents,
-                    t,
-                    timestep_cond=w_embedding,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
-                    return_dict=False,
-                )[0]
+                )
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents, denoised = self.scheduler.step(model_pred, t, latents, **extra_step_kwargs, return_dict=False)
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                # 8. Interpolate between previous and current prompt embeddings and latents
+                inference_embeddings = self.interpolate_embedding(
+                    start_embedding=prompt_embeds_1,
+                    end_embedding=prompt_embeds_2,
+                    num_interpolation_steps=num_interpolation_steps,
+                    interpolation_type=embedding_interpolation_type,
+                )
+                inference_latents = self.interpolate_latent(
+                    start_latent=latents_1,
+                    end_latent=latents_2,
+                    num_interpolation_steps=num_interpolation_steps,
+                    interpolation_type=latent_interpolation_type,
+                )
+                next_prompt_embeds = inference_embeddings[-1:].detach().clone()
+                next_latents = inference_latents[-1:].detach().clone()
+                bs = num_interpolation_steps
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    w_embedding = callback_outputs.pop("w_embedding", w_embedding)
-                    denoised = callback_outputs.pop("denoised", denoised)
+                # 9. Perform inference in batches. Note the use of `process_batch_size` to control the batch size
+                #    of the inference. This is useful for reducing memory usage and can be configured based on the
+                #    available GPU memory.
+                with self.progress_bar(
+                    total=(bs + process_batch_size - 1) // process_batch_size
+                ) as batch_progress_bar:
+                    for batch_index in range(0, bs, process_batch_size):
+                        batch_inference_latents = inference_latents[batch_index : batch_index + process_batch_size]
+                        batch_inference_embedddings = inference_embeddings[
+                            batch_index : batch_index + process_batch_size
+                        ]
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
+                        self.scheduler.set_timesteps(
+                            num_inference_steps, device, original_inference_steps=original_inference_steps
+                        )
+                        timesteps = self.scheduler.timesteps
 
-        denoised = denoised.to(prompt_embeds.dtype)
-        if not output_type == "latent":
-            image = self.vae.decode(denoised / self.vae.config.scaling_factor, return_dict=False)[0]
-            image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
+                        current_bs = batch_inference_embedddings.shape[0]
+                        w = torch.tensor(self.guidance_scale - 1).repeat(current_bs)
+                        w_embedding = self.get_guidance_scale_embedding(
+                            w, embedding_dim=self.unet.config.time_cond_proj_dim
+                        ).to(device=device, dtype=latents_1.dtype)
+
+                        # 10. Perform inference for current batch
+                        with self.progress_bar(total=num_inference_steps) as progress_bar:
+                            for index, t in enumerate(timesteps):
+                                batch_inference_latents = batch_inference_latents.to(batch_inference_embedddings.dtype)
+
+                                # model prediction (v-prediction, eps, x)
+                                model_pred = self.unet(
+                                    batch_inference_latents,
+                                    t,
+                                    timestep_cond=w_embedding,
+                                    encoder_hidden_states=batch_inference_embedddings,
+                                    cross_attention_kwargs=self.cross_attention_kwargs,
+                                    return_dict=False,
+                                )[0]
+
+                                # compute the previous noisy sample x_t -> x_t-1
+                                batch_inference_latents, denoised = self.scheduler.step(
+                                    model_pred, t, batch_inference_latents, **extra_step_kwargs, return_dict=False
+                                )
+                                if callback_on_step_end is not None:
+                                    callback_kwargs = {}
+                                    for k in callback_on_step_end_tensor_inputs:
+                                        callback_kwargs[k] = locals()[k]
+                                    callback_outputs = callback_on_step_end(self, index, t, callback_kwargs)
+
+                                    batch_inference_latents = callback_outputs.pop("latents", batch_inference_latents)
+                                    batch_inference_embedddings = callback_outputs.pop(
+                                        "prompt_embeds", batch_inference_embedddings
+                                    )
+                                    w_embedding = callback_outputs.pop("w_embedding", w_embedding)
+                                    denoised = callback_outputs.pop("denoised", denoised)
+
+                                # call the callback, if provided
+                                if index == len(timesteps) - 1 or (
+                                    (index + 1) > num_warmup_steps and (index + 1) % self.scheduler.order == 0
+                                ):
+                                    progress_bar.update()
+                                    if callback is not None and index % callback_steps == 0:
+                                        step_idx = index // getattr(self.scheduler, "order", 1)
+                                        callback(step_idx, t, batch_inference_latents)
+
+                        denoised = denoised.to(batch_inference_embedddings.dtype)
+
+                        # Note: This is not supported because you would get black images in your latent walk if
+                        #       NSFW concept is detected
+                        # if not output_type == "latent":
+                        #     image = self.vae.decode(denoised / self.vae.config.scaling_factor, return_dict=False)[0]
+                        #     image, has_nsfw_concept = self.run_safety_checker(image, device, inference_embeddings.dtype)
+                        # else:
+                        #     image = denoised
+                        #     has_nsfw_concept = None
+
+                        # if has_nsfw_concept is None:
+                        #     do_denormalize = [True] * image.shape[0]
+                        # else:
+                        #     do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
+
+                        image = self.vae.decode(denoised / self.vae.config.scaling_factor, return_dict=False)[0]
+                        do_denormalize = [True] * image.shape[0]
+                        has_nsfw_concept = None
+
+                        image = self.image_processor.postprocess(
+                            image, output_type=output_type, do_denormalize=do_denormalize
+                        )
+                        images.append(image)
+
+                        batch_progress_bar.update()
+
+                prompt_embeds_1 = next_prompt_embeds
+                latents_1 = next_latents
+
+                prompt_progress_bar.update()
+
+        # 11. Determine what should be returned
+        if output_type == "pil":
+            images = [image for image_list in images for image in image_list]
+        elif output_type == "np":
+            images = np.concatenate(images)
+        elif output_type == "pt":
+            images = torch.cat(images)
         else:
-            image = denoised
-            has_nsfw_concept = None
-
-        if has_nsfw_concept is None:
-            do_denormalize = [True] * image.shape[0]
-        else:
-            do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
-
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+            raise ValueError("`output_type` must be one of 'pil', 'np' or 'pt'.")
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return (images, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
