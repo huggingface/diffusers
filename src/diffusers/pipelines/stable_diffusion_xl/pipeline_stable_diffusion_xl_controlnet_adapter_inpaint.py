@@ -17,7 +17,7 @@
 
 import inspect
 from collections.abc import Callable
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -51,7 +51,6 @@ from ...models.attention_processor import (
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
@@ -62,6 +61,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ..controlnet.multicontrolnet import MultiControlNetModel
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -162,7 +162,7 @@ def _preprocess_adapter_image(image, height, width):
 
 def mask_pil_to_torch(mask, height, width):
     # preprocess mask
-    if isinstance(mask, PIL.Image.Image | np.ndarray):
+    if isinstance(mask, Union[PIL.Image.Image, np.ndarray]):
         mask = [mask]
 
     if isinstance(mask, list) and isinstance(mask[0], PIL.Image.Image):
@@ -255,7 +255,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
         raise TypeError(f"`mask` is a torch.Tensor but `image` (type: {type(image)} is not")
     else:
         # preprocess image
-        if isinstance(image, PIL.Image.Image | np.ndarray):
+        if isinstance(image, Union[PIL.Image.Image, np.ndarray]):
             image = [image]
         if isinstance(image, list) and isinstance(image[0], PIL.Image.Image):
             # resize all images w.r.t passed height an width
@@ -352,8 +352,8 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(DiffusionPipeline, FromS
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        adapter: T2IAdapter | MultiAdapter,
-        controlnet: ControlNetModel | MultiControlNetModel,
+        adapter: Union[T2IAdapter, MultiAdapter],
+        controlnet: Union[ControlNetModel, MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
@@ -1269,39 +1269,39 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(DiffusionPipeline, FromS
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: str | list[str] | None = None,
-        prompt_2: str | list[str] | None = None,
-        image: torch.Tensor | PIL.Image.Image | None = None,
-        mask_image: torch.Tensor | PIL.Image.Image | None = None,
-        adapter_image: torch.Tensor | PIL.Image.Image | list[PIL.Image.Image] | None = None,
-        control_image: torch.Tensor | PIL.Image.Image | list[PIL.Image.Image] | None = None,
-        height: int | None = None,
-        width: int | None = None,
+        prompt: Optional[Union[str, list[str]]] = None,
+        prompt_2: Optional[Union[str, list[str]]] = None,
+        image: Optional[Union[torch.Tensor, PIL.Image.Image]] = None,
+        mask_image: Optional[Union[torch.Tensor, PIL.Image.Image]] = None,
+        adapter_image: Optional[Union[torch.Tensor, PIL.Image.Image, list[PIL.Image.Image]]] = None,
+        control_image: Optional[Union[torch.Tensor, PIL.Image.Image, list[PIL.Image.Image]]] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         strength: float = 0.9999,
         num_inference_steps: int = 50,
-        denoising_start: float | None = None,
-        denoising_end: float | None = None,
+        denoising_start: Optional[float] = None,
+        denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
-        negative_prompt: str | list[str] | None = None,
-        negative_prompt_2: str | list[str] | None = None,
-        num_images_per_prompt: int | None = 1,
+        negative_prompt: Optional[Union[str, list[str]]] = None,
+        negative_prompt_2: Optional[Union[str, list[str]]] = None,
+        num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
-        generator: torch.Generator | list[torch.Generator] | None = None,
-        latents: torch.FloatTensor | None = None,
-        prompt_embeds: torch.FloatTensor | None = None,
-        negative_prompt_embeds: torch.FloatTensor | None = None,
-        pooled_prompt_embeds: torch.FloatTensor | None = None,
-        negative_pooled_prompt_embeds: torch.FloatTensor | None = None,
-        output_type: str | None = "pil",
+        generator: Optional[Union[torch.Generator, list[torch.Generator]]] = None,
+        latents: Optional[Union[torch.FloatTensor]] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Callable[[int, int, torch.FloatTensor], None] | None = None,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
-        cross_attention_kwargs: dict[str, Any] | None = None,
+        cross_attention_kwargs: Optional[dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
-        original_size: tuple[int, int] | None = None,
-        crops_coords_top_left: tuple[int, int] = (0, 0),
-        target_size: tuple[int, int] | None = None,
-        adapter_conditioning_scale: float | list[float] = 1.0,
+        original_size: Optional[tuple[int, int]] = None,
+        crops_coords_top_left: Optional[tuple[int, int]] = (0, 0),
+        target_size: Optional[tuple[int, int]] = None,
+        adapter_conditioning_scale: Optional[Union[float, list[float]]] = 1.0,
         cond_tau: float = 1.0,
         aesthetic_score: float = 6.0,
         negative_aesthetic_score: float = 2.5,

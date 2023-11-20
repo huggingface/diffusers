@@ -32,9 +32,6 @@ from ...models.attention_processor import (
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from ...pipelines.pipeline_utils import DiffusionPipeline
-from ...pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     PIL_INTERPOLATION,
@@ -45,6 +42,9 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
+from ..controlnet.multicontrolnet import MultiControlNetModel
+from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -206,7 +206,7 @@ class StableDiffusionXLControlNetAdapterPipeline(
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
         adapter: Union[T2IAdapter, MultiAdapter, List[T2IAdapter]],
-        controlnet: ControlNetModel | MultiControlNetModel,
+        controlnet: Union[ControlNetModel, MultiControlNetModel],
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
     ):
@@ -927,8 +927,8 @@ class StableDiffusionXLControlNetAdapterPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        adapter_image: Union[torch.Tensor, PIL.Image.Image, List[PIL.Image.Image]] = None,
-        control_image: torch.Tensor | PIL.Image.Image | list[PIL.Image.Image] | None = None,
+        adapter_image: Optional[Union[torch.Tensor, PIL.Image.Image, List[PIL.Image.Image]]] = None,
+        control_image: Optional[Union[torch.Tensor, PIL.Image.Image, list[PIL.Image.Image]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
