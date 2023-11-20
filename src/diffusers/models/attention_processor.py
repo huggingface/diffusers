@@ -1974,12 +1974,96 @@ class LoRAAttnAddedKVProcessor(nn.Module):
         attn.processor = AttnAddedKVProcessor()
         return attn.processor(attn, hidden_states, *args, **kwargs)
 
+class Kandi3AttnProcessor:
+    r"""
+    Default kandinsky3 proccesor for performing attention-related computations.
+    """
+    
+    def __call__(
+        self,
+        attn,
+        x,
+        context,
+        context_mask=None,
+        image_mask=None
+        
+    ):
+        query = rearrange(attn.to_query(x), 'b n (h d) -> b h n d', h=attn.num_heads)
+        key = rearrange(attn.to_key(context), 'b n (h d) -> b h n d', h=attn.num_heads)
+        value = rearrange(attn.to_value(context), 'b n (h d) -> b h n d', h=attn.num_heads)
+
+        attention_matrix = einsum('b h i d, b h j d -> b h i j', query, key)
+        if exist(image_mask) and exist(context_mask):
+            image_mask = rearrange(image_mask, 'b i -> b 1 i 1')
+            image_text_mask_1 = rearrange((context_mask == 1).type(image_mask.dtype), 'b j -> b 1 1 j')
+            image_text_mask_2 = rearrange((context_mask == 2).type(image_mask.dtype), 'b j -> b 1 1 j')
+            
+            image_mask_max = image_mask.amax(-2, keepdim=True)
+            max_attention = rearrange(attention_matrix.amax((-2, -1)), 'b h -> b h 1 1')
+            attention_matrix = attention_matrix + max_attention * (image_mask * image_text_mask_1)
+            attention_matrix = attention_matrix + max_attention * ((image_mask_max - image_mask) * image_text_mask_2)
+            
+        if exist(context_mask):
+            max_neg_value = -torch.finfo(attention_matrix.dtype).max
+            context_mask = rearrange(context_mask, 'b j -> b 1 1 j')
+            attention_matrix = attention_matrix.masked_fill(~(context_mask != 0), max_neg_value)
+        attention_matrix = (attention_matrix * attn.scale).softmax(dim=-1)
+
+        out = einsum('b h i j, b h j d -> b h i d', attention_matrix, value)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        out = attn.output_layer(out)
+        return out
+    
+class LoraKandi3AttnProcessor(nn.Module):
+
+    def __init__(self, in_channels, out_channels, context_dim, head_dim=64, rank=4, network_alpha=None):
+        super().__init__()
+
+        self.to_query_lora = LoRALinearLayer(in_channels, out_channels, rank, network_alpha)
+        self.to_key_lora = LoRALinearLayer(context_dim, out_channels, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(context_dim, out_channels, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_channels, out_channels, rank, network_alpha)
+
+    def forward(
+        self,
+        attn,
+        x,
+        context,
+        context_mask=None,
+        image_mask=None,
+        scale=1):
+        query = rearrange(attn.to_query(x) + self.to_query_lora(x), 'b n (h d) -> b h n d', h=attn.num_heads)
+        key = rearrange(attn.to_key(context) + self.to_key_lora(context), 'b n (h d) -> b h n d', h=attn.num_heads)
+        value = rearrange(attn.to_value(context) + self.to_v_lora(context), 'b n (h d) -> b h n d', h=attn.num_heads)
+
+        attention_matrix = einsum('b h i d, b h j d -> b h i j', query, key)
+        if exist(image_mask) and exist(context_mask):
+            image_mask = rearrange(image_mask, 'b i -> b 1 i 1')
+            image_text_mask_1 = rearrange((context_mask == 1).type(image_mask.dtype), 'b j -> b 1 1 j')
+            image_text_mask_2 = rearrange((context_mask == 2).type(image_mask.dtype), 'b j -> b 1 1 j')
+            
+            image_mask_max = image_mask.amax(-2, keepdim=True)
+            max_attention = rearrange(attention_matrix.amax((-2, -1)), 'b h -> b h 1 1')
+            attention_matrix = attention_matrix + max_attention * (image_mask * image_text_mask_1)
+            attention_matrix = attention_matrix + max_attention * ((image_mask_max - image_mask) * image_text_mask_2)
+            
+        if exist(context_mask):
+            max_neg_value = -torch.finfo(attention_matrix.dtype).max
+            context_mask = rearrange(context_mask, 'b j -> b 1 1 j')
+            attention_matrix = attention_matrix.masked_fill(~(context_mask != 0), max_neg_value)
+        attention_matrix = (attention_matrix * attn.scale).softmax(dim=-1)
+
+        out = einsum('b h i j, b h j d -> b h i d', attention_matrix, value)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        out = attn.output_layer(out) + self.to_out_lora(out)
+        return out
 
 LORA_ATTENTION_PROCESSORS = (
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
+    LoraKandi3AttnProcessor,
 )
 
 ADDED_KV_ATTENTION_PROCESSORS = (
@@ -2012,6 +2096,8 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
     CustomDiffusionAttnProcessor2_0,
+    Kandi3AttnProcessor,
+    LoraKandi3AttnProcessor,
     # deprecated
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
