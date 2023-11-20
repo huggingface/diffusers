@@ -101,8 +101,8 @@ class AdaLayerNormSingle(nn.Module):
     def forward(
         self,
         timestep: torch.Tensor,
-        added_cond_kwargs: Dict[str, torch.Tensor] = None,
-        batch_size: int = None,
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
+        batch_size: Optional[int] = None,
         hidden_dtype: Optional[torch.dtype] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # No modulation happening here.

@@ -14,12 +14,12 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-The UNet is responsible for denoising during the reverse diffusion process, and there are two distinct features in its architecture: 
+The UNet is responsible for denoising during the reverse diffusion process, and there are two distinct features in its architecture:
 
 1. Backbone features primarily contribute to the denoising process
 2. Skip features mainly introduce high-frequency features into the decoder module and can make the network overlook the semantics in the backbone features
 
-However, the skip connection can sometimes introduce unnatural image details. [FreeU](https://hf.co/papers/2309.11497) is a technique for improving image quality by rebalancing the contributions from the UNet’s skip connections and backbone feature maps. 
+However, the skip connection can sometimes introduce unnatural image details. [FreeU](https://hf.co/papers/2309.11497) is a technique for improving image quality by rebalancing the contributions from the UNet’s skip connections and backbone feature maps.
 
 FreeU is applied during inference and it does not require any additional training. The technique works for different tasks such as text-to-image, image-to-image, and text-to-video.
 
@@ -27,11 +27,11 @@ In this guide, you will apply FreeU to the [`StableDiffusionPipeline`], [`Stable
 
 ## StableDiffusionPipeline
 
-Load the pipeline: 
+Load the pipeline:
 
 ```py
 from diffusers import DiffusionPipeline
-import torch 
+import torch
 
 pipeline = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, safety_checker=None
@@ -70,7 +70,7 @@ Let's see how Stable Diffusion 2 results are impacted:
 
 ```py
 from diffusers import DiffusionPipeline
-import torch 
+import torch
 
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, safety_checker=None
@@ -92,7 +92,7 @@ Finally, let's take a look at how FreeU affects Stable Diffusion XL results:
 
 ```py
 from diffusers import DiffusionPipeline
-import torch 
+import torch
 
 pipeline = DiffusionPipeline.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16,

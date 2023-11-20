@@ -378,6 +378,12 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # LCM Training Steps Schedule
         lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * c - 1
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
+
+        if skipping_step < 1:
+            raise ValueError(
+                f"The combination of `original_steps x strength`: {original_steps} x {strength} is smaller than `num_inference_steps`: {num_inference_steps}. Make sure to either reduce `num_inference_steps` to a value smaller than {int(original_steps * strength)} or increase `strength` to a value higher than {float(num_inference_steps / original_steps)}."
+            )
+
         # LCM Inference Steps Schedule
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]
 

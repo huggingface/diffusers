@@ -55,7 +55,7 @@ But if you need to reliably generate the same image, that'll depend on whether y
 
 ### CPU
 
-To generate reproducible results on a CPU, you'll need to use a PyTorch [`Generator`](https://pytorch.org/docs/stable/generated/torch.randn.html) and set a seed:
+To generate reproducible results on a CPU, you'll need to use a PyTorch [`Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) and set a seed:
 
 ```python
 import torch
@@ -83,7 +83,7 @@ If you run this code example on your specific hardware and PyTorch version, you 
 
 💡 It might be a bit unintuitive at first to pass `Generator` objects to the pipeline instead of
 just integer values representing the seed, but this is the recommended design when dealing with
-probabilistic models in PyTorch as `Generator`'s are *random states* that can be
+probabilistic models in PyTorch, as `Generator`s are *random states* that can be
 passed to multiple pipelines in a sequence.
 
 </Tip>
@@ -159,6 +159,7 @@ PyTorch typically benchmarks multiple algorithms to select the fastest one, but 
 
 ```py
 import os
+import torch
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
@@ -171,7 +172,6 @@ Now when you run the same pipeline twice, you'll get identical results.
 ```py
 import torch
 from diffusers import DDIMScheduler, StableDiffusionPipeline
-import numpy as np
 
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, use_safetensors=True).to("cuda")
@@ -186,6 +186,6 @@ result1 = pipe(prompt=prompt, num_inference_steps=50, generator=g, output_type="
 g.manual_seed(0)
 result2 = pipe(prompt=prompt, num_inference_steps=50, generator=g, output_type="latent").images
 
-print("L_inf dist = ", abs(result1 - result2).max())
-"L_inf dist =  tensor(0., device='cuda:0')"
+print("L_inf dist =", abs(result1 - result2).max())
+"L_inf dist = tensor(0., device='cuda:0')"
 ```
