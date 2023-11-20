@@ -15,8 +15,6 @@
 
 import argparse
 import gc
-import hashlib
-import itertools
 import logging
 import math
 import os
