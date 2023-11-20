@@ -2344,9 +2344,6 @@ images = pipe(
 
 assert len(images) == (len(prompts) - 1) * num_interpolation_steps
 ```
-<<<<<<< HEAD
-
-
 ###  StableDiffusionUpscaleLDM3D Pipeline
 [LDM3D-VR](https://arxiv.org/pdf/2311.03226.pdf) is an extended version of LDM3D. 
 
@@ -2387,5 +2384,3 @@ upscaled_rgb, upscaled_depth =outputs.rgb[0], outputs.depth[0]
 upscaled_rgb.save(f"upscaled_lemons_rgb.png")
 upscaled_depth.save(f"upscaled_lemons_depth.png")
 '''
-=======
->>>>>>> dc21498b43ff97a29b5891068465f72110cb8be9
