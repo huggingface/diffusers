@@ -24,6 +24,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    outputs:
+      matrix: ${{ steps.set_matrix.outputs.matrix }}
+      test_map: ${{ steps.set_matrix.outputs.test_map }}
     steps:
     - name: Checkout diffusers
       uses: actions/checkout@v3
@@ -44,7 +47,7 @@ jobs:
       with:
         name: test_fetched
         path: test_preparation.txt
-    - id: set-matrix
+    - id: set_matrix
       name: Create Test Matrix
       # The `keys` is used as GitHub actions matrix for jobs, i.e. `models`, `pipelines`, etc.
       # The `test_map` is used to get the actual identified test files under each key.
