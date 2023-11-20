@@ -73,6 +73,7 @@ jobs:
     if: contains(fromJson(needs.setup_pr_tests.outputs.matrix), 'dummy') != true
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         modules: ${{ fromJson(needs.setup_pr_tests.outputs.matrix) }}
     runs-on: docker-cpu
@@ -99,19 +100,15 @@ jobs:
         python utils/print_env.py
 
     - name: Run all selected tests on CPU
-      working-directory: /diffusers
       run: |
-        python -m pytest -n 2 \
-        --dist=loadfile -v \
-        --make-reports=${{ matrix.modules }}_tests_cpu \
-        ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
+        python -m pytest -n 2 --dist=loadfile -v --make-reports=${{ matrix.modules }}_tests_cpu ${{ fromJson(needs.setup_pr_tests.outputs.test_map)[matrix.modules] }}
 
     - name: Failure short reports
       if: ${{ failure() }}
       continue-on-error: true
       run: |
         cat reports/${{ matrix.modules }}_tests_cpu_stats.txt
-        cat /diffusers/reports/${{ matrix.modules }}_tests_cpu/failures_short.txt
+        cat reports/${{ matrix.modules }}_tests_cpu/failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
