@@ -8,10 +8,6 @@ on:
     branches:
       - ci-*
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
-
 env:
   DIFFUSERS_IS_CI: yes
   OMP_NUM_THREADS: 4
