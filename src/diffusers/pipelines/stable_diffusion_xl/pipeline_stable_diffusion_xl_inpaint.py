@@ -312,6 +312,7 @@ class StableDiffusionXLInpaintPipeline(
         "mask",
         "masked_image_latents",
     ]
+    _interrupt = False
 
     def __init__(
         self,
