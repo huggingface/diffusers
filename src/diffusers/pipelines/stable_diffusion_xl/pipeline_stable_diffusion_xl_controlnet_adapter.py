@@ -22,21 +22,21 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderKL, ControlNetModel, MultiAdapter, T2IAdapter, UNet2DConditionModel
-from diffusers.models.attention_processor import (
+from ...image_processor import VaeImageProcessor
+from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, ControlNetModel, MultiAdapter, T2IAdapter, UNet2DConditionModel
+from ...models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
-from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import (
+from ...models.lora import adjust_lora_scale_text_encoder
+from ...pipelines.controlnet.multicontrolnet import MultiControlNetModel
+from ...pipelines.pipeline_utils import DiffusionPipeline
+from ...pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
+from ...schedulers import KarrasDiffusionSchedulers
+from ...utils import (
     PIL_INTERPOLATION,
     USE_PEFT_BACKEND,
     logging,
@@ -44,7 +44,7 @@ from diffusers.utils import (
     scale_lora_layers,
     unscale_lora_layers,
 )
-from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -563,8 +563,6 @@ class StableDiffusionXLControlNetAdapterPipeline(
         self,
         prompt,
         prompt_2,
-        adapter_image,
-        control_image,
         height,
         width,
         callback_steps,
@@ -574,10 +572,6 @@ class StableDiffusionXLControlNetAdapterPipeline(
         negative_prompt_embeds=None,
         pooled_prompt_embeds=None,
         negative_pooled_prompt_embeds=None,
-        controlnet_conditioning_scale=1.0,
-        adapter_conditioning_scale=1.0,
-        control_guidance_start=0.0,
-        control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
@@ -644,6 +638,17 @@ class StableDiffusionXLControlNetAdapterPipeline(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
+    def check_conditions(
+        self,
+        prompt,
+        prompt_embeds,
+        adapter_image,
+        control_image,
+        adapter_conditioning_scale,
+        controlnet_conditioning_scale,
+        control_guidance_start,
+        control_guidance_end,
+    ):
         # controlnet checks
         if not isinstance(control_guidance_start, (tuple, list)):
             control_guidance_start = [control_guidance_start]
@@ -1154,8 +1159,6 @@ class StableDiffusionXLControlNetAdapterPipeline(
         self.check_inputs(
             prompt,
             prompt_2,
-            adapter_image,
-            control_image,
             height,
             width,
             callback_steps,
@@ -1165,10 +1168,17 @@ class StableDiffusionXLControlNetAdapterPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            controlnet_conditioning_scale=controlnet_conditioning_scale,
-            adapter_conditioning_scale=adapter_conditioning_scale,
-            control_guidance_start=control_guidance_start,
-            control_guidance_end=control_guidance_end,
+        )
+
+        self.check_conditions(
+            prompt,
+            prompt_embeds,
+            adapter_image,
+            control_image,
+            adapter_conditioning_scale,
+            controlnet_conditioning_scale,
+            control_guidance_start,
+            control_guidance_end,
         )
 
         # 2. Define call parameters
