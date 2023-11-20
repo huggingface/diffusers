@@ -173,17 +173,6 @@ def get_all_tests() -> List[str]:
     tests = [f"tests/{f}" for f in tests if "__pycache__" not in f]
     tests = sorted([f for f in tests if (PATH_TO_REPO / f).is_dir() or f.startswith("tests/test_")])
 
-    # model specific test folders
-    model_test_folders = os.listdir(PATH_TO_TESTS / "models")
-    model_test_folders = [f"tests/models/{f}" for f in model_test_folders if "__pycache__" not in f]
-    model_test_folders = sorted([f for f in model_test_folders if (PATH_TO_REPO / f).is_dir()])
-
-    tests.remove("tests/models")
-    # Sagemaker tests are not meant to be run on the CI.
-    if "tests/sagemaker" in tests:
-        tests.remove("tests/sagemaker")
-    tests = model_test_folders + tests
-
     return tests
 
 
