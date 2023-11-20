@@ -66,7 +66,7 @@ PATH_TO_EXAMPLES = PATH_TO_REPO / "examples"
 PATH_TO_DIFFUSERS = PATH_TO_REPO / "src/diffusers"
 PATH_TO_TESTS = PATH_TO_REPO / "tests"
 
-# List here the models to always test.
+# List here the pipelines to always test.
 IMPORTANT_PIPELINES = [
     "controlnet",
     "stable_diffusion",
@@ -78,6 +78,10 @@ IMPORTANT_PIPELINES = [
     "text_to_video_synthesis",
     "wuerstchen",
 ]
+
+# Ignore fixtures in tests folder
+# Ignore lora since they are always tested
+MODULES_TO_IGNORE = ["fixtures", "lora"]
 
 
 @contextmanager
@@ -858,10 +862,11 @@ def create_json_map(test_files_to_run: List[str], json_output_file: str):
         #   - `tests/trainer/test_trainer.py` or `tests/trainer`
         #   - `tests/test_modeling_common.py`
         names = test_file.split(os.path.sep)
-        if names[1] == "models":
-            # take the part like `models/bert` for modeling tests
-            key = os.path.sep.join(names[1:3])
-        elif len(names) > 2 or not test_file.endswith(".py"):
+        module = names[1]
+        if module in MODULES_TO_IGNORE:
+            continue
+
+        if len(names) > 2 or not test_file.endswith(".py"):
             # test folders under `tests` or python files under them
             # take the part like tokenization, `pipeline`, etc. for other test categories
             key = os.path.sep.join(names[1:2])
@@ -924,11 +929,10 @@ def infer_tests_to_run(
     # Grab the corresponding test files:
     if any(x in modified_files for x in ["setup.py"]):
         test_files_to_run = ["tests", "examples"]
-        repo_utils_launch = True
     # in order to trigger pipeline tests even if no code change at all
     elif "tests/utils/tiny_model_summary.json" in modified_files:
         test_files_to_run = ["tests"]
-        repo_utils_launch = any(f.split(os.path.sep)[0] == "utils" for f in modified_files)
+        any(f.split(os.path.sep)[0] == "utils" for f in modified_files)
     else:
         # All modified tests need to be run.
         test_files_to_run = [
@@ -943,7 +947,7 @@ def infer_tests_to_run(
         # Make sure we did not end up with a test file that was removed
         test_files_to_run = [f for f in test_files_to_run if (PATH_TO_REPO / f).exists()]
 
-        repo_utils_launch = any(f.split(os.path.sep)[0] == "utils" for f in modified_files)
+        any(f.split(os.path.sep)[0] == "utils" for f in modified_files)
 
     examples_tests_to_run = [f for f in test_files_to_run if f.startswith("examples")]
     test_files_to_run = [f for f in test_files_to_run if not f.startswith("examples")]
