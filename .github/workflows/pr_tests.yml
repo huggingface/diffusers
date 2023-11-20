@@ -71,7 +71,7 @@ jobs:
     if: contains(fromJson(needs.setup_pr_tests.outputs.matrix), 'dummy') != true
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         modules: ${{ fromJson(needs.setup_pr_tests.outputs.matrix) }}
     runs-on: docker-cpu
