@@ -590,8 +590,6 @@ class DreamBoothDataset(Dataset):
         self.size = size
         self.center_crop = center_crop
 
-        self.instance_data_root = Path(instance_data_root)
-
         self.instance_prompt = instance_prompt
         self.custom_instance_prompts = None
         self.class_prompt = class_prompt
@@ -648,6 +646,7 @@ class DreamBoothDataset(Dataset):
                 for caption in custom_instance_prompts:
                     self.custom_instance_prompts.extend(itertools.repeat(caption, repeats))
         else:
+            self.instance_data_root = Path(instance_data_root)
             if not self.instance_data_root.exists():
                 raise ValueError("Instance images root doesn't exists.")
 
