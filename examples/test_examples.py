@@ -427,6 +427,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 examples/dreambooth/train_dreambooth_lora_sdxl.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
                 --dataset_name hf-internal-testing/dummy_image_text_data
+                --caption_column text
                 --instance_prompt photo
                 --resolution 64
                 --train_batch_size 1
@@ -447,6 +448,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 examples/dreambooth/train_dreambooth_lora_sdxl.py
                 --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-xl-pipe
                 --dataset_name hf-internal-testing/dummy_image_text_data
+                --caption_column text
                 --instance_prompt photo
                 --resolution 64
                 --train_batch_size 1
