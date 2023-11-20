@@ -49,7 +49,6 @@ enable_full_determinism()
 def create_ip_adapter_state_dict(model):
     # "ip_adapter" (cross-attention weights)
     ip_cross_attn_state_dict = {}
-    sd = model.state_dict()
     key_id = 1
 
     for name in model.attn_processors.keys():
@@ -683,27 +682,47 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
+        # forward pass without ip-adapter
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        ip_adapter_state_dict = create_ip_adapter_state_dict(model)
-        model._load_ip_adapter_weights(ip_adapter_state_dict)
+        # update inputs_dict for ip-adapter
+        batch_size = inputs_dict["encoder_hidden_states"].shape[0]
+        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
 
+        # make ip_adapter_1 and ip_adapter_2
+        ip_adapter_1 = create_ip_adapter_state_dict(model)
+
+        image_proj_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["image_proj"].items()}
+        cross_attn_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["ip_adapter"].items()}
+        ip_adapter_2 = {}
+        ip_adapter_2.update({"image_proj": image_proj_state_dict_2, "ip_adapter": cross_attn_state_dict_2})
+
+        # forward pass ip_adapter_1
+        model._load_ip_adapter_weights(ip_adapter_1)
         assert model.config.encoder_hid_dim_type == "ip_image_proj"
         assert model.encoder_hid_proj is not None
-
         assert model.down_blocks[0].attentions[0].transformer_blocks[0].attn2.processor.__class__.__name__ in (
             "IPAdapterAttnProcessor",
             "IPAdapterAttnProcessor2_0",
         )
-
-        batch_size = inputs_dict["encoder_hidden_states"].shape[0]
-        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
-
         with torch.no_grad():
-            sample2 = model(**{**inputs_dict, "added_cond_kwargs": {"image_embeds": image_embeds}}).sample
+            sample2 = model(**inputs_dict).sample
+
+        # forward pass with ip_adapter_2
+        model._load_ip_adapter_weights(ip_adapter_2)
+        with torch.no_grad():
+            sample3 = model(**inputs_dict).sample
+
+        # forward pass with ip_adapter_1 again
+        model._load_ip_adapter_weights(ip_adapter_1)
+        with torch.no_grad():
+            sample4 = model(**inputs_dict).sample
 
         assert not sample1.allclose(sample2, atol=1e-4, rtol=1e-4)
+        assert not sample2.allclose(sample3, atol=1e-4, rtol=1e-4)
+        assert sample2.allclose(sample4, atol=1e-4, rtol=1e-4)
 
 
 @slow
