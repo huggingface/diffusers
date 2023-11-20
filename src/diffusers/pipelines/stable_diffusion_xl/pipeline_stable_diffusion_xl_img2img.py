@@ -164,6 +164,7 @@ class StableDiffusionXLImg2ImgPipeline(
         "negative_pooled_prompt_embeds",
         "add_neg_time_ids",
     ]
+    _interrupt = False
 
     def __init__(
         self,
@@ -1197,6 +1198,9 @@ class StableDiffusionXLImg2ImgPipeline(
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if self._interrupt:
+                    continue
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 

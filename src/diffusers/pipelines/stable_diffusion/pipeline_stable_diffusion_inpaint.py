@@ -206,6 +206,7 @@ class StableDiffusionInpaintPipeline(
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "mask", "masked_image_latents"]
+    _interrupt = False
 
     def __init__(
         self,
@@ -1129,6 +1130,9 @@ class StableDiffusionInpaintPipeline(
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if self._interrupt:
+                    continue
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
