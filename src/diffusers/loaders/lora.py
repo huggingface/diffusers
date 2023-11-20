@@ -1194,6 +1194,8 @@ class LoraLoaderMixin:
                 Controls how much to influence the outputs with the LoRA parameters.
             safe_fusing (`bool`, defaults to `False`):
                 Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
+            adapter_names (`List[str]`, *optional*):
+                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
         """
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
@@ -1221,6 +1223,10 @@ class LoraLoaderMixin:
                         supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
                         if "adapter_names" in supported_merge_kwargs:
                             merge_kwargs["adapter_names"] = adapter_names
+                        elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                            raise ValueError(
+                                "The `adapter_names` argument is not supported with your PEFT version. Please upgrade to the latest version of PEFT. `pip install -U peft`"
+                            )
 
                         module.merge(**merge_kwargs)
 
@@ -1229,6 +1235,12 @@ class LoraLoaderMixin:
                 deprecate("fuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, **kwargs):
+                if "adapter_names" in kwargs and kwargs["adapter_names"] is not None:
+                    raise ValueError(
+                        "The `adapter_names` argument is not supported in your environment. Please switch to PEFT backend to use this argument by installing latest PEFT and transformers."
+                        " `pip install -U peft transformers`"
+                    )
+
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
                     if isinstance(attn_module.q_proj, PatchedLoraProjection):
                         attn_module.q_proj._fuse_lora(lora_scale, safe_fusing)

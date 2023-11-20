@@ -482,6 +482,12 @@ class UNet2DConditionLoadersMixin:
         if not USE_PEFT_BACKEND:
             if hasattr(module, "_fuse_lora"):
                 module._fuse_lora(self.lora_scale, self._safe_fusing)
+
+            if adapter_names is not None:
+                raise ValueError(
+                    "The `adapter_names` argument is not supported in your environment. Please switch to PEFT backend to use this argument by installing latest PEFT and transformers."
+                    " `pip install -U peft transformers`"
+                )
         else:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
@@ -496,6 +502,10 @@ class UNet2DConditionLoadersMixin:
                 supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
                 if "adapter_names" in supported_merge_kwargs:
                     merge_kwargs["adapter_names"] = adapter_names
+                elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                    raise ValueError(
+                        "The `adapter_names` argument is not supported with your PEFT version. Please upgrade to the latest version of PEFT. `pip install -U peft`"
+                    )
 
                 module.merge(**merge_kwargs)
 
