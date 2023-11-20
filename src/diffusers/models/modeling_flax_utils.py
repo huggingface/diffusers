@@ -52,6 +52,7 @@ class FlaxModelMixin(PushToHubMixin):
 
         - **config_name** ([`str`]) -- Filename to save a model to when calling [`~FlaxModelMixin.save_pretrained`].
     """
+
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
     _flax_internal_args = ["name", "parent", "dtype"]

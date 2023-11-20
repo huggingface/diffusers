@@ -183,6 +183,7 @@ class TextToVideoPipelineOutput(BaseOutput):
             List indicating whether the corresponding generated image contains "not-safe-for-work" (nsfw) content or
             `None` if safety checking could not be performed.
     """
+
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: Optional[List[bool]]
 

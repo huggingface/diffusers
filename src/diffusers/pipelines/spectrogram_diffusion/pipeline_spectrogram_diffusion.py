@@ -54,6 +54,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `decoder` to denoise the encoded audio latents.
         melgan ([`OnnxRuntimeModel`]):
     """
+
     _optional_components = ["melgan"]
 
     def __init__(

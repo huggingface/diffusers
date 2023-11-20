@@ -14,10 +14,10 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Diffusion pipelines are inherently a collection of diffusion models and schedulers that are partly independent from each other. This means that one is able to switch out parts of the pipeline to better customize 
+Diffusion pipelines are inherently a collection of diffusion models and schedulers that are partly independent from each other. This means that one is able to switch out parts of the pipeline to better customize
 a pipeline to one's use case. The best example of this is the [Schedulers](../api/schedulers/overview).
 
-Whereas diffusion models usually simply define the forward pass from noise to a less noisy sample, 
+Whereas diffusion models usually simply define the forward pass from noise to a less noisy sample,
 schedulers define the whole denoising process, *i.e.*:
 - How many denoising steps?
 - Stochastic or deterministic?
@@ -77,7 +77,7 @@ PNDMScheduler {
 }
 ```
 
-We can see that the scheduler is of type [`PNDMScheduler`]. 
+We can see that the scheduler is of type [`PNDMScheduler`].
 Cool, now let's compare the scheduler in its performance to other schedulers.
 First we define a prompt on which we will test all the different schedulers:
 
@@ -102,7 +102,7 @@ image
 
 ## Changing the scheduler
 
-Now we show how easy it is to change the scheduler of a pipeline. Every scheduler has a property [`~SchedulerMixin.compatibles`] 
+Now we show how easy it is to change the scheduler of a pipeline. Every scheduler has a property [`~SchedulerMixin.compatibles`]
 which defines all compatible schedulers. You can take a look at all available, compatible schedulers for the Stable Diffusion pipeline as follows.
 
 ```python
@@ -127,7 +127,7 @@ pipeline.scheduler.compatibles
  diffusers.schedulers.scheduling_k_dpm_2_ancestral_discrete.KDPM2AncestralDiscreteScheduler]
 ```
 
-Cool, lots of schedulers to look at. Feel free to have a look at their respective class definitions: 
+Cool, lots of schedulers to look at. Feel free to have a look at their respective class definitions:
 
 - [`EulerDiscreteScheduler`],
 - [`LMSDiscreteScheduler`],
@@ -143,7 +143,7 @@ Cool, lots of schedulers to look at. Feel free to have a look at their respectiv
 - [`DPMSolverSinglestepScheduler`],
 - [`KDPM2AncestralDiscreteScheduler`].
 
-We will now compare the input prompt with all other schedulers. To change the scheduler of the pipeline you can make use of the 
+We will now compare the input prompt with all other schedulers. To change the scheduler of the pipeline you can make use of the
 convenient [`~ConfigMixin.config`] property in combination with the [`~ConfigMixin.from_config`] function.
 
 ```python
@@ -171,7 +171,7 @@ FrozenDict([('num_train_timesteps', 1000),
 ```
 
 This configuration can then be used to instantiate a scheduler
-of a different class that is compatible with the pipeline. Here, 
+of a different class that is compatible with the pipeline. Here,
 we change the scheduler to the [`DDIMScheduler`].
 
 ```python
@@ -198,7 +198,7 @@ If you are a JAX/Flax user, please check [this section](#changing-the-scheduler-
 
 ## Compare schedulers
 
-So far we have tried running the stable diffusion pipeline with two schedulers: [`PNDMScheduler`] and [`DDIMScheduler`]. 
+So far we have tried running the stable diffusion pipeline with two schedulers: [`PNDMScheduler`] and [`DDIMScheduler`].
 A number of better schedulers have been released that can be run with much fewer steps; let's compare them here:
 
 [`LMSDiscreteScheduler`] usually leads to better results:

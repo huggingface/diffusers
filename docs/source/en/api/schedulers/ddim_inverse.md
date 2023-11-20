@@ -13,7 +13,7 @@ specific language governing permissions and limitations under the License.
 # DDIMInverseScheduler
 
 `DDIMInverseScheduler` is the inverted scheduler from [Denoising Diffusion Implicit Models](https://huggingface.co/papers/2010.02502) (DDIM) by Jiaming Song, Chenlin Meng and Stefano Ermon.
-The implementation is mostly based on the DDIM inversion definition from [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://huggingface.co/papers/2211.09794.pdf).
+The implementation is mostly based on the DDIM inversion definition from [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://huggingface.co/papers/2211.09794).
 
 ## DDIMInverseScheduler
 [[autodoc]] DDIMInverseScheduler

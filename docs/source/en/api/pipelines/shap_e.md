@@ -9,7 +9,7 @@ specific language governing permissions and limitations under the License.
 
 # Shap-E
 
-The Shap-E model was proposed in [Shap-E: Generating Conditional 3D Implicit Functions](https://huggingface.co/papers/2305.02463) by Alex Nichol and Heewon Jun from [OpenAI](https://github.com/openai).
+The Shap-E model was proposed in [Shap-E: Generating Conditional 3D Implicit Functions](https://huggingface.co/papers/2305.02463) by Alex Nichol and Heewoo Jun from [OpenAI](https://github.com/openai).
 
 The abstract from the paper is:
 

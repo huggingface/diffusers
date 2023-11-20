@@ -15,7 +15,6 @@
 
 import argparse
 import gc
-import hashlib
 import itertools
 import logging
 import math
@@ -33,6 +32,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from packaging import version
 from PIL import Image
 from PIL.ImageOps import exif_transpose
@@ -49,8 +49,8 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin, text_encoder_lora_state_dict
-from diffusers.models.lora import LoRALinearLayer
+from diffusers.loaders import LoraLoaderMixin
+from diffusers.models.lora import LoRALinearLayer, text_encoder_lora_state_dict
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
@@ -648,7 +648,7 @@ def main(args):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 

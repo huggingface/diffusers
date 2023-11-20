@@ -425,10 +425,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if num_attention_heads is not None:
             raise ValueError(
-                "At the moment it is not possible to define the number of attention heads via `num_attention_heads`"
-                " because of a naming issue as described in"
-                " https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing"
-                " `num_attention_heads` will only be supported in diffusers v0.19."
+                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
             )
 
         # If `num_attention_heads` is not defined (which is the case for most models)
@@ -442,44 +439,37 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # Check inputs
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
-                "Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`:"
-                f" {down_block_types}. `up_block_types`: {up_block_types}."
+                f"Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
             )
 
         if len(block_out_channels) != len(down_block_types):
             raise ValueError(
-                "Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`:"
-                f" {block_out_channels}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(only_cross_attention, bool) and len(only_cross_attention) != len(down_block_types):
             raise ValueError(
-                "Must provide the same number of `only_cross_attention` as `down_block_types`."
-                f" `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `only_cross_attention` as `down_block_types`. `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
             raise ValueError(
-                "Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`:"
-                f" {num_attention_heads}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
             raise ValueError(
-                "Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`:"
-                f" {attention_head_dim}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
 
         if isinstance(cross_attention_dim, list) and len(cross_attention_dim) != len(down_block_types):
             raise ValueError(
-                "Must provide the same number of `cross_attention_dim` as `down_block_types`. `cross_attention_dim`:"
-                f" {cross_attention_dim}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `cross_attention_dim` as `down_block_types`. `cross_attention_dim`: {cross_attention_dim}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(layers_per_block, int) and len(layers_per_block) != len(down_block_types):
             raise ValueError(
-                "Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`:"
-                f" {layers_per_block}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
             )
         if isinstance(transformer_layers_per_block, list) and reverse_transformer_layers_per_block is None:
             for layer_number_per_block in transformer_layers_per_block:
@@ -897,8 +887,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             processor = AttnProcessor()
         else:
             raise ValueError(
-                "Cannot call `set_default_attn_processor` when attention processors are of type"
-                f" {next(iter(self.attn_processors.values()))}"
+                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
         self.set_attn_processor(processor, _remove_lora=True)
@@ -1166,8 +1155,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kandinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_image' which requires"
-                    " the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
 
             image_embs = added_cond_kwargs.get("image_embeds")
@@ -1177,14 +1165,12 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # SDXL - style
             if "text_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires"
-                    " the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
                 )
             text_embeds = added_cond_kwargs.get("text_embeds")
             if "time_ids" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires"
-                    " the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
                 )
             time_ids = added_cond_kwargs.get("time_ids")
             time_embeds = self.add_time_proj(time_ids.flatten())
@@ -1196,8 +1182,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the"
-                    " keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
             image_embs = added_cond_kwargs.get("image_embeds")
             aug_emb = self.add_embedding(image_embs)
@@ -1205,8 +1190,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs or "hint" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires"
-                    " the keyword arguments `image_embeds` and `hint` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires the keyword arguments `image_embeds` and `hint` to be passed in `added_cond_kwargs`"
                 )
             image_embs = added_cond_kwargs.get("image_embeds")
             hint = added_cond_kwargs.get("hint")
@@ -1224,8 +1208,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kadinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which"
-                    " requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
 
             image_embeds = added_cond_kwargs.get("image_embeds")
@@ -1234,8 +1217,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires"
-                    " the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
@@ -1264,10 +1246,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             deprecate(
                 "T2I should not use down_block_additional_residuals",
                 "1.3.0",
-                "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated         "
-                "               and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only"
-                " be used                        for ControlNet. Please make sure use"
-                " `down_intrablock_additional_residuals` instead. ",
+                "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated \
+                       and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
+                       for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
                 standard_warn=False,
             )
             down_intrablock_additional_residuals = down_block_additional_residuals
@@ -2102,8 +2083,7 @@ class UNetMidBlockFlat(nn.Module):
 
         if attention_head_dim is None:
             logger.warn(
-                "It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to"
-                f" `in_channels`: {in_channels}."
+                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
             )
             attention_head_dim = in_channels
 

@@ -221,9 +221,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
+            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -378,6 +376,12 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # LCM Training Steps Schedule
         lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * c - 1
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
+
+        if skipping_step < 1:
+            raise ValueError(
+                f"The combination of `original_steps x strength`: {original_steps} x {strength} is smaller than `num_inference_steps`: {num_inference_steps}. Make sure to either reduce `num_inference_steps` to a value smaller than {int(original_steps * strength)} or increase `strength` to a value higher than {float(num_inference_steps / original_steps)}."
+            )
+
         # LCM Inference Steps Schedule
         timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]
 
