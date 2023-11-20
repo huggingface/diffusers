@@ -1218,7 +1218,7 @@ class LoraLoaderMixin:
                         if lora_scale != 1.0:
                             module.scale_layer(lora_scale)
 
-                        # For BC with prevous PEFT versions, we need to check the signature
+                        # For BC with previous PEFT versions, we need to check the signature
                         # of the `merge` method to see if it supports the `adapter_names` argument.
                         supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
                         if "adapter_names" in supported_merge_kwargs:
