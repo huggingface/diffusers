@@ -35,6 +35,7 @@ class DDIMPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
             [`DDPMScheduler`], or [`DDIMScheduler`].
     """
+
     model_cpu_offload_seq = "unet"
 
     def __init__(self, unet, scheduler):
