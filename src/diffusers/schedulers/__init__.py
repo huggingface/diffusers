@@ -128,8 +128,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
-        from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .deprecated import KarrasVeScheduler, ScoreSdeVpScheduler
+        from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
         from .scheduling_ddim import DDIMScheduler
         from .scheduling_ddim_inverse import DDIMInverseScheduler
