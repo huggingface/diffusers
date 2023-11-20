@@ -20,22 +20,22 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import PipelineDepthInput, PipelineImageInput, VaeImageProcessorLDM3D
-from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
-from ...utils import (
+from diffusers.image_processor import PipelineDepthInput, PipelineImageInput, VaeImageProcessorLDM3D
+from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
+from diffusers.utils import (
     USE_PEFT_BACKEND,
     deprecate,
     logging,
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
-from .pipeline_stable_diffusion_ldm3d import LDM3DPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from diffusers.utils.torch_utils import randn_tensor
+from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_ldm3d import LDM3DPipelineOutput
+from diffusers.safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
