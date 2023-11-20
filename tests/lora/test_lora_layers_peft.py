@@ -1133,15 +1133,15 @@ class PeftLoraLoaderMixinTests:
             ouputs_all_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
             pipe.set_adapters(["adapter-1"])
-            ouputs_lora_1_unfused = pipe(**inputs, generator=torch.manual_seed(0)).images
+            ouputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
             pipe.fuse_lora(adapter_names=["adapter-1"])
 
             # Fusing should still keep the LoRA layers so outpout should remain the same
-            outputs_fused_lora_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+            outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
 
             self.assertTrue(
-                np.allclose(ouputs_lora_1_unfused, outputs_fused_lora_1, atol=1e-3, rtol=1e-3),
+                np.allclose(ouputs_lora_1, outputs_lora_1_fused, atol=1e-3, rtol=1e-3),
                 "Fused lora should not change the output",
             )
 
@@ -1149,9 +1149,9 @@ class PeftLoraLoaderMixinTests:
             pipe.fuse_lora(adapter_names=["adapter-2", "adapter-1"])
 
             # Fusing should still keep the LoRA layers
-            output_fused_lora_all = pipe(**inputs, generator=torch.manual_seed(0)).images
+            output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
             self.assertTrue(
-                np.allclose(output_fused_lora_all, ouputs_all_lora, atol=1e-3, rtol=1e-3),
+                np.allclose(output_all_lora_fused, ouputs_all_lora, atol=1e-3, rtol=1e-3),
                 "Fused lora should not change the output",
             )
 
