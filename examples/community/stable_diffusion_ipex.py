@@ -251,8 +251,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
         # optimize with ipex
         if dtype == torch.bfloat16:
-            self.unet = ipex.optimize(
-                self.unet.eval(), dtype=torch.bfloat16, inplace=True)
+            self.unet = ipex.optimize(self.unet.eval(), dtype=torch.bfloat16, inplace=True)
             self.vae.decoder = ipex.optimize(self.vae.decoder.eval(), dtype=torch.bfloat16, inplace=True)
             self.text_encoder = ipex.optimize(self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
             if self.safety_checker is not None:
