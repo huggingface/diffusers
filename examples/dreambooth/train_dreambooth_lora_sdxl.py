@@ -81,7 +81,7 @@ def save_model_card(
           parameters:
             negative_prompt: '-'
           output:
-            url: f"image_{i}.png"
+            url: "image_{i}.png"
         """
 
     yaml = f"""
