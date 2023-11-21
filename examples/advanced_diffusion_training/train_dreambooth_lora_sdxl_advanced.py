@@ -203,11 +203,7 @@ def parse_args(input_args=None):
         "--instance_data_dir",
         type=str,
         default=None,
-        help=(
-            "A folder containing the training data. Folder contents must follow the structure described in"
-            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
-            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
-        ),
+        help=("A folder containing the training data. "),
     )
 
     parser.add_argument(
@@ -482,9 +478,46 @@ def parse_args(input_args=None):
         "--optimizer",
         type=str,
         default="adamW",
-        help=(
-            'The optimizer type to use. Choose between ["AdamW", "prodigy"]'
-        ),
+        help=('The optimizer type to use. Choose between ["AdamW", "prodigy"]'),
+    )
+
+    parser.add_argument(
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes. Ignored if optimizer is not set to AdamW",
+    )
+
+    parser.add_argument(
+        "--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam and Prodigy optimizers."
+    )
+    parser.add_argument(
+        "--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam and Prodigy optimizers."
+    )
+    parser.add_argument(
+        "--prodigy_beta3",
+        type=float,
+        default=None,
+        help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
+        "uses the value of square root of beta2. Ignored if optimizer is adamW",
+    )
+    parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
+    parser.add_argument(
+        "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
+    )
+
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer and Prodigy optimizers.",
+    )
+
+    parser.add_argument(
+        "--prodigy_use_bias_correction",
+        type=bool,
+        default=True,
+        help="Turn on Adam's bias correction. True by default. Ignored if optimizer is adamW",
     )
     parser.add_argument(
         "--prodigy_safeguard_warmup",
