@@ -8,7 +8,7 @@ def text_encoder_lora_state_dict(text_encoder):
     deprecate(
         "text_encoder_load_state_dict in `models`",
         "0.27.0",
-        "`text_encoder_lora_state_dict` has been moved to `diffusers.models.lora`. Please make sure to import it via `from diffusers.models.lora import text_encoder_lora_state_dict`.",
+        "`text_encoder_lora_state_dict` is deprecated and will be removed in 0.27.0. Make sure to retrieve the weights using `get_peft_model`. See https://huggingface.co/docs/peft/v0.6.2/en/quicktour#peftmodel for more information.",
     )
     state_dict = {}
 
@@ -34,7 +34,7 @@ if is_transformers_available():
         deprecate(
             "text_encoder_attn_modules in `models`",
             "0.27.0",
-            "`text_encoder_lora_state_dict` has been moved to `diffusers.models.lora`. Please make sure to import it via `from diffusers.models.lora import text_encoder_lora_state_dict`.",
+            "`text_encoder_lora_state_dict` is deprecated and will be removed in 0.27.0. Make sure to retrieve the weights using `get_peft_model`. See https://huggingface.co/docs/peft/v0.6.2/en/quicktour#peftmodel for more information.",
         )
         from transformers import CLIPTextModel, CLIPTextModelWithProjection
 
@@ -67,7 +67,6 @@ if is_torch_available():
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
-        from ..models.lora import text_encoder_lora_state_dict
         from .single_file import FromOriginalControlnetMixin, FromOriginalVAEMixin
         from .unet import UNet2DConditionLoadersMixin
         from .utils import AttnProcsLayers

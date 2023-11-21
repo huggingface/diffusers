@@ -12,6 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+# IMPORTANT:                                                      #
+###################################################################
+# ----------------------------------------------------------------#
+# This file is deprecated and will be removed soon                #
+# (as soon as PEFT will become a required dependency for LoRA)    #
+# ----------------------------------------------------------------#
+###################################################################
+
 from typing import Optional, Tuple, Union
 
 import torch
@@ -55,25 +64,6 @@ def text_encoder_mlp_modules(text_encoder):
         raise ValueError(f"do not know how to get mlp modules for: {text_encoder.__class__.__name__}")
 
     return mlp_modules
-
-
-def text_encoder_lora_state_dict(text_encoder):
-    state_dict = {}
-
-    for name, module in text_encoder_attn_modules(text_encoder):
-        for k, v in module.q_proj.lora_linear_layer.state_dict().items():
-            state_dict[f"{name}.q_proj.lora_linear_layer.{k}"] = v
-
-        for k, v in module.k_proj.lora_linear_layer.state_dict().items():
-            state_dict[f"{name}.k_proj.lora_linear_layer.{k}"] = v
-
-        for k, v in module.v_proj.lora_linear_layer.state_dict().items():
-            state_dict[f"{name}.v_proj.lora_linear_layer.{k}"] = v
-
-        for k, v in module.out_proj.lora_linear_layer.state_dict().items():
-            state_dict[f"{name}.out_proj.lora_linear_layer.{k}"] = v
-
-    return state_dict
 
 
 def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
