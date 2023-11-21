@@ -58,6 +58,15 @@ def preprocess(image):
     return image
 
 
+def retrieve_latents(encoder_output):
+    if hasattr(encoder_output, "latent_dist"):
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for pixel-level image editing by following text instructions (based on Stable Diffusion).
@@ -320,7 +329,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             prompt_embeds.dtype,
             device,
             self.do_classifier_free_guidance,
-            generator,
         )
 
         height, width = image_latents.shape[-2:]
@@ -716,17 +724,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         if image.shape[1] == 4:
             image_latents = image
         else:
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
-
-            if isinstance(generator, list):
-                image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.mode() for i in range(batch_size)]
-                image_latents = torch.cat(image_latents, dim=0)
-            else:
-                image_latents = self.vae.encode(image).latent_dist.mode()
+            image_latents = retrieve_latents(self.vae.encode(image))
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size

@@ -109,6 +109,7 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self.use_tiling = False
 
         self.register_to_config(block_out_channels=up_block_out_channels)
+        self.register_to_config(force_upcast=False)
 
     @apply_forward_hook
     def encode(
