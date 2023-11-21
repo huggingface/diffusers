@@ -530,6 +530,7 @@ class LatentConsistencyModelPipeline(
         width: Optional[int] = None,
         num_inference_steps: int = 4,
         original_inference_steps: int = None,
+        timesteps: List[int] = None,
         guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -561,6 +562,10 @@ class LatentConsistencyModelPipeline(
                 we will draw `num_inference_steps` evenly spaced timesteps from as our final timestep schedule,
                 following the Skipping-Step method in the paper (see Section 4.3). If not set this will default to the
                 scheduler's `original_inference_steps` attribute.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
+                timesteps on the original LCM training/distillation timestep schedule are used. Must be in descending
+                order.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
@@ -668,8 +673,13 @@ class LatentConsistencyModelPipeline(
         )
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device, original_inference_steps=original_inference_steps)
-        timesteps = self.scheduler.timesteps
+        if timesteps is not None:
+            self.scheduler.set_timesteps(device=device, original_inference_steps=original_inference_steps, timesteps=timesteps)
+            timesteps = self.scheduler.timesteps
+            num_inference_steps = len(timesteps)
+        else:
+            self.scheduler.set_timesteps(num_inference_steps, device, original_inference_steps=original_inference_steps)
+            timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variable
         num_channels_latents = self.unet.config.in_channels
