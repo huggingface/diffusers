@@ -46,10 +46,10 @@ class FlaxControlNetOutput(BaseOutput):
 
 class FlaxControlNetConditioningEmbedding(nn.Module):
     conditioning_embedding_channels: int
-    block_out_channels: Tuple[int] = (16, 32, 96, 256)
+    block_out_channels: Tuple[int, ...] = (16, 32, 96, 256)
     dtype: jnp.dtype = jnp.float32
 
-    def setup(self):
+    def setup(self) -> None:
         self.conv_in = nn.Conv(
             self.block_out_channels[0],
             kernel_size=(3, 3),
@@ -87,7 +87,7 @@ class FlaxControlNetConditioningEmbedding(nn.Module):
             dtype=self.dtype,
         )
 
-    def __call__(self, conditioning):
+    def __call__(self, conditioning: jnp.ndarray) -> jnp.ndarray:
         embedding = self.conv_in(conditioning)
         embedding = nn.silu(embedding)
 
@@ -146,19 +146,20 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         conditioning_embedding_out_channels (`tuple`, *optional*, defaults to `(16, 32, 96, 256)`):
             The tuple of output channel for each block in the `conditioning_embedding` layer.
     """
+
     sample_size: int = 32
     in_channels: int = 4
-    down_block_types: Tuple[str] = (
+    down_block_types: Tuple[str, ...] = (
         "CrossAttnDownBlock2D",
         "CrossAttnDownBlock2D",
         "CrossAttnDownBlock2D",
         "DownBlock2D",
     )
-    only_cross_attention: Union[bool, Tuple[bool]] = False
-    block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
+    only_cross_attention: Union[bool, Tuple[bool, ...]] = False
+    block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
-    attention_head_dim: Union[int, Tuple[int]] = 8
-    num_attention_heads: Optional[Union[int, Tuple[int]]] = None
+    attention_head_dim: Union[int, Tuple[int, ...]] = 8
+    num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -166,7 +167,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
     flip_sin_to_cos: bool = True
     freq_shift: int = 0
     controlnet_conditioning_channel_order: str = "rgb"
-    conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256)
+    conditioning_embedding_out_channels: Tuple[int, ...] = (16, 32, 96, 256)
 
     def init_weights(self, rng: jax.Array) -> FrozenDict:
         # init input tensors
@@ -182,7 +183,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         return self.init(rngs, sample, timesteps, encoder_hidden_states, controlnet_cond)["params"]
 
-    def setup(self):
+    def setup(self) -> None:
         block_out_channels = self.block_out_channels
         time_embed_dim = block_out_channels[0] * 4
 
@@ -312,21 +313,21 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
     def __call__(
         self,
-        sample,
-        timesteps,
-        encoder_hidden_states,
-        controlnet_cond,
+        sample: jnp.ndarray,
+        timesteps: Union[jnp.ndarray, float, int],
+        encoder_hidden_states: jnp.ndarray,
+        controlnet_cond: jnp.ndarray,
         conditioning_scale: float = 1.0,
         return_dict: bool = True,
         train: bool = False,
-    ) -> Union[FlaxControlNetOutput, Tuple]:
+    ) -> Union[FlaxControlNetOutput, Tuple[Tuple[jnp.ndarray, ...], jnp.ndarray]]:
         r"""
         Args:
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
             encoder_hidden_states (`jnp.ndarray`): (batch_size, sequence_length, hidden_size) encoder hidden states
             controlnet_cond (`jnp.ndarray`): (batch, channel, height, width) the conditional input tensor
-            conditioning_scale: (`float`) the scale factor for controlnet outputs
+            conditioning_scale (`float`, *optional*, defaults to `1.0`): the scale factor for controlnet outputs
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
                 plain tuple.
@@ -335,8 +336,8 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
         Returns:
             [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] or `tuple`:
-            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+                [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a
+                `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         channel_order = self.controlnet_conditioning_channel_order
         if channel_order == "bgr":
