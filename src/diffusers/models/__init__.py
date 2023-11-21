@@ -38,6 +38,8 @@ if is_torch_available():
     _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
     _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
     _import_structure["vq_model"] = ["VQModel"]
+    _import_structure["unet_kandi3"] = ["UNetKandi3"]
+
 
 if is_flax_available():
     _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]
@@ -72,6 +74,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .vae_flax import FlaxAutoencoderKL
 
 else:
+
     import sys
 
     sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
