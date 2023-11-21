@@ -18,8 +18,10 @@ from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
 import torch
+import torch.nn.functional as F
 from torch import nn
 
+from ..models.embeddings import ImageProjection
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     DIFFUSERS_CACHE,
@@ -661,5 +663,73 @@ class UNet2DConditionLoadersMixin:
             # Pop also the corresponding adapter from the config
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
+
+    def _load_ip_adapter_weights(self, state_dict):
+        from ..models.attention_processor import (
+            AttnProcessor,
+            AttnProcessor2_0,
+            IPAdapterAttnProcessor,
+            IPAdapterAttnProcessor2_0,
+        )
+
+        # set ip-adapter cross-attention processors & load state_dict
+        attn_procs = {}
+        key_id = 1
+        for name in self.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = self.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(self.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = self.config.block_out_channels[block_id]
+            if cross_attention_dim is None or "motion_modules" in name:
+                attn_processor_class = (
+                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                )
+                attn_procs[name] = attn_processor_class()
+            else:
+                attn_processor_class = (
+                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
+                )
+                attn_procs[name] = attn_processor_class(
+                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
+                ).to(dtype=self.dtype, device=self.device)
+
+                value_dict = {}
+                for k, w in attn_procs[name].state_dict().items():
+                    value_dict.update({f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]})
+
+                attn_procs[name].load_state_dict(value_dict)
+                key_id += 2
+
+        self.set_attn_processor(attn_procs)
+
+        # create image projection layers.
+        clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
+        cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
+
+        image_projection = ImageProjection(
+            cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
+        )
+        image_projection.to(dtype=self.dtype, device=self.device)
+
+        # load image projection layer weights
+        image_proj_state_dict = {}
+        image_proj_state_dict.update(
+            {
+                "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
+                "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
+                "norm.weight": state_dict["image_proj"]["norm.weight"],
+                "norm.bias": state_dict["image_proj"]["norm.bias"],
+            }
+        )
+
+        image_projection.load_state_dict(image_proj_state_dict)
+
+        self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
+        self.config.encoder_hid_dim_type = "ip_image_proj"
 
     delete_adapter_layers
