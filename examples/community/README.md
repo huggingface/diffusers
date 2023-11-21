@@ -2052,7 +2052,7 @@ import torch
 from PIL import Image
 from io import BytesIO
 
-from diffusers import Diffusionpipeline
+from diffusers import DiffusionPipeline
 
 # load the pipeline
 # make sure you're logged in with `huggingface-cli login`
