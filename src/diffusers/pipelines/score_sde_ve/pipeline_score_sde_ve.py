@@ -35,6 +35,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         scheduler ([`ScoreSdeVeScheduler`]):
             A `ScoreSdeVeScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
+
     unet: UNet2DModel
     scheduler: ScoreSdeVeScheduler
 

@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import hashlib
 import itertools
 import json
 import logging
@@ -35,6 +34,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import HfApi, create_repo
+from huggingface_hub.utils import insecure_hashlib
 from packaging import version
 from PIL import Image
 from torch.utils.data import Dataset
@@ -62,7 +62,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.23.0.dev0")
+check_min_version("0.24.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -760,7 +760,7 @@ def main(args):
                         images = pipeline(example["prompt"]).images
 
                         for i, image in enumerate(images):
-                            hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                            hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                             image_filename = (
                                 class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                             )

@@ -10,13 +10,12 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-
 # ONNX Runtime
 
 🤗 [Optimum](https://github.com/huggingface/optimum) provides a Stable Diffusion pipeline compatible with ONNX Runtime. You'll need to install 🤗 Optimum with the following command for ONNX Runtime support:
 
 ```bash
-pip install optimum["onnxruntime"]
+pip install -q optimum["onnxruntime"]
 ```
 
 This guide will show you how to use the Stable Diffusion and Stable Diffusion XL (SDXL) pipelines with ONNX Runtime.
@@ -50,7 +49,7 @@ optimum-cli export onnx --model runwayml/stable-diffusion-v1-5 sd_v15_onnx/
 
 Then to perform inference (you don't have to specify `export=True` again):
 
-```python 
+```python
 from optimum.onnxruntime import ORTStableDiffusionPipeline
 
 model_id = "sd_v15_onnx"
