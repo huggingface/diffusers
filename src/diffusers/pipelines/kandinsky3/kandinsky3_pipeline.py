@@ -310,7 +310,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt: Union[str, List[str]] = None,
         num_inference_steps: int = 100,
         timesteps: List[int] = None,
-        guidance_scale: float = 7.0,
+        guidance_scale: float = 3.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         height: Optional[int] = None,
@@ -324,7 +324,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         latents=None,
-        cut_context=False
+        cut_context=True
     ):
         """
         Function invoked when calling the pipeline for generation.
