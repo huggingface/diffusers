@@ -92,6 +92,7 @@ else:
             "UNet3DConditionModel",
             "UNetMotionModel",
             "VQModel",
+            'UNetKandi3'
         ]
     )
 
@@ -290,6 +291,8 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
+            "KandinskyV3Pipeline",
+            "KandinskyV3Img2ImgPipeline",
         ]
     )
 
