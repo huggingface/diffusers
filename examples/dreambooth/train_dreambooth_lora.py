@@ -16,7 +16,6 @@
 import argparse
 import copy
 import gc
-import hashlib
 import itertools
 import logging
 import math
@@ -34,6 +33,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from packaging import version
 from PIL import Image
 from PIL.ImageOps import exif_transpose
@@ -735,7 +735,7 @@ def main(args):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 

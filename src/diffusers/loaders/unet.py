@@ -53,6 +53,10 @@ CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensor
 
 
 class UNet2DConditionLoadersMixin:
+    """
+    Load LoRA layers into a [`UNet2DCondtionModel`].
+    """
+
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
 
@@ -107,6 +111,19 @@ class UNet2DConditionLoadersMixin:
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
                 information.
 
+        Example:
+
+        ```py
+        from diffusers import AutoPipelineForText2Image
+        import torch
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.unet.load_attn_procs(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
+        )
+        ```
         """
         from ..models.attention_processor import CustomDiffusionAttnProcessor
         from ..models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
@@ -393,12 +410,12 @@ class UNet2DConditionLoadersMixin:
         **kwargs,
     ):
         r"""
-        Save an attention processor to a directory so that it can be reloaded using the
+        Save attention processor layers to a directory so that it can be reloaded with the
         [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`] method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
-                Directory to save an attention processor to. Will be created if it doesn't exist.
+                Directory to save an attention processor to (will be created if it doesn't exist).
             is_main_process (`bool`, *optional*, defaults to `True`):
                 Whether the process calling this is the main process or not. Useful during distributed training and you
                 need to call this function on all processes. In this case, set `is_main_process=True` only on the main
@@ -408,7 +425,21 @@ class UNet2DConditionLoadersMixin:
                 replace `torch.save` with another method. Can be configured with the environment variable
                 `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `True`):
-                Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
+                Whether to save the model using `safetensors` or with `pickle`.
+
+        Example:
+
+        ```py
+        import torch
+        from diffusers import DiffusionPipeline
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            torch_dtype=torch.float16,
+        ).to("cuda")
+        pipeline.unet.load_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
+        pipeline.unet.save_attn_procs("path-to-save-model", weight_name="pytorch_custom_diffusion_weights.bin")
+        ```
         """
         from ..models.attention_processor import (
             CustomDiffusionAttnProcessor,
@@ -507,14 +538,30 @@ class UNet2DConditionLoadersMixin:
         weights: Optional[Union[List[float], float]] = None,
     ):
         """
-        Sets the adapter layers for the unet.
+        Set the currently active adapters for use in the UNet.
 
         Args:
             adapter_names (`List[str]` or `str`):
                 The names of the adapters to use.
-            weights (`Union[List[float], float]`, *optional*):
+            adapter_weights (`Union[List[float], float]`, *optional*):
                 The adapter(s) weights to use with the UNet. If `None`, the weights are set to `1.0` for all the
                 adapters.
+
+        Example:
+
+        ```py
+        from diffusers import AutoPipelineForText2Image
+        import torch
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
+        )
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.set_adapters(["cinematic", "pixel"], adapter_weights=[0.5, 0.5])
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `set_adapters()`.")
@@ -535,7 +582,22 @@ class UNet2DConditionLoadersMixin:
 
     def disable_lora(self):
         """
-        Disables the active LoRA layers for the unet.
+        Disable the UNet's active LoRA layers.
+
+        Example:
+
+        ```py
+        from diffusers import AutoPipelineForText2Image
+        import torch
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
+        )
+        pipeline.disable_lora()
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -543,7 +605,22 @@ class UNet2DConditionLoadersMixin:
 
     def enable_lora(self):
         """
-        Enables the active LoRA layers for the unet.
+        Enable the UNet's active LoRA layers.
+
+        Example:
+
+        ```py
+        from diffusers import AutoPipelineForText2Image
+        import torch
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_name="cinematic"
+        )
+        pipeline.enable_lora()
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
@@ -551,10 +628,26 @@ class UNet2DConditionLoadersMixin:
 
     def delete_adapters(self, adapter_names: Union[List[str], str]):
         """
+        Delete an adapter's LoRA layers from the UNet.
+
         Args:
-        Deletes the LoRA layers of `adapter_name` for the unet.
             adapter_names (`Union[List[str], str]`):
-                The names of the adapter to delete. Can be a single string or a list of strings
+                The names (single string or list of strings) of the adapter to delete.
+
+        Example:
+
+        ```py
+        from diffusers import AutoPipelineForText2Image
+        import torch
+
+        pipeline = AutoPipelineForText2Image.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights(
+            "jbilcke-hf/sdxl-cinematic-1", weight_name="pytorch_lora_weights.safetensors", adapter_names="cinematic"
+        )
+        pipeline.delete_adapters("cinematic")
+        ```
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")

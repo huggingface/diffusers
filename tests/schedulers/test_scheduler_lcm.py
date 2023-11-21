@@ -84,7 +84,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
 
     def test_inference_steps(self):
         # Hardcoded for now
-        for t, num_inference_steps in zip([99, 39, 19], [10, 25, 50]):
+        for t, num_inference_steps in zip([99, 39, 39, 19], [10, 25, 26, 50]):
             self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
 
     # Override test_add_noise_device because the hardcoded num_inference_steps of 100 doesn't work
