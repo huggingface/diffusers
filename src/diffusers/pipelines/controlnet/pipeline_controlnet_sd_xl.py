@@ -171,7 +171,9 @@ class StableDiffusionXLControlNetPipeline(
             controlnet=controlnet,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        out_channels = getattr(self.vae.config, "block_out_channels", self.vae.config.decoder_block_out_channels)
+        self.vae_scale_factor = 2 ** (len(out_channels) - 1)
+
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False

@@ -76,7 +76,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             vae=vae,
             scheduler=scheduler,
         )
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(getattr(self.vae.config, 'block_out_channels', self.vae.config.decoder_block_out_channels)) - 1)
 
     @torch.no_grad()
     def image_variation(
