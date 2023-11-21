@@ -83,7 +83,7 @@ def get_assym_autoencoder_kl_config(block_out_channels=None, norm_num_groups=Non
 
 
 def get_autoencoder_tiny_config(block_out_channels=None):
-    block_out_channels = len(block_out_channels) * [32]
+    block_out_channels = (len(block_out_channels) * [32]) if block_out_channels is not None else [32, 32]
     init_dict = {
         "in_channels": 3,
         "out_channels": 3,
