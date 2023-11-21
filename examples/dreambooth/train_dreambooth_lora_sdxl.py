@@ -78,10 +78,9 @@ def save_model_card(
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"""
         - text: '{validation_prompt if validation_prompt else ' ' }'
-          parameters:
-            negative_prompt: '-'
           output:
-            url: "image_{i}.png"
+            url: >-
+                "image_{i}.png"
         """
 
     yaml = f"""
