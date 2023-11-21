@@ -177,7 +177,6 @@ class StableDiffusionXLImg2ImgPipeline(
         "negative_pooled_prompt_embeds",
         "add_neg_time_ids",
     ]
-    _interrupt = False
 
     def __init__(
         self,
