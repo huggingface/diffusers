@@ -459,6 +459,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet3DConditionModel,
             UNetMotionModel,
             VQModel,
+            UNetKandi3,
         )
         from .optimization import (
             get_constant_schedule,
