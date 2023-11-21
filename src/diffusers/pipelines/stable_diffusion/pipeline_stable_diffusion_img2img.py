@@ -701,6 +701,7 @@ class StableDiffusionImg2ImgPipeline(
         image: PipelineImageInput = None,
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
+        timesteps: List[int] = None,
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -737,6 +738,10 @@ class StableDiffusionImg2ImgPipeline(
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
@@ -853,7 +858,18 @@ class StableDiffusionImg2ImgPipeline(
         image = self.image_processor.preprocess(image)
 
         # 5. set timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        if timesteps is not None:
+            accepts_timesteps = "timesteps" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
+            if not accepts_timesteps:
+                raise ValueError(
+                    f"The current scheduler class {self.scheduler.__class__}'s `set_timesteps` does not support custom"
+                    f" timestep schedules. Please check whether you are using the correct scheduler."
+                )
+            self.scheduler.set_timesteps(timesteps=timesteps, device=device)
+            timesteps = self.scheduler.timesteps
+            num_inference_steps = len(timesteps)
+        else:
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
