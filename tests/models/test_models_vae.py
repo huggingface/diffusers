@@ -46,6 +46,78 @@ from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 enable_full_determinism()
 
 
+def get_autoencoder_kl_config():
+    init_dict = {
+        "block_out_channels": [32, 64],
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
+        "latent_channels": 4,
+    }
+    return init_dict
+
+
+def get_assym_autoencoder_kl_config():
+    init_dict = {
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "down_block_out_channels": [32, 64],
+        "layers_per_down_block": 1,
+        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
+        "up_block_out_channels": [32, 64],
+        "layers_per_up_block": 1,
+        "act_fn": "silu",
+        "latent_channels": 4,
+        "norm_num_groups": 32,
+        "sample_size": 32,
+        "scaling_factor": 0.18215,
+    }
+    return init_dict
+
+
+def get_autoencoder_tiny_config():
+    init_dict = {
+        "in_channels": 3,
+        "out_channels": 3,
+        "encoder_block_out_channels": (32, 32),
+        "decoder_block_out_channels": (32, 32),
+        "num_encoder_blocks": (1, 2),
+        "num_decoder_blocks": (2, 1),
+    }
+    return init_dict
+
+
+def get_consistency_vae_config():
+    return {
+        "encoder_block_out_channels": [32, 64],
+        "encoder_in_channels": 3,
+        "encoder_out_channels": 4,
+        "encoder_down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "decoder_add_attention": False,
+        "decoder_block_out_channels": [32, 64],
+        "decoder_down_block_types": [
+            "ResnetDownsampleBlock2D",
+            "ResnetDownsampleBlock2D",
+        ],
+        "decoder_downsample_padding": 1,
+        "decoder_in_channels": 7,
+        "decoder_layers_per_block": 1,
+        "decoder_norm_eps": 1e-05,
+        "decoder_norm_num_groups": 32,
+        "decoder_num_train_timesteps": 1024,
+        "decoder_out_channels": 6,
+        "decoder_resnet_time_scale_shift": "scale_shift",
+        "decoder_time_embedding_type": "learned",
+        "decoder_up_block_types": [
+            "ResnetUpsampleBlock2D",
+            "ResnetUpsampleBlock2D",
+        ],
+        "scaling_factor": 1,
+        "latent_channels": 4,
+    }
+
 class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
     main_input_name = "sample"
@@ -70,14 +142,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "block_out_channels": [32, 64],
-            "in_channels": 3,
-            "out_channels": 3,
-            "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            "latent_channels": 4,
-        }
+        inputs_dict = get_autoencoder_kl_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
@@ -214,21 +279,7 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "in_channels": 3,
-            "out_channels": 3,
-            "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            "down_block_out_channels": [32, 64],
-            "layers_per_down_block": 1,
-            "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            "up_block_out_channels": [32, 64],
-            "layers_per_up_block": 1,
-            "act_fn": "silu",
-            "latent_channels": 4,
-            "norm_num_groups": 32,
-            "sample_size": 32,
-            "scaling_factor": 0.18215,
-        }
+        inputs_dict = get_assym_autoencoder_kl_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
@@ -263,14 +314,7 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "in_channels": 3,
-            "out_channels": 3,
-            "encoder_block_out_channels": (32, 32),
-            "decoder_block_out_channels": (32, 32),
-            "num_encoder_blocks": (1, 2),
-            "num_decoder_blocks": (2, 1),
-        }
+        init_dict = get_autoencoder_tiny_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
@@ -302,33 +346,7 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def init_dict(self):
-        return {
-            "encoder_block_out_channels": [32, 64],
-            "encoder_in_channels": 3,
-            "encoder_out_channels": 4,
-            "encoder_down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            "decoder_add_attention": False,
-            "decoder_block_out_channels": [32, 64],
-            "decoder_down_block_types": [
-                "ResnetDownsampleBlock2D",
-                "ResnetDownsampleBlock2D",
-            ],
-            "decoder_downsample_padding": 1,
-            "decoder_in_channels": 7,
-            "decoder_layers_per_block": 1,
-            "decoder_norm_eps": 1e-05,
-            "decoder_norm_num_groups": 32,
-            "decoder_num_train_timesteps": 1024,
-            "decoder_out_channels": 6,
-            "decoder_resnet_time_scale_shift": "scale_shift",
-            "decoder_time_embedding_type": "learned",
-            "decoder_up_block_types": [
-                "ResnetUpsampleBlock2D",
-                "ResnetUpsampleBlock2D",
-            ],
-            "scaling_factor": 1,
-            "latent_channels": 4,
-        }
+        return get_consistency_vae_config()
 
     def prepare_init_args_and_inputs_for_common(self):
         return self.init_dict, self.inputs_dict()

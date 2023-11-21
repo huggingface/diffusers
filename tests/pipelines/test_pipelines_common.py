@@ -17,6 +17,12 @@ from huggingface_hub import delete_repo
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
+from diffusers import (
+    AsymmetricAutoencoderKL,
+    AutoencoderKL,
+    AutoencoderTiny,
+    ConsistencyDecoderVAE,
+)
 from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -29,6 +35,7 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
+from ..models.test_models_vae import AutoencoderKLTests, get_consistency_vae_config, get_autoencoder_kl_config, get_assym_autoencoder_kl_config, get_autoencoder_tiny_config
 
 
 def to_np(tensor):
@@ -170,6 +177,24 @@ class PipelineLatentTesterMixin:
 
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
+
+    def test_test_multi_vae(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        vae_classes = [AutoencoderKL, AsymmetricAutoencoderKL, AutoencoderTiny, ConsistencyDecoderVAE]
+        configs = [get_autoencoder_kl_config(), get_assym_autoencoder_kl_config(), get_autoencoder_tiny_config(), get_consistency_vae_config()]
+
+        out_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
+
+        for vae_cls, config in zip(vae_classes, configs):
+            vae = vae_cls(config)
+            pipe.vae = vae
+            out_vae_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
+
+            assert out_vae_np.shape == out_np.shape
 
 
 @require_torch
