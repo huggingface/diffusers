@@ -28,6 +28,8 @@ from packaging import version
 
 from .import_utils import (
     BACKENDS_MAPPING,
+    _is_torch_fp16_available,
+    _is_torch_fp64_available,
     is_compel_available,
     is_flax_available,
     is_note_seq_available,
@@ -35,8 +37,6 @@ from .import_utils import (
     is_opencv_available,
     is_peft_available,
     is_torch_available,
-    is_torch_fp16_available,
-    is_torch_fp64_available,
     is_torch_version,
     is_torchsde_available,
     is_transformers_available,
@@ -233,14 +233,14 @@ def require_torch_accelerator(test_case):
 
 def require_torch_accelerator_with_fp16(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP16 data type."""
-    return unittest.skipUnless(is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(
+    return unittest.skipUnless(_is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(
         test_case
     )
 
 
 def require_torch_accelerator_with_fp64(test_case):
     """Decorator marking a test that requires an accelerator with support for the FP64 data type."""
-    return unittest.skipUnless(is_torch_fp64_available(torch_device), "test requires accelerator with fp64 support")(
+    return unittest.skipUnless(_is_torch_fp64_available(torch_device), "test requires accelerator with fp64 support")(
         test_case
     )
 
