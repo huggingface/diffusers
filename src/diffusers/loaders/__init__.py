@@ -8,7 +8,7 @@ def text_encoder_lora_state_dict(text_encoder):
     deprecate(
         "text_encoder_load_state_dict in `models`",
         "0.27.0",
-        "`text_encoder_lora_state_dict` is deprecated and will be removed in 0.27.0. Make sure to retrieve the weights with PEFT.",
+        "`text_encoder_lora_state_dict` is deprecated and will be removed in 0.27.0. Make sure to retrieve the weights using `get_peft_model`. See https://huggingface.co/docs/peft/v0.6.2/en/quicktour#peftmodel for more information.",
     )
     state_dict = {}
 
@@ -34,7 +34,7 @@ if is_transformers_available():
         deprecate(
             "text_encoder_attn_modules in `models`",
             "0.27.0",
-            "`text_encoder_lora_state_dict` is deprecated and will be removed in 0.27.0. Make sure to retrieve the weights with PEFT.",
+            "`text_encoder_lora_state_dict` is deprecated and will be removed in 0.27.0. Make sure to retrieve the weights using `get_peft_model`. See https://huggingface.co/docs/peft/v0.6.2/en/quicktour#peftmodel for more information.",
         )
         from transformers import CLIPTextModel, CLIPTextModelWithProjection
 

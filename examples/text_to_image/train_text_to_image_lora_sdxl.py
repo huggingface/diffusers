@@ -63,6 +63,7 @@ check_min_version("0.24.0.dev0")
 logger = get_logger(__name__)
 
 
+# TODO: This function should be removed once training scripts are rewritten in PEFT
 def text_encoder_lora_state_dict(text_encoder):
     state_dict = {}
 
