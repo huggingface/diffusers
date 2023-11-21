@@ -158,7 +158,9 @@ class StableDiffusionLDM3DPipeline(
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
-        self.vae_scale_factor = 2 ** (len(getattr(self.vae.config, 'block_out_channels', self.vae.config.decoder_block_out_channels)) - 1)
+        self.vae_scale_factor = 2 ** (
+            len(getattr(self.vae.config, "block_out_channels", self.vae.config.decoder_block_out_channels)) - 1
+        )
         self.image_processor = VaeImageProcessorLDM3D(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 

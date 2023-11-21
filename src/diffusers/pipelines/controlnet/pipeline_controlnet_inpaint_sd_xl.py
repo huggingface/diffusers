@@ -199,7 +199,9 @@ class StableDiffusionXLControlNetInpaintPipeline(
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.register_to_config(requires_aesthetics_score=requires_aesthetics_score)
-        self.vae_scale_factor = 2 ** (len(getattr(self.vae.config, 'block_out_channels', self.vae.config.decoder_block_out_channels)) - 1)
+        self.vae_scale_factor = 2 ** (
+            len(getattr(self.vae.config, "block_out_channels", self.vae.config.decoder_block_out_channels)) - 1
+        )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True

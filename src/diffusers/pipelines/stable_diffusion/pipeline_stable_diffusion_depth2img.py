@@ -141,7 +141,9 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
             depth_estimator=depth_estimator,
             feature_extractor=feature_extractor,
         )
-        self.vae_scale_factor = 2 ** (len(getattr(self.vae.config, 'block_out_channels', self.vae.config.decoder_block_out_channels)) - 1)
+        self.vae_scale_factor = 2 ** (
+            len(getattr(self.vae.config, "block_out_channels", self.vae.config.decoder_block_out_channels)) - 1
+        )
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
