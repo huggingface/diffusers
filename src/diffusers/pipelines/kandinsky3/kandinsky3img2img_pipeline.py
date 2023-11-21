@@ -487,7 +487,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         strength: float = 0.3,
         num_inference_steps: int = 100,
         timesteps: List[int] = None,
-        guidance_scale: float = 7.0,
+        guidance_scale: float = 3.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         height: Optional[int] = None,
@@ -501,7 +501,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         latents=None,
-        cut_context=False
+        cut_context=True
     ):
 
         # 1. Check inputs. Raise error if not correct
