@@ -367,9 +367,7 @@ class AltDiffusionImg2ImgPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device),
-                    attention_mask=attention_mask,
-                    output_hidden_states=True,
+                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -557,16 +555,7 @@ class AltDiffusionImg2ImgPipeline(
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(
-        self,
-        image,
-        timestep,
-        batch_size,
-        num_images_per_prompt,
-        dtype,
-        device,
-        generator=None,
-    ):
+    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -605,12 +594,7 @@ class AltDiffusionImg2ImgPipeline(
                 " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
                 " your script to pass as many initial images as text prompts to suppress this warning."
             )
-            deprecate(
-                "len(prompt) != len(image)",
-                "1.0.0",
-                deprecation_message,
-                standard_warn=False,
-            )
+            deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
             additional_image_per_prompt = batch_size // init_latents.shape[0]
             init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
         elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
@@ -705,10 +689,6 @@ class AltDiffusionImg2ImgPipeline(
     @property
     def num_timesteps(self):
         return self._num_timesteps
-
-    @property
-    def interrupt(self):
-        return self._interrupt
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -834,7 +814,6 @@ class AltDiffusionImg2ImgPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
-        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -902,9 +881,6 @@ class AltDiffusionImg2ImgPipeline(
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
-
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -945,11 +921,9 @@ class AltDiffusionImg2ImgPipeline(
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor,
-                return_dict=False,
-                generator=generator,
-            )[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
+                0
+            ]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents

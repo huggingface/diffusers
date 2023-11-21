@@ -496,22 +496,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        latents=None,
-    ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -593,12 +578,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
     def _get_add_time_ids(
-        self,
-        original_size,
-        crops_coords_top_left,
-        target_size,
-        dtype,
-        text_encoder_projection_dim=None,
+        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 

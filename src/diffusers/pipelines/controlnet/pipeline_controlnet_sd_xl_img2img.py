@@ -506,12 +506,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 # Retrieve the original scale by scaling back the LoRA layers
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
-        return (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        )
+        return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -789,15 +784,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl_img2img.StableDiffusionXLImg2ImgPipeline.prepare_latents
     def prepare_latents(
-        self,
-        image,
-        timestep,
-        batch_size,
-        num_images_per_prompt,
-        dtype,
-        device,
-        generator=None,
-        add_noise=True,
+        self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None, add_noise=True
     ):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(

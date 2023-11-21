@@ -502,9 +502,7 @@ class StableDiffusionControlNetInpaintPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device),
-                    attention_mask=attention_mask,
-                    output_hidden_states=True,
+                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -870,12 +868,7 @@ class StableDiffusionControlNetInpaintPipeline(
         return_noise=False,
         return_image_latents=False,
     ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -919,16 +912,7 @@ class StableDiffusionControlNetInpaintPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
-        self,
-        mask,
-        masked_image,
-        batch_size,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        do_classifier_free_guidance,
+        self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
