@@ -804,8 +804,8 @@ class DownloadTests(unittest.TestCase):
 
         num_tokens = len(pipe1.tokenizer)
 
-        pipe1.load_textual_inversion([ten1, ten2], token=token1)
-        pipe1.load_textual_inversion([ten1, ten2], token=token2)
+        pipe1.load_textual_inversion(ten1, token=token1)
+        pipe1.load_textual_inversion(ten2, token=token2)
         emb1 = pipe1.text_encoder.get_input_embeddings().weight
 
         pipe2 = StableDiffusionPipeline.from_pretrained(
@@ -815,19 +815,30 @@ class DownloadTests(unittest.TestCase):
         pipe2.load_textual_inversion([ten1, ten2], token=[token1, token2])
         emb2 = pipe2.text_encoder.get_input_embeddings().weight
 
-        assert len(pipe1.tokenizer) == len(pipe2.tokenizer) == num_tokens + 2
+        pipe3 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe3 = pipe3.to(torch_device)
+        pipe3.load_textual_inversion(torch.stack([ten1, ten2], dim=0), token=[token1, token2])
+        emb3 = pipe3.text_encoder.get_input_embeddings().weight
+
+        assert len(pipe1.tokenizer) == len(pipe2.tokenizer) == len(pipe3.tokenizer) == num_tokens + 2
         assert (
             pipe1.tokenizer.convert_tokens_to_ids(token1)
             == pipe2.tokenizer.convert_tokens_to_ids(token1)
+            == pipe3.tokenizer.convert_tokens_to_ids(token1)
             == num_tokens
         )
         assert (
             pipe1.tokenizer.convert_tokens_to_ids(token2)
             == pipe2.tokenizer.convert_tokens_to_ids(token2)
+            == pipe3.tokenizer.convert_tokens_to_ids(token2)
             == num_tokens + 1
         )
-        assert emb1[num_tokens].sum().item() == emb2[num_tokens].sum().item()
-        assert emb1[num_tokens + 1].sum().item() == emb2[num_tokens + 1].sum().item()
+        assert emb1[num_tokens].sum().item() == emb2[num_tokens].sum().item() == emb3[num_tokens].sum().item()
+        assert (
+            emb1[num_tokens + 1].sum().item() == emb2[num_tokens + 1].sum().item() == emb3[num_tokens + 1].sum().item()
+        )
 
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
