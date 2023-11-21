@@ -95,6 +95,7 @@ class ConfigMixin:
           should only have a `kwargs` argument if at least one argument is deprecated (should be overridden by
           subclass).
     """
+
     config_name = None
     ignore_for_config = []
     has_compatibles = False

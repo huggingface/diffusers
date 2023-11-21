@@ -252,10 +252,7 @@ class AltDiffusionImg2ImgPipeline(
         lora_scale: Optional[float] = None,
         **kwargs,
     ):
-        deprecation_message = (
-            "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()`"
-            " instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
-        )
+        deprecation_message = "`_encode_prompt()` is deprecated and it will be removed in a future version. Use `encode_prompt()` instead. Also, be aware that the output format changed from a concatenated tensor to a tuple."
         deprecate("_encode_prompt()", "1.0.0", deprecation_message, standard_warn=False)
 
         prompt_embeds_tuple = self.encode_prompt(
@@ -471,10 +468,7 @@ class AltDiffusionImg2ImgPipeline(
         return image, has_nsfw_concept
 
     def decode_latents(self, latents):
-        deprecation_message = (
-            "The decode_latents method is deprecated and will be removed in 1.0.0. Please use"
-            " VaeImageProcessor.postprocess(...) instead"
-        )
+        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
         deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
 
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -524,8 +518,7 @@ class AltDiffusionImg2ImgPipeline(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found"
-                f" {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -578,8 +571,8 @@ class AltDiffusionImg2ImgPipeline(
         else:
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective"
-                    f" batch size of {batch_size}. Make sure the batch size matches the length of the generators."
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
                 )
 
             elif isinstance(generator, list):
@@ -798,15 +791,13 @@ class AltDiffusionImg2ImgPipeline(
             deprecate(
                 "callback",
                 "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider use"
-                " `callback_on_step_end`",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
         if callback_steps is not None:
             deprecate(
                 "callback_steps",
                 "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use"
-                " `callback_on_step_end`",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
 
         # 1. Check inputs. Raise error if not correct

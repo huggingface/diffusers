@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import math
 import os
 from pathlib import Path
@@ -16,6 +15,7 @@ from colossalai.nn.parallel.utils import get_static_torch_model
 from colossalai.utils import get_current_device
 from colossalai.utils.model.colo_init_context import ColoInitContext
 from huggingface_hub import create_repo, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
@@ -394,7 +394,7 @@ def main(args):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
@@ -464,9 +464,7 @@ def main(args):
     unet = gemini_zero_dpp(unet, args.placement)
 
     # config optimizer for colossalai zero
-    optimizer = GeminiAdamOptimizer(
-        unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm
-    )
+    optimizer = GeminiAdamOptimizer(unet, lr=args.learning_rate, initial_scale=2**5, clipping_norm=args.max_grad_norm)
 
     # load noise_scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
