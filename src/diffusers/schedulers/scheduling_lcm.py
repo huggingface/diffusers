@@ -221,9 +221,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
+            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -373,15 +371,26 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # LCM Timesteps Setting
-        # Currently, only linear spacing is supported.
-        c = self.config.num_train_timesteps // original_steps
-        # LCM Training Steps Schedule
-        lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * c - 1
+        # The skipping step parameter k from the paper.
+        k = self.config.num_train_timesteps // original_steps
+        # LCM Training/Distillation Steps Schedule
+        # Currently, only a linearly-spaced schedule is supported (same as in the LCM distillation scripts).
+        lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * k - 1
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
-        # LCM Inference Steps Schedule
-        timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]
 
-        self.timesteps = torch.from_numpy(timesteps.copy()).to(device=device, dtype=torch.long)
+        if skipping_step < 1:
+            raise ValueError(
+                f"The combination of `original_steps x strength`: {original_steps} x {strength} is smaller than `num_inference_steps`: {num_inference_steps}. Make sure to either reduce `num_inference_steps` to a value smaller than {int(original_steps * strength)} or increase `strength` to a value higher than {float(num_inference_steps / original_steps)}."
+            )
+
+        # LCM Inference Steps Schedule
+        lcm_origin_timesteps = lcm_origin_timesteps[::-1].copy()
+        # Select (approximately) evenly spaced indices from lcm_origin_timesteps.
+        inference_indices = np.linspace(0, len(lcm_origin_timesteps), num=num_inference_steps, endpoint=False)
+        inference_indices = np.floor(inference_indices).astype(np.int64)
+        timesteps = lcm_origin_timesteps[inference_indices]
+
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.long)
 
         self._step_index = None
 

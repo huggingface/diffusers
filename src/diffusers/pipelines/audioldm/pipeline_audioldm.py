@@ -72,6 +72,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         vocoder ([`~transformers.SpeechT5HifiGan`]):
             Vocoder of class `SpeechT5HifiGan`.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(
