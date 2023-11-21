@@ -309,6 +309,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
         )
+        from .kandinsky3 import (
+            KandinskyV3Pipeline,
+            KandinskyV3Img2ImgPipeline,
+        )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
