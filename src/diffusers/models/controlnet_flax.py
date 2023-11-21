@@ -146,6 +146,7 @@ class FlaxControlNetModel(nn.Module, FlaxModelMixin, ConfigMixin):
         conditioning_embedding_out_channels (`tuple`, *optional*, defaults to `(16, 32, 96, 256)`):
             The tuple of output channel for each block in the `conditioning_embedding` layer.
     """
+
     sample_size: int = 32
     in_channels: int = 4
     down_block_types: Tuple[str, ...] = (

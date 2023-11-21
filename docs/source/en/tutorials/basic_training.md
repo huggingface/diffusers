@@ -326,7 +326,8 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 
 ...             # Sample a random timestep for each image
 ...             timesteps = torch.randint(
-...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device
+...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device,
+...                 dtype=torch.int64
 ...             )
 
 ...             # Add noise to the clean images according to the noise magnitude at each timestep
