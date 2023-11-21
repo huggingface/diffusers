@@ -151,8 +151,6 @@ else:
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
     _import_structure["stable_diffusion_xl"].extend(
         [
-            "StableDiffusionXLControlNetAdapterInpaintPipeline",
-            "StableDiffusionXLControlNetAdapterPipeline",
             "StableDiffusionXLImg2ImgPipeline",
             "StableDiffusionXLInpaintPipeline",
             "StableDiffusionXLInstructPix2PixPipeline",
@@ -374,8 +372,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
         from .stable_diffusion_xl import (
-            StableDiffusionXLControlNetAdapterInpaintPipeline,
-            StableDiffusionXLControlNetAdapterPipeline,
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,
             StableDiffusionXLInstructPix2PixPipeline,
