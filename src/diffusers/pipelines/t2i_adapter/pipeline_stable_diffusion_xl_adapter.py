@@ -721,6 +721,7 @@ class StableDiffusionXLAdapterPipeline(
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
+        timesteps: List[int] = None,
         denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -774,6 +775,10 @@ class StableDiffusionXLAdapterPipeline(
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
+                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
+                passed will be used. Must be in descending order.
             denoising_end (`float`, *optional*):
                 When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
                 completed before it is intentionally prematurely terminated. As a result, the returned sample will
@@ -957,9 +962,19 @@ class StableDiffusionXLAdapterPipeline(
         )
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-
-        timesteps = self.scheduler.timesteps
+        if timesteps is not None:
+            accepts_timesteps = "timesteps" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
+            if not accepts_timesteps:
+                raise ValueError(
+                    f"The current scheduler class {self.scheduler.__class__}'s `set_timesteps` does not support custom"
+                    f" timestep schedules. Please check whether you are using the correct scheduler."
+                )
+            self.scheduler.set_timesteps(timesteps=timesteps, device=device)
+            timesteps = self.scheduler.timesteps
+            num_inference_steps = len(timesteps)
+        else:
+            self.scheduler.set_timesteps(num_inference_steps, device=device)
+            timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
