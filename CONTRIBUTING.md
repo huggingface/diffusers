@@ -410,7 +410,7 @@ Diffusers has grown a lot. Here is the command for it:
  $ make test
  ```
 
-🧨 Diffusers relies on `black` and `isort` to format its source code
+🧨 Diffusers relies on `ruff` and `isort` to format its source code
 consistently. After you make changes, apply automatic style corrections and code verifications
 that can't be automated in one go with:
 

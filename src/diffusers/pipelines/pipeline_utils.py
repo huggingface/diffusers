@@ -542,6 +542,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         - **_optional_components** (`List[str]`) -- List of all optional components that don't have to be passed to the
           pipeline to function (should be overridden by subclasses).
     """
+
     config_name = "model_index.json"
     model_cpu_offload_seq = None
     _optional_components = []
