@@ -735,7 +735,10 @@ class LatentConsistencyModelImg2ImgPipeline(
         # 5. Prepare timesteps
         if timesteps is not None:
             self.scheduler.set_timesteps(
-                device=device, original_inference_steps=original_inference_steps, timesteps=timesteps, strength=strength
+                device=device,
+                original_inference_steps=original_inference_steps,
+                timesteps=timesteps,
+                strength=strength,
             )
             timesteps = self.scheduler.timesteps
             num_inference_steps = len(timesteps)

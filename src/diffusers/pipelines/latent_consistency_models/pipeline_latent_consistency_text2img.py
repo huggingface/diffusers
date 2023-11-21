@@ -674,11 +674,15 @@ class LatentConsistencyModelPipeline(
 
         # 4. Prepare timesteps
         if timesteps is not None:
-            self.scheduler.set_timesteps(device=device, original_inference_steps=original_inference_steps, timesteps=timesteps)
+            self.scheduler.set_timesteps(
+                device=device, original_inference_steps=original_inference_steps, timesteps=timesteps
+            )
             timesteps = self.scheduler.timesteps
             num_inference_steps = len(timesteps)
         else:
-            self.scheduler.set_timesteps(num_inference_steps, device, original_inference_steps=original_inference_steps)
+            self.scheduler.set_timesteps(
+                num_inference_steps, device, original_inference_steps=original_inference_steps
+            )
             timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variable

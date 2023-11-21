@@ -393,7 +393,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                     f"`timesteps` must start before `self.config.train_timesteps`:"
                     f" {self.config.num_train_timesteps}."
                 )
-            
+
             # Raise warning if timestep schedule does not start with self.config.num_train_timesteps - 1
             if strength == 1.0 and timesteps[0] != self.config.num_train_timesteps - 1:
                 logger.warning(
@@ -435,7 +435,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                     f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
                     f" maximal {self.config.num_train_timesteps} timesteps."
                 )
-            
+
             skipping_step = len(lcm_origin_timesteps) // num_inference_steps
 
             if skipping_step < 1:
