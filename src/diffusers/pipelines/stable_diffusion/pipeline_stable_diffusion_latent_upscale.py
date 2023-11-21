@@ -79,6 +79,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, FromSingleFileMixi
         scheduler ([`SchedulerMixin`]):
             A [`EulerDiscreteScheduler`] to be used in combination with `unet` to denoise the encoded image latents.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(

@@ -164,6 +164,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
     _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
 
@@ -1198,9 +1199,10 @@ class StableDiffusionXLControlNetInpaintPipeline(
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
         elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
             mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
-            control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
-                control_guidance_end
-            ]
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
 
         # # 0.0 Default height and width to unet
         # height = height or self.unet.config.sample_size * self.vae_scale_factor
@@ -1213,9 +1215,10 @@ class StableDiffusionXLControlNetInpaintPipeline(
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
         elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
             mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
-            control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
-                control_guidance_end
-            ]
+            control_guidance_start, control_guidance_end = (
+                mult * [control_guidance_start],
+                mult * [control_guidance_end],
+            )
 
         # 1. Check inputs
         self.check_inputs(
