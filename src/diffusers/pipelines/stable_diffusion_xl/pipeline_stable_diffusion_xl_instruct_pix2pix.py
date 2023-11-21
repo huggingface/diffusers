@@ -87,6 +87,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix.retrieve_latents
 def retrieve_latents(encoder_output):
     if hasattr(encoder_output, "latent_dist"):

@@ -828,7 +828,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                 for i in range(image.shape[0])
             ]
-            image_latents = torch.cat(init_latents, dim=0)
+            image_latents = torch.cat(image_latents, dim=0)
         else:
             image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 

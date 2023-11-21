@@ -192,12 +192,15 @@ class PipelineLatentTesterMixin:
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        vae_classes = [AutoencoderKL, AsymmetricAutoencoderKL, AutoencoderTiny, ConsistencyDecoderVAE]
+        block_out_channels = pipe.vae.config.block_out_channels
+        norm_num_groups = pipe.vae.config.norm_num_groups
+
+        vae_classes = [AutoencoderKL, AsymmetricAutoencoderKL, ConsistencyDecoderVAE, AutoencoderTiny]
         configs = [
-            get_autoencoder_kl_config(),
-            get_assym_autoencoder_kl_config(),
-            get_autoencoder_tiny_config(),
-            get_consistency_vae_config(),
+            get_autoencoder_kl_config(block_out_channels, norm_num_groups),
+            get_assym_autoencoder_kl_config(block_out_channels, norm_num_groups),
+            get_consistency_vae_config(block_out_channels, norm_num_groups),
+            get_autoencoder_tiny_config(block_out_channels),
         ]
 
         out_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
@@ -206,8 +209,8 @@ class PipelineLatentTesterMixin:
             vae = vae_cls(**config)
             vae = vae.to(torch_device)
             components["vae"] = vae
-            pipe = self.pipeline_class(**components)
-            out_vae_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
+            vae_pipe = self.pipeline_class(**components)
+            out_vae_np = vae_pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
 
             assert out_vae_np.shape == out_np.shape
 
