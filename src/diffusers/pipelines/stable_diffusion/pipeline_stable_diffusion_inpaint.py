@@ -27,7 +27,13 @@ from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoa
 from ...models import AsymmetricAutoencoderKL, AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from . import StableDiffusionPipelineOutput
@@ -206,8 +212,13 @@ class StableDiffusionInpaintPipeline(
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds", "mask", "masked_image_latents"]
-    _interrupt = False
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+        "mask",
+        "masked_image_latents",
+    ]
 
     def __init__(
         self,
@@ -245,7 +256,12 @@ class StableDiffusionInpaintPipeline(
                 " Hub, it would be very nice if you could open a Pull request for the"
                 " `scheduler/scheduler_config.json` file"
             )
-            deprecate("skip_prk_steps not set", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate(
+                "skip_prk_steps not set",
+                "1.0.0",
+                deprecation_message,
+                standard_warn=False,
+            )
             new_config = dict(scheduler.config)
             new_config["skip_prk_steps"] = True
             scheduler._internal_dict = FrozenDict(new_config)
@@ -303,7 +319,10 @@ class StableDiffusionInpaintPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.mask_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+            vae_scale_factor=self.vae_scale_factor,
+            do_normalize=False,
+            do_binarize=True,
+            do_convert_grayscale=True,
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
@@ -436,7 +455,9 @@ class StableDiffusionInpaintPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                    text_input_ids.to(device),
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -628,7 +649,12 @@ class StableDiffusionInpaintPipeline(
         return_noise=False,
         return_image_latents=False,
     ):
-        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (
+            batch_size,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -685,7 +711,16 @@ class StableDiffusionInpaintPipeline(
         return image_latents
 
     def prepare_mask_latents(
-        self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
+        self,
+        mask,
+        masked_image,
+        batch_size,
+        height,
+        width,
+        dtype,
+        device,
+        generator,
+        do_classifier_free_guidance,
     ):
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
@@ -818,6 +853,10 @@ class StableDiffusionInpaintPipeline(
     @property
     def num_timesteps(self):
         return self._num_timesteps
+
+    @property
+    def interrupt(self):
+        return self._interrupt
 
     @torch.no_grad()
     def __call__(
@@ -998,6 +1037,7 @@ class StableDiffusionInpaintPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
+        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1131,7 +1171,7 @@ class StableDiffusionInpaintPipeline(
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                if self._interrupt:
+                if self.interrupt:
                     continue
 
                 # expand the latents if we are doing classifier free guidance
@@ -1201,9 +1241,15 @@ class StableDiffusionInpaintPipeline(
                 init_image_condition = init_image.clone()
                 init_image = self._encode_vae_image(init_image, generator=generator)
                 mask_condition = mask_condition.to(device=device, dtype=masked_image_latents.dtype)
-                condition_kwargs = {"image": init_image_condition, "mask": mask_condition}
+                condition_kwargs = {
+                    "image": init_image_condition,
+                    "mask": mask_condition,
+                }
             image = self.vae.decode(
-                latents / self.vae.config.scaling_factor, return_dict=False, generator=generator, **condition_kwargs
+                latents / self.vae.config.scaling_factor,
+                return_dict=False,
+                generator=generator,
+                **condition_kwargs,
             )[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
