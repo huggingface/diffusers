@@ -118,6 +118,7 @@ def get_consistency_vae_config():
         "latent_channels": 4,
     }
 
+
 class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
     main_input_name = "sample"
@@ -142,7 +143,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        inputs_dict = get_autoencoder_kl_config()
+        init_dict = get_autoencoder_kl_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
@@ -279,7 +280,7 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        inputs_dict = get_assym_autoencoder_kl_config()
+        init_dict = get_assym_autoencoder_kl_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 

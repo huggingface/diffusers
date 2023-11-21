@@ -22,8 +22,11 @@ from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
     ConsistencyDecoderVAE,
+    DDIMScheduler,
+    DiffusionPipeline,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
 )
-from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
@@ -34,8 +37,13 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
+from ..models.test_models_vae import (
+    get_assym_autoencoder_kl_config,
+    get_autoencoder_kl_config,
+    get_autoencoder_tiny_config,
+    get_consistency_vae_config,
+)
 from ..others.test_utils import TOKEN, USER, is_staging_test
-from ..models.test_models_vae import AutoencoderKLTests, get_consistency_vae_config, get_autoencoder_kl_config, get_assym_autoencoder_kl_config, get_autoencoder_tiny_config
 
 
 def to_np(tensor):
@@ -185,13 +193,20 @@ class PipelineLatentTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         vae_classes = [AutoencoderKL, AsymmetricAutoencoderKL, AutoencoderTiny, ConsistencyDecoderVAE]
-        configs = [get_autoencoder_kl_config(), get_assym_autoencoder_kl_config(), get_autoencoder_tiny_config(), get_consistency_vae_config()]
+        configs = [
+            get_autoencoder_kl_config(),
+            get_assym_autoencoder_kl_config(),
+            get_autoencoder_tiny_config(),
+            get_consistency_vae_config(),
+        ]
 
         out_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
 
         for vae_cls, config in zip(vae_classes, configs):
-            vae = vae_cls(config)
-            pipe.vae = vae
+            vae = vae_cls(**config)
+            vae = vae.to(torch_device)
+            components["vae"] = vae
+            pipe = self.pipeline_class(**components)
             out_vae_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
 
             assert out_vae_np.shape == out_np.shape

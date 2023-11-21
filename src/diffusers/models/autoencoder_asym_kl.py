@@ -108,6 +108,8 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
         self.use_slicing = False
         self.use_tiling = False
 
+        self.register_to_config(block_out_channels=up_block_out_channels)
+
     @apply_forward_hook
     def encode(
         self, x: torch.FloatTensor, return_dict: bool = True
