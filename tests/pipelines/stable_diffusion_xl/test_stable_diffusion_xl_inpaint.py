@@ -20,7 +20,15 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -120,6 +128,31 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=32,
+            image_size=224,
+            projection_dim=32,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_channels=3,
+            num_hidden_layers=5,
+            patch_size=14,
+        )
+
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+
+        feature_extractor = CLIPImageProcessor(
+            crop_size=224,
+            do_center_crop=True,
+            do_normalize=True,
+            do_resize=True,
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
+            resample=3,
+            size=224,
+        )
+
         components = {
             "unet": unet,
             "scheduler": scheduler,
@@ -128,6 +161,8 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "image_encoder": image_encoder,
+            "feature_extractor": feature_extractor,
             "requires_aesthetics_score": True,
         }
         return components
