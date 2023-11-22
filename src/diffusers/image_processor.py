@@ -476,7 +476,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         """
         return image[:, :, 1] * 2**8 + image[:, :, 2]
 
-    def numpy_to_pil_depth(self, images: np.ndarray) -> List[PIL.Image.Image]:
+    def numpy_to_depth(self, images: np.ndarray) -> List[PIL.Image.Image]:
 
         """
         Convert a NumPy depth image or a batch of images to a PIL image.
@@ -548,7 +548,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             return image[:, :, :, :3], image_depth
 
         if output_type == "pil":
-            return self.numpy_to_pil(image), self.numpy_to_pil_depth(image)
+            return self.numpy_to_pil(image), self.numpy_to_depth(image)
         else:
             raise Exception(f"This type {output_type} is not supported")
 
