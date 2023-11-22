@@ -23,10 +23,13 @@ import os
 import shutil
 import warnings
 from pathlib import Path
+from typing import List, Optional
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+# imports of the TokenEmbeddingsHandler class
 import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
@@ -36,6 +39,7 @@ from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from PIL import Image
 from PIL.ImageOps import exif_transpose
+from safetensors.torch import save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -56,19 +60,6 @@ from diffusers.training_utils import compute_snr, unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
-import fnmatch
-import json
-import math
-import os
-import shutil
-from typing import List, Optional
-
-# imports of the TokenEmbeddingsHandler class
-import torch.utils.checkpoint
-from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
-from diffusers.optimization import get_scheduler
-from safetensors.torch import save_file
-from tqdm.auto import tqdm
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.24.0.dev0")
