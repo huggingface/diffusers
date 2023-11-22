@@ -582,13 +582,8 @@ class Transformer2DModelVideo(ModelMixin, ConfigMixin):
             ]
         )
 
-        time_embed_dim = inner_dim * 4
-        self.time_pos_embed = nn.Sequential(
-            linear_cls(inner_dim, time_embed_dim),
-            nn.SiLU(),
-            linear_cls(time_embed_dim, inner_dim),
-        )
-        self.time_pos_embed = TimestepEmbedding(inner_dim, time_embed_dim)
+        time_embed_dim = in_channels * 4
+        self.time_pos_embed = TimestepEmbedding(in_channels, time_embed_dim, out_dim=in_channels)
 
         self.time_mixer = AlphaBlender(
             alpha=merge_factor, merge_strategy=merge_strategy
