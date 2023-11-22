@@ -1800,6 +1800,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
         max_time_embed_period: int = 10000,
+        adm_in_channels: int = 768,
     ):
         super().__init__()
 
@@ -1872,6 +1873,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             post_act_fn=timestep_post_act,
             cond_proj_dim=time_cond_proj_dim,
         )
+
+        self.add_embedding = TimestepEmbedding(adm_in_channels, time_embed_dim)
 
         if encoder_hid_dim_type is None and encoder_hid_dim is not None:
             encoder_hid_dim_type = "text_proj"
@@ -2363,6 +2366,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
+
+        # TODO: Add extra embeddings
 
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
