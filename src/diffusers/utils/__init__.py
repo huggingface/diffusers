@@ -55,8 +55,6 @@ from .import_utils import (
     USE_TORCH,
     DummyObject,
     OptionalDependencyNotAvailable,
-    _is_torch_fp16_available,
-    _is_torch_fp64_available,
     _LazyModule,
     get_objects_from_module,
     is_accelerate_available,
