@@ -1750,13 +1750,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         down_block_types: Tuple[str] = (
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "DownBlock2D",
+            "CrossAttnDownBlock2DVideo",
+            "CrossAttnDownBlock2DVideo",
+            "CrossAttnDownBlock2DVideo",
+            "DownBlockVideo",
         ),
-        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
-        up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        mid_block_type: Optional[str] = "UNetMidBlockCrossAttnVideo",
+        up_block_types: Tuple[str] = ("UpBlockVideo", "CrossAttnUpBlock2DVideo", "CrossAttnUpBlock2DVideo", "CrossAttnUpBlock2DVideo"),
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: Union[int, Tuple[int]] = 2,
@@ -1800,7 +1800,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
         max_time_embed_period: int = 10000,
-        adm_in_channels: int = 768,
+        addition_time_embed_dim: int = 768,
     ):
         super().__init__()
 
@@ -1874,7 +1874,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             cond_proj_dim=time_cond_proj_dim,
         )
 
-        self.add_embedding = TimestepEmbedding(adm_in_channels, time_embed_dim)
+        self.add_embedding = TimestepEmbedding(addition_time_embed_dim, time_embed_dim)
 
         if encoder_hid_dim_type is None and encoder_hid_dim is not None:
             encoder_hid_dim_type = "text_proj"
