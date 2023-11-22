@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from functools import partial
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict, Any
 from einops import rearrange
 
 import torch
@@ -8,7 +9,32 @@ import torch.nn.functional as F
 
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from .activations import get_activation
-from ..utils import is_torch_version
+from ..utils import is_torch_version, BaseOutput, USE_PEFT_BACKEND
+from ..utils.torch_utils import maybe_allow_in_graph
+from ..configuration_utils import ConfigMixin, register_to_config
+from .modeling_utils import ModelMixin
+from ..loaders import UNet2DConditionLoadersMixin
+from .attention_processor import (
+    ADDED_KV_ATTENTION_PROCESSORS,
+    CROSS_ATTENTION_PROCESSORS,
+    AttentionProcessor,
+    AttnAddedKVProcessor,
+    AttnProcessor,
+    Attention,
+)
+from .embeddings import (
+    GaussianFourierProjection,
+    ImageHintTimeEmbedding,
+    ImageProjection,
+    ImageTimeEmbedding,
+    PositionNet,
+    TextImageProjection,
+    TextImageTimeEmbedding,
+    TextTimeEmbedding,
+    TimestepEmbedding,
+    Timesteps,
+)
+from .attention import BasicTransformerBlock, FeedForward
 
 class AlphaBlender(nn.Module):
     strategies = ["learned", "fixed", "learned_with_images"]
@@ -228,7 +254,6 @@ class VideoResBlock(nn.Module):
             eps=eps,
             groups=groups,
             dropout=dropout,
-            time_embedding_norm=time_embedding_norm,
             non_linearity=non_linearity,
             output_scale_factor=output_scale_factor,
             kernel_size=kernel_size_3d,
@@ -544,7 +569,7 @@ class Transformer2DModelVideo(ModelMixin, ConfigMixin):
         )
 
         time_mix_inner_dim = inner_dim
-        self.time_mix_blocks = nn.ModuleList(
+        self.temporal_transformer_blocks = nn.ModuleList(
             [
                 TemporalBasicTransformerBlock(
                     inner_dim,
@@ -562,16 +587,17 @@ class Transformer2DModelVideo(ModelMixin, ConfigMixin):
                     norm_eps=norm_eps,
                     attention_type=attention_type,
                 )
-                for _ in range(self.depth)
+                for _ in range(num_layers)
             ]
         )
 
         time_embed_dim = inner_dim * 4
-        self.time_mix_time_embed = nn.Sequential(
+        self.time_pos_embed = nn.Sequential(
             linear_cls(inner_dim, time_embed_dim),
             nn.SiLU(),
             linear_cls(time_embed_dim, inner_dim),
         )
+        self.time_pos_embed = TimestepEmbedding(inner_dim, time_embed_dim)
 
         self.time_mixer = AlphaBlender(
             alpha=merge_factor, merge_strategy=merge_strategy
@@ -897,7 +923,7 @@ class CrossAttnDownBlock2DVideo(nn.Module):
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
+                    # use_linear_projection=use_linear_projection,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                     attention_type=attention_type,
@@ -1192,7 +1218,6 @@ class CrossAttnUpBlock2DVideo(nn.Module):
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                     attention_type=attention_type,
@@ -1304,7 +1329,7 @@ class CrossAttnUpBlock2DVideo(nn.Module):
 
 
 class UNetMidBlockCrossAttnVideo(nn.Module):
-    def __int__(
+    def __init__(
         self,
         in_channels: int,
         temb_channels: int,
@@ -1366,7 +1391,6 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    use_linear_projection=use_linear_projection,
                     upcast_attention=upcast_attention,
                     attention_type=attention_type,
                     merge_factor=merge_factor,
@@ -1503,7 +1527,7 @@ def get_down_block(
         )
         attention_head_dim = num_attention_heads
     
-    if down_block_type == "CrossAttnUpBlock2DVideo":
+    if down_block_type == "CrossAttnDownBlock2DVideo":
         return CrossAttnDownBlock2DVideo(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -1800,7 +1824,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
         max_time_embed_period: int = 10000,
-        addition_time_embed_dim: int = 768,
     ):
         super().__init__()
 
@@ -1935,7 +1958,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
-                only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 attention_type=attention_type,
@@ -1952,9 +1974,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         # mid
         self.mid_block = UNetMidBlockCrossAttnVideo(
-            transformer_layers_per_block=transformer_layers_per_block[-1],
-            in_channels=block_out_channels[-1],
+            block_out_channels[-1],
             temb_channels=blocks_time_embed_dim,
+            transformer_layers_per_block=transformer_layers_per_block[-1],
             dropout=dropout,
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
@@ -1985,7 +2007,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             if reverse_transformer_layers_per_block is None
             else reverse_transformer_layers_per_block
         )
-        only_cross_attention = list(reversed(only_cross_attention))
+        # only_cross_attention = list(reversed(only_cross_attention))
 
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
@@ -2019,7 +2041,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 num_attention_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
-                only_cross_attention=only_cross_attention[i],
+                # only_cross_attention=only_cross_attention[i],
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 attention_type=attention_type,
