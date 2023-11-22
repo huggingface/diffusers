@@ -239,15 +239,15 @@ def parse_args(input_args=None):
         "--token_abstraction",
         default="TOK",
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
-             "captions - e.g. TOK",
+        "captions - e.g. TOK",
     )
 
     parser.add_argument(
         "--num_new_tokens_per_abstraction",
         default=2,
         help="number of new tokens inserted to the tokenizers per token_abstraction value when "
-             "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
-             "tokens - <si><si+1> ",
+        "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
+        "tokens - <si><si+1> ",
     )
 
     parser.add_argument(
@@ -442,27 +442,21 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--train_text_encoder_ti",
         action="store_true",
-        help=(
-            'Whether to use textual inversion'
-        ),
+        help=("Whether to use textual inversion"),
     )
 
     parser.add_argument(
         "--train_text_encoder_ti_frac",
         type=float,
         default=0.5,
-        help=(
-            'The percentage of epochs to perform textual inversion'
-        ),
+        help=("The percentage of epochs to perform textual inversion"),
     )
 
     parser.add_argument(
         "--train_text_encoder_frac",
         type=float,
         default=0.5,
-        help=(
-            'The percentage of epochs to perform text encoder tuning'
-        ),
+        help=("The percentage of epochs to perform text encoder tuning"),
     )
 
     parser.add_argument(
@@ -596,9 +590,11 @@ def parse_args(input_args=None):
         raise ValueError("Specify only one of `--dataset_name` or `--instance_data_dir`")
 
     if args.train_text_encoder and args.train_text_encoder_ti:
-        raise ValueError("Specify only one of `--train_text_encoder` or `--train_text_encoder_ti. "
-                         "For full LoRA text encoder training check --train_text_encoder, for textual "
-                         "inversion training check `--train_text_encoder_ti`")
+        raise ValueError(
+            "Specify only one of `--train_text_encoder` or `--train_text_encoder_ti. "
+            "For full LoRA text encoder training check --train_text_encoder, for textual "
+            "inversion training check `--train_text_encoder_ti`"
+        )
 
     if args.train_text_encoder_ti:
         if isinstance(args.token_abstraction, str):
@@ -606,8 +602,10 @@ def parse_args(input_args=None):
         elif isinstance(args.token_abstraction, List):
             args.token_abstraction = args.token_abstraction
         else:
-            raise ValueError(f"Unsupported type for --args.token_abstraction: {type(args.token_abstraction)}. "
-                             f"Supported types are: str (for a single instance identifier) or List[str] (for multiple concepts)")
+            raise ValueError(
+                f"Unsupported type for --args.token_abstraction: {type(args.token_abstraction)}. "
+                f"Supported types are: str (for a single instance identifier) or List[str] (for multiple concepts)"
+            )
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -627,6 +625,7 @@ def parse_args(input_args=None):
 
     return args
 
+
 # Taken from https://github.com/replicate/cog-sdxl/blob/main/dataset_and_utils.py
 class TokenEmbeddingsHandler:
     def __init__(self, text_encoders, tokenizers):
@@ -640,9 +639,7 @@ class TokenEmbeddingsHandler:
     def initialize_new_tokens(self, inserting_toks: List[str]):
         idx = 0
         for tokenizer, text_encoder in zip(self.tokenizers, self.text_encoders):
-            assert isinstance(
-                inserting_toks, list
-            ), "inserting_toks should be a list of strings."
+            assert isinstance(inserting_toks, list), "inserting_toks should be a list of strings."
             assert all(
                 isinstance(tok, str) for tok in inserting_toks
             ), "All elements in inserting_toks should be strings."
@@ -655,21 +652,15 @@ class TokenEmbeddingsHandler:
             self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
 
             # random initialization of new tokens
-            std_token_embedding = (
-                text_encoder.text_model.embeddings.token_embedding.weight.data.std()
-            )
+            std_token_embedding = text_encoder.text_model.embeddings.token_embedding.weight.data.std()
 
             print(f"{idx} text encodedr's std_token_embedding: {std_token_embedding}")
 
-            text_encoder.text_model.embeddings.token_embedding.weight.data[
-                self.train_ids
-            ] = (
-                    torch.randn(
-                        len(self.train_ids), text_encoder.text_model.config.hidden_size
-                    )
-                    .to(device=self.device)
-                    .to(dtype=self.dtype)
-                    * std_token_embedding
+            text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids] = (
+                torch.randn(len(self.train_ids), text_encoder.text_model.config.hidden_size)
+                .to(device=self.device)
+                .to(dtype=self.dtype)
+                * std_token_embedding
             )
             self.embeddings_settings[
                 f"original_embeddings_{idx}"
@@ -686,19 +677,13 @@ class TokenEmbeddingsHandler:
             idx += 1
 
     def save_embeddings(self, file_path: str):
-        assert (
-                self.train_ids is not None
-        ), "Initialize new tokens before saving embeddings."
+        assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
         for idx, text_encoder in enumerate(self.text_encoders):
-            assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[
-                       0
-                   ] == len(self.tokenizers[0]), "Tokenizers should be the same."
-            new_token_embeddings = (
-                text_encoder.text_model.embeddings.token_embedding.weight.data[
-                    self.train_ids
-                ]
-            )
+            assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[0] == len(
+                self.tokenizers[0]
+            ), "Tokenizers should be the same."
+            new_token_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids]
             tensors[f"text_encoders_{idx}"] = new_token_embeddings
 
         save_file(tensors, file_path)
@@ -728,12 +713,10 @@ class TokenEmbeddingsHandler:
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
             index_no_updates = self.embeddings_settings[f"index_no_updates_{idx}"]
-            text_encoder.text_model.embeddings.token_embedding.weight.data[
-                index_no_updates
-            ] = (
+            text_encoder.text_model.embeddings.token_embedding.weight.data[index_no_updates] = (
                 self.embeddings_settings[f"original_embeddings_{idx}"][index_no_updates]
-                    .to(device=text_encoder.device)
-                    .to(dtype=text_encoder.dtype)
+                .to(device=text_encoder.device)
+                .to(dtype=text_encoder.dtype)
             )
 
             # for the parts that were updated, we need to normalize them
@@ -741,17 +724,11 @@ class TokenEmbeddingsHandler:
             std_token_embedding = self.embeddings_settings[f"std_token_embedding_{idx}"]
 
             index_updates = ~index_no_updates
-            new_embeddings = (
-                text_encoder.text_model.embeddings.token_embedding.weight.data[
-                    index_updates
-                ]
-            )
+            new_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates]
             off_ratio = std_token_embedding / new_embeddings.std()
 
-            new_embeddings = new_embeddings * (off_ratio ** 0.1)
-            text_encoder.text_model.embeddings.token_embedding.weight.data[
-                index_updates
-            ] = new_embeddings
+            new_embeddings = new_embeddings * (off_ratio**0.1)
+            text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates] = new_embeddings
 
     # def load_embeddings(self, file_path: str):
     #     with safe_open(file_path, framework="pt", device=self.device.type) as f:
@@ -770,16 +747,16 @@ class DreamBoothDataset(Dataset):
     """
 
     def __init__(
-            self,
-            instance_data_root,
-            instance_prompt,
-            class_prompt,
-            class_data_root=None,
-            class_num=None,
-            token_abstraction_dict=None,  # token mapping for textual inversion
-            size=1024,
-            repeats=1,
-            center_crop=False,
+        self,
+        instance_data_root,
+        instance_prompt,
+        class_prompt,
+        class_data_root=None,
+        class_num=None,
+        token_abstraction_dict=None,  # token mapping for textual inversion
+        size=1024,
+        repeats=1,
+        center_crop=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -1120,9 +1097,10 @@ def main(args):
         token_abstraction_dict = {}
         token_idx = 0
         for i, token in enumerate(args.token_abstraction):
-            token_abstraction_dict[token] = [f"<s{token_idx + i + j}>" for j in range(
-                args.num_new_tokens_per_abstraction)]
-            token_idx += (args.num_new_tokens_per_abstraction - 1)
+            token_abstraction_dict[token] = [
+                f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
+            ]
+            token_idx += args.num_new_tokens_per_abstraction - 1
 
         # replace instances of --token_abstraction in --instance_prompt with the new tokens: "<si><si+1>" etc.
         for token_abs, token_replacement in token_abstraction_dict.items():
