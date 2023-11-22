@@ -13,6 +13,7 @@ from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipeline
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput
+from diffusers.utils.torch_utils import randn_tensor
 
 
 # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_0
@@ -375,7 +376,7 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
             x_t1:
                 Forward process applied to x_t0 from time t0 to t1.
         """
-        eps = torch.randn(x_t0.size(), generator=generator, dtype=x_t0.dtype, device=x_t0.device)
+        eps = randn_tensor(x_t0.size(), generator=generator, dtype=x_t0.dtype, device=x_t0.device)
         alpha_vec = torch.prod(self.scheduler.alphas[t0:t1])
         x_t1 = torch.sqrt(alpha_vec) * x_t0 + torch.sqrt(1 - alpha_vec) * eps
         return x_t1
@@ -782,8 +783,8 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
         # Perform forward process up to time T_1
         x_2k_t1 = self.forward_loop(
             x_t0=x_2k_t0,
-            t0=timesteps[-t0 - 1].item(),
-            t1=timesteps[-t1 - 1].item(),
+            t0=timesteps[-t0 - 1].to(torch.long),
+            t1=timesteps[-t1 - 1].to(torch.long),
             generator=generator,
         )
 
@@ -803,7 +804,7 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
         add_time_ids = add_time_ids[:, None].repeat(1, video_length, 1).reshape(b * video_length, k)
 
         # 7.1 Apply denoising_end
-        if denoising_end is not None and type(denoising_end) == float and denoising_end > 0 and denoising_end < 1:
+        if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
             discrete_timestep_cutoff = int(
                 round(
                     self.scheduler.config.num_train_timesteps

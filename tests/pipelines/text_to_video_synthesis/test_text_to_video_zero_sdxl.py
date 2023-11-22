@@ -384,7 +384,10 @@ class TextToVideoZeroSDXLPipelineSlowTests(unittest.TestCase):
         model_id = "stabilityai/stable-diffusion-xl-base-1.0"
         pipe = self.pipeline_class.from_pretrained(
             model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-        ).to("cuda")
+        )
+        pipe.enable_model_cpu_offload()
+        pipe.enable_vae_slicing()
+
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         generator = torch.Generator(device="cpu").manual_seed(0)
 
