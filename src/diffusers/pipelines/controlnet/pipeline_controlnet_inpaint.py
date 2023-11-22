@@ -1383,7 +1383,7 @@ class StableDiffusionControlNetInpaintPipeline(
         # 7.1 Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
-        # 7.3 Create tensor stating which controlnets to keep
+        # 7.2 Create tensor stating which controlnets to keep
         controlnet_keep = []
         for i in range(len(timesteps)):
             keeps = [
