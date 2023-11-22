@@ -141,6 +141,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
         alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=True)
         alt_pipe = alt_pipe.to(device)
@@ -205,6 +206,7 @@ class AltDiffusionImg2ImgPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
+            image_encoder=None,
         )
         alt_pipe.image_processor = VaeImageProcessor(vae_scale_factor=alt_pipe.vae_scale_factor, do_normalize=False)
         alt_pipe = alt_pipe.to(torch_device)
