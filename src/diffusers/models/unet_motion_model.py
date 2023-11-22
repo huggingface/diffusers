@@ -50,14 +50,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class MotionModules(nn.Module):
     def __init__(
         self,
-        in_channels,
-        layers_per_block=2,
-        num_attention_heads=8,
-        attention_bias=False,
-        cross_attention_dim=None,
-        activation_fn="geglu",
-        norm_num_groups=32,
-        max_seq_length=32,
+        in_channels: int,
+        layers_per_block: int = 2,
+        num_attention_heads: int = 8,
+        attention_bias: bool = False,
+        cross_attention_dim: Optional[int] = None,
+        activation_fn: str = "geglu",
+        norm_num_groups: int = 32,
+        max_seq_length: int = 32,
     ):
         super().__init__()
         self.motion_modules = nn.ModuleList([])
@@ -82,13 +82,13 @@ class MotionAdapter(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        block_out_channels=(320, 640, 1280, 1280),
-        motion_layers_per_block=2,
-        motion_mid_block_layers_per_block=1,
-        motion_num_attention_heads=8,
-        motion_norm_num_groups=32,
-        motion_max_seq_length=32,
-        use_motion_mid_block=True,
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        motion_layers_per_block: int = 2,
+        motion_mid_block_layers_per_block: int = 1,
+        motion_num_attention_heads: int = 8,
+        motion_norm_num_groups: int = 32,
+        motion_max_seq_length: int = 32,
+        use_motion_mid_block: bool = True,
     ):
         """Container to store AnimateDiff Motion Modules
 
@@ -174,6 +174,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
     """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -182,31 +183,33 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         sample_size: Optional[int] = None,
         in_channels: int = 4,
         out_channels: int = 4,
-        down_block_types: Tuple[str] = (
+        down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlockMotion",
             "CrossAttnDownBlockMotion",
             "CrossAttnDownBlockMotion",
             "DownBlockMotion",
         ),
-        up_block_types: Tuple[str] = (
+        up_block_types: Tuple[str, ...] = (
             "UpBlockMotion",
             "CrossAttnUpBlockMotion",
             "CrossAttnUpBlockMotion",
             "CrossAttnUpBlockMotion",
         ),
-        block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         act_fn: str = "silu",
-        norm_num_groups: Optional[int] = 32,
+        norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         use_linear_projection: bool = False,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = 8,
-        motion_max_seq_length: Optional[int] = 32,
+        num_attention_heads: Union[int, Tuple[int, ...]] = 8,
+        motion_max_seq_length: int = 32,
         motion_num_attention_heads: int = 8,
         use_motion_mid_block: int = True,
+        encoder_hid_dim: Optional[int] = None,
+        encoder_hid_dim_type: Optional[str] = None,
     ):
         super().__init__()
 
@@ -246,6 +249,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             time_embed_dim,
             act_fn=act_fn,
         )
+
+        if encoder_hid_dim_type is None:
+            self.encoder_hid_proj = None
 
         # class embedding
         self.down_blocks = nn.ModuleList([])
@@ -448,7 +454,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         return model
 
-    def freeze_unet2d_params(self):
+    def freeze_unet2d_params(self) -> None:
         """Freeze the weights of just the UNet2DConditionModel, and leave the motion modules
         unfrozen for fine tuning.
         """
@@ -472,9 +478,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             for param in motion_modules.parameters():
                 param.requires_grad = True
 
-        return
-
-    def load_motion_modules(self, motion_adapter: Optional[MotionAdapter]):
+    def load_motion_modules(self, motion_adapter: Optional[MotionAdapter]) -> None:
         for i, down_block in enumerate(motion_adapter.down_blocks):
             self.down_blocks[i].motion_modules.load_state_dict(down_block.motion_modules.state_dict())
         for i, up_block in enumerate(motion_adapter.up_blocks):
@@ -492,7 +496,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         variant: Optional[str] = None,
         push_to_hub: bool = False,
         **kwargs,
-    ):
+    ) -> None:
         state_dict = self.state_dict()
 
         # Extract all motion modules
@@ -582,7 +586,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             fn_recursive_attn_processor(name, module, processor)
 
     # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
-    def enable_forward_chunking(self, chunk_size=None, dim=0):
+    def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
         chunking](https://huggingface.co/blog/reformer#2-chunked-feed-forward-layers).
@@ -612,7 +616,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             fn_recursive_feed_forward(module, chunk_size, dim)
 
     # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
-    def disable_forward_chunking(self):
+    def disable_forward_chunking(self) -> None:
         def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
             if hasattr(module, "set_chunk_feed_forward"):
                 module.set_chunk_feed_forward(chunk_size=chunk_size, dim=dim)
@@ -624,7 +628,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             fn_recursive_feed_forward(module, None, 0)
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
-    def set_default_attn_processor(self):
+    def set_default_attn_processor(self) -> None:
         """
         Disables custom attention processors and sets the default attention implementation.
         """
@@ -639,12 +643,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         self.set_attn_processor(processor, _remove_lora=True)
 
-    def _set_gradient_checkpointing(self, module, value=False):
+    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
         if isinstance(module, (CrossAttnDownBlockMotion, DownBlockMotion, CrossAttnUpBlockMotion, UpBlockMotion)):
             module.gradient_checkpointing = value
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.enable_freeu
-    def enable_freeu(self, s1, s2, b1, b2):
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float) -> None:
         r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
 
         The suffixes after the scaling factors represent the stage blocks where they are being applied.
@@ -669,7 +673,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             setattr(upsample_block, "b2", b2)
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.disable_freeu
-    def disable_freeu(self):
+    def disable_freeu(self) -> None:
         """Disables the FreeU mechanism."""
         freeu_keys = {"s1", "s2", "b1", "b2"}
         for i, upsample_block in enumerate(self.up_blocks):
@@ -685,10 +689,11 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNet3DConditionOutput, Tuple]:
+    ) -> Union[UNet3DConditionOutput, Tuple[torch.Tensor]]:
         r"""
         The [`UNetMotionModel`] forward method.
 
@@ -768,6 +773,16 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         emb = self.time_embedding(t_emb, timestep_cond)
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
+
+        if self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
+            if "image_embeds" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                )
+            image_embeds = added_cond_kwargs.get("image_embeds")
+            image_embeds = self.encoder_hid_proj(image_embeds).to(encoder_hidden_states.dtype)
+            encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
+
         encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
         # 2. pre-process

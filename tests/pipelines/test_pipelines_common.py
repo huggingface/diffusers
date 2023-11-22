@@ -493,7 +493,7 @@ class PipelineTesterMixin:
 
         assert output_batch[0].shape[0] == batch_size
 
-        max_diff = np.abs(output_batch[0][0] - output[0][0]).max()
+        max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
@@ -702,7 +702,7 @@ class PipelineTesterMixin:
             self.assertLess(max_diff, expected_max_diff, "Attention slicing should not affect the inference results")
 
         if test_mean_pixel_difference:
-            assert_mean_pixel_difference(output_with_slicing[0], output_without_slicing[0])
+            assert_mean_pixel_difference(to_np(output_with_slicing[0]), to_np(output_without_slicing[0]))
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
@@ -759,9 +759,10 @@ class PipelineTesterMixin:
             for k, v in pipe.components.items()
             if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
         ]
-        self.assertTrue(
-            all(v.device.type == "cpu" for v in offloaded_modules)
-        ), f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}"
+        (
+            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
+            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        )
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

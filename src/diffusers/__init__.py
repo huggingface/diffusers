@@ -1,4 +1,4 @@
-__version__ = "0.23.0.dev0"
+__version__ = "0.24.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -77,6 +77,7 @@ else:
             "AsymmetricAutoencoderKL",
             "AutoencoderKL",
             "AutoencoderTiny",
+            "ConsistencyDecoderVAE",
             "ControlNetModel",
             "ModelMixin",
             "MotionAdapter",
@@ -93,6 +94,7 @@ else:
             "VQModel",
         ]
     )
+
     _import_structure["optimization"] = [
         "get_constant_schedule",
         "get_constant_schedule_with_warmup",
@@ -102,7 +104,6 @@ else:
         "get_polynomial_decay_schedule_with_warmup",
         "get_scheduler",
     ]
-
     _import_structure["pipelines"].extend(
         [
             "AudioPipelineOutput",
@@ -443,6 +444,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AsymmetricAutoencoderKL,
             AutoencoderKL,
             AutoencoderTiny,
+            ConsistencyDecoderVAE,
             ControlNetModel,
             ModelMixin,
             MotionAdapter,

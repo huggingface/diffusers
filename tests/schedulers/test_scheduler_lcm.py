@@ -84,7 +84,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
 
     def test_inference_steps(self):
         # Hardcoded for now
-        for t, num_inference_steps in zip([99, 39, 19], [10, 25, 50]):
+        for t, num_inference_steps in zip([99, 39, 39, 19], [10, 25, 26, 50]):
             self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
 
     # Override test_add_noise_device because the hardcoded num_inference_steps of 100 doesn't work
@@ -230,7 +230,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         # TODO: get expected sum and mean
-        assert abs(result_sum.item() - 18.7097) < 1e-2
+        assert abs(result_sum.item() - 18.7097) < 1e-3
         assert abs(result_mean.item() - 0.0244) < 1e-3
 
     def test_full_loop_multistep(self):
@@ -240,5 +240,5 @@ class LCMSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         # TODO: get expected sum and mean
-        assert abs(result_sum.item() - 280.5618) < 1e-2
-        assert abs(result_mean.item() - 0.3653) < 1e-3
+        assert abs(result_sum.item() - 197.7616) < 1e-3
+        assert abs(result_mean.item() - 0.2575) < 1e-3

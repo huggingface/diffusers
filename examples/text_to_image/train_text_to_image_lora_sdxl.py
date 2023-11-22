@@ -49,7 +49,7 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin, text_encoder_lora_state_dict
+from diffusers.loaders import LoraLoaderMixin
 from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
@@ -58,9 +58,42 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.23.0.dev0")
+check_min_version("0.24.0.dev0")
 
 logger = get_logger(__name__)
+
+
+# TODO: This function should be removed once training scripts are rewritten in PEFT
+def text_encoder_lora_state_dict(text_encoder):
+    state_dict = {}
+
+    def text_encoder_attn_modules(text_encoder):
+        from transformers import CLIPTextModel, CLIPTextModelWithProjection
+
+        attn_modules = []
+
+        if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
+            for i, layer in enumerate(text_encoder.text_model.encoder.layers):
+                name = f"text_model.encoder.layers.{i}.self_attn"
+                mod = layer.self_attn
+                attn_modules.append((name, mod))
+
+        return attn_modules
+
+    for name, module in text_encoder_attn_modules(text_encoder):
+        for k, v in module.q_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.q_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.k_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.k_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.v_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.v_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.out_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.out_proj.lora_linear_layer.{k}"] = v
+
+    return state_dict
 
 
 def save_model_card(
@@ -765,9 +798,7 @@ def main(args):
     if args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            cache_dir=args.cache_dir,
+            args.dataset_name, args.dataset_config_name, cache_dir=args.cache_dir, data_dir=args.train_data_dir
         )
     else:
         data_files = {}

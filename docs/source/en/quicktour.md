@@ -257,7 +257,7 @@ To predict a slightly less noisy image, pass the following to the scheduler's [`
 torch.Size([1, 3, 256, 256])
 ```
 
-The `less_noisy_sample` can be passed to the next `timestep` where it'll get even less noisy! Let's bring it all together now and visualize the entire denoising process. 
+The `less_noisy_sample` can be passed to the next `timestep` where it'll get even less noisy! Let's bring it all together now and visualize the entire denoising process.
 
 First, create a function that postprocesses and displays the denoised image as a `PIL.Image`:
 

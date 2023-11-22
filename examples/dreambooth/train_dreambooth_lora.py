@@ -16,7 +16,6 @@
 import argparse
 import copy
 import gc
-import hashlib
 import itertools
 import logging
 import math
@@ -34,6 +33,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from packaging import version
 from PIL import Image
 from PIL.ImageOps import exif_transpose
@@ -51,10 +51,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import (
-    LoraLoaderMixin,
-    text_encoder_lora_state_dict,
-)
+from diffusers.loaders import LoraLoaderMixin
 from diffusers.models.attention_processor import (
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
@@ -68,9 +65,42 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.23.0.dev0")
+check_min_version("0.24.0.dev0")
 
 logger = get_logger(__name__)
+
+
+# TODO: This function should be removed once training scripts are rewritten in PEFT
+def text_encoder_lora_state_dict(text_encoder):
+    state_dict = {}
+
+    def text_encoder_attn_modules(text_encoder):
+        from transformers import CLIPTextModel, CLIPTextModelWithProjection
+
+        attn_modules = []
+
+        if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
+            for i, layer in enumerate(text_encoder.text_model.encoder.layers):
+                name = f"text_model.encoder.layers.{i}.self_attn"
+                mod = layer.self_attn
+                attn_modules.append((name, mod))
+
+        return attn_modules
+
+    for name, module in text_encoder_attn_modules(text_encoder):
+        for k, v in module.q_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.q_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.k_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.k_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.v_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.v_proj.lora_linear_layer.{k}"] = v
+
+        for k, v in module.out_proj.lora_linear_layer.state_dict().items():
+            state_dict[f"{name}.out_proj.lora_linear_layer.{k}"] = v
+
+    return state_dict
 
 
 def save_model_card(
@@ -738,7 +768,7 @@ def main(args):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 

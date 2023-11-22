@@ -18,7 +18,7 @@ import PIL.Image
 import torch
 from torchvision import transforms
 
-from diffusers.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils.torch_utils import randn_tensor
 

@@ -89,7 +89,8 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "numpy",
+            "use_resolution_binning": False,
+            "output_type": "np",
         }
         return inputs
 
@@ -110,17 +111,24 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         num_inference_steps = inputs["num_inference_steps"]
         output_type = inputs["output_type"]
 
-        prompt_embeds, negative_prompt_embeds = pipe.encode_prompt(prompt, mask_feature=False)
+        (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
+        ) = pipe.encode_prompt(prompt)
 
         # inputs with prompt converted to embeddings
         inputs = {
             "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attention_mask,
             "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": negative_prompt_attention_mask,
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
-            "mask_feature": False,
+            "use_resolution_binning": False,
         }
 
         # set all optional components to None
@@ -150,12 +158,14 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # inputs with prompt converted to embeddings
         inputs = {
             "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attention_mask,
             "negative_prompt": None,
             "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": negative_prompt_attention_mask,
             "generator": generator,
             "num_inference_steps": num_inference_steps,
             "output_type": output_type,
-            "mask_feature": False,
+            "use_resolution_binning": False,
         }
 
         output_loaded = pipe_loaded(**inputs)[0]
@@ -174,18 +184,139 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        print(torch.from_numpy(image_slice.flatten()))
 
         self.assertEqual(image.shape, (1, 8, 8, 3))
         expected_slice = np.array([0.5303, 0.2658, 0.7979, 0.1182, 0.3304, 0.4608, 0.5195, 0.4261, 0.4675])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
+    def test_inference_non_square_images(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs, height=32, width=48).images
+        image_slice = image[0, -3:, -3:, -1]
+        self.assertEqual(image.shape, (1, 32, 48, 3))
+
+        expected_slice = np.array([0.3859, 0.2987, 0.2333, 0.5243, 0.6721, 0.4436, 0.5292, 0.5373, 0.4416])
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-3)
+
+    def test_inference_with_embeddings_and_multiple_images(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        prompt = inputs["prompt"]
+        generator = inputs["generator"]
+        num_inference_steps = inputs["num_inference_steps"]
+        output_type = inputs["output_type"]
+
+        prompt_embeds, prompt_attn_mask, negative_prompt_embeds, neg_prompt_attn_mask = pipe.encode_prompt(prompt)
+
+        # inputs with prompt converted to embeddings
+        inputs = {
+            "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attn_mask,
+            "negative_prompt": None,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": neg_prompt_attn_mask,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+            "output_type": output_type,
+            "num_images_per_prompt": 2,
+            "use_resolution_binning": False,
+        }
+
+        # set all optional components to None
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pipe.save_pretrained(tmpdir)
+            pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
+            pipe_loaded.to(torch_device)
+            pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        generator = inputs["generator"]
+        num_inference_steps = inputs["num_inference_steps"]
+        output_type = inputs["output_type"]
+
+        # inputs with prompt converted to embeddings
+        inputs = {
+            "prompt_embeds": prompt_embeds,
+            "prompt_attention_mask": prompt_attn_mask,
+            "negative_prompt": None,
+            "negative_prompt_embeds": negative_prompt_embeds,
+            "negative_prompt_attention_mask": neg_prompt_attn_mask,
+            "generator": generator,
+            "num_inference_steps": num_inference_steps,
+            "output_type": output_type,
+            "num_images_per_prompt": 2,
+            "use_resolution_binning": False,
+        }
+
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, 1e-4)
+
+    def test_inference_with_multiple_images_per_prompt(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["num_images_per_prompt"] = 2
+        image = pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        self.assertEqual(image.shape, (2, 8, 8, 3))
+        expected_slice = np.array([0.5303, 0.2658, 0.7979, 0.1182, 0.3304, 0.4608, 0.5195, 0.4261, 0.4675])
+        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
+        self.assertLessEqual(max_diff, 1e-3)
+
+    def test_raises_warning_for_mask_feature(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs.update({"mask_feature": True})
+
+        with self.assertWarns(FutureWarning) as warning_ctx:
+            _ = pipe(**inputs).images
+
+        assert "mask_feature" in str(warning_ctx.warning)
+
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=1e-3)
 
 
-# TODO: needs to be updated.
 @slow
 @require_torch_gpu
 class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
@@ -206,7 +337,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1323])
+        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -223,7 +354,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0266])
+        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -239,7 +370,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.1501, 0.1755, 0.1877, 0.1445, 0.1665, 0.1763, 0.1389, 0.176, 0.2031])
+        expected_slice = np.array([0.1941, 0.2117, 0.2188, 0.1946, 0.218, 0.2124, 0.199, 0.2437, 0.2583])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
@@ -256,7 +387,26 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        expected_slice = np.array([0.2515, 0.2593, 0.2593, 0.2544, 0.2759, 0.2788, 0.2812, 0.3169, 0.332])
+        expected_slice = np.array([0.2637, 0.291, 0.2939, 0.207, 0.2512, 0.2783, 0.2168, 0.2324, 0.2817])
 
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
+
+    def test_pixart_1024_without_resolution_binning(self):
+        generator = torch.manual_seed(0)
+
+        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+        pipe.enable_model_cpu_offload()
+
+        prompt = "A small cactus with a happy face in the Sahara desert."
+
+        image = pipe(prompt, generator=generator, num_inference_steps=5, output_type="np").images
+        image_slice = image[0, -3:, -3:, -1]
+
+        generator = torch.manual_seed(0)
+        no_res_bin_image = pipe(
+            prompt, generator=generator, num_inference_steps=5, output_type="np", use_resolution_binning=False
+        ).images
+        no_res_bin_image_slice = no_res_bin_image[0, -3:, -3:, -1]
+
+        assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)

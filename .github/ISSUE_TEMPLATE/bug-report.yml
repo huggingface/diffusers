@@ -1,5 +1,5 @@
 name: "\U0001F41B Bug Report"
-description: Report a bug on diffusers
+description: Report a bug on Diffusers
 labels: [ "bug" ]
 body:
   - type: markdown
@@ -10,7 +10,7 @@ body:
         Thus, issues are of the same importance as pull requests when contributing to this library ❤️.
         In order to make your issue as **useful for the community as possible**, let's try to stick to some simple guidelines:
         - 1. Please try to be as precise and concise as possible.
-             *Give your issue a fitting title. Assume that someone which very limited knowledge of diffusers can understand your issue. Add links to the source code, documentation other issues, pull requests etc...*
+             *Give your issue a fitting title. Assume that someone which very limited knowledge of Diffusers can understand your issue. Add links to the source code, documentation other issues, pull requests etc...*
         - 2. If your issue is about something not working, **always** provide a reproducible code snippet. The reader should be able to reproduce your issue by **only copy-pasting your code snippet into a Python shell**.
              *The community cannot solve your issue if it cannot reproduce it. If your bug is related to training, add your training script and make everything needed to train public. Otherwise, just add a simple Python code snippet.*
         - 3. Add the **minimum** amount of code / context that is needed to understand, reproduce your issue.
@@ -19,7 +19,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        For more in-detail information on how to write good issues you can have a look [here](https://huggingface.co/course/chapter8/5?fw=pt)
+        For more in-detail information on how to write good issues you can have a look [here](https://huggingface.co/course/chapter8/5?fw=pt).
   - type: textarea
     id: bug-description
     attributes:
@@ -47,7 +47,7 @@ body:
     attributes:
       label: System Info
       description: Please share your system info with us. You can run the command `diffusers-cli env` and copy-paste its output below.
-      placeholder: diffusers version, platform, python version, ...
+      placeholder: Diffusers version, platform, Python version, ...
     validations:
       required: true
   - type: textarea
@@ -55,7 +55,7 @@ body:
     attributes:
       label: Who can help?
       description: |
-        Your issue will be replied to more quickly if you can figure out the right person to tag with @
+        Your issue will be replied to more quickly if you can figure out the right person to tag with @.
         If you know how to use git blame, that is the easiest way, otherwise, here is a rough guide of **who to tag**.
         
         All issues are read by one of the core maintainers, so if you don't know who to tag, just leave this blank and
@@ -66,7 +66,7 @@ body:
         Questions on DiffusionPipeline (Saving, Loading, From pretrained, ...):
 
         Questions on pipelines:
-        - Stable Diffusion @yiyixuxu @DN6 @patrickvonplaten @sayakpaul @patrickvonplaten
+        - Stable Diffusion @yiyixuxu @DN6 @sayakpaul @patrickvonplaten
         - Stable Diffusion XL @yiyixuxu @sayakpaul @DN6 @patrickvonplaten
         - Kandinsky @yiyixuxu @patrickvonplaten
         - ControlNet @sayakpaul @yiyixuxu @DN6 @patrickvonplaten
