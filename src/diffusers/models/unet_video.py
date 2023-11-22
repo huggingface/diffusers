@@ -1,40 +1,31 @@
 from dataclasses import dataclass
-from functools import partial
-from typing import Optional, Tuple, Union, Dict, Any
-from einops import rearrange
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from einops import rearrange
 
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from .activations import get_activation
-from ..utils import is_torch_version, BaseOutput, USE_PEFT_BACKEND
-from ..utils.torch_utils import maybe_allow_in_graph
 from ..configuration_utils import ConfigMixin, register_to_config
-from .modeling_utils import ModelMixin
 from ..loaders import UNet2DConditionLoadersMixin
+from ..utils import USE_PEFT_BACKEND, BaseOutput, is_torch_version
+from ..utils.torch_utils import maybe_allow_in_graph
+from .activations import get_activation
+from .attention import BasicTransformerBlock, FeedForward
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
-    Attention,
 )
 from .embeddings import (
-    GaussianFourierProjection,
-    ImageHintTimeEmbedding,
-    ImageProjection,
-    ImageTimeEmbedding,
-    PositionNet,
-    TextImageProjection,
-    TextImageTimeEmbedding,
-    TextTimeEmbedding,
     TimestepEmbedding,
     Timesteps,
 )
-from .attention import BasicTransformerBlock, FeedForward
+from .modeling_utils import ModelMixin
+from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+
 
 class AlphaBlender(nn.Module):
     strategies = ["learned", "fixed", "learned_with_images"]
@@ -231,7 +222,7 @@ class VideoResBlock(nn.Module):
         output_scale_factor: float = 1.0,
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
-    ):  
+    ):
         super().__init__()
 
         self.spatial_res_block = ResnetBlock2D(
@@ -248,8 +239,8 @@ class VideoResBlock(nn.Module):
         )
 
         self.temporal_res_block = ResnetBlock3D(
-            in_channels=in_channels,
-            out_channels=out_channels,
+            in_channels=out_channels if out_channels is not None else in_channels,
+            out_channels=out_channels if out_channels is not None else in_channels,
             temb_channels=temb_channels,
             eps=eps,
             groups=groups,
@@ -266,7 +257,7 @@ class VideoResBlock(nn.Module):
                 rearrange_pattern="b t -> b 1 t 1 1",
             )
         )
-    
+
     def forward(
         self,
         input_tensor: torch.FloatTensor,
@@ -286,7 +277,7 @@ class VideoResBlock(nn.Module):
             x_temporal=hidden_states,
             image_only_indicator=image_only_indicator,
         )
-        
+
         hidden_states = rearrange(hidden_states, "b c t h w -> (b t) c h w")
 
         return hidden_states
@@ -408,7 +399,7 @@ class TemporalBasicTransformerBlock(nn.Module):
 
         B, S, C = hidden_states.shape
         hidden_states = rearrange(hidden_states, "(b t) s c -> (b s) t c", t=num_video_frames)
-        
+
         residual = hidden_states
         hidden_states = self.norm_in(hidden_states)
         hidden_states = self.ff_in(hidden_states)
@@ -468,7 +459,7 @@ class TemporalBasicTransformerBlock(nn.Module):
             hidden_states = ff_output
         # if hidden_states.ndim == 4:
             # hidden_states = hidden_states.squeeze(1)
-        
+
         hidden_states = rearrange(hidden_states, "(b s) t c -> (b t) s c", s=S, b=B, t=num_video_frames)
 
         return hidden_states
@@ -602,7 +593,7 @@ class Transformer2DModelVideo(ModelMixin, ConfigMixin):
         self.time_mixer = AlphaBlender(
             alpha=merge_factor, merge_strategy=merge_strategy
         )
-        
+
         # 4. Define output layers
         self.out_channels = in_channels if out_channels is None else out_channels
         # TODO: should use out_channels for continuous projections
@@ -724,7 +715,7 @@ class Transformer2DModelVideo(ModelMixin, ConfigMixin):
                     cross_attention_kwargs=cross_attention_kwargs,
                     class_labels=class_labels,
                 )
-            
+
             hidden_states_mix = hidden_states
             hidden_states_mix = hidden_states_mix + emb
 
@@ -796,7 +787,7 @@ class DownBlockVideo(nn.Module):
                     merge_factor=merge_factor,
                 )
             )
-            
+
         self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
@@ -932,7 +923,7 @@ class CrossAttnDownBlock2DVideo(nn.Module):
                     max_time_embed_period=max_time_embed_period,
                 )
             )
-          
+
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
@@ -1226,7 +1217,7 @@ class CrossAttnUpBlock2DVideo(nn.Module):
                     max_time_embed_period=max_time_embed_period,
                 )
             )
-            
+
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
@@ -1398,7 +1389,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
                     max_time_embed_period=max_time_embed_period,
                 )
             )
-            
+
             resnets.append(
                 VideoResBlock(
                     in_channels=in_channels,
@@ -1526,7 +1517,7 @@ def get_down_block(
             f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
         attention_head_dim = num_attention_heads
-    
+
     if down_block_type == "CrossAttnDownBlock2DVideo":
         return CrossAttnDownBlock2DVideo(
             in_channels=in_channels,
@@ -1608,7 +1599,7 @@ def get_up_block(
             f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
         attention_head_dim = num_attention_heads
-    
+
     if up_block_type == "CrossAttnUpBlock2DVideo":
         return CrossAttnUpBlock2DVideo(
             num_layers=num_layers,
@@ -1932,7 +1923,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
 
-  
+
         blocks_time_embed_dim = time_embed_dim
 
         # down
