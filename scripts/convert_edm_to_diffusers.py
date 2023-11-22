@@ -149,6 +149,8 @@ EDM_SCHEDULER_CONFIG = {
 
 CM_SCHEDULER_CONFIG = {
     "num_train_timesteps": 40,
+    "prediction_type": "sample",
+    "precondition_type": "cm_edm",
     "sigma_min": 0.002,
     "sigma_max": 80.0,
     "s_churn": 0.0,
