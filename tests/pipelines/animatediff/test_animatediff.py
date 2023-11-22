@@ -99,6 +99,8 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "motion_adapter": motion_adapter,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
