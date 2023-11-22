@@ -1883,7 +1883,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             cond_proj_dim=time_cond_proj_dim,
         )
 
-        self.add_embedding = TimestepEmbedding(addition_time_embed_dim, time_embed_dim)
+        self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
 
         if encoder_hid_dim_type is None and encoder_hid_dim is not None:
             encoder_hid_dim_type = "text_proj"
