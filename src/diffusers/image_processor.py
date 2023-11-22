@@ -460,8 +460,6 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
 
         images = [np.array(image).astype(np.float32) / (2**16 - 1) for image in images]
         images = np.stack(images, axis=0)
-        # images = images *2 -1
-        # images = (images * 127.5 + 127.5)/255
         return images
 
     @staticmethod
