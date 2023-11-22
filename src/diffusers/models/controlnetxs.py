@@ -39,7 +39,7 @@ from .unet_2d_blocks import (
     Upsample2D,
 )
 from .unet_2d_condition import UNet2DConditionModel
-
+from ..umer_debug_logger import udl
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -726,43 +726,76 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         ctrl_mid_subblocks = to_sub_blocks([self.control_model.mid_block])
         base_up_subblocks = to_sub_blocks(base_model.up_blocks)
 
+        udl.log_if('prep.x',            sample,          condition='SUBBLOCK')
+        udl.log_if('prep.temb',         temb,           condition='SUBBLOCK')
+        udl.log_if('prep.context',      cemb,           condition='SUBBLOCK')
+        udl.log_if('prep.raw_hint',     controlnet_cond,condition='SUBBLOCK')
+        udl.log_if('prep.guided_hint',  guided_hint,    condition='SUBBLOCK')
+
         # Cross Control
         # 0 - conv in
         h_base = base_model.conv_in(h_base)
+        udl.log_if('enc.h_base', h_base, condition='SUBBLOCK')
+        
         h_ctrl = self.control_model.conv_in(h_ctrl)
+        udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
+        
         if guided_hint is not None:
             h_ctrl += guided_hint
-        h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)
+        udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
 
+        h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)
+        udl.log_if('enc.h_base', h_base, condition='SUBBLOCK')
+        
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
 
         # 1 - down
+        RUN_ONCE = ('SUBBLOCK', 'SUBBLOCK-MINUS-1')
+        udl.print_if('------ enc ------', conditions=RUN_ONCE)
+
         for m_base, m_ctrl in zip(base_down_subblocks, ctrl_down_subblocks):
             h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
+            udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
+
             h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # B - apply base subblock
+            udl.log_if('enc.h_base', h_base, condition='SUBBLOCK')
+
             h_ctrl = m_ctrl(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # C - apply ctrl subblock
+            udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
+
             h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)  # D - add ctrl -> base
+            udl.log_if('enc.h_base', h_base, condition='SUBBLOCK')
 
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
 
         # 2 - mid
         h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
+        udl.log_if('enc.h_ctrl', h_ctrl, 'SUBBLOCK')
+        
         for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
             h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # B - apply base subblock
             h_ctrl = m_ctrl(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # C - apply ctrl subblock
         h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)  # D - add ctrl -> base
+        udl.log_if('mid.h_base', h_base, condition='SUBBLOCK')
+        udl.log_if('mid.h_ctrl', h_ctrl, condition='SUBBLOCK')
 
         # 3 - up
-        for m_base in base_up_subblocks:
+        for i, m_base in enumerate(base_up_subblocks):
+            udl.print_if(f'> processing up subblock {i}','SUBBLOCK')
             h_base = h_base + next(it_up_convs_out)(hs_ctrl.pop()) * next(scales)  # add info from ctrl encoder
+            udl.log_if('dec.h_base', h_base, condition='SUBBLOCK')
             h_base = torch.cat([h_base, hs_base.pop()], dim=1)  # concat info from base encoder+ctrl encoder
             h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
+            udl.log_if('dec.h_base', h_base, condition='SUBBLOCK')
 
         h_base = base_model.conv_norm_out(h_base)
         h_base = base_model.conv_act(h_base)
         h_base = base_model.conv_out(h_base)
+
+        udl.log_if('conv_out.h_base', h_base, condition='SUBBLOCK')
+        udl.stop_if('SUBBLOCK', 'The subblocks are cought. Let us gaze into their soul, their very essence.')
 
         if not return_dict:
             return h_base
@@ -951,6 +984,7 @@ def to_sub_blocks(blocks):
                 sub_blocks.append([d])
 
     return list(map(EmbedSequential, sub_blocks))
+
 
 def zero_module(module):
     for p in module.parameters():
