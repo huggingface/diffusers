@@ -23,6 +23,7 @@ import torch.utils.checkpoint
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, logging
+from .activations import get_activation
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -33,7 +34,6 @@ from .attention_processor import (
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .transformer_temporal import TransformerTemporalModel
-from .activations import get_activation
 from .unet_3d_blocks import (
     CrossAttnDownBlock3D,
     CrossAttnUpBlock3D,
@@ -43,6 +43,7 @@ from .unet_3d_blocks import (
     get_down_block,
     get_up_block,
 )
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
