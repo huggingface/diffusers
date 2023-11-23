@@ -128,7 +128,7 @@ class UNetKandi3(ModelMixin, ConfigMixin):
         self.in_layer = nn.Conv2d(in_channels, init_channels, kernel_size=3, padding=1)
 
         # hidden_dims = [init_channels, *map(lambda mult: model_channels * mult, dim_mult)]
-        hidden_dims = [init_channels] + block_out_channels
+        hidden_dims = [init_channels] + list(block_out_channels)
         in_out_dims = list(zip(hidden_dims[:-1], hidden_dims[1:]))
         text_dims = [set_default_item(is_exist, cross_attention_dim) for is_exist in add_cross_attention]
         num_blocks = len(block_out_channels) * [layers_per_block]
