@@ -1,16 +1,8 @@
-import re
-from contextlib import nullcontext
-from io import BytesIO
-from typing import Dict, Optional, Union
+from diffusers.utils import is_accelerate_available, logging
 
-import requests
-import torch
-
-from diffusers.utils import is_accelerate_available, is_omegaconf_available, logging
 
 if is_accelerate_available():
-    from accelerate import init_empty_weights
-    from accelerate.utils import set_module_tensor_to_device
+    pass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -34,7 +26,9 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnDownBlock2DVideo" if resolution in unet_params.attention_resolutions else "DownBlockVideo"
+        block_type = (
+            "CrossAttnDownBlock2DVideo" if resolution in unet_params.attention_resolutions else "DownBlockVideo"
+        )
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
             resolution *= 2
@@ -115,7 +109,13 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
 
 
 def assign_to_checkpoint(
-    paths, checkpoint, old_checkpoint, attention_paths_to_split=None, additional_replacements=None, config=None, mid_block_suffix="",
+    paths,
+    checkpoint,
+    old_checkpoint,
+    attention_paths_to_split=None,
+    additional_replacements=None,
+    config=None,
+    mid_block_suffix="",
 ):
     """
     This does the final conversion step: take locally converted weights and apply a global renaming to them. It splits
@@ -141,7 +141,7 @@ def assign_to_checkpoint(
             checkpoint[path_map["query"]] = query.reshape(target_shape)
             checkpoint[path_map["key"]] = key.reshape(target_shape)
             checkpoint[path_map["value"]] = value.reshape(target_shape)
-    
+
     if mid_block_suffix is not None:
         mid_block_suffix = f".{mid_block_suffix}"
     else:
@@ -154,21 +154,18 @@ def assign_to_checkpoint(
         if attention_paths_to_split is not None and new_path in attention_paths_to_split:
             continue
 
-
-            
         # Global renaming happens here
         new_path = new_path.replace("middle_block.0", f"mid_block.resnets.0{mid_block_suffix}")
         new_path = new_path.replace("middle_block.1", "mid_block.attentions.0")
         new_path = new_path.replace("middle_block.2", f"mid_block.resnets.1{mid_block_suffix}")
 
-
         if additional_replacements is not None:
             for replacement in additional_replacements:
                 new_path = new_path.replace(replacement["old"], replacement["new"])
-        
+
         if new_path == "mid_block.resnets.0.spatial_res_block.norm1.weight":
             print("yeyy")
-        
+
         # proj_attn.weight has to be converted from conv 1D to linear
         is_attn_weight = "proj_attn.weight" in new_path or ("attentions" in new_path and "to_" in new_path)
         shape = old_checkpoint[path["old"]].shape
@@ -195,13 +192,13 @@ def renew_attention_paths(old_list, n_shave_prefix_segments=0):
         #         new_item = new_item.replace('proj_out.bias', 'proj_attn.bias')
 
         #         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
-        new_item = new_item.replace('time_stack', 'temporal_transformer_blocks')
-        
-        new_item = new_item.replace('time_pos_embed.0.bias', 'time_pos_embed.linear_1.bias')
-        new_item = new_item.replace('time_pos_embed.0.weight', 'time_pos_embed.linear_1.weight')
-        new_item = new_item.replace('time_pos_embed.2.bias', 'time_pos_embed.linear_2.bias')
-        new_item = new_item.replace('time_pos_embed.2.weight', 'time_pos_embed.linear_2.weight')
-        
+        new_item = new_item.replace("time_stack", "temporal_transformer_blocks")
+
+        new_item = new_item.replace("time_pos_embed.0.bias", "time_pos_embed.linear_1.bias")
+        new_item = new_item.replace("time_pos_embed.0.weight", "time_pos_embed.linear_1.weight")
+        new_item = new_item.replace("time_pos_embed.2.bias", "time_pos_embed.linear_2.bias")
+        new_item = new_item.replace("time_pos_embed.2.weight", "time_pos_embed.linear_2.weight")
+
         mapping.append({"old": old_item, "new": new_item})
 
     return mapping
@@ -231,7 +228,7 @@ def renew_resnet_paths(old_list, n_shave_prefix_segments=0):
 
         new_item = new_item.replace("emb_layers.1", "time_emb_proj")
         new_item = new_item.replace("skip_connection", "conv_shortcut")
-        
+
         new_item = new_item.replace("time_stack.", "")
 
         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
@@ -303,7 +300,6 @@ def convert_ldm_unet_checkpoint(
     new_checkpoint["add_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
     new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
 
-
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
 
@@ -338,12 +334,16 @@ def convert_ldm_unet_checkpoint(
         layer_in_block_id = (i - 1) % (config["layers_per_block"] + 1)
 
         spatial_resnets = [
-            key for key in input_blocks[i] if f"input_blocks.{i}.0" in key 
-            and (f"input_blocks.{i}.0.op" not in key and f"input_blocks.{i}.0.time_stack" not in key and f"input_blocks.{i}.0.time_mixer" not in key)
+            key
+            for key in input_blocks[i]
+            if f"input_blocks.{i}.0" in key
+            and (
+                f"input_blocks.{i}.0.op" not in key
+                and f"input_blocks.{i}.0.time_stack" not in key
+                and f"input_blocks.{i}.0.time_mixer" not in key
+            )
         ]
-        temporal_resnets = [
-            key for key in input_blocks[i] if f"input_blocks.{i}.0.time_stack" in key 
-        ]
+        temporal_resnets = [key for key in input_blocks[i] if f"input_blocks.{i}.0.time_stack" in key]
         # import ipdb; ipdb.set_trace()
         attentions = [key for key in input_blocks[i] if f"input_blocks.{i}.1" in key]
 
@@ -356,20 +356,28 @@ def convert_ldm_unet_checkpoint(
             )
 
         paths = renew_resnet_paths(spatial_resnets)
-        meta_path = {"old": f"input_blocks.{i}.0", "new": f"down_blocks.{block_id}.resnets.{layer_in_block_id}.spatial_res_block"}
+        meta_path = {
+            "old": f"input_blocks.{i}.0",
+            "new": f"down_blocks.{block_id}.resnets.{layer_in_block_id}.spatial_res_block",
+        }
         assign_to_checkpoint(
             paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
         )
-        
+
         paths = renew_resnet_paths(temporal_resnets)
-        meta_path = {"old": f"input_blocks.{i}.0", "new": f"down_blocks.{block_id}.resnets.{layer_in_block_id}.temporal_res_block"}
+        meta_path = {
+            "old": f"input_blocks.{i}.0",
+            "new": f"down_blocks.{block_id}.resnets.{layer_in_block_id}.temporal_res_block",
+        }
         assign_to_checkpoint(
             paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
         )
-        
+
         # TODO resnet time_mixer.mix_factor
         if f"input_blocks.{i}.0.time_mixer.mix_factor" in unet_state_dict:
-            new_checkpoint[f"down_blocks.{block_id}.resnets.{layer_in_block_id}.time_mixer.mix_factor"] = unet_state_dict[f"input_blocks.{i}.0.time_mixer.mix_factor"]
+            new_checkpoint[
+                f"down_blocks.{block_id}.resnets.{layer_in_block_id}.time_mixer.mix_factor"
+            ] = unet_state_dict[f"input_blocks.{i}.0.time_mixer.mix_factor"]
 
         if len(attentions):
             paths = renew_attention_paths(attentions)
@@ -382,27 +390,39 @@ def convert_ldm_unet_checkpoint(
     resnet_0 = middle_blocks[0]
     attentions = middle_blocks[1]
     resnet_1 = middle_blocks[2]
-    
+
     resnet_0_spatial = [key for key in resnet_0 if "time_stack" not in key and "time_mixer" not in key]
     resnet_0_paths = renew_resnet_paths(resnet_0_spatial)
     # import ipdb; ipdb.set_trace()
-    assign_to_checkpoint(resnet_0_paths, new_checkpoint, unet_state_dict, config=config, mid_block_suffix="spatial_res_block")
-    
+    assign_to_checkpoint(
+        resnet_0_paths, new_checkpoint, unet_state_dict, config=config, mid_block_suffix="spatial_res_block"
+    )
+
     resnet_0_temporal = [key for key in resnet_0 if "time_stack" in key and "time_mixer" not in key]
     resnet_0_paths = renew_resnet_paths(resnet_0_temporal)
-    assign_to_checkpoint(resnet_0_paths, new_checkpoint, unet_state_dict, config=config, mid_block_suffix="temporal_res_block")
+    assign_to_checkpoint(
+        resnet_0_paths, new_checkpoint, unet_state_dict, config=config, mid_block_suffix="temporal_res_block"
+    )
 
     resnet_1_spatial = [key for key in resnet_1 if "time_stack" not in key and "time_mixer" not in key]
     resnet_1_paths = renew_resnet_paths(resnet_1_spatial)
-    assign_to_checkpoint(resnet_1_paths, new_checkpoint, unet_state_dict, config=config, mid_block_suffix="spatial_res_block")
-    
+    assign_to_checkpoint(
+        resnet_1_paths, new_checkpoint, unet_state_dict, config=config, mid_block_suffix="spatial_res_block"
+    )
+
     resnet_1_temporal = [key for key in resnet_1 if "time_stack" in key and "time_mixer" not in key]
     resnet_1_paths = renew_resnet_paths(resnet_1_temporal)
-    assign_to_checkpoint(resnet_1_paths, new_checkpoint, unet_state_dict, config=config, mid_block_suffix="temporal_res_block")
-    
-    new_checkpoint["mid_block.resnets.0.time_mixer.mix_factor"] = unet_state_dict["middle_block.0.time_mixer.mix_factor"]
-    new_checkpoint["mid_block.resnets.1.time_mixer.mix_factor"] = unet_state_dict["middle_block.2.time_mixer.mix_factor"]
-    
+    assign_to_checkpoint(
+        resnet_1_paths, new_checkpoint, unet_state_dict, config=config, mid_block_suffix="temporal_res_block"
+    )
+
+    new_checkpoint["mid_block.resnets.0.time_mixer.mix_factor"] = unet_state_dict[
+        "middle_block.0.time_mixer.mix_factor"
+    ]
+    new_checkpoint["mid_block.resnets.1.time_mixer.mix_factor"] = unet_state_dict[
+        "middle_block.2.time_mixer.mix_factor"
+    ]
+
     attentions_paths = renew_attention_paths(attentions)
     meta_path = {"old": "middle_block.1", "new": "mid_block.attentions.0"}
     assign_to_checkpoint(
@@ -424,30 +444,37 @@ def convert_ldm_unet_checkpoint(
 
         if len(output_block_list) > 1:
             spatial_resnets = [
-                key for key in output_blocks[i] if f"output_blocks.{i}.0" in key
-                and (f"output_blocks.{i}.0.time_stack" not in key and f"time_mixer" not in key)
+                key
+                for key in output_blocks[i]
+                if f"output_blocks.{i}.0" in key
+                and (f"output_blocks.{i}.0.time_stack" not in key and "time_mixer" not in key)
             ]
-            spatial_resnet_0_paths = renew_resnet_paths(spatial_resnets)
             # import ipdb; ipdb.set_trace()
-            
-            temporal_resnets = [
-                key for key in output_blocks[i] if f"output_blocks.{i}.0.time_stack" in key
-            ]
+
+            temporal_resnets = [key for key in output_blocks[i] if f"output_blocks.{i}.0.time_stack" in key]
 
             paths = renew_resnet_paths(spatial_resnets)
-            meta_path = {"old": f"output_blocks.{i}.0", "new": f"up_blocks.{block_id}.resnets.{layer_in_block_id}.spatial_res_block"}
+            meta_path = {
+                "old": f"output_blocks.{i}.0",
+                "new": f"up_blocks.{block_id}.resnets.{layer_in_block_id}.spatial_res_block",
+            }
             assign_to_checkpoint(
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
-            
+
             paths = renew_resnet_paths(temporal_resnets)
-            meta_path = {"old": f"output_blocks.{i}.0", "new": f"up_blocks.{block_id}.resnets.{layer_in_block_id}.temporal_res_block"}
+            meta_path = {
+                "old": f"output_blocks.{i}.0",
+                "new": f"up_blocks.{block_id}.resnets.{layer_in_block_id}.temporal_res_block",
+            }
             assign_to_checkpoint(
                 paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
             )
-            
+
             if f"output_blocks.{i}.0.time_mixer.mix_factor" in unet_state_dict:
-                new_checkpoint[f"up_blocks.{block_id}.resnets.{layer_in_block_id}.time_mixer.mix_factor"] = unet_state_dict[f"output_blocks.{i}.0.time_mixer.mix_factor"]
+                new_checkpoint[
+                    f"up_blocks.{block_id}.resnets.{layer_in_block_id}.time_mixer.mix_factor"
+                ] = unet_state_dict[f"output_blocks.{i}.0.time_mixer.mix_factor"]
 
             output_block_list = {k: sorted(v) for k, v in output_block_list.items()}
             if ["conv.bias", "conv.weight"] in output_block_list.values():
@@ -462,7 +489,7 @@ def convert_ldm_unet_checkpoint(
                 # Clear attentions as they have been attributed above.
                 if len(attentions) == 2:
                     attentions = []
-            
+
             attentions = [key for key in output_blocks[i] if f"output_blocks.{i}.1" in key and "conv" not in key]
             if len(attentions):
                 paths = renew_attention_paths(attentions)
@@ -475,24 +502,34 @@ def convert_ldm_unet_checkpoint(
                     paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
                 )
         else:
-            spatial_layers = [layer for layer in output_block_layers if "time_stack" not in layer and "time_mixer" not in layer]
+            spatial_layers = [
+                layer for layer in output_block_layers if "time_stack" not in layer and "time_mixer" not in layer
+            ]
             resnet_0_paths = renew_resnet_paths(spatial_layers, n_shave_prefix_segments=1)
             # import ipdb; ipdb.set_trace()
             for path in resnet_0_paths:
                 old_path = ".".join(["output_blocks", str(i), path["old"]])
-                new_path = ".".join(["up_blocks", str(block_id), "resnets", str(layer_in_block_id), "spatial_res_block", path["new"]])
+                new_path = ".".join(
+                    ["up_blocks", str(block_id), "resnets", str(layer_in_block_id), "spatial_res_block", path["new"]]
+                )
 
                 new_checkpoint[new_path] = unet_state_dict[old_path]
 
-            temporal_layers = [layer for layer in output_block_layers if "time_stack" in layer  and "time_mixer" not in key]
+            temporal_layers = [
+                layer for layer in output_block_layers if "time_stack" in layer and "time_mixer" not in key
+            ]
             resnet_0_paths = renew_resnet_paths(temporal_layers, n_shave_prefix_segments=1)
             # import ipdb; ipdb.set_trace()
             for path in resnet_0_paths:
                 old_path = ".".join(["output_blocks", str(i), path["old"]])
-                new_path = ".".join(["up_blocks", str(block_id), "resnets", str(layer_in_block_id), "temporal_res_block", path["new"]])
+                new_path = ".".join(
+                    ["up_blocks", str(block_id), "resnets", str(layer_in_block_id), "temporal_res_block", path["new"]]
+                )
 
                 new_checkpoint[new_path] = unet_state_dict[old_path]
-            
-            new_checkpoint["up_blocks.0.resnets.0.time_mixer.mix_factor"] = unet_state_dict[f"output_blocks.{str(i)}.0.time_mixer.mix_factor"]
+
+            new_checkpoint["up_blocks.0.resnets.0.time_mixer.mix_factor"] = unet_state_dict[
+                f"output_blocks.{str(i)}.0.time_mixer.mix_factor"
+            ]
 
     return new_checkpoint
