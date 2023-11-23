@@ -651,8 +651,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet_lora_parameters, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet_lora_parameters, optimizer, train_dataloader, lr_scheduler
+    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, optimizer, train_dataloader, lr_scheduler
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
