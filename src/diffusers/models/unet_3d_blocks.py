@@ -1787,8 +1787,9 @@ class MidBlockTemporalDecoder(nn.Module):
         hidden_states = self.resnets[0](hidden_states, temb)
         for resnet, attn in zip(self.resnets[1:], self.attentions):
             hidden_states = attn(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb)
 
-        pass
+        return hidden_states
 
 
 class UpBlockTemporalDecoder(nn.Module):
