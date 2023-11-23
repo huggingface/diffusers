@@ -10,7 +10,7 @@ import torch
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
 from ...loaders import LoraLoaderMixin
-from ...models import UNetKandi3, VQModel
+from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -49,7 +49,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         self,
         tokenizer: T5Tokenizer,
         text_encoder: T5EncoderModel,
-        unet: UNetKandi3,
+        unet: Kandinsky3UNet,
         scheduler: DDPMScheduler,
         movq: VQModel
 

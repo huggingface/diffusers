@@ -92,7 +92,7 @@ else:
             "UNet3DConditionModel",
             "UNetMotionModel",
             "VQModel",
-            "UNetKandi3",
+            "Kandinsky3UNet",
         ]
     )
 
@@ -462,7 +462,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet3DConditionModel,
             UNetMotionModel,
             VQModel,
-            UNetKandi3,
+            Kandinsky3UNet,
         )
         from .optimization import (
             get_constant_schedule,

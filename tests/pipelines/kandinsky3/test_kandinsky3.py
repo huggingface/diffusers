@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from transformers import T5EncoderModel, AutoTokenizer
-from diffusers import KandinskyV3Pipeline, UNetKandi3, VQModel
+from diffusers import KandinskyV3Pipeline, Kandinsky3UNet, VQModel
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -77,7 +77,7 @@ class KandinskyV3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
-        unet = UNetKandi3(
+        unet = Kandinsky3UNet(
             model_channels=16,
             init_channels=16,
             num_channels=4,

@@ -1,6 +1,6 @@
 import torch
 import argparse
-from diffusers import UNetKandi3
+from diffusers import Kandinsky3UNet
 
 def convert_state_dict(unet_model, diffusers_model):
     """

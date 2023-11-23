@@ -16,7 +16,7 @@ from .embeddings import Timesteps
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
-class UNetKandi3(BaseOutput):
+class Kandinsky3UNet(BaseOutput):
     sample: torch.FloatTensor = None
     
 # TODO(Yiyi): This class needs to be removed
@@ -57,33 +57,8 @@ class SinusoidalPosEmb(nn.Module):
         emb = x[:, None] * emb[None, :]
         return torch.cat((emb.sin(), emb.cos()), dim=-1)
 
-# block_out_channels=(4, 8),
-# layers_per_block=1,
-# sample_size=32,
-# time_cond_proj_dim=time_cond_proj_dim,
-# in_channels=4,
-# out_channels=4,
-# down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-# up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-# cross_attention_dim=32,
-# norm_num_groups=2,
 
-# {
-#   "_class_name": "UNet2DConditionModel",
-#   "_diffusers_version": "0.17.0.dev0",
-#   "model_channels": 384,
-#   "in_channels": 4,
-#   "init_channels": 192,
-#   "time_embedding_dim": 1536,
-#   "context_dim": 4096,
-#   "model_dim": 4096,
-#   "groups": 32,
-#   "attention_head_dim": 64,
-#   "dim_mult": [1, 2, 4, 8],
-#   "num_blocks": [3, 3, 3, 3],
-#}
-
-class UNetKandi3(ModelMixin, ConfigMixin):
+class Kandinsky3UNet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
             self,
@@ -95,15 +70,10 @@ class UNetKandi3(ModelMixin, ConfigMixin):
             block_out_channels: Tuple[int] = (384, 768, 1536, 3072),
             cross_attention_dim: Union[int, Tuple[int]] = 4096,
             encoder_hid_dim: int = 4096,
-            # context_dim=4096,
-            # model_dim=4096
-            # model_channels=None,
-            # init_channels=None,
-            # dim_mult=(1, 2, 4, 8),
-            # num_blocks=(3, 3, 3, 3),
         ):
         super().__init__()
-        # TOOD(Yiyi): Give better name and put into config
+
+        # TOOD(Yiyi): Give better name and put into config for the following 4 parameters
         expansion_ratio = 4
         compression_ratio = 2
         add_cross_attention = (False, True, True, True)
@@ -265,7 +235,7 @@ class UNetKandi3(ModelMixin, ConfigMixin):
         x = self.out_layer(x)
         if not return_dict:
             return (x,)
-        return UNetKandi3(sample=x)
+        return Kandinsky3UNet(sample=x)
 
 
 class UpSampleBlock(nn.Module):
