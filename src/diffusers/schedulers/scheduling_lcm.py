@@ -371,10 +371,11 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # LCM Timesteps Setting
-        # Currently, only linear spacing is supported.
-        c = self.config.num_train_timesteps // original_steps
-        # LCM Training Steps Schedule
-        lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * c - 1
+        # The skipping step parameter k from the paper.
+        k = self.config.num_train_timesteps // original_steps
+        # LCM Training/Distillation Steps Schedule
+        # Currently, only a linearly-spaced schedule is supported (same as in the LCM distillation scripts).
+        lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * k - 1
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
 
         if skipping_step < 1:
@@ -383,9 +384,13 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # LCM Inference Steps Schedule
-        timesteps = lcm_origin_timesteps[::-skipping_step][:num_inference_steps]
+        lcm_origin_timesteps = lcm_origin_timesteps[::-1].copy()
+        # Select (approximately) evenly spaced indices from lcm_origin_timesteps.
+        inference_indices = np.linspace(0, len(lcm_origin_timesteps), num=num_inference_steps, endpoint=False)
+        inference_indices = np.floor(inference_indices).astype(np.int64)
+        timesteps = lcm_origin_timesteps[inference_indices]
 
-        self.timesteps = torch.from_numpy(timesteps.copy()).to(device=device, dtype=torch.long)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.long)
 
         self._step_index = None
 
