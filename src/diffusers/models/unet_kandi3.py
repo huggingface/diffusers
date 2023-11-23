@@ -125,7 +125,7 @@ class UNetKandi3(ModelMixin, ConfigMixin):
         )
         self.feature_pooling = AttentionPooling(time_embedding_dim, cross_attention_dim, attention_head_dim)
 
-        self.in_layer = nn.Conv2d(num_channels, init_channels, kernel_size=3, padding=1)
+        self.in_layer = nn.Conv2d(in_channels, init_channels, kernel_size=3, padding=1)
 
         # hidden_dims = [init_channels, *map(lambda mult: model_channels * mult, dim_mult)]
         hidden_dims = [init_channels] + block_out_channels
