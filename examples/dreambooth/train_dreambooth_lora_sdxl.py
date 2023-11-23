@@ -112,7 +112,7 @@ def save_model_card(
         img_str += f"""
         - text: '{validation_prompt if validation_prompt else ' ' }'
           output:
-            url: 
+            url:
                 "image_{i}.png"
         """
 
