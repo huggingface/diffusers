@@ -150,7 +150,10 @@ class IPAdapterMixin:
             self.feature_extractor = CLIPImageProcessor()
 
         # load ip-adapter into unet
-        self.unet._load_ip_adapter_weights(state_dict,isIpAdapterFull)
+        if isIpAdapterFull != True and weight_name.__contains__('Full'):
+            raise ValueError("Required IPAdapter Should be IPAdapterFull.")
+        else:
+            self.unet._load_ip_adapter_weights(state_dict,isIpAdapterFull)
 
     def set_ip_adapter_scale(self, scale):
         for attn_processor in self.unet.attn_processors.values():
