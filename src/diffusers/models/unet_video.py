@@ -175,9 +175,8 @@ class ResnetBlock3D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.conv1(hidden_states)
-
         if self.time_emb_proj is not None:
-            temb = self.time_emb_proj(temb)[:, :, None, None]
+            temb = self.time_emb_proj(temb)[:, :, :, None, None]
 
         if temb is not None:
             temb = rearrange(temb, "b t c ... -> b c t ...")
@@ -256,9 +255,9 @@ class VideoResBlock(nn.Module):
         scale: float = 1.0,
     ):
         hidden_states = self.spatial_res_block(input_tensor, temb, scale=scale)
-
         hidden_states_mix = rearrange(hidden_states, "(b t) c h w -> b c t h w", t=num_video_frames)
         hidden_states = rearrange(hidden_states, "(b t) c h w -> b c t h w", t=num_video_frames)
+        temb = rearrange(temb, "(b t) ... -> b t ...", t=num_video_frames)
 
         hidden_states = self.temporal_res_block(hidden_states, temb)
         hidden_states = self.time_mixer(
@@ -399,11 +398,12 @@ class TemporalBasicTransformerBlock(nn.Module):
 
         # 1. Retrieve lora scale.
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
 
         norm_hidden_states = self.norm1(hidden_states)
         attn_output = self.attn1(
             norm_hidden_states,
-            encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
+            encoder_hidden_states=None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
@@ -451,7 +451,9 @@ class TemporalBasicTransformerBlock(nn.Module):
         # if hidden_states.ndim == 4:
         # hidden_states = hidden_states.squeeze(1)
 
-        hidden_states = rearrange(hidden_states, "(b s) t c -> (b t) s c", s=S, b=B, t=num_video_frames)
+        hidden_states = rearrange(
+            hidden_states, "(b s) t c -> (b t) s c", s=S, b=B // num_video_frames, t=num_video_frames
+        )
 
         return hidden_states
 
@@ -670,7 +672,7 @@ class Transformer2DModelVideo(ModelMixin, ConfigMixin):
         emb = emb[:, None, :]
 
         # 2. Blocks
-        for block, temporal_block in zip(self.transformer_blocks, self.time_mix_blocks):
+        for block, temporal_block in zip(self.transformer_blocks, self.temporal_transformer_blocks):
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     block,
@@ -1892,6 +1894,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             cond_proj_dim=time_cond_proj_dim,
         )
 
+        self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos, freq_shift)
         self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
 
         if encoder_hid_dim_type is None and encoder_hid_dim is not None:
@@ -2371,7 +2374,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps.expand(sample.shape[0])
+        batch_size, num_frames = sample.shape[:2]
+        timesteps = timesteps.expand(batch_size)
 
         t_emb = self.time_proj(timesteps)
 
@@ -2384,7 +2388,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         time_ids = added_cond_kwargs.get("time_ids")
         time_embeds = self.add_time_proj(time_ids.flatten())
-        time_embeds = time_embeds.reshape((sample.shape[0], -1))
+        time_embeds = time_embeds.reshape((batch_size, -1))
         time_embeds = time_embeds.to(emb.dtype)
         aug_emb = self.add_embedding(time_embeds)
 
@@ -2397,7 +2401,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # sample: [batch, frames, channels, height, width] -> [batch * frames, channels, height, width]
         # emb: [batch, channels] -> [batch * frames, channels]
         # encoder_hidden_states: [batch, 1, channels] -> [batch * frames, 1, channels]
-        num_frames = sample.shape[1]
         sample = sample.flatten(0, 1)
         emb = emb.repeat_interleave(num_frames, dim=0)
         encoder_hidden_states = encoder_hidden_states.repeat_interleave(num_frames, dim=0)
@@ -2411,7 +2414,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
 
-        image_only_indicator = torch.zeros(2, num_frames, dtype=sample.dtype, device=sample.device)
+        image_only_indicator = torch.zeros(batch_size, num_frames, dtype=sample.dtype, device=sample.device)
 
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
@@ -2441,18 +2444,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if self.mid_block is not None:
             if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
                 sample = self.mid_block(
-                    sample,
-                    emb,
+                    hidden_states=sample,
+                    temb=emb,
+                    num_video_frames=num_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
                     encoder_attention_mask=encoder_attention_mask,
-                    num_video_frames=num_frames,
                     image_only_indicator=image_only_indicator,
                 )
             else:
                 sample = self.mid_block(
-                    sample, emb, num_video_frames=num_frames, image_only_indicator=image_only_indicator
+                    sample, temb=emb, num_video_frames=num_frames, image_only_indicator=image_only_indicator
                 )
 
         # 5. up
