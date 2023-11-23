@@ -19,10 +19,7 @@ from .attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .embeddings import (
-    TimestepEmbedding,
-    Timesteps,
-)
+from .embeddings import TimestepEmbedding, Timesteps
 from .lora import LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
