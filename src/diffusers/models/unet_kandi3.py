@@ -44,18 +44,6 @@ class Identity(nn.Module):
         return x
 
 
-# block_out_channels=(4, 8),
-# layers_per_block=1,
-# sample_size=32,
-# time_cond_proj_dim=time_cond_proj_dim,
-# in_channels=4,
-# out_channels=4,
-# down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-# up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-# cross_attention_dim=32,
-# norm_num_groups=2,
-
-
 # TODO(Yiyi): This class should be removed
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
@@ -69,48 +57,81 @@ class SinusoidalPosEmb(nn.Module):
         emb = x[:, None] * emb[None, :]
         return torch.cat((emb.sin(), emb.cos()), dim=-1)
 
+# block_out_channels=(4, 8),
+# layers_per_block=1,
+# sample_size=32,
+# time_cond_proj_dim=time_cond_proj_dim,
+# in_channels=4,
+# out_channels=4,
+# down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+# up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+# cross_attention_dim=32,
+# norm_num_groups=2,
+
+# {
+#   "_class_name": "UNet2DConditionModel",
+#   "_diffusers_version": "0.17.0.dev0",
+#   "model_channels": 384,
+#   "in_channels": 4,
+#   "init_channels": 192,
+#   "time_embedding_dim": 1536,
+#   "context_dim": 4096,
+#   "model_dim": 4096,
+#   "groups": 32,
+#   "attention_head_dim": 64,
+#   "dim_mult": [1, 2, 4, 8],
+#   "num_blocks": [3, 3, 3, 3],
+#}
 
 class UNetKandi3(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
             self,
-            model_channels=None,
-            init_channels=None,
-            num_channels=3,
-            time_embed_dim=None,
-            groups=32,
-            head_dim=64,
-            expansion_ratio=4,
-            compression_ratio=2,
-            dim_mult=(1, 2, 4, 8),
-            num_blocks=(3, 3, 3, 3),
-            model_dim=4096,
-            context_dim=4096,
-            add_cross_attention=(False, True, True, True),
-            add_self_attention=(False, True, True, True)
+            in_channels: int = 4,
+            time_embedding_dim: int = 1536,
+            groups: int = 32,
+            attention_head_dim: int = 64,
+            layers_per_block: Union[int, Tuple[int]] = 3,
+            block_out_channels: Tuple[int] = (384, 768, 1536, 3072),
+            cross_attention_dim: Union[int, Tuple[int]] = 4096,
+            encoder_hid_dim: int = 4096,
+            # context_dim=4096,
+            # model_dim=4096
+            # model_channels=None,
+            # init_channels=None,
+            # dim_mult=(1, 2, 4, 8),
+            # num_blocks=(3, 3, 3, 3),
         ):
         super().__init__()
-        out_channels = num_channels
-        init_channels = init_channels or model_channels
-        self.projection_lin = nn.Linear(model_dim, context_dim, bias=False)
-        self.projection_ln = nn.LayerNorm(context_dim)
+        # TOOD(Yiyi): Give better name and put into config
+        expansion_ratio = 4
+        compression_ratio = 2
+        add_cross_attention = (False, True, True, True)
+        add_self_attention = (False, True, True, True)
+
+        out_channels = in_channels
+        init_channels = block_out_channels[0] // 2
+        self.projection_lin = nn.Linear(encoder_hid_dim, cross_attention_dim, bias=False)
+        self.projection_ln = nn.LayerNorm(cross_attention_dim)
         # TODO(Yiyi): Should be replaced with Timesteps class -> make sure that results are the same
         # self.time_proj = Timesteps(init_channels, flip_sin_to_cos=False, downscale_freq_shift=1)
         self.time_proj = SinusoidalPosEmb(init_channels)
 
         self.to_time_embed = nn.Sequential(
             nn.Identity(),
-            nn.Linear(init_channels, time_embed_dim),
+            nn.Linear(init_channels, time_embedding_dim),
             nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim)
+            nn.Linear(time_embedding_dim, time_embedding_dim)
         )
-        self.feature_pooling = AttentionPooling(time_embed_dim, context_dim, head_dim)
+        self.feature_pooling = AttentionPooling(time_embedding_dim, cross_attention_dim, attention_head_dim)
 
         self.in_layer = nn.Conv2d(num_channels, init_channels, kernel_size=3, padding=1)
 
-        hidden_dims = [init_channels, *map(lambda mult: model_channels * mult, dim_mult)]
+        # hidden_dims = [init_channels, *map(lambda mult: model_channels * mult, dim_mult)]
+        hidden_dims = [init_channels] + block_out_channels
         in_out_dims = list(zip(hidden_dims[:-1], hidden_dims[1:]))
-        text_dims = [set_default_item(is_exist, context_dim) for is_exist in add_cross_attention]
+        text_dims = [set_default_item(is_exist, cross_attention_dim) for is_exist in add_cross_attention]
+        num_blocks = len(block_out_channels) * [layers_per_block]
         layer_params = [num_blocks, text_dims, add_self_attention]
         rev_layer_params = map(reversed, layer_params)
 
@@ -122,7 +143,7 @@ class UNetKandi3(ModelMixin, ConfigMixin):
             cat_dims.append(set_default_item(level != (self.num_levels - 1), out_dim, 0))
             self.down_samples.append(
                 DownSampleBlock(
-                    in_dim, out_dim, time_embed_dim, text_dim, res_block_num, groups, head_dim, expansion_ratio,
+                    in_dim, out_dim, time_embedding_dim, text_dim, res_block_num, groups, attention_head_dim, expansion_ratio,
                     compression_ratio, down_sample, self_attention
                 )
             )
@@ -132,7 +153,7 @@ class UNetKandi3(ModelMixin, ConfigMixin):
             up_sample = level != 0
             self.up_samples.append(
                 UpSampleBlock(
-                    in_dim, cat_dims.pop(), out_dim, time_embed_dim, text_dim, res_block_num, groups, head_dim,
+                    in_dim, cat_dims.pop(), out_dim, time_embedding_dim, text_dim, res_block_num, groups, attention_head_dim,
                     expansion_ratio, compression_ratio, up_sample, self_attention
                 )
             )
@@ -455,7 +476,6 @@ class AttentionBlock(nn.Module):
         out = self.feed_forward(out)
         x = x + out
         return x
-
 
 class DownSampleBlock(nn.Module):
     def __init__(
