@@ -112,7 +112,7 @@ def save_model_card(
         img_str += f"""
         - text: '{validation_prompt if validation_prompt else ' ' }'
           output:
-            url: >-
+            url:
                 "image_{i}.png"
         """
 
@@ -125,7 +125,6 @@ tags:
 - diffusers
 - lora
 - template:sd-lora
-widget:
 {img_str}
 ---
 base_model: {base_model}
