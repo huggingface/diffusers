@@ -1144,24 +1144,16 @@ def main(args):
 
         optimizer_class = prodigyopt.Prodigy
 
-    params_to_optimize = list(filter(lambda p: p.requires_grad, unet.parameters()))
-    if args.train_text_encoder:
-        params_to_optimize = (
-            params_to_optimize
-            + list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
-            + list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
+        optimizer = optimizer_class(
+            params_to_optimize,
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+            decouple=args.prodigy_decouple,
+            use_bias_correction=args.prodigy_use_bias_correction,
+            safeguard_warmup=args.prodigy_safeguard_warmup,
         )
-
-    optimizer = optimizer_class(
-        params_to_optimize,
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-        decouple=args.prodigy_decouple,
-        use_bias_correction=args.prodigy_use_bias_correction,
-        safeguard_warmup=args.prodigy_safeguard_warmup,
-    )
 
     # Dataset and DataLoaders creation:
     train_dataset = DreamBoothDataset(
@@ -1472,7 +1464,12 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(params_to_optimize, args.max_grad_norm)
+                    params_to_clip = (
+                        itertools.chain(unet_lora_parameters, text_lora_parameters_one, text_lora_parameters_two)
+                        if args.train_text_encoder
+                        else unet_lora_parameters
+                    )
+                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
