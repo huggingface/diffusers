@@ -1179,9 +1179,10 @@ class TemporalConvLayer(nn.Module):
         return hidden_states
 
 
-class ResnetBlock3D(nn.Module):
+class TemporalResnetBlock(nn.Module):
     r"""
     A Resnet block.
+
     Parameters:
         in_channels (`int`): The number of channels in the input.
         out_channels (`int`, *optional*, default to be `None`):
@@ -1220,7 +1221,7 @@ class ResnetBlock3D(nn.Module):
         groups: int = 32,
         groups_out: Optional[int] = None,
         eps: float = 1e-6,
-        activation: str = "swish",
+        non_linearity: str = "swish",
         kernel_size: Optional[torch.FloatTensor] = (3, 1, 1),
         output_scale_factor: float = 1.0,
         use_in_shortcut: Optional[bool] = None,
@@ -1242,73 +1243,50 @@ class ResnetBlock3D(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        self.norm1 = torch.nn.GroupNorm(
-            num_groups=groups, num_channels=in_channels, eps=eps, affine=True
-        )
+        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        self.conv1 = nn.Conv3d(
-            in_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            stride=1,
-            padding=padding,
-        )
+        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=kernel_size, stride=1, padding=padding)
 
         if temb_channels is not None:
             self.time_emb_proj = linear_cls(temb_channels, out_channels)
         else:
             self.time_emb_proj = None
 
-        self.norm2 = torch.nn.GroupNorm(
-            num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True
-        )
+        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = nn.Conv3d(
-            out_channels,
-            conv_2d_out_channels,
-            kernel_size=kernel_size,
-            stride=1,
-            padding=padding,
-        )
+        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=kernel_size, stride=1, padding=padding)
 
-        self.nonlinearity = get_activation(activation)
-        self.use_in_shortcut = (
-            self.in_channels != conv_2d_out_channels
-            if use_in_shortcut is None
-            else use_in_shortcut
-        )
+        self.nonlinearity = get_activation(non_linearity)
+
+        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
             self.conv_shortcut = conv_cls(
-                in_channels,
-                conv_2d_out_channels,
-                kernel_size=1,
-                stride=1,
-                padding=0,
-                bias=conv_shortcut_bias,
+                in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
             )
 
-    def forward(
-        self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor
-    ) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
-        hidden_states = self.nonlinearity(hidden_states)
-        hidden_states = self.conv1(hidden_states)
 
+        hidden_states = self.nonlinearity(hidden_states)
+
+        hidden_states = self.conv1(hidden_states)
         if self.time_emb_proj is not None:
-            temb = self.time_emb_proj(temb)[:, :, None, None]
+            temb = self.time_emb_proj(temb)[:, :, :, None, None]
 
         if temb is not None:
             temb = temb.permute(0, 2, 1)
             hidden_states = hidden_states + temb
 
         hidden_states = self.norm2(hidden_states)
+
         hidden_states = self.nonlinearity(hidden_states)
+
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states)
 
@@ -1317,7 +1295,7 @@ class ResnetBlock3D(nn.Module):
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
-        return output_tensor
+        return output_tensorr
 
 
 # VideoResBlock
@@ -1352,7 +1330,7 @@ class SpatioTemporalResBlock(nn.Module):
             pre_norm=pre_norm,
         )
 
-        self.temporal_res_block = ResnetBlock3D(
+        self.temporal_res_block = TemporalResnetBlock(
             in_channels=out_channels if out_channels is not None else in_channels,
             out_channels=out_channels if out_channels is not None else in_channels,
             temb_channels=temb_channels,
@@ -1364,10 +1342,7 @@ class SpatioTemporalResBlock(nn.Module):
             kernel_size=kernel_size_3d,
         )
 
-        self.time_mixer = AlphaBlender(
-            alpha=merge_factor,
-            merge_strategy="learned_with_images",
-        )
+        self.time_mixer = AlphaBlender(alpha=merge_factor, merge_strategy="learned_with_images")
 
     def forward(
         self,
