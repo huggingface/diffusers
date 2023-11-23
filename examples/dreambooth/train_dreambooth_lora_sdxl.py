@@ -127,7 +127,6 @@ tags:
 - template:sd-lora
 widget:
 {img_str}
----
 base_model: {base_model}
 instance_prompt: {instance_prompt}
 license: openrail++
@@ -142,8 +141,11 @@ license: openrail++
 ## Model description
 
 These are {repo_id} LoRA adaption weights for {base_model}.
+
 The weights were trained  using [DreamBooth](https://dreambooth.github.io/).
+
 LoRA for the text encoder was enabled: {train_text_encoder}.
+
 Special VAE used for training: {vae_path}.
 
 ## Trigger words
