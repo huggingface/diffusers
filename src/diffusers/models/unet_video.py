@@ -2397,12 +2397,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
 
-        # TODO: Make sure all the shapes are correct, we need to repeat the embeddings num_video_frames times
+        
+        # Flatten the batch and frames dimensions
         # sample: [batch, frames, channels, height, width] -> [batch * frames, channels, height, width]
-        # emb: [batch, channels] -> [batch * frames, channels]
-        # encoder_hidden_states: [batch, 1, channels] -> [batch * frames, 1, channels]
         sample = sample.flatten(0, 1)
+        # Repeat the embeddings num_video_frames times
+        # emb: [batch, channels] -> [batch * frames, channels]
         emb = emb.repeat_interleave(num_frames, dim=0)
+        # encoder_hidden_states: [batch, 1, channels] -> [batch * frames, 1, channels]
         encoder_hidden_states = encoder_hidden_states.repeat_interleave(num_frames, dim=0)
 
         # 2. pre-process
@@ -2499,6 +2501,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
         sample = self.conv_out(sample)
+
+        # 7. Reshape back to original shape
+        sample = sample.reshape(batch_size, num_frames, *sample.shape[1:])
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
