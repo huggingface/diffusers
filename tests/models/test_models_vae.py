@@ -22,7 +22,6 @@ from parameterized import parameterized
 from diffusers import AsymmetricAutoencoderKL, AutoencoderKL, AutoencoderTiny
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    accelerator_empty_cache,
     backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
@@ -283,7 +282,7 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        accelerator_empty_cache()
+        backend_empty_cache()
 
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
