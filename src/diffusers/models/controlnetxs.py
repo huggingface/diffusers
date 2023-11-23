@@ -87,7 +87,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             Wether to use time embedding of the control model. If yes, the time embedding is a linear interpolation of
             the time embeddings of the control and base model with interpolation parameter `time_embedding_mix**3`.
         time_embedding_mix (`float`, defaults to 1.0):
-            Linear interpolation parameter used if `learn_embedding` is `True`.
+            Linear interpolation parameter used if `learn_embedding` is `True`. A value of 1.0 means only the
+            control model's time embedding will be used. A value of 0.0 means only the base model's time embedding will be used.
         base_model_channel_sizes (`Dict[str, List[Tuple[int]]]`):
             Channel sizes of each subblock of base model. Use `gather_subblock_sizes` on your base model to compute it.
     """
@@ -107,7 +108,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         else:
             return ControlNetXSModel.from_unet(
                 base_model,
-                time_embedding_mix=0.95,
+                time_embedding_mix=1.0,
                 learn_embedding=True,
                 size_ratio=0.0125,
                 dim_attention_heads=8,
@@ -311,6 +312,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             if self.control_model.down_blocks[i].downsamplers:
                 increase_block_input_in_encoder_downsampler(self.control_model, block_no=i, by=e2)
         increase_block_input_in_mid_resnet(self.control_model, by=base_block_out_channels[-1])
+
+        # 2.3 - Make group norms work with modified channel sizes
+        adjust_group_norms(self.control_model)
 
         # 3 - Gather Channel Sizes
         self.ch_inout_ctrl = ControlNetXSModel.gather_subblock_sizes(self.control_model, base_or_control="control")
@@ -649,6 +653,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
+        print(f"Timesteps = {timesteps}")
+
         t_emb = base_model.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
@@ -662,7 +668,12 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             interpolation_param = self.config.time_embedding_mix**0.3
 
             temb = ctrl_temb * interpolation_param + base_temb * (1 - interpolation_param)
+
+            print(f"Of course I've not learned a time embedding. I'm smart! Let me collaborate with the base model. Me {interpolation_param:.2f}, him {1-interpolation_param:.2f}")
+            print(f"> Before: {t_emb.flatten()[:5]}")
+            print(f"> After: {temb.flatten()[:5]}")
         else:
+            print("Nah man, I've not learned any time embedding. Let the base model do it.")
             temb = base_model.time_embedding(t_emb)
 
         # added time & text embeddings
@@ -726,11 +737,11 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         ctrl_mid_subblocks = to_sub_blocks([self.control_model.mid_block])
         base_up_subblocks = to_sub_blocks(base_model.up_blocks)
 
-        udl.log_if('prep.x',            sample,          condition='SUBBLOCK')
-        udl.log_if('prep.temb',         temb,           condition='SUBBLOCK')
-        udl.log_if('prep.context',      cemb,           condition='SUBBLOCK')
-        udl.log_if('prep.raw_hint',     controlnet_cond,condition='SUBBLOCK')
-        udl.log_if('prep.guided_hint',  guided_hint,    condition='SUBBLOCK')
+        udl.log_if('prep.x',            sample,         condition=('SUBBLOCK', 'SUBBLOCK-MINUS-1'))
+        udl.log_if('prep.temb',         temb,           condition=('SUBBLOCK', 'SUBBLOCK-MINUS-1'))
+        udl.log_if('prep.context',      cemb,           condition=('SUBBLOCK', 'SUBBLOCK-MINUS-1'))
+        udl.log_if('prep.raw_hint',     controlnet_cond,condition=('SUBBLOCK', 'SUBBLOCK-MINUS-1'))
+        udl.log_if('prep.guided_hint',  guided_hint,    condition=('SUBBLOCK', 'SUBBLOCK-MINUS-1'))
 
         # Cross Control
         # 0 - conv in
@@ -749,6 +760,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
+
+        udl.log_if('conv_in.output', h_base, condition=('SUBBLOCK', 'SUBBLOCK-MINUS-1'))
+        udl.log_if('conv_in.output', h_ctrl, condition=('SUBBLOCK', 'SUBBLOCK-MINUS-1'))
 
         # 1 - down
         RUN_ONCE = ('SUBBLOCK', 'SUBBLOCK-MINUS-1')
@@ -796,6 +810,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
         udl.log_if('conv_out.h_base', h_base, condition='SUBBLOCK')
         udl.stop_if('SUBBLOCK', 'The subblocks are cought. Let us gaze into their soul, their very essence.')
+        udl.stop_if('SUBBLOCK-MINUS-1', 'Alright captain. Look at all these tensors we caught. Time to do some real analysis.')
 
         if not return_dict:
             return h_base
@@ -939,6 +954,28 @@ def increase_block_input_in_mid_resnet(unet: UNet2DConditionModel, by):
     unet.mid_block.resnets[0].conv_shortcut = LoRACompatibleConv(**conv_shortcut_args_kwargs)
     unet.mid_block.resnets[0].in_channels += by  # surgery done here
 
+
+def adjust_group_norms(unet: UNet2DConditionModel, max_num_group:int=32):
+    def find_denominator(number, start):
+        if start >= number:
+            return number
+        while (start != 0):
+            residual = number % start
+            if residual == 0:
+                return start
+            start -= 1
+
+    # resnets
+    for d in unet.down_blocks:
+        for r in d.resnets:
+            if r.norm1.num_groups < max_num_group:
+                r.norm1.num_groups = find_denominator(r.norm1.num_channels ,start=32)
+            
+            if r.norm2.num_groups < max_num_group:
+                r.norm2.num_groups = find_denominator(r.norm2.num_channels ,start=32)
+
+    # transformers
+    pass # TODO
 
 def is_iterable(o):
     if isinstance(o, str):
