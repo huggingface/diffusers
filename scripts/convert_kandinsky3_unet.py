@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 import torch
 import argparse
-from your_unet_module import UNet  # Replace with your actual import
-from your_diffusers_module import Kandinsky3UNet, YourConfigClass  # Replace with your actual import
+from diffusers import Kandinsky3UNet
 
 def convert_state_dict(unet_model, unet_kandi3_model):
     """
@@ -29,15 +28,16 @@ def convert_state_dict(unet_model, unet_kandi3_model):
 
 def main(model_path, output_path):
     # Load your original U-Net model
-    unet_model = UNet()  # Initialize with appropriate arguments
-    unet_model.load_state_dict(torch.load(model_path))
+    unet_state_dict = torch.load(model_path)
 
     # Initialize your Kandinsky3UNet model
-    config = YourConfigClass()  # Initialize this with the appropriate configuration
+    config = {
+
+    }
     unet_kandi3_model = Kandinsky3UNet(config)
 
     # Convert the state dict
-    converted_state_dict = convert_state_dict(unet_model, unet_kandi3_model)
+    converted_state_dict = convert_state_dict(unet_state_dict)
 
     # Save the converted state dict
     torch.save(converted_state_dict, output_path)
