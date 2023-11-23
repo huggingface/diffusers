@@ -14,24 +14,151 @@
 # limitations under the License.
 
 import gc
-import random
 import unittest
 
 import numpy as np
 import torch
 
-from diffusers import KandinskyV3Pipeline, image_processor
+from transformers import T5EncoderModel, AutoTokenizer
+from diffusers import KandinskyV3Pipeline, UNetKandi3, VQModel
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    floats_tensor,
     load_image,
     require_torch_gpu,
     slow,
 )
+from ..pipeline_params import (
+    TEXT_TO_IMAGE_BATCH_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_TO_IMAGE_PARAMS,
+)
+
+from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+from ..test_pipelines_common import PipelineTesterMixin
 
 enable_full_determinism()
 
+
+class KandinskyV3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = KandinskyV3Pipeline
+    params = TEXT_TO_IMAGE_PARAMS
+    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
+    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
+    test_xformers_attention = False
+
+    @property
+    def dummy_movq_kwargs(self):
+        return {
+            "block_out_channels": [32, 64],
+            "down_block_types": ["DownEncoderBlock2D", "AttnDownEncoderBlock2D"],
+            "in_channels": 3,
+            "latent_channels": 4,
+            "layers_per_block": 1,
+            "norm_num_groups": 8,
+            "norm_type": "spatial",
+            "num_vq_embeddings": 12,
+            "out_channels": 3,
+            "up_block_types": [
+                "AttnUpDecoderBlock2D",
+                "UpDecoderBlock2D",
+            ],
+            "vq_embed_dim": 4,
+        }
+
+    @property
+    def dummy_movq(self):
+        torch.manual_seed(0)
+        model = VQModel(**self.dummy_movq_kwargs)
+        return model
+
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        torch.manual_seed(0)
+        unet = UNetKandi3(
+            model_channels=16,
+            init_channels=16,
+            num_channels=4,
+            time_embed_dim=4,
+            groups=2,
+            head_dim=4,
+            expansion_ratio=4,
+            compression_ratio=2,
+            dim_mult=(1, 2),
+            num_blocks=(1, 2),
+            model_dim=32,
+            context_dim=4,
+            add_cross_attention=(False, True),
+        )
+        scheduler = DDPMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            steps_offset=1,
+            beta_schedule="squaredcos_cap_v2",
+            clip_sample=True,
+            thresholding=False,
+        )
+        torch.manual_seed(0)
+        movq = self.dummy_movq
+        torch.manual_seed(0)
+        text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        torch.manual_seed(0)
+        tokenizer = AutoTokenizer.from_pretrained("hf-internal-testing/tiny-random-t5")
+
+        components = {
+            "unet": unet,
+            "scheduler": scheduler,
+            "movq": movq,
+            "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
+        }
+        return components
+
+    def get_dummy_inputs(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+            "width": 16,
+            "height": 16,
+        }
+        return inputs
+
+    def test_kandinsky3(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+
+        pipe.set_progress_bar_config(disable=None)
+
+        output = pipe(**self.get_dummy_inputs(device))
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 16, 16, 3)
+
+        print(torch.from_numpy(image_slice.flatten()))
+        expected_slice = np.array([0.4141, 0.2835, 0.4614, 0.5420, 0.3982, 0.4227, 0.4909, 0.4793, 0.5141])
+
+        assert (
+            np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
+
+    def test_float16_inference(self):
+        super().test_float16_inference(expected_max_diff=1e-1)
 
 @slow
 @require_torch_gpu

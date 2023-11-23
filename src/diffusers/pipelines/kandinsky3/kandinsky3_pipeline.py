@@ -46,7 +46,6 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
     ):
         super().__init__()
 
-
         self.register_modules(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
@@ -299,8 +298,6 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-
-
 
     @torch.no_grad()
     def __call__(
