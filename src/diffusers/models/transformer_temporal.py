@@ -18,9 +18,12 @@ import torch
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
-from .attention import BasicTransformerBlock
+from ..utils import USE_PEFT_BACKEND, BaseOutput
+from .attention import BasicTransformerBlock, TemporalBasicTransformerBlock
+from .embeddings import TimestepEmbedding, Timesteps
+from .lora import LoRACompatibleLinear
 from .modeling_utils import ModelMixin
+from .resnet import AlphaBlender
 
 
 @dataclass
@@ -91,7 +94,9 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         self.in_channels = in_channels
 
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+        self.norm = torch.nn.GroupNorm(
+            num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True
+        )
         self.proj_in = nn.Linear(in_channels, inner_dim)
 
         # 3. Define transformers blocks
@@ -161,11 +166,15 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         residual = hidden_states
 
-        hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
+        hidden_states = hidden_states[None, :].reshape(
+            batch_size, num_frames, channel, height, width
+        )
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
 
         hidden_states = self.norm(hidden_states)
-        hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
+        hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(
+            batch_size * height * width, num_frames, channel
+        )
 
         hidden_states = self.proj_in(hidden_states)
 
@@ -188,6 +197,290 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
             .contiguous()
         )
         hidden_states = hidden_states.reshape(batch_frames, channel, height, width)
+
+        output = hidden_states + residual
+
+        if not return_dict:
+            return (output,)
+
+        return TransformerTemporalModelOutput(sample=output)
+
+
+# VideoBlock
+class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
+    """
+    A Transformer model for video-like data.
+
+    Parameters:
+        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
+        in_channels (`int`, *optional*):
+            The number of channels in the input and output (specify if the input is **continuous**).
+        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
+        attention_bias (`bool`, *optional*):
+            Configure if the `TransformerBlock` attention should contain a bias parameter.
+        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
+            This is fixed during training since it is used to learn a number of position embeddings.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`):
+            Activation function to use in feed-forward. See `diffusers.models.activations.get_activation` for supported
+            activation functions.
+        norm_elementwise_affine (`bool`, *optional*):
+            Configure if the `TransformerBlock` should use learnable elementwise affine parameters for normalization.
+        double_self_attention (`bool`, *optional*):
+            Configure if each `TransformerBlock` should contain two self-attention layers.
+        positional_embeddings: (`str`, *optional*):
+            The type of positional embeddings to apply to the sequence input before passing use.
+        num_positional_embeddings: (`int`, *optional*):
+            The maximum length of the sequence over which to apply positional embeddings.
+    """
+
+    @register_to_config
+    def __init__(
+        self,
+        num_attention_heads: int = 16,
+        attention_head_dim: int = 88,
+        in_channels: Optional[int] = None,
+        out_channels: Optional[int] = None,
+        num_layers: int = 1,
+        dropout: float = 0.0,
+        norm_num_groups: int = 32,
+        cross_attention_dim: Optional[int] = None,
+        attention_bias: bool = False,
+        activation_fn: str = "geglu",
+        num_embeds_ada_norm: Optional[int] = None,
+        only_cross_attention: bool = False,
+        double_self_attention: bool = False,
+        upcast_attention: bool = False,
+        norm_type: str = "layer_norm",
+        norm_elementwise_affine: bool = True,
+        norm_eps: float = 1e-5,
+        attention_type: str = "default",
+        merge_factor: float = 0.5,
+        merge_strategy: str = "learned_with_images",
+        max_time_embed_period: int = 10000,
+    ):
+        super().__init__()
+        self.num_attention_heads = num_attention_heads
+        self.attention_head_dim = attention_head_dim
+        self.max_time_embed_period = max_time_embed_period
+
+        inner_dim = num_attention_heads * attention_head_dim
+        self.inner_dim = inner_dim
+
+        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+
+        # 2. Define input layers
+        # 2. Define input layers
+        self.in_channels = in_channels
+        self.norm = torch.nn.GroupNorm(
+            num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True
+        )
+        self.proj_in = linear_cls(in_channels, inner_dim)
+
+        # 3. Define transformers blocks
+        self.transformer_blocks = nn.ModuleList(
+            [
+                BasicTransformerBlock(
+                    inner_dim,
+                    num_attention_heads,
+                    attention_head_dim,
+                    dropout=dropout,
+                    cross_attention_dim=cross_attention_dim,
+                    activation_fn=activation_fn,
+                    num_embeds_ada_norm=num_embeds_ada_norm,
+                    attention_bias=attention_bias,
+                    only_cross_attention=only_cross_attention,
+                    double_self_attention=double_self_attention,
+                    upcast_attention=upcast_attention,
+                    norm_type=norm_type,
+                    norm_elementwise_affine=norm_elementwise_affine,
+                    norm_eps=norm_eps,
+                    attention_type=attention_type,
+                )
+                for d in range(num_layers)
+            ]
+        )
+
+        time_mix_inner_dim = inner_dim
+        self.temporal_transformer_blocks = nn.ModuleList(
+            [
+                TemporalBasicTransformerBlock(
+                    inner_dim,
+                    time_mix_inner_dim,
+                    num_attention_heads,
+                    attention_head_dim,
+                    dropout=dropout,
+                    cross_attention_dim=cross_attention_dim,
+                    activation_fn=activation_fn,
+                    num_embeds_ada_norm=num_embeds_ada_norm,
+                    attention_bias=attention_bias,
+                    upcast_attention=upcast_attention,
+                    norm_type=norm_type,
+                    norm_elementwise_affine=norm_elementwise_affine,
+                    norm_eps=norm_eps,
+                    attention_type=attention_type,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        time_embed_dim = in_channels * 4
+        self.time_pos_embed = TimestepEmbedding(
+            in_channels, time_embed_dim, out_dim=in_channels
+        )
+        self.time_proj = Timesteps(in_channels, True, 0)
+        self.time_mixer = AlphaBlender(
+            alpha=merge_factor, merge_strategy=merge_strategy
+        )
+
+        # 4. Define output layers
+        self.out_channels = in_channels if out_channels is None else out_channels
+        # TODO: should use out_channels for continuous projections
+        self.proj_out = linear_cls(inner_dim, in_channels)
+
+        self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        num_frames: int,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
+        timestep: Optional[torch.LongTensor] = None,
+        added_cond_kwargs: Dict[str, torch.Tensor] = None,
+        class_labels: Optional[torch.LongTensor] = None,
+        cross_attention_kwargs: Dict[str, Any] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
+        image_only_indicator: Optional[torch.Tensor] = None,
+        return_dict: bool = True,
+    ):
+        """
+        Args:
+            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
+                Input hidden_states.
+            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
+                Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
+                self-attention.
+            timestep ( `torch.LongTensor`, *optional*):
+                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
+            class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
+                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
+                `AdaLayerZeroNorm`.
+            num_frames (`int`, *optional*, defaults to 1):
+                The number of frames to be processed per batch. This is used to reshape the hidden states.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
+
+        Returns:
+            [`~models.transformer_temporal.TransformerTemporalModelOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.transformer_temporal.TransformerTemporalModelOutput`] is
+                returned, otherwise a `tuple` where the first element is the sample tensor.
+        """
+        # 1. Input
+        batch_frames, channel, height, width = hidden_states.shape
+        batch_size = batch_frames // num_frames
+
+        residual = hidden_states
+
+        # Retrieve lora scale.
+        lora_scale = (
+            cross_attention_kwargs.get("scale", 1.0)
+            if cross_attention_kwargs is not None
+            else 1.0
+        )
+
+        assert (
+            encoder_hidden_states.ndim == 3
+        ), f"n dims of spatial context should be 3 but are {encoder_hidden_states.ndim}"
+
+        time_context = encoder_hidden_states
+        time_context_first_timestep = time_context[::num_frames]
+        time_context = time_context_first_timestep.repeat(
+            batch_frames * height * width, 1, 1
+        )
+        # time_context = repeat(time_context_first_timestep, "b ... -> (b n) ...", n=h * w)
+
+        hidden_states = self.norm(hidden_states)
+        inner_dim = hidden_states.shape[1]
+        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(
+            batch_frames, height * width, inner_dim
+        )
+        hidden_states = (
+            self.proj_in(hidden_states, scale=lora_scale)
+            if not USE_PEFT_BACKEND
+            else self.proj_in(hidden_states)
+        )
+
+        num_frames = torch.arange(num_frames, device=hidden_states.device)
+        num_frames = num_frames.repeat(batch_size, 1)
+        # num_frames = repeat(num_frames, "t -> b t", b=hidden_states.shape[0] // num_frames)
+        num_frames = num_frames.reshape(-1)
+        # num_frames = rearrange(num_frames, "b t -> (b t)")
+
+        t_emb = self.time_proj(num_frames)
+        emb = self.time_pos_embed(t_emb)
+        emb = emb[:, None, :]
+
+        # 2. Blocks
+        for block, temporal_block in zip(
+            self.transformer_blocks, self.temporal_transformer_blocks
+        ):
+            if self.training and self.gradient_checkpointing:
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    block,
+                    hidden_states,
+                    None,
+                    encoder_hidden_states,
+                    None,
+                    timestep,
+                    cross_attention_kwargs,
+                    class_labels,
+                    use_reentrant=False,
+                )
+            else:
+                hidden_states = block(
+                    hidden_states,
+                    attention_mask=None,
+                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_attention_mask=None,
+                    timestep=timestep,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    class_labels=class_labels,
+                )
+
+            hidden_states_mix = hidden_states
+            hidden_states_mix = hidden_states_mix + emb
+
+            hidden_states_mix = temporal_block(
+                hidden_states_mix,
+                num_frames=num_frames,
+                encoder_hidden_states=time_context,
+                cross_attention_kwargs=cross_attention_kwargs,
+            )
+            hidden_states = self.time_mixer(
+                x_spatial=hidden_states,
+                x_temporal=hidden_states_mix,
+                image_only_indicator=image_only_indicator,
+            )
+
+        # 3. Output
+        hidden_states = (
+            self.proj_out(hidden_states, scale=lora_scale)
+            if not USE_PEFT_BACKEND
+            else self.proj_out(hidden_states)
+        )
+        hidden_states = (
+            hidden_states.reshape(batch_frames, height, width, inner_dim)
+            .permute(0, 3, 1, 2)
+            .contiguous()
+        )
 
         output = hidden_states + residual
 
