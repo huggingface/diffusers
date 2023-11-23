@@ -18,11 +18,18 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ..utils import BaseOutput, is_torch_version
+from ..utils import USE_PEFT_BACKEND, BaseOutput, is_torch_version
 from ..utils.torch_utils import randn_tensor
 from .activations import get_activation
 from .attention_processor import SpatialNorm
-from .unet_2d_blocks import AutoencoderTinyBlock, UNetMidBlock2D, get_down_block, get_up_block
+from .lora import LoRACompatibleConv
+from .unet_2d_blocks import (
+    AutoencoderTinyBlock,
+    UNetMidBlock2D,
+    get_down_block,
+    get_up_block,
+)
+from .unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
 
 
 @dataclass
@@ -122,11 +129,15 @@ class Encoder(nn.Module):
         )
 
         # out
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[-1], num_groups=norm_num_groups, eps=1e-6)
+        self.conv_norm_out = nn.GroupNorm(
+            num_channels=block_out_channels[-1], num_groups=norm_num_groups, eps=1e-6
+        )
         self.conv_act = nn.SiLU()
 
         conv_out_channels = 2 * out_channels if double_z else out_channels
-        self.conv_out = nn.Conv2d(block_out_channels[-1], conv_out_channels, 3, padding=1)
+        self.conv_out = nn.Conv2d(
+            block_out_channels[-1], conv_out_channels, 3, padding=1
+        )
 
         self.gradient_checkpointing = False
 
@@ -155,9 +166,13 @@ class Encoder(nn.Module):
                 )
             else:
                 for down_block in self.down_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(down_block), sample)
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(down_block), sample
+                    )
                 # middle
-                sample = torch.utils.checkpoint.checkpoint(create_custom_forward(self.mid_block), sample)
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block), sample
+                )
 
         else:
             # down
@@ -267,14 +282,18 @@ class Decoder(nn.Module):
         if norm_type == "spatial":
             self.conv_norm_out = SpatialNorm(block_out_channels[0], temb_channels)
         else:
-            self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
+            self.conv_norm_out = nn.GroupNorm(
+                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6
+            )
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
         self.gradient_checkpointing = False
 
     def forward(
-        self, sample: torch.FloatTensor, latent_embeds: Optional[torch.FloatTensor] = None
+        self,
+        sample: torch.FloatTensor,
+        latent_embeds: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         r"""The forward method of the `Decoder` class."""
 
@@ -292,14 +311,20 @@ class Decoder(nn.Module):
             if is_torch_version(">=", "1.11.0"):
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block), sample, latent_embeds, use_reentrant=False
+                    create_custom_forward(self.mid_block),
+                    sample,
+                    latent_embeds,
+                    use_reentrant=False,
                 )
                 sample = sample.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
                     sample = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(up_block), sample, latent_embeds, use_reentrant=False
+                        create_custom_forward(up_block),
+                        sample,
+                        latent_embeds,
+                        use_reentrant=False,
                     )
             else:
                 # middle
@@ -310,7 +335,9 @@ class Decoder(nn.Module):
 
                 # up
                 for up_block in self.up_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block), sample, latent_embeds
+                    )
         else:
             # middle
             sample = self.mid_block(sample, latent_embeds)
@@ -350,7 +377,9 @@ class UpSample(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.deconv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
+        self.deconv = nn.ConvTranspose2d(
+            in_channels, out_channels, kernel_size=4, stride=2, padding=1
+        )
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
         r"""The forward method of the `UpSample` class."""
@@ -394,9 +423,13 @@ class MaskConditionEncoder(nn.Module):
         for l in range(len(out_channels)):
             out_ch_ = out_channels[l]
             if l == 0 or l == 1:
-                layers.append(nn.Conv2d(in_ch_, out_ch_, kernel_size=3, stride=1, padding=1))
+                layers.append(
+                    nn.Conv2d(in_ch_, out_ch_, kernel_size=3, stride=1, padding=1)
+                )
             else:
-                layers.append(nn.Conv2d(in_ch_, out_ch_, kernel_size=4, stride=2, padding=1))
+                layers.append(
+                    nn.Conv2d(in_ch_, out_ch_, kernel_size=4, stride=2, padding=1)
+                )
             in_ch_ = out_ch_
 
         self.layers = nn.Sequential(*layers)
@@ -511,7 +544,9 @@ class MaskConditionDecoder(nn.Module):
         if norm_type == "spatial":
             self.conv_norm_out = SpatialNorm(block_out_channels[0], temb_channels)
         else:
-            self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
+            self.conv_norm_out = nn.GroupNorm(
+                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6
+            )
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
@@ -540,7 +575,10 @@ class MaskConditionDecoder(nn.Module):
             if is_torch_version(">=", "1.11.0"):
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block), sample, latent_embeds, use_reentrant=False
+                    create_custom_forward(self.mid_block),
+                    sample,
+                    latent_embeds,
+                    use_reentrant=False,
                 )
                 sample = sample.to(upscale_dtype)
 
@@ -548,17 +586,25 @@ class MaskConditionDecoder(nn.Module):
                 if image is not None and mask is not None:
                     masked_image = (1 - mask) * image
                     im_x = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.condition_encoder), masked_image, mask, use_reentrant=False
+                        create_custom_forward(self.condition_encoder),
+                        masked_image,
+                        mask,
+                        use_reentrant=False,
                     )
 
                 # up
                 for up_block in self.up_blocks:
                     if image is not None and mask is not None:
                         sample_ = im_x[str(tuple(sample.shape))]
-                        mask_ = nn.functional.interpolate(mask, size=sample.shape[-2:], mode="nearest")
+                        mask_ = nn.functional.interpolate(
+                            mask, size=sample.shape[-2:], mode="nearest"
+                        )
                         sample = sample * mask_ + sample_ * (1 - mask_)
                     sample = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(up_block), sample, latent_embeds, use_reentrant=False
+                        create_custom_forward(up_block),
+                        sample,
+                        latent_embeds,
+                        use_reentrant=False,
                     )
                 if image is not None and mask is not None:
                     sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
@@ -573,16 +619,22 @@ class MaskConditionDecoder(nn.Module):
                 if image is not None and mask is not None:
                     masked_image = (1 - mask) * image
                     im_x = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.condition_encoder), masked_image, mask
+                        create_custom_forward(self.condition_encoder),
+                        masked_image,
+                        mask,
                     )
 
                 # up
                 for up_block in self.up_blocks:
                     if image is not None and mask is not None:
                         sample_ = im_x[str(tuple(sample.shape))]
-                        mask_ = nn.functional.interpolate(mask, size=sample.shape[-2:], mode="nearest")
+                        mask_ = nn.functional.interpolate(
+                            mask, size=sample.shape[-2:], mode="nearest"
+                        )
                         sample = sample * mask_ + sample_ * (1 - mask_)
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block), sample, latent_embeds
+                    )
                 if image is not None and mask is not None:
                     sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
         else:
@@ -599,7 +651,9 @@ class MaskConditionDecoder(nn.Module):
             for up_block in self.up_blocks:
                 if image is not None and mask is not None:
                     sample_ = im_x[str(tuple(sample.shape))]
-                    mask_ = nn.functional.interpolate(mask, size=sample.shape[-2:], mode="nearest")
+                    mask_ = nn.functional.interpolate(
+                        mask, size=sample.shape[-2:], mode="nearest"
+                    )
                     sample = sample * mask_ + sample_ * (1 - mask_)
                 sample = up_block(sample, latent_embeds)
             if image is not None and mask is not None:
@@ -671,7 +725,9 @@ class VectorQuantizer(nn.Module):
         new = match.argmax(-1)
         unknown = match.sum(2) < 1
         if self.unknown_index == "random":
-            new[unknown] = torch.randint(0, self.re_embed, size=new[unknown].shape).to(device=new.device)
+            new[unknown] = torch.randint(0, self.re_embed, size=new[unknown].shape).to(
+                device=new.device
+            )
         else:
             new[unknown] = self.unknown_index
         return new.reshape(ishape)
@@ -686,13 +742,17 @@ class VectorQuantizer(nn.Module):
         back = torch.gather(used[None, :][inds.shape[0] * [0], :], 1, inds)
         return back.reshape(ishape)
 
-    def forward(self, z: torch.FloatTensor) -> Tuple[torch.FloatTensor, torch.FloatTensor, Tuple]:
+    def forward(
+        self, z: torch.FloatTensor
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor, Tuple]:
         # reshape z -> (batch, height, width, channel) and flatten
         z = z.permute(0, 2, 3, 1).contiguous()
         z_flattened = z.view(-1, self.vq_embed_dim)
 
         # distances from z to embeddings e_j (z - e)^2 = z^2 + e^2 - 2 e * z
-        min_encoding_indices = torch.argmin(torch.cdist(z_flattened, self.embedding.weight), dim=1)
+        min_encoding_indices = torch.argmin(
+            torch.cdist(z_flattened, self.embedding.weight), dim=1
+        )
 
         z_q = self.embedding(min_encoding_indices).view(z.shape)
         perplexity = None
@@ -700,9 +760,13 @@ class VectorQuantizer(nn.Module):
 
         # compute loss for embedding
         if not self.legacy:
-            loss = self.beta * torch.mean((z_q.detach() - z) ** 2) + torch.mean((z_q - z.detach()) ** 2)
+            loss = self.beta * torch.mean((z_q.detach() - z) ** 2) + torch.mean(
+                (z_q - z.detach()) ** 2
+            )
         else:
-            loss = torch.mean((z_q.detach() - z) ** 2) + self.beta * torch.mean((z_q - z.detach()) ** 2)
+            loss = torch.mean((z_q.detach() - z) ** 2) + self.beta * torch.mean(
+                (z_q - z.detach()) ** 2
+            )
 
         # preserve gradients
         z_q: torch.FloatTensor = z + (z_q - z).detach()
@@ -711,16 +775,22 @@ class VectorQuantizer(nn.Module):
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
 
         if self.remap is not None:
-            min_encoding_indices = min_encoding_indices.reshape(z.shape[0], -1)  # add batch axis
+            min_encoding_indices = min_encoding_indices.reshape(
+                z.shape[0], -1
+            )  # add batch axis
             min_encoding_indices = self.remap_to_used(min_encoding_indices)
             min_encoding_indices = min_encoding_indices.reshape(-1, 1)  # flatten
 
         if self.sane_index_shape:
-            min_encoding_indices = min_encoding_indices.reshape(z_q.shape[0], z_q.shape[2], z_q.shape[3])
+            min_encoding_indices = min_encoding_indices.reshape(
+                z_q.shape[0], z_q.shape[2], z_q.shape[3]
+            )
 
         return z_q, loss, (perplexity, min_encodings, min_encoding_indices)
 
-    def get_codebook_entry(self, indices: torch.LongTensor, shape: Tuple[int, ...]) -> torch.FloatTensor:
+    def get_codebook_entry(
+        self, indices: torch.LongTensor, shape: Tuple[int, ...]
+    ) -> torch.FloatTensor:
         # shape specifying (batch, height, width, channel)
         if self.remap is not None:
             indices = indices.reshape(shape[0], -1)  # add batch axis
@@ -754,7 +824,10 @@ class DiagonalGaussianDistribution(object):
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
         # make sure sample is on the same device as the parameters and has same dtype
         sample = randn_tensor(
-            self.mean.shape, generator=generator, device=self.parameters.device, dtype=self.parameters.dtype
+            self.mean.shape,
+            generator=generator,
+            device=self.parameters.device,
+            dtype=self.parameters.dtype,
         )
         x = self.mean + self.std * sample
         return x
@@ -764,7 +837,10 @@ class DiagonalGaussianDistribution(object):
             return torch.Tensor([0.0])
         else:
             if other is None:
-                return 0.5 * torch.sum(torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar, dim=[1, 2, 3])
+                return 0.5 * torch.sum(
+                    torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
+                    dim=[1, 2, 3],
+                )
             else:
                 return 0.5 * torch.sum(
                     torch.pow(self.mean - other.mean, 2) / other.var
@@ -775,11 +851,16 @@ class DiagonalGaussianDistribution(object):
                     dim=[1, 2, 3],
                 )
 
-    def nll(self, sample: torch.Tensor, dims: Tuple[int, ...] = [1, 2, 3]) -> torch.Tensor:
+    def nll(
+        self, sample: torch.Tensor, dims: Tuple[int, ...] = [1, 2, 3]
+    ) -> torch.Tensor:
         if self.deterministic:
             return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
-        return 0.5 * torch.sum(logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var, dim=dims)
+        return 0.5 * torch.sum(
+            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
+            dim=dims,
+        )
 
     def mode(self) -> torch.Tensor:
         return self.mean
@@ -818,14 +899,27 @@ class EncoderTiny(nn.Module):
             num_channels = block_out_channels[i]
 
             if i == 0:
-                layers.append(nn.Conv2d(in_channels, num_channels, kernel_size=3, padding=1))
+                layers.append(
+                    nn.Conv2d(in_channels, num_channels, kernel_size=3, padding=1)
+                )
             else:
-                layers.append(nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False))
+                layers.append(
+                    nn.Conv2d(
+                        num_channels,
+                        num_channels,
+                        kernel_size=3,
+                        padding=1,
+                        stride=2,
+                        bias=False,
+                    )
+                )
 
             for _ in range(num_block):
                 layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
 
-        layers.append(nn.Conv2d(block_out_channels[-1], out_channels, kernel_size=3, padding=1))
+        layers.append(
+            nn.Conv2d(block_out_channels[-1], out_channels, kernel_size=3, padding=1)
+        )
 
         self.layers = nn.Sequential(*layers)
         self.gradient_checkpointing = False
@@ -841,9 +935,13 @@ class EncoderTiny(nn.Module):
                 return custom_forward
 
             if is_torch_version(">=", "1.11.0"):
-                x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x, use_reentrant=False)
+                x = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.layers), x, use_reentrant=False
+                )
             else:
-                x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x)
+                x = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.layers), x
+                )
 
         else:
             # scale image from [-1, 1] to [0, 1] to match TAESD convention
@@ -899,7 +997,15 @@ class DecoderTiny(nn.Module):
                 layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor))
 
             conv_out_channel = num_channels if not is_final_block else out_channels
-            layers.append(nn.Conv2d(num_channels, conv_out_channel, kernel_size=3, padding=1, bias=is_final_block))
+            layers.append(
+                nn.Conv2d(
+                    num_channels,
+                    conv_out_channel,
+                    kernel_size=3,
+                    padding=1,
+                    bias=is_final_block,
+                )
+            )
 
         self.layers = nn.Sequential(*layers)
         self.gradient_checkpointing = False
@@ -918,12 +1024,140 @@ class DecoderTiny(nn.Module):
                 return custom_forward
 
             if is_torch_version(">=", "1.11.0"):
-                x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x, use_reentrant=False)
+                x = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.layers), x, use_reentrant=False
+                )
             else:
-                x = torch.utils.checkpoint.checkpoint(create_custom_forward(self.layers), x)
+                x = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.layers), x
+                )
 
         else:
             x = self.layers(x)
 
         # scale image from [0, 1] to [-1, 1] to match diffusers convention
         return x.mul(2).sub(1)
+
+
+class TemporalDecoder(nn.Module):
+    available_time_modes = ["all", "conv-only", "attn-only"]
+
+    def __init__(
+        self,
+        in_channels: int = 3,
+        out_channels: int = 3,
+        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
+        block_out_channels: Tuple[int, ...] = (64,),
+        layers_per_block: int = 2,
+        norm_num_groups: int = 32,
+        act_fn: str = "silu",
+        norm_type: str = "group",  # group, spatial
+        alpha: float = 0.0,
+        merge_strategy: str = "learned",
+        time_mode: str = "conv-only",
+    ):
+        super().__init__()
+        self.layers_per_block = layers_per_block
+        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+
+        self.conv_in = conv_cls(
+            in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1
+        )
+        self.mid_block = MidBlockTemporalDecoder()
+        self.up_blocks = nn.ModuleList([])
+
+        temb_channels = in_channels if norm_type == "spatial" else None
+
+        # up
+        reversed_block_out_channels = list(reversed(block_out_channels))
+        output_channel = reversed_block_out_channels[0]
+        for i, up_block_type in enumerate(up_block_types):
+            prev_output_channel = output_channel
+            output_channel = reversed_block_out_channels[i]
+
+            is_final_block = i == len(block_out_channels) - 1
+            up_block = UpBlockTemporalDecoder(
+                num_layers=self.layers_per_block + 1,
+                in_channels=prev_output_channel,
+                out_channels=output_channel,
+                prev_output_channel=None,
+                add_upsample=not is_final_block,
+                resnet_eps=1e-6,
+                resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
+                attention_head_dim=output_channel,
+                temb_channels=temb_channels,
+                resnet_time_scale_shift=norm_type,
+                alpha=alpha,
+                merge_strategy=merge_strategy,
+                time_mode=time_mode,
+            )
+            self.up_blocks.append(up_block)
+            prev_output_channel = output_channel
+
+    def forward(
+        self,
+        sample: torch.FloatTensor,
+        latent_embeds: Optional[torch.FloatTensor] = None,
+    ) -> torch.FloatTensor:
+        r"""The forward method of the `Decoder` class."""
+
+        sample = self.conv_in(sample)
+
+        upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
+        if self.training and self.gradient_checkpointing:
+
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+
+                return custom_forward
+
+            if is_torch_version(">=", "1.11.0"):
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block),
+                    sample,
+                    latent_embeds,
+                    use_reentrant=False,
+                )
+                sample = sample.to(upscale_dtype)
+
+                # up
+                for up_block in self.up_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block),
+                        sample,
+                        latent_embeds,
+                        use_reentrant=False,
+                    )
+            else:
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block), sample, latent_embeds
+                )
+                sample = sample.to(upscale_dtype)
+
+                # up
+                for up_block in self.up_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block), sample, latent_embeds
+                    )
+        else:
+            # middle
+            sample = self.mid_block(sample, latent_embeds)
+            sample = sample.to(upscale_dtype)
+
+            # up
+            for up_block in self.up_blocks:
+                sample = up_block(sample, latent_embeds)
+
+        # post-process
+        if latent_embeds is None:
+            sample = self.conv_norm_out(sample)
+        else:
+            sample = self.conv_norm_out(sample, latent_embeds)
+        sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
+
+        return sample
