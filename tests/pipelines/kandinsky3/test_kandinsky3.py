@@ -53,9 +53,6 @@ class KandinskyV3PipelineIntegrationTests(unittest.TestCase):
 
         image = pipe(prompt, num_inference_steps=25, generator=generator).images[0]
 
-        import hf_image_uploader as hiu; hiu.upload(image, "patrickvonplaten/images", name="t2i.png")
-        import ipdb; ipdb.set_trace()
-
         assert image.size == (1024, 1024)
 
         expected_image = load_image(
