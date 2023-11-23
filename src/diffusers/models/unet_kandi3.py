@@ -218,9 +218,9 @@ class UNetKandi3(ModelMixin, ConfigMixin):
         context = self.projection_lin(context)
         context = self.projection_ln(context)
         if uncondition_mask_idx is not None:
+            # TODO(Patrick): pretty sure that this is never used and can be removed
             context[uncondition_mask_idx] = torch.zeros_like(context[uncondition_mask_idx])
             context_mask[uncondition_mask_idx] = torch.zeros_like(context_mask[uncondition_mask_idx])
-            print('test1111')
             
         time_embed_input = self.time_proj(time).to(x.dtype)
         time_embed = self.to_time_embed(time_embed_input)
@@ -305,7 +305,8 @@ class ConditionalGroupNorm(nn.Module):
         x = self.norm(x) * (scale + 1.) + shift
         return x
 
-# TODO(Yiyi): This class should ideally not even exist, it slows everything needlessly down
+# TODO(Yiyi): This class should ideally not even exist, it slows everything needlessly down. I'm pretty
+# sure we can delete it and instead just pass an attention_mask
 class Attention(nn.Module):
     def __init__(self, in_channels, out_channels, context_dim, head_dim=64):
         super().__init__()
