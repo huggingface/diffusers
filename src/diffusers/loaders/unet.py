@@ -21,7 +21,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..models.embeddings import ImageProjection
+from ..models.embeddings import ImageProjection,MLPProjection
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     DIFFUSERS_CACHE,
@@ -664,7 +664,7 @@ class UNet2DConditionLoadersMixin:
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
 
-    def _load_ip_adapter_weights(self, state_dict):
+    def _load_ip_adapter_weights(self, state_dict,isIPAdapterFull):
         from ..models.attention_processor import (
             AttnProcessor,
             AttnProcessor2_0,
@@ -711,10 +711,16 @@ class UNet2DConditionLoadersMixin:
         clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
         cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
 
-        image_projection = ImageProjection(
-            cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
-        )
-        image_projection.to(dtype=self.dtype, device=self.device)
+        if isIPAdapterFull is True:
+            image_projection = MLPProjection(
+                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+            )
+            image_projection.to(dtype=self.dtype, device=self.device)
+        else:
+            image_projection = ImageProjection(
+                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
+            )
+            image_projection.to(dtype=self.dtype, device=self.device)
 
         # load image projection layer weights
         image_proj_state_dict = {}

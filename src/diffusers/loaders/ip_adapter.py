@@ -48,6 +48,7 @@ class IPAdapterMixin:
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
         subfolder: str,
         weight_name: str,
+        isIpAdapterFull: bool = None,
         **kwargs,
     ):
         """
@@ -149,7 +150,7 @@ class IPAdapterMixin:
             self.feature_extractor = CLIPImageProcessor()
 
         # load ip-adapter into unet
-        self.unet._load_ip_adapter_weights(state_dict)
+        self.unet._load_ip_adapter_weights(state_dict,isIpAdapterFull)
 
     def set_ip_adapter_scale(self, scale):
         for attn_processor in self.unet.attn_processors.values():
