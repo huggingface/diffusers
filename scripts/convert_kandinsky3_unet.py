@@ -14,7 +14,6 @@ def convert_state_dict(unet_model, unet_kandi3_model):
         OrderedDict: The converted state dictionary.
     """
     unet_state_dict = unet_model.state_dict()
-    unet_kandi3_state_dict = unet_kandi3_model.state_dict()
 
     # Example of renaming logic (this will vary based on your model's architecture)
     converted_state_dict = {}
@@ -34,13 +33,14 @@ def main(model_path, output_path):
     config = {
 
     }
-    unet_kandi3_model = Kandinsky3UNet(config)
 
     # Convert the state dict
     converted_state_dict = convert_state_dict(unet_state_dict)
 
-    # Save the converted state dict
-    torch.save(converted_state_dict, output_path)
+    unet = Kandinsky3UNet(config)
+    unet.load_state_dict(converted_state_dict)
+
+    unet.save_pretrained(output_path)
     print(f"Converted model saved to {output_path}")
 
 if __name__ == "__main__":
