@@ -92,6 +92,7 @@ else:
             "UNet3DConditionModel",
             "UNetMotionModel",
             "VQModel",
+            "UNetKandi3",
         ]
     )
 
@@ -231,6 +232,8 @@ else:
             "KandinskyV22Pipeline",
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
+            "KandinskyV3Pipeline",
+            "KandinskyV3Img2ImgPipeline",
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LDMTextToImagePipeline",
@@ -459,6 +462,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet3DConditionModel,
             UNetMotionModel,
             VQModel,
+            UNetKandi3,
         )
         from .optimization import (
             get_constant_schedule,
@@ -577,6 +581,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
+            KandinskyV3Pipeline,
+            KandinskyV3Img2ImgPipeline,
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
             LDMTextToImagePipeline,

@@ -38,6 +38,7 @@ if is_torch_available():
     _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
     _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
     _import_structure["vq_model"] = ["VQModel"]
+    _import_structure["unet_kandi3"] = ["UNetKandi3"]
 
 if is_flax_available():
     _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]
@@ -63,8 +64,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .unet_2d import UNet2DModel
         from .unet_2d_condition import UNet2DConditionModel
         from .unet_3d_condition import UNet3DConditionModel
+        from .unet_kandi3 import UNetKandi3
         from .unet_motion_model import MotionAdapter, UNetMotionModel
         from .vq_model import VQModel
+        from .unet_kandi3 import UNetKandi3
 
     if is_flax_available():
         from .controlnet_flax import FlaxControlNetModel

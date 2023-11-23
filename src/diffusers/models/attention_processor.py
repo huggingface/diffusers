@@ -22,10 +22,14 @@ from ..utils import USE_PEFT_BACKEND, deprecate, logging
 from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRACompatibleLinear, LoRALinearLayer
+from einops import rearrange, repeat
+from torch import einsum
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+def exist(item):
+    return item is not None
 
 if is_xformers_available():
     import xformers
@@ -1974,256 +1978,96 @@ class LoRAAttnAddedKVProcessor(nn.Module):
         attn.processor = AttnAddedKVProcessor()
         return attn.processor(attn, hidden_states, *args, **kwargs)
 
-
-class IPAdapterAttnProcessor(nn.Module):
+class Kandi3AttnProcessor:
     r"""
-    Attention processor for IP-Adapater.
-
-    Args:
-        hidden_size (`int`):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`):
-            The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, defaults to 4):
-            The context length of the image features.
-        scale (`float`, defaults to 1.0):
-            the weight scale of image prompt.
+    Default kandinsky3 proccesor for performing attention-related computations.
     """
-
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4, scale=1.0):
-        super().__init__()
-
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-        self.num_tokens = num_tokens
-        self.scale = scale
-
-        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-
+    
     def __call__(
         self,
         attn,
-        hidden_states,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        temb=None,
-        scale=1.0,
+        x,
+        context,
+        context_mask=None,
+        image_mask=None
+        
     ):
-        if scale != 1.0:
-            logger.warning("`scale` of IPAttnProcessor should be set with `set_ip_adapter_scale`.")
-        residual = hidden_states
+        query = rearrange(attn.to_query(x), 'b n (h d) -> b h n d', h=attn.num_heads)
+        key = rearrange(attn.to_key(context), 'b n (h d) -> b h n d', h=attn.num_heads)
+        value = rearrange(attn.to_value(context), 'b n (h d) -> b h n d', h=attn.num_heads)
 
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
+        attention_matrix = einsum('b h i d, b h j d -> b h i j', query, key)
+        if exist(image_mask) and exist(context_mask):
+            image_mask = rearrange(image_mask, 'b i -> b 1 i 1')
+            image_text_mask_1 = rearrange((context_mask == 1).type(image_mask.dtype), 'b j -> b 1 1 j')
+            image_text_mask_2 = rearrange((context_mask == 2).type(image_mask.dtype), 'b j -> b 1 1 j')
+            
+            image_mask_max = image_mask.amax(-2, keepdim=True)
+            max_attention = rearrange(attention_matrix.amax((-2, -1)), 'b h -> b h 1 1')
+            attention_matrix = attention_matrix + max_attention * (image_mask * image_text_mask_1)
+            attention_matrix = attention_matrix + max_attention * ((image_mask_max - image_mask) * image_text_mask_2)
+            
+        if exist(context_mask):
+            max_neg_value = -torch.finfo(attention_matrix.dtype).max
+            context_mask = rearrange(context_mask, 'b j -> b 1 1 j')
+            attention_matrix = attention_matrix.masked_fill(~(context_mask != 0), max_neg_value)
+        attention_matrix = (attention_matrix * attn.scale).softmax(dim=-1)
 
-        input_ndim = hidden_states.ndim
+        out = einsum('b h i j, b h j d -> b h i d', attention_matrix, value)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        out = attn.output_layer(out)
+        return out
+    
+class LoraKandi3AttnProcessor(nn.Module):
 
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        # split hidden states
-        end_pos = encoder_hidden_states.shape[1] - self.num_tokens
-        encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, :end_pos, :],
-            encoder_hidden_states[:, end_pos:, :],
-        )
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        query = attn.head_to_batch_dim(query)
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
-
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(attention_probs, value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # for ip-adapter
-        ip_key = self.to_k_ip(ip_hidden_states)
-        ip_value = self.to_v_ip(ip_hidden_states)
-
-        ip_key = attn.head_to_batch_dim(ip_key)
-        ip_value = attn.head_to_batch_dim(ip_value)
-
-        ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
-        ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
-        ip_hidden_states = attn.batch_to_head_dim(ip_hidden_states)
-
-        hidden_states = hidden_states + self.scale * ip_hidden_states
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
-
-class IPAdapterAttnProcessor2_0(torch.nn.Module):
-    r"""
-    Attention processor for IP-Adapater for PyTorch 2.0.
-
-    Args:
-        hidden_size (`int`):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`):
-            The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, defaults to 4):
-            The context length of the image features.
-        scale (`float`, defaults to 1.0):
-            the weight scale of image prompt.
-    """
-
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4, scale=1.0):
+    def __init__(self, in_channels, out_channels, context_dim, head_dim=64, rank=4, network_alpha=None):
         super().__init__()
 
-        if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError(
-                f"{self.__class__.__name__} requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0."
-            )
+        self.to_query_lora = LoRALinearLayer(in_channels, out_channels, rank, network_alpha)
+        self.to_key_lora = LoRALinearLayer(context_dim, out_channels, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(context_dim, out_channels, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(out_channels, out_channels, rank, network_alpha)
 
-        self.hidden_size = hidden_size
-        self.cross_attention_dim = cross_attention_dim
-        self.num_tokens = num_tokens
-        self.scale = scale
-
-        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-
-    def __call__(
+    def forward(
         self,
         attn,
-        hidden_states,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        temb=None,
-        scale=1.0,
-    ):
-        if scale != 1.0:
-            logger.warning("`scale` of IPAttnProcessor should be set by `set_ip_adapter_scale`.")
-        residual = hidden_states
+        x,
+        context,
+        context_mask=None,
+        image_mask=None,
+        scale=1):
+        query = rearrange(attn.to_query(x) + self.to_query_lora(x), 'b n (h d) -> b h n d', h=attn.num_heads)
+        key = rearrange(attn.to_key(context) + self.to_key_lora(context), 'b n (h d) -> b h n d', h=attn.num_heads)
+        value = rearrange(attn.to_value(context) + self.to_v_lora(context), 'b n (h d) -> b h n d', h=attn.num_heads)
 
-        if attn.spatial_norm is not None:
-            hidden_states = attn.spatial_norm(hidden_states, temb)
+        attention_matrix = einsum('b h i d, b h j d -> b h i j', query, key)
+        if exist(image_mask) and exist(context_mask):
+            image_mask = rearrange(image_mask, 'b i -> b 1 i 1')
+            image_text_mask_1 = rearrange((context_mask == 1).type(image_mask.dtype), 'b j -> b 1 1 j')
+            image_text_mask_2 = rearrange((context_mask == 2).type(image_mask.dtype), 'b j -> b 1 1 j')
+            
+            image_mask_max = image_mask.amax(-2, keepdim=True)
+            max_attention = rearrange(attention_matrix.amax((-2, -1)), 'b h -> b h 1 1')
+            attention_matrix = attention_matrix + max_attention * (image_mask * image_text_mask_1)
+            attention_matrix = attention_matrix + max_attention * ((image_mask_max - image_mask) * image_text_mask_2)
+            
+        if exist(context_mask):
+            max_neg_value = -torch.finfo(attention_matrix.dtype).max
+            context_mask = rearrange(context_mask, 'b j -> b 1 1 j')
+            attention_matrix = attention_matrix.masked_fill(~(context_mask != 0), max_neg_value)
+        attention_matrix = (attention_matrix * attn.scale).softmax(dim=-1)
 
-        input_ndim = hidden_states.ndim
-
-        if input_ndim == 4:
-            batch_size, channel, height, width = hidden_states.shape
-            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-
-        if attention_mask is not None:
-            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-            # scaled_dot_product_attention expects attention_mask shape to be
-            # (batch, heads, source_length, target_length)
-            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
-
-        if attn.group_norm is not None:
-            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        # split hidden states
-        end_pos = encoder_hidden_states.shape[1] - self.num_tokens
-        encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, :end_pos, :],
-            encoder_hidden_states[:, end_pos:, :],
-        )
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn.heads
-
-        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        hidden_states = hidden_states.to(query.dtype)
-
-        # for ip-adapter
-        ip_key = self.to_k_ip(ip_hidden_states)
-        ip_value = self.to_v_ip(ip_hidden_states)
-
-        ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        ip_hidden_states = F.scaled_dot_product_attention(
-            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
-        )
-
-        ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        ip_hidden_states = ip_hidden_states.to(query.dtype)
-
-        hidden_states = hidden_states + self.scale * ip_hidden_states
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        if input_ndim == 4:
-            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
-
-        if attn.residual_connection:
-            hidden_states = hidden_states + residual
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-
-        return hidden_states
-
+        out = einsum('b h i j, b h j d -> b h i d', attention_matrix, value)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        out = attn.output_layer(out) + self.to_out_lora(out)
+        return out
 
 LORA_ATTENTION_PROCESSORS = (
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     LoRAAttnAddedKVProcessor,
+    LoraKandi3AttnProcessor,
 )
 
 ADDED_KV_ATTENTION_PROCESSORS = (
@@ -2242,8 +2086,6 @@ CROSS_ATTENTION_PROCESSORS = (
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
-    IPAdapterAttnProcessor,
-    IPAdapterAttnProcessor2_0,
 )
 
 AttentionProcessor = Union[
@@ -2258,6 +2100,8 @@ AttentionProcessor = Union[
     CustomDiffusionAttnProcessor,
     CustomDiffusionXFormersAttnProcessor,
     CustomDiffusionAttnProcessor2_0,
+    Kandi3AttnProcessor,
+    LoraKandi3AttnProcessor,
     # deprecated
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
