@@ -1298,8 +1298,8 @@ def main(args):
                         )
 
                         # 20.4.11. Perform "CFG" to get x_prev estimate (using the LCM paper's CFG formulation)
-                        pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
-                        pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
+                        pred_x0 = uncond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
+                        pred_noise = uncond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
                         x_prev = solver.ddim_step(pred_x0, pred_noise, index)
 
                 # 20.4.12. Get target LCM prediction on x_prev, w, c, t_n
