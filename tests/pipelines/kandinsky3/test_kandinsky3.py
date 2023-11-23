@@ -20,7 +20,8 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import KandinskyV3Pipeline
+from diffusers import KandinskyV3Pipeline, image_processor
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
@@ -50,7 +51,10 @@ class KandinskyV3PipelineIntegrationTests(unittest.TestCase):
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 
-        image = pipe(prompt, generator=generator).images[0]
+        image = pipe(prompt, num_inference_steps=25, generator=generator).images[0]
+
+        import hf_image_uploader as hiu; hiu.upload(image, "patrickvonplaten/images", name="t2i.png")
+        import ipdb; ipdb.set_trace()
 
         assert image.size == (1024, 1024)
 
@@ -58,7 +62,9 @@ class KandinskyV3PipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/t2i.png"
         )
 
-        image_np = pipe.image_processor.pil_to_numpy(image)
-        expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
+        image_processor = VaeImageProcessor()
+
+        image_np = image_processor.pil_to_numpy(image)
+        expected_image_np = image_processor.pil_to_numpy(expected_image)
 
         self.assertTrue(np.allclose(image_np, expected_image_np, atol=5e-2))
