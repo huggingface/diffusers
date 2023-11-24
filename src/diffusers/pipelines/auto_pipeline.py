@@ -42,7 +42,7 @@ from .kandinsky2_2 import (
     KandinskyV22InpaintPipeline,
     KandinskyV22Pipeline,
 )
-from .kandinsky3 import KandinskyV3Pipeline, KandinskyV3Img2ImgPipeline
+from .kandinsky3 import KandinskyV3Img2ImgPipeline, KandinskyV3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pixart_alpha import PixArtAlphaPipeline
 from .stable_diffusion import (

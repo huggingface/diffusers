@@ -110,10 +110,7 @@ else:
         "KandinskyV22PriorEmb2EmbPipeline",
         "KandinskyV22PriorPipeline",
     ]
-    _import_structure["kandinsky3"] = [
-        "KandinskyV3Pipeline",
-        "KandinskyV3Img2ImgPipeline"
-    ]
+    _import_structure["kandinsky3"] = ["KandinskyV3Img2ImgPipeline", "KandinskyV3Pipeline"]
     _import_structure["latent_consistency_models"] = [
         "LatentConsistencyModelImg2ImgPipeline",
         "LatentConsistencyModelPipeline",

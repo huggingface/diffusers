@@ -16,9 +16,11 @@ from .modeling_utils import ModelMixin
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 @dataclass
 class Kandinsky3UNetOutput(BaseOutput):
     sample: torch.FloatTensor = None
+
 
 # TODO(Yiyi): This class needs to be removed
 def set_default_item(condition, item_1, item_2=None):
@@ -51,7 +53,6 @@ class SinusoidalPosEmb(nn.Module):
 
 
 class Kandinsky3EncoderProj(nn.Module):
-
     def __init__(self, encoder_hid_dim, cross_attention_dim):
         super().__init__()
         self.projection_linear = nn.Linear(encoder_hid_dim, cross_attention_dim, bias=False)
@@ -66,16 +67,16 @@ class Kandinsky3EncoderProj(nn.Module):
 class Kandinsky3UNet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
-            self,
-            in_channels: int = 4,
-            time_embedding_dim: int = 1536,
-            groups: int = 32,
-            attention_head_dim: int = 64,
-            layers_per_block: Union[int, Tuple[int]] = 3,
-            block_out_channels: Tuple[int] = (384, 768, 1536, 3072),
-            cross_attention_dim: Union[int, Tuple[int]] = 4096,
-            encoder_hid_dim: int = 4096,
-        ):
+        self,
+        in_channels: int = 4,
+        time_embedding_dim: int = 1536,
+        groups: int = 32,
+        attention_head_dim: int = 64,
+        layers_per_block: Union[int, Tuple[int]] = 3,
+        block_out_channels: Tuple[int] = (384, 768, 1536, 3072),
+        cross_attention_dim: Union[int, Tuple[int]] = 4096,
+        encoder_hid_dim: int = 4096,
+    ):
         super().__init__()
 
         # TOOD(Yiyi): Give better name and put into config for the following 4 parameters
@@ -95,7 +96,9 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
             time_embedding_dim,
         )
 
-        self.add_time_condition = Kandinsky3AttentionPooling(time_embedding_dim, cross_attention_dim, attention_head_dim)
+        self.add_time_condition = Kandinsky3AttentionPooling(
+            time_embedding_dim, cross_attention_dim, attention_head_dim
+        )
 
         self.conv_in = nn.Conv2d(in_channels, init_channels, kernel_size=3, padding=1)
 
@@ -111,23 +114,46 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         cat_dims = []
         self.num_levels = len(in_out_dims)
         self.down_blocks = nn.ModuleList([])
-        for level, ((in_dim, out_dim), res_block_num, text_dim, self_attention) in enumerate(zip(in_out_dims, *layer_params)):
+        for level, ((in_dim, out_dim), res_block_num, text_dim, self_attention) in enumerate(
+            zip(in_out_dims, *layer_params)
+        ):
             down_sample = level != (self.num_levels - 1)
             cat_dims.append(set_default_item(level != (self.num_levels - 1), out_dim, 0))
             self.down_blocks.append(
                 Kandinsky3DownSampleBlock(
-                    in_dim, out_dim, time_embedding_dim, text_dim, res_block_num, groups, attention_head_dim, expansion_ratio,
-                    compression_ratio, down_sample, self_attention
+                    in_dim,
+                    out_dim,
+                    time_embedding_dim,
+                    text_dim,
+                    res_block_num,
+                    groups,
+                    attention_head_dim,
+                    expansion_ratio,
+                    compression_ratio,
+                    down_sample,
+                    self_attention,
                 )
             )
 
         self.up_blocks = nn.ModuleList([])
-        for level, ((out_dim, in_dim), res_block_num, text_dim, self_attention) in enumerate(zip(reversed(in_out_dims), *rev_layer_params)):
+        for level, ((out_dim, in_dim), res_block_num, text_dim, self_attention) in enumerate(
+            zip(reversed(in_out_dims), *rev_layer_params)
+        ):
             up_sample = level != 0
             self.up_blocks.append(
                 Kandinsky3UpSampleBlock(
-                    in_dim, cat_dims.pop(), out_dim, time_embedding_dim, text_dim, res_block_num, groups, attention_head_dim,
-                    expansion_ratio, compression_ratio, up_sample, self_attention
+                    in_dim,
+                    cat_dims.pop(),
+                    out_dim,
+                    time_embedding_dim,
+                    text_dim,
+                    res_block_num,
+                    groups,
+                    attention_head_dim,
+                    expansion_ratio,
+                    compression_ratio,
+                    up_sample,
+                    self_attention,
                 )
             )
 
@@ -203,7 +229,6 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-
     def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
         # TODO(Yiyi): Clean up the following variables - these names should not be used
         # but instead only the ones that we pass to forward
@@ -250,13 +275,27 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
 
 class Kandinsky3UpSampleBlock(nn.Module):
     def __init__(
-            self, in_channels, cat_dim, out_channels, time_embed_dim, context_dim=None,
-            num_blocks=3, groups=32, head_dim=64, expansion_ratio=4, compression_ratio=2,
-            up_sample=True, self_attention=True
+        self,
+        in_channels,
+        cat_dim,
+        out_channels,
+        time_embed_dim,
+        context_dim=None,
+        num_blocks=3,
+        groups=32,
+        head_dim=64,
+        expansion_ratio=4,
+        compression_ratio=2,
+        up_sample=True,
+        self_attention=True,
     ):
         super().__init__()
         up_resolutions = [[None, set_default_item(up_sample, True), None, None]] + [[None] * 4] * (num_blocks - 1)
-        hidden_channels = [(in_channels + cat_dim, in_channels)] + [(in_channels, in_channels)] * (num_blocks - 2) + [(in_channels, out_channels)]
+        hidden_channels = (
+            [(in_channels + cat_dim, in_channels)]
+            + [(in_channels, in_channels)] * (num_blocks - 2)
+            + [(in_channels, out_channels)]
+        )
         attentions = []
         resnets_in = []
         resnets_out = []
@@ -264,22 +303,30 @@ class Kandinsky3UpSampleBlock(nn.Module):
         self.self_attention = self_attention
         self.context_dim = context_dim
 
-        attentions.append(set_default_layer(
-            self_attention,
-            Kandinsky3AttentionBlock,
-            (out_channels, time_embed_dim, None, groups, head_dim, expansion_ratio),
-            layer_2=nn.Identity
-        ))
+        attentions.append(
+            set_default_layer(
+                self_attention,
+                Kandinsky3AttentionBlock,
+                (out_channels, time_embed_dim, None, groups, head_dim, expansion_ratio),
+                layer_2=nn.Identity,
+            )
+        )
 
         for (in_channel, out_channel), up_resolution in zip(hidden_channels, up_resolutions):
-            resnets_in.append(Kandinsky3ResNetBlock(in_channel, in_channel, time_embed_dim, groups, compression_ratio, up_resolution))
-            attentions.append(set_default_layer(
-                context_dim is not None,
-                Kandinsky3AttentionBlock,
-                (in_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
-                layer_2=nn.Identity
-            ))
-            resnets_out.append(Kandinsky3ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio))
+            resnets_in.append(
+                Kandinsky3ResNetBlock(in_channel, in_channel, time_embed_dim, groups, compression_ratio, up_resolution)
+            )
+            attentions.append(
+                set_default_layer(
+                    context_dim is not None,
+                    Kandinsky3AttentionBlock,
+                    (in_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
+                    layer_2=nn.Identity,
+                )
+            )
+            resnets_out.append(
+                Kandinsky3ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio)
+            )
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets_in = nn.ModuleList(resnets_in)
@@ -296,11 +343,21 @@ class Kandinsky3UpSampleBlock(nn.Module):
             x = self.attentions[0](x, time_embed, image_mask=image_mask)
         return x
 
+
 class Kandinsky3DownSampleBlock(nn.Module):
     def __init__(
-            self, in_channels, out_channels, time_embed_dim, context_dim=None,
-            num_blocks=3, groups=32, head_dim=64, expansion_ratio=4, compression_ratio=2,
-            down_sample=True, self_attention=True
+        self,
+        in_channels,
+        out_channels,
+        time_embed_dim,
+        context_dim=None,
+        num_blocks=3,
+        groups=32,
+        head_dim=64,
+        expansion_ratio=4,
+        compression_ratio=2,
+        down_sample=True,
+        self_attention=True,
     ):
         super().__init__()
         attentions = []
@@ -310,24 +367,34 @@ class Kandinsky3DownSampleBlock(nn.Module):
         self.self_attention = self_attention
         self.context_dim = context_dim
 
-        attentions.append(set_default_layer(
-            self_attention,
-            Kandinsky3AttentionBlock,
-            (in_channels, time_embed_dim, None, groups, head_dim, expansion_ratio),
-            layer_2=nn.Identity
-        ))
+        attentions.append(
+            set_default_layer(
+                self_attention,
+                Kandinsky3AttentionBlock,
+                (in_channels, time_embed_dim, None, groups, head_dim, expansion_ratio),
+                layer_2=nn.Identity,
+            )
+        )
 
         up_resolutions = [[None] * 4] * (num_blocks - 1) + [[None, None, set_default_item(down_sample, False), None]]
         hidden_channels = [(in_channels, out_channels)] + [(out_channels, out_channels)] * (num_blocks - 1)
         for (in_channel, out_channel), up_resolution in zip(hidden_channels, up_resolutions):
-            resnets_in.append(Kandinsky3ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio))
-            attentions.append(set_default_layer(
-                context_dim is not None,
-                Kandinsky3AttentionBlock,
-                (out_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
-                layer_2=nn.Identity
-            ))
-            resnets_out.append(Kandinsky3ResNetBlock(out_channel, out_channel, time_embed_dim, groups, compression_ratio, up_resolution))
+            resnets_in.append(
+                Kandinsky3ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio)
+            )
+            attentions.append(
+                set_default_layer(
+                    context_dim is not None,
+                    Kandinsky3AttentionBlock,
+                    (out_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
+                    layer_2=nn.Identity,
+                )
+            )
+            resnets_out.append(
+                Kandinsky3ResNetBlock(
+                    out_channel, out_channel, time_embed_dim, groups, compression_ratio, up_resolution
+                )
+            )
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets_in = nn.ModuleList(resnets_in)
@@ -343,15 +410,13 @@ class Kandinsky3DownSampleBlock(nn.Module):
                 x = attention(x, time_embed, context, context_mask, image_mask)
             x = resnet_out(x, time_embed)
         return x
+
 
 class Kandinsky3ConditionalGroupNorm(nn.Module):
     def __init__(self, groups, normalized_shape, context_dim):
         super().__init__()
         self.norm = nn.GroupNorm(groups, normalized_shape, affine=False)
-        self.context_mlp = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(context_dim, 2 * normalized_shape)
-        )
+        self.context_mlp = nn.Sequential(nn.SiLU(), nn.Linear(context_dim, 2 * normalized_shape))
         self.context_mlp[1].weight.data.zero_()
         self.context_mlp[1].bias.data.zero_()
 
@@ -362,8 +427,9 @@ class Kandinsky3ConditionalGroupNorm(nn.Module):
             context = context.unsqueeze(-1)
 
         scale, shift = context.chunk(2, dim=1)
-        x = self.norm(x) * (scale + 1.) + shift
+        x = self.norm(x) * (scale + 1.0) + shift
         return x
+
 
 # TODO(Yiyi): This class should ideally not even exist, it slows everything needlessly down. I'm pretty
 # sure we can delete it and instead just pass an attention_mask
@@ -372,7 +438,7 @@ class Attention(nn.Module):
         super().__init__()
         assert out_channels % head_dim == 0
         self.num_heads = out_channels // head_dim
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim**-0.5
 
         # to_q
         self.to_q = nn.Linear(in_channels, out_channels, bias=False)
@@ -385,7 +451,6 @@ class Attention(nn.Module):
         # to_out
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(out_channels, out_channels, bias=False))
-
 
     def set_processor(self, processor: "AttnProcessor"):  # noqa: F821
         # if current processor is in `self._modules` and if passed `processor` is not, we need to
@@ -400,7 +465,6 @@ class Attention(nn.Module):
 
         self.processor = processor
 
-
     def forward(self, x, context, context_mask=None, image_mask=None):
         return self.processor(
             self,
@@ -409,6 +473,7 @@ class Attention(nn.Module):
             context_mask=context_mask,
         )
 
+
 class Kandinsky3Block(nn.Module):
     def __init__(self, in_channels, out_channels, time_embed_dim, kernel_size=3, norm_groups=32, up_resolution=None):
         super().__init__()
@@ -416,13 +481,17 @@ class Kandinsky3Block(nn.Module):
         self.activation = nn.SiLU()
         self.up_sample = set_default_layer(
             up_resolution is not None and up_resolution,
-            nn.ConvTranspose2d, (in_channels, in_channels), {'kernel_size': 2, 'stride': 2}
+            nn.ConvTranspose2d,
+            (in_channels, in_channels),
+            {"kernel_size": 2, "stride": 2},
         )
         padding = int(kernel_size > 1)
         self.projection = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding)
         self.down_sample = set_default_layer(
             up_resolution is not None and not up_resolution,
-            nn.Conv2d, (out_channels, out_channels), {'kernel_size': 2, 'stride': 2}
+            nn.Conv2d,
+            (out_channels, out_channels),
+            {"kernel_size": 2, "stride": 2},
         )
 
     def forward(self, x, time_embed):
@@ -436,27 +505,30 @@ class Kandinsky3Block(nn.Module):
 
 class Kandinsky3ResNetBlock(nn.Module):
     def __init__(
-            self, in_channels, out_channels, time_embed_dim, norm_groups=32, compression_ratio=2, up_resolutions=4*[None]
+        self, in_channels, out_channels, time_embed_dim, norm_groups=32, compression_ratio=2, up_resolutions=4 * [None]
     ):
         super().__init__()
         kernel_sizes = [1, 3, 3, 1]
         hidden_channel = max(in_channels, out_channels) // compression_ratio
-        hidden_channels = [(in_channels, hidden_channel)] + [(hidden_channel, hidden_channel)] * 2 + [(hidden_channel, out_channels)]
-        self.resnet_blocks = nn.ModuleList([
-            Kandinsky3Block(in_channel, out_channel, time_embed_dim, kernel_size, norm_groups, up_resolution)
-            for (in_channel, out_channel), kernel_size, up_resolution in zip(hidden_channels, kernel_sizes, up_resolutions)
-        ])
+        hidden_channels = (
+            [(in_channels, hidden_channel)] + [(hidden_channel, hidden_channel)] * 2 + [(hidden_channel, out_channels)]
+        )
+        self.resnet_blocks = nn.ModuleList(
+            [
+                Kandinsky3Block(in_channel, out_channel, time_embed_dim, kernel_size, norm_groups, up_resolution)
+                for (in_channel, out_channel), kernel_size, up_resolution in zip(
+                    hidden_channels, kernel_sizes, up_resolutions
+                )
+            ]
+        )
         self.shortcut_up_sample = set_default_layer(
-            True in up_resolutions,
-            nn.ConvTranspose2d, (in_channels, in_channels), {'kernel_size': 2, 'stride': 2}
+            True in up_resolutions, nn.ConvTranspose2d, (in_channels, in_channels), {"kernel_size": 2, "stride": 2}
         )
         self.shortcut_projection = set_default_layer(
-            in_channels != out_channels,
-            nn.Conv2d, (in_channels, out_channels), {'kernel_size': 1}
+            in_channels != out_channels, nn.Conv2d, (in_channels, out_channels), {"kernel_size": 1}
         )
         self.shortcut_down_sample = set_default_layer(
-            False in up_resolutions,
-            nn.Conv2d, (out_channels, out_channels), {'kernel_size': 2, 'stride': 2}
+            False in up_resolutions, nn.Conv2d, (out_channels, out_channels), {"kernel_size": 2, "stride": 2}
         )
 
     def forward(self, x, time_embed):

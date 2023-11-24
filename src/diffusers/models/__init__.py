@@ -36,9 +36,9 @@ if is_torch_available():
     _import_structure["unet_2d"] = ["UNet2DModel"]
     _import_structure["unet_2d_condition"] = ["UNet2DConditionModel"]
     _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
+    _import_structure["unet_kandi3"] = ["Kandinsky3UNet"]
     _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
     _import_structure["vq_model"] = ["VQModel"]
-    _import_structure["unet_kandi3"] = ["Kandinsky3UNet"]
 
 if is_flax_available():
     _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]

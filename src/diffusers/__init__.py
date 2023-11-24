@@ -79,6 +79,7 @@ else:
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
+            "Kandinsky3UNet",
             "ModelMixin",
             "MotionAdapter",
             "MultiAdapter",
@@ -92,7 +93,6 @@ else:
             "UNet3DConditionModel",
             "UNetMotionModel",
             "VQModel",
-            "Kandinsky3UNet",
         ]
     )
 
@@ -232,8 +232,8 @@ else:
             "KandinskyV22Pipeline",
             "KandinskyV22PriorEmb2EmbPipeline",
             "KandinskyV22PriorPipeline",
-            "KandinskyV3Pipeline",
             "KandinskyV3Img2ImgPipeline",
+            "KandinskyV3Pipeline",
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LDMTextToImagePipeline",

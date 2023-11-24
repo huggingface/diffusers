@@ -2222,6 +2222,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         return hidden_states
 
+
 # TODO(Yiyi): This class should not exist, we can replace it with a normal attention processor I believe
 # this way torch.compile and co. will work as well
 class Kandi3AttnProcessor:
@@ -2231,7 +2232,7 @@ class Kandi3AttnProcessor:
 
     @staticmethod
     def _reshape(hid_states, h):
-        b, n, f  = hid_states.shape
+        b, n, f = hid_states.shape
         d = f // h
         return hid_states.unsqueeze(-1).reshape(b, n, h, d).permute(0, 2, 1, 3)
 
@@ -2246,7 +2247,7 @@ class Kandi3AttnProcessor:
         key = self._reshape(attn.to_k(context), h=attn.num_heads)
         value = self._reshape(attn.to_v(context), h=attn.num_heads)
 
-        attention_matrix = einsum('b h i d, b h j d -> b h i j', query, key)
+        attention_matrix = einsum("b h i d, b h j d -> b h i j", query, key)
 
         if exist(context_mask):
             max_neg_value = -torch.finfo(attention_matrix.dtype).max
@@ -2254,7 +2255,7 @@ class Kandi3AttnProcessor:
             attention_matrix = attention_matrix.masked_fill(~(context_mask != 0), max_neg_value)
         attention_matrix = (attention_matrix * attn.scale).softmax(dim=-1)
 
-        out = einsum('b h i j, b h j d -> b h i d', attention_matrix, value)
+        out = einsum("b h i j, b h j d -> b h i d", attention_matrix, value)
         out = out.permute(0, 2, 1, 3).reshape(out.shape[0], out.shape[2], -1)
         out = attn.to_out[0](out)
         return out

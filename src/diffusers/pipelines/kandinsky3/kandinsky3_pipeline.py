@@ -16,6 +16,7 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 def downscale_height_and_width(height, width, scale_factor=8):
     new_height = height // scale_factor**2
     if height % scale_factor**2 != 0:
@@ -25,8 +26,8 @@ def downscale_height_and_width(height, width, scale_factor=8):
         new_width += 1
     return new_height * scale_factor, new_width * scale_factor
 
-class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
 
+class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->unet->movq"
 
     def __init__(
@@ -35,17 +36,12 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         text_encoder: T5EncoderModel,
         unet: Kandinsky3UNet,
         scheduler: DDPMScheduler,
-        movq: VQModel
-
+        movq: VQModel,
     ):
         super().__init__()
 
         self.register_modules(
-            tokenizer=tokenizer,
-            text_encoder=text_encoder,
-            unet=unet,
-            scheduler=scheduler,
-            movq=movq
+            tokenizer=tokenizer, text_encoder=text_encoder, unet=unet, scheduler=scheduler, movq=movq
         )
 
     def remove_all_hooks(self):
@@ -62,7 +58,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         self.text_encoder_offload_hook = None
         self.final_offload_hook = None
 
-    def process_embeds(self,embeddings, attention_mask, cut_context):
+    def process_embeds(self, embeddings, attention_mask, cut_context):
         if cut_context:
             embeddings[attention_mask == 0] = torch.zeros_like(embeddings[attention_mask == 0])
             max_seq_length = attention_mask.sum(-1).max() + 1
@@ -80,7 +76,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        cut_context=False,
+        _cut_context=False,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -140,7 +136,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 attention_mask=attention_mask,
             )
             prompt_embeds = prompt_embeds[0]
-            prompt_embeds, attention_mask = self.process_embeds(prompt_embeds, attention_mask, cut_context)
+            prompt_embeds, attention_mask = self.process_embeds(prompt_embeds, attention_mask, _cut_context)
             prompt_embeds = prompt_embeds * attention_mask.unsqueeze(2)
 
         if self.text_encoder is not None:
@@ -155,13 +151,11 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
         attention_mask = attention_mask.repeat(num_images_per_prompt, 1)
-        split_context = False
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             uncond_tokens: List[str]
 
             if negative_prompt is None:
-                split_context = True
                 uncond_tokens = [""] * batch_size
             elif isinstance(negative_prompt, str):
                 uncond_tokens = [negative_prompt]
@@ -190,8 +184,8 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                     attention_mask=negative_attention_mask,
                 )
                 negative_prompt_embeds = negative_prompt_embeds[0]
-                negative_prompt_embeds = negative_prompt_embeds[:, :prompt_embeds.shape[1]]
-                negative_attention_mask = negative_attention_mask[:, :prompt_embeds.shape[1]]
+                negative_prompt_embeds = negative_prompt_embeds[:, : prompt_embeds.shape[1]]
+                negative_attention_mask = negative_attention_mask[:, : prompt_embeds.shape[1]]
                 negative_prompt_embeds = negative_prompt_embeds * negative_attention_mask.unsqueeze(2)
 
             else:
@@ -213,7 +207,8 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             # to avoid doing two forward passes
         else:
             negative_prompt_embeds = None
-        return prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask, split_context
+            negative_attention_mask = None
+        return prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask
 
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
@@ -349,12 +344,11 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
         """
-        cut_context=True
+        cut_context = True
         device = self._execution_device
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
-
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -369,7 +363,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask, split_context = self.encode_prompt(
+        prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask = self.encode_prompt(
             prompt,
             do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
@@ -377,7 +371,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            cut_context=cut_context
+            _cut_context=cut_context,
         )
 
         if do_classifier_free_guidance:
@@ -407,9 +401,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         # num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                latent_model_input = (
-                    torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                )
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -417,14 +409,14 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                     t,
                     encoder_hidden_states=prompt_embeds,
                     encoder_attention_mask=attention_mask,
-                    return_dict=False
+                    return_dict=False,
                 )[0]
 
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
 
-                    noise_pred = (guidance_scale + 1.) * noise_pred_text - guidance_scale * noise_pred_uncond
-                    #noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = (guidance_scale + 1.0) * noise_pred_text - guidance_scale * noise_pred_uncond
+                    # noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(
@@ -442,7 +434,9 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
             if output_type not in ["pt", "np", "pil"]:
-                raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")
+                raise ValueError(
+                    f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}"
+                )
 
             if output_type in ["np", "pil"]:
                 image = image * 0.5 + 0.5

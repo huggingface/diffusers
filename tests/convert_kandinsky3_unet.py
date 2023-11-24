@@ -71,14 +71,13 @@ def convert_state_dict(unet_state_dict):
 
     return converted_state_dict
 
+
 def main(model_path, output_path):
     # Load your original U-Net model
     unet_state_dict = load_file(model_path)
 
     # Initialize your Kandinsky3UNet model
-    config = {
-
-    }
+    config = {}
 
     # Convert the state dict
     converted_state_dict = convert_state_dict(unet_state_dict)
@@ -88,6 +87,7 @@ def main(model_path, output_path):
 
     unet.save_pretrained(output_path)
     print(f"Converted model saved to {output_path}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert U-Net PyTorch model to Kandinsky3UNet format")
