@@ -21,8 +21,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..models.embeddings import ImageProjection
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
+from ..models.embeddings import ImageProjection, Resampler
+from ..models.modeling_utils import (
+    _LOW_CPU_MEM_USAGE_DEFAULT,
+    load_model_dict_into_meta,
+)
 from ..utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -62,7 +65,11 @@ class UNet2DConditionLoadersMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
 
-    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
+    def load_attn_procs(
+        self,
+        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        **kwargs,
+    ):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
@@ -128,7 +135,12 @@ class UNet2DConditionLoadersMixin:
         ```
         """
         from ..models.attention_processor import CustomDiffusionAttnProcessor
-        from ..models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
+        from ..models.lora import (
+            LoRACompatibleConv,
+            LoRACompatibleLinear,
+            LoRAConv2dLayer,
+            LoRALinearLayer,
+        )
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -216,12 +228,17 @@ class UNet2DConditionLoadersMixin:
         # fill attn processors
         lora_layers_list = []
 
-        is_lora = all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys()) and not USE_PEFT_BACKEND
+        is_lora = (
+            all(("lora" in k or k.endswith(".alpha")) for k in state_dict.keys())
+            and not USE_PEFT_BACKEND
+        )
         is_custom_diffusion = any("custom_diffusion" in k for k in state_dict.keys())
 
         if is_lora:
             # correct keys
-            state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(state_dict, network_alphas)
+            state_dict, network_alphas = self.convert_state_dict_legacy_attn_format(
+                state_dict, network_alphas
+            )
 
             if network_alphas is not None:
                 network_alphas_keys = list(network_alphas.keys())
@@ -233,14 +250,18 @@ class UNet2DConditionLoadersMixin:
             all_keys = list(state_dict.keys())
             for key in all_keys:
                 value = state_dict.pop(key)
-                attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
+                attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(
+                    key.split(".")[-3:]
+                )
                 lora_grouped_dict[attn_processor_key][sub_key] = value
 
                 # Create another `mapped_network_alphas` dictionary so that we can properly map them.
                 if network_alphas is not None:
                     for k in network_alphas_keys:
                         if k.replace(".alpha", "") in key:
-                            mapped_network_alphas.update({attn_processor_key: network_alphas.get(k)})
+                            mapped_network_alphas.update(
+                                {attn_processor_key: network_alphas.get(k)}
+                            )
                             used_network_alphas_keys.add(k)
 
             if not is_network_alphas_none:
@@ -289,7 +310,9 @@ class UNet2DConditionLoadersMixin:
                             mapped_network_alphas.get(key),
                         )
                 else:
-                    raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
+                    raise ValueError(
+                        f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module."
+                    )
 
                 value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
                 lora_layers_list.append((attn_processor, lora))
@@ -297,7 +320,9 @@ class UNet2DConditionLoadersMixin:
                 if low_cpu_mem_usage:
                     device = next(iter(value_dict.values())).device
                     dtype = next(iter(value_dict.values())).dtype
-                    load_model_dict_into_meta(lora, value_dict, device=device, dtype=dtype)
+                    load_model_dict_into_meta(
+                        lora, value_dict, device=device, dtype=dtype
+                    )
                 else:
                     lora.load_state_dict(value_dict)
 
@@ -309,20 +334,31 @@ class UNet2DConditionLoadersMixin:
                     custom_diffusion_grouped_dict[key] = {}
                 else:
                     if "to_out" in key:
-                        attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
+                        attn_processor_key, sub_key = ".".join(
+                            key.split(".")[:-3]
+                        ), ".".join(key.split(".")[-3:])
                     else:
-                        attn_processor_key, sub_key = ".".join(key.split(".")[:-2]), ".".join(key.split(".")[-2:])
+                        attn_processor_key, sub_key = ".".join(
+                            key.split(".")[:-2]
+                        ), ".".join(key.split(".")[-2:])
                     custom_diffusion_grouped_dict[attn_processor_key][sub_key] = value
 
             for key, value_dict in custom_diffusion_grouped_dict.items():
                 if len(value_dict) == 0:
                     attn_processors[key] = CustomDiffusionAttnProcessor(
-                        train_kv=False, train_q_out=False, hidden_size=None, cross_attention_dim=None
+                        train_kv=False,
+                        train_q_out=False,
+                        hidden_size=None,
+                        cross_attention_dim=None,
                     )
                 else:
-                    cross_attention_dim = value_dict["to_k_custom_diffusion.weight"].shape[1]
+                    cross_attention_dim = value_dict[
+                        "to_k_custom_diffusion.weight"
+                    ].shape[1]
                     hidden_size = value_dict["to_k_custom_diffusion.weight"].shape[0]
-                    train_q_out = True if "to_q_custom_diffusion.weight" in value_dict else False
+                    train_q_out = (
+                        True if "to_q_custom_diffusion.weight" in value_dict else False
+                    )
                     attn_processors[key] = CustomDiffusionAttnProcessor(
                         train_kv=True,
                         train_q_out=train_q_out,
@@ -349,14 +385,22 @@ class UNet2DConditionLoadersMixin:
         if not USE_PEFT_BACKEND:
             if _pipeline is not None:
                 for _, component in _pipeline.components.items():
-                    if isinstance(component, nn.Module) and hasattr(component, "_hf_hook"):
-                        is_model_cpu_offload = isinstance(getattr(component, "_hf_hook"), CpuOffload)
-                        is_sequential_cpu_offload = isinstance(getattr(component, "_hf_hook"), AlignDevicesHook)
+                    if isinstance(component, nn.Module) and hasattr(
+                        component, "_hf_hook"
+                    ):
+                        is_model_cpu_offload = isinstance(
+                            getattr(component, "_hf_hook"), CpuOffload
+                        )
+                        is_sequential_cpu_offload = isinstance(
+                            getattr(component, "_hf_hook"), AlignDevicesHook
+                        )
 
                         logger.info(
                             "Accelerate hooks detected. Since you have called `load_lora_weights()`, the previous hooks will be first removed. Then the LoRA parameters will be loaded and the hooks will be applied again."
                         )
-                        remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
+                        remove_hook_from_module(
+                            component, recurse=is_sequential_cpu_offload
+                        )
 
             # only custom diffusion needs to set attn processors
             if is_custom_diffusion:
@@ -377,16 +421,23 @@ class UNet2DConditionLoadersMixin:
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
-            key.startswith(self.unet_name) or key.startswith(self.text_encoder_name) for key in state_dict.keys()
+            key.startswith(self.unet_name) or key.startswith(self.text_encoder_name)
+            for key in state_dict.keys()
         )
         if is_new_lora_format:
             # Strip the `"unet"` prefix.
-            is_text_encoder_present = any(key.startswith(self.text_encoder_name) for key in state_dict.keys())
+            is_text_encoder_present = any(
+                key.startswith(self.text_encoder_name) for key in state_dict.keys()
+            )
             if is_text_encoder_present:
                 warn_message = "The state_dict contains LoRA params corresponding to the text encoder which are not being used here. To use both UNet and text encoder related LoRA params, use [`pipe.load_lora_weights()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights)."
                 logger.warn(warn_message)
             unet_keys = [k for k in state_dict.keys() if k.startswith(self.unet_name)]
-            state_dict = {k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
+            state_dict = {
+                k.replace(f"{self.unet_name}.", ""): v
+                for k, v in state_dict.items()
+                if k in unet_keys
+            }
 
         # change processor format to 'pure' LoRACompatibleLinear format
         if any("processor" in k.split(".") for k in state_dict.keys()):
@@ -394,12 +445,20 @@ class UNet2DConditionLoadersMixin:
             def format_to_lora_compatible(key):
                 if "processor" not in key.split("."):
                     return key
-                return key.replace(".processor", "").replace("to_out_lora", "to_out.0.lora").replace("_lora", ".lora")
+                return (
+                    key.replace(".processor", "")
+                    .replace("to_out_lora", "to_out.0.lora")
+                    .replace("_lora", ".lora")
+                )
 
-            state_dict = {format_to_lora_compatible(k): v for k, v in state_dict.items()}
+            state_dict = {
+                format_to_lora_compatible(k): v for k, v in state_dict.items()
+            }
 
             if network_alphas is not None:
-                network_alphas = {format_to_lora_compatible(k): v for k, v in network_alphas.items()}
+                network_alphas = {
+                    format_to_lora_compatible(k): v for k, v in network_alphas.items()
+                }
         return state_dict, network_alphas
 
     def save_attn_procs(
@@ -450,14 +509,18 @@ class UNet2DConditionLoadersMixin:
         )
 
         if os.path.isfile(save_directory):
-            logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
+            logger.error(
+                f"Provided path ({save_directory}) should be a directory, not a file"
+            )
             return
 
         if save_function is None:
             if safe_serialization:
 
                 def save_function(weights, filename):
-                    return safetensors.torch.save_file(weights, filename, metadata={"format": "pt"})
+                    return safetensors.torch.save_file(
+                        weights, filename, metadata={"format": "pt"}
+                    )
 
             else:
                 save_function = torch.save
@@ -467,7 +530,11 @@ class UNet2DConditionLoadersMixin:
         is_custom_diffusion = any(
             isinstance(
                 x,
-                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
+                (
+                    CustomDiffusionAttnProcessor,
+                    CustomDiffusionAttnProcessor2_0,
+                    CustomDiffusionXFormersAttnProcessor,
+                ),
             )
             for (_, x) in self.attn_processors.items()
         )
@@ -496,13 +563,23 @@ class UNet2DConditionLoadersMixin:
 
         if weight_name is None:
             if safe_serialization:
-                weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE if is_custom_diffusion else LORA_WEIGHT_NAME_SAFE
+                weight_name = (
+                    CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE
+                    if is_custom_diffusion
+                    else LORA_WEIGHT_NAME_SAFE
+                )
             else:
-                weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME if is_custom_diffusion else LORA_WEIGHT_NAME
+                weight_name = (
+                    CUSTOM_DIFFUSION_WEIGHT_NAME
+                    if is_custom_diffusion
+                    else LORA_WEIGHT_NAME
+                )
 
         # Save the model
         save_function(state_dict, os.path.join(save_directory, weight_name))
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+        logger.info(
+            f"Model weights saved in {os.path.join(save_directory, weight_name)}"
+        )
 
     def fuse_lora(self, lora_scale=1.0, safe_fusing=False):
         self.lora_scale = lora_scale
@@ -568,7 +645,9 @@ class UNet2DConditionLoadersMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `set_adapters()`.")
 
-        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+        adapter_names = (
+            [adapter_names] if isinstance(adapter_names, str) else adapter_names
+        )
 
         if weights is None:
             weights = [1.0] * len(adapter_names)
@@ -672,11 +751,22 @@ class UNet2DConditionLoadersMixin:
             IPAdapterAttnProcessor2_0,
         )
 
+        if "proj.weight" in state_dict["image_proj"]:
+            # IP-Adapter
+            num_image_text_embeds = 4
+        else:
+            # IP-Adapter Plus
+            num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
+
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 1
         for name in self.attn_processors.keys():
-            cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
+            cross_attention_dim = (
+                None
+                if name.endswith("attn1.processor")
+                else self.config.cross_attention_dim
+            )
             if name.startswith("mid_block"):
                 hidden_size = self.config.block_out_channels[-1]
             elif name.startswith("up_blocks"):
@@ -687,20 +777,29 @@ class UNet2DConditionLoadersMixin:
                 hidden_size = self.config.block_out_channels[block_id]
             if cross_attention_dim is None or "motion_modules" in name:
                 attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                    AttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else AttnProcessor
                 )
                 attn_procs[name] = attn_processor_class()
             else:
                 attn_processor_class = (
-                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
+                    IPAdapterAttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else IPAdapterAttnProcessor
                 )
                 attn_procs[name] = attn_processor_class(
-                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    scale=1.0,
+                    num_tokens=num_image_text_embeds,
                 ).to(dtype=self.dtype, device=self.device)
 
                 value_dict = {}
                 for k, w in attn_procs[name].state_dict().items():
-                    value_dict.update({f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]})
+                    value_dict.update(
+                        {f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]}
+                    )
 
                 attn_procs[name].load_state_dict(value_dict)
                 key_id += 2
@@ -708,28 +807,54 @@ class UNet2DConditionLoadersMixin:
         self.set_attn_processor(attn_procs)
 
         # create image projection layers.
-        clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
-        cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
+        if "proj.weight" in state_dict["image_proj"]:
+            # IP-Adapter
+            clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
+            cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
 
-        image_projection = ImageProjection(
-            cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
+            image_projection = ImageProjection(
+                cross_attention_dim=cross_attention_dim,
+                image_embed_dim=clip_embeddings_dim,
+                num_image_text_embeds=num_image_text_embeds,
+            )
+            image_projection.to(dtype=self.dtype, device=self.device)
+
+            # load image projection layer weights
+            image_proj_state_dict = {}
+            image_proj_state_dict.update(
+                {
+                    "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
+                    "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
+                    "norm.weight": state_dict["image_proj"]["norm.weight"],
+                    "norm.bias": state_dict["image_proj"]["norm.bias"],
+                }
+            )
+
+            image_projection.load_state_dict(image_proj_state_dict)
+
+        else:
+            # IP-Adapter Plus
+            embed_dims = state_dict["image_proj"]["proj_in.weight"].shape[1]
+            output_dims = state_dict["image_proj"]["proj_out.weight"].shape[0]
+            hidden_dims = state_dict["image_proj"]["latents"].shape[2]
+            num_heads = (
+                state_dict["image_proj"]["layers.0.0.to_q.weight"].shape[0] // 64
+            )
+
+            image_projection = Resampler(
+                embed_dims=embed_dims,
+                output_dims=output_dims,
+                hidden_dims=hidden_dims,
+                num_heads=num_heads,
+                num_queries=num_image_text_embeds,
+            )
+
+            image_proj_state_dict = state_dict["image_proj"]
+            image_projection.load_state_dict(image_proj_state_dict)
+
+        self.encoder_hid_proj = image_projection.to(
+            device=self.device, dtype=self.dtype
         )
-        image_projection.to(dtype=self.dtype, device=self.device)
-
-        # load image projection layer weights
-        image_proj_state_dict = {}
-        image_proj_state_dict.update(
-            {
-                "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
-                "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
-                "norm.weight": state_dict["image_proj"]["norm.weight"],
-                "norm.bias": state_dict["image_proj"]["norm.bias"],
-            }
-        )
-
-        image_projection.load_state_dict(image_proj_state_dict)
-
-        self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
     delete_adapter_layers

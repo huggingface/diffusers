@@ -14,7 +14,12 @@
 
 from typing import TYPE_CHECKING
 
-from ..utils import DIFFUSERS_SLOW_IMPORT, _LazyModule, is_flax_available, is_torch_available
+from ..utils import (
+    DIFFUSERS_SLOW_IMPORT,
+    _LazyModule,
+    is_flax_available,
+    is_torch_available,
+)
 
 
 _import_structure = {}
@@ -28,6 +33,7 @@ if is_torch_available():
     _import_structure["controlnet"] = ["ControlNetModel"]
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
+    _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["prior_transformer"] = ["PriorTransformer"]
     _import_structure["t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformer_2d"] = ["Transformer2DModel"]
@@ -54,6 +60,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .consistency_decoder_vae import ConsistencyDecoderVAE
         from .controlnet import ControlNetModel
         from .dual_transformer_2d import DualTransformer2DModel
+        from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .prior_transformer import PriorTransformer
         from .t5_film_transformer import T5FilmDecoder
@@ -74,4 +81,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 else:
     import sys
 
-    sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)
+    sys.modules[__name__] = _LazyModule(
+        __name__, globals()["__file__"], _import_structure, module_spec=__spec__
+    )
