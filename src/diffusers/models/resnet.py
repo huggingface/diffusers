@@ -1303,6 +1303,7 @@ class TemporalResnetBlock(nn.Module):
 
         hidden_states = self.conv1(hidden_states)
         if self.time_emb_proj is not None:
+            temb = self.nonlinearity(temb)
             temb = self.time_emb_proj(temb)[:, :, :, None, None]
 
         if temb is not None:
@@ -1435,7 +1436,7 @@ class AlphaBlender(nn.Module):
         else:
             raise ValueError(f"Unknown merge strategy {self.merge_strategy}")
 
-    def get_alpha(self, image_only_indicator: torch.Tensor) -> torch.Tensor:
+    def get_alpha(self, image_only_indicator: torch.Tensor, ndims: int) -> torch.Tensor:
         if self.merge_strategy == "fixed":
             alpha = self.mix_factor
 
@@ -1449,9 +1450,17 @@ class AlphaBlender(nn.Module):
             alpha = torch.where(
                 image_only_indicator.bool(),
                 torch.ones(1, 1, device=image_only_indicator.device),
-                torch.sigmoid(self.mix_factor)[None, :],
+                torch.sigmoid(self.mix_factor)[..., None],
             )
-            alpha = alpha.reshape(-1)[:, None, None]
+
+            # (batch, channel, frames, height, width)
+            if ndims == 5: 
+                alpha = alpha[:, None, :, None, None]
+            # (batch*frames, height*width, channels)
+            elif ndims == 3: 
+                alpha = alpha2.reshape(-1)[:, None, None]
+            else:
+                raise ValueError(f"Unexpected ndims {ndims}. Dimensions should be 3 or 5")
 
         else:
             raise NotImplementedError
@@ -1464,7 +1473,7 @@ class AlphaBlender(nn.Module):
         x_temporal: torch.Tensor,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        alpha = self.get_alpha(image_only_indicator)
+        alpha = self.get_alpha(image_only_indicator, x_spatial.ndim)
         x = (
             alpha.to(x_spatial.dtype) * x_spatial
             + (1.0 - alpha).to(x_spatial.dtype) * x_temporal
