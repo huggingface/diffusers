@@ -22,7 +22,7 @@ from .attention_processor import (
 from .embeddings import TimestepEmbedding, Timesteps
 from .lora import LoRACompatibleLinear
 from .modeling_utils import ModelMixin
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D, TemporalResnetBlock, SpatioTemporalResBlock, AlphaBlender
+from .resnet import AlphaBlender, Downsample2D, SpatioTemporalResBlock, Upsample2D
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
