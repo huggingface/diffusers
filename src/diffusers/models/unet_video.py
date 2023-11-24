@@ -3,32 +3,26 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from einops import rearrange, repeat
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import USE_PEFT_BACKEND, BaseOutput, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from ..utils.torch_utils import apply_freeu, maybe_allow_in_graph
+from ..utils.torch_utils import apply_freeu
 from .activations import get_activation
-from .attention import BasicTransformerBlock, FeedForward, TemporalBasicTransformerBlock
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
-    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
 from .embeddings import TimestepEmbedding, Timesteps
-from .lora import LoRACompatibleLinear
 from .modeling_utils import ModelMixin
-from .resnet import AlphaBlender, Downsample2D, SpatioTemporalResBlock, Upsample2D
+from .resnet import Downsample2D, SpatioTemporalResBlock, Upsample2D
 from .transformer_temporal import TransformerSpatioTemporalModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
 
 
 class DownBlockVideo(nn.Module):
