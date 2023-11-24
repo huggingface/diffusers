@@ -25,7 +25,7 @@ from diffusers import (
     AutoPipelineForImage2Image,
     AutoPipelineForText2Image,
     Kandinsky3UNet,
-    KandinskyV3Pipeline,
+    Kandinsky3Pipeline,
     VQModel,
 )
 from diffusers.image_processor import VaeImageProcessor
@@ -49,8 +49,8 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class KandinskyV3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = KandinskyV3Pipeline
+class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Kandinsky3Pipeline
     params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
@@ -172,7 +172,7 @@ class KandinskyV3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class KandinskyV3PipelineIntegrationTests(unittest.TestCase):
+class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

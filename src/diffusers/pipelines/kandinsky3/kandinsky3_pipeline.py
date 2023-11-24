@@ -27,7 +27,7 @@ def downscale_height_and_width(height, width, scale_factor=8):
     return new_height * scale_factor, new_width * scale_factor
 
 
-class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
+class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->unet->movq"
 
     def __init__(

@@ -1,2 +1,2 @@
-from .kandinsky3_pipeline import KandinskyV3Pipeline
-from .kandinsky3img2img_pipeline import KandinskyV3Img2ImgPipeline
+from .kandinsky3_pipeline import Kandinsky3Pipeline
+from .kandinsky3img2img_pipeline import Kandinsky3Img2ImgPipeline

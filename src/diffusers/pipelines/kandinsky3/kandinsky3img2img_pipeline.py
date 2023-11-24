@@ -39,7 +39,7 @@ def prepare_image(pil_image):
     return image
 
 
-class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
+class Kandinsky3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->unet->movq"
 
     def __init__(
