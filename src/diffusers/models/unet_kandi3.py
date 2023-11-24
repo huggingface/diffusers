@@ -204,17 +204,25 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
             module.gradient_checkpointing = value
 
 
-    def forward(self, x, time, context=None, context_mask=None, image_mask=None, use_projections=False,
-                return_dict=True, split_context=False, uncondition_mask_idx=None, control_hidden_states=None):
+    def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
+        # TODO(Yiyi): Clean up the following variables - these names should not be used
+        # but instead only the ones that we pass to forward
+        x = sample
+        context_mask = encoder_attention_mask
+        context = encoder_hidden_states
+
+        if not torch.is_tensor(timestep):
+            dtype = torch.float32 if isinstance(timestep, float) else torch.int32
+            timestep = torch.tensor([timestep], dtype=dtype, device=sample.device)
+        elif len(timestep.shape) == 0:
+            timestep = timestep[None].to(sample.device)
+
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        timestep = timestep.expand(sample.shape[0])
+        time_embed_input = self.time_proj(timestep).to(x.dtype)
+        time_embed = self.time_embedding(time_embed_input)
 
         context = self.encoder_hid_proj(context)
-        if uncondition_mask_idx is not None:
-            # TODO(Patrick): pretty sure that this is never used and can be removed
-            context[uncondition_mask_idx] = torch.zeros_like(context[uncondition_mask_idx])
-            context_mask[uncondition_mask_idx] = torch.zeros_like(context_mask[uncondition_mask_idx])
-
-        time_embed_input = self.time_proj(time).to(x.dtype)
-        time_embed = self.time_embedding(time_embed_input)
 
         if context is not None:
             time_embed = self.add_time_condition(time_embed, context, context_mask)
@@ -222,17 +230,14 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         hidden_states = []
         x = self.conv_in(x)
         for level, down_sample in enumerate(self.down_blocks):
-            x = down_sample(x, time_embed, context, context_mask, image_mask)
+            x = down_sample(x, time_embed, context, context_mask)
             if level != self.num_levels - 1:
                 hidden_states.append(x)
 
         for level, up_sample in enumerate(self.up_blocks):
             if level != 0:
-                if control_hidden_states is not None:
-                    x = torch.cat([x, hidden_states.pop() + control_hidden_states.pop()], dim=1)
-                else:
-                    x = torch.cat([x, hidden_states.pop()], dim=1)
-            x = up_sample(x, time_embed, context, context_mask, image_mask)
+                x = torch.cat([x, hidden_states.pop()], dim=1)
+            x = up_sample(x, time_embed, context, context_mask)
 
         x = self.conv_norm_out(x)
         x = self.conv_act_out(x)

@@ -5,7 +5,6 @@ import numpy as np
 import PIL
 import PIL.Image
 import torch
-from PIL import Image
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...loaders import LoraLoaderMixin
@@ -29,8 +28,7 @@ def downscale_height_and_width(height, width, scale_factor=8):
         new_width += 1
     return new_height * scale_factor, new_width * scale_factor
 
-def prepare_image(pil_image, w=512, h=512):
-    pil_image = pil_image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
+def prepare_image(pil_image):
     arr = np.array(pil_image.convert("RGB"))
     arr = arr.astype(np.float32) / 127.5 - 1
     arr = np.transpose(arr, [2, 0, 1])
@@ -39,7 +37,7 @@ def prepare_image(pil_image, w=512, h=512):
 
 class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
 
-    model_cpu_offload_seq = "text_encoder->unet"
+    model_cpu_offload_seq = "text_encoder->unet->movq"
 
     def __init__(
         self,
@@ -170,7 +168,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt_embeds = prompt_embeds[0]
             prompt_embeds, attention_mask = self.process_embeds(prompt_embeds, attention_mask, cut_context)
             prompt_embeds = prompt_embeds * attention_mask.unsqueeze(2)
-            prompt_embeds = self.project_emb(prompt_embeds)
+            # prompt_embeds = self.project_emb(prompt_embeds)
 
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
@@ -221,7 +219,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
                 negative_prompt_embeds = negative_prompt_embeds[0]
                 negative_prompt_embeds = negative_prompt_embeds[:, :prompt_embeds.shape[1]]
                 negative_attention_mask = negative_attention_mask[:, :prompt_embeds.shape[1]]
-                negative_prompt_embeds = self.project_emb(negative_prompt_embeds)
+                # negative_prompt_embeds = self.project_emb(negative_prompt_embeds)
                 negative_prompt_embeds = negative_prompt_embeds * negative_attention_mask.unsqueeze(2)
 
             else:
@@ -293,7 +291,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt_embeds = prompt_embeds[0]
             prompt_embeds, attention_mask = self.process_embeds(prompt_embeds, attention_mask, cut_context)
             prompt_embeds = prompt_embeds * attention_mask.unsqueeze(2)
-            prompt_embeds = self.project_emb(prompt_embeds)
+            # prompt_embeds = self.project_emb(prompt_embeds)
 
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
@@ -344,7 +342,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
                 negative_prompt_embeds = negative_prompt_embeds[0]
                 negative_prompt_embeds = negative_prompt_embeds[:, :prompt_embeds.shape[1]]
                 negative_attention_mask = negative_attention_mask[:, :prompt_embeds.shape[1]]
-                negative_prompt_embeds = self.project_emb(negative_prompt_embeds)
+                # negative_prompt_embeds = self.project_emb(negative_prompt_embeds)
                 negative_prompt_embeds = negative_prompt_embeds * negative_attention_mask.unsqueeze(2)
 
             else:
@@ -481,14 +479,10 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt: Union[str, List[str]] = None,
         image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
         strength: float = 0.3,
-        num_inference_steps: int = 100,
-        timesteps: List[int] = None,
+        num_inference_steps: int = 25,
         guidance_scale: float = 3.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -497,9 +491,8 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         latents=None,
-        cut_context=True
     ):
-
+        cut_context=True
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
@@ -540,27 +533,24 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
                 f"Input is in incorrect format: {[type(i) for i in image]}. Currently, we only support  PIL image and pytorch tensor"
             )
 
-        image = torch.cat([prepare_image(i, width, height) for i in image], dim=0)
+        image = torch.cat([prepare_image(i) for i in image], dim=0)
         image = image.to(dtype=prompt_embeds.dtype, device=device)
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         # 5. Prepare latents
-        height, width = downscale_height_and_width(height, width, 8)
         latents = self.movq.encode(image)["latents"]
         latents = latents.repeat_interleave(num_images_per_prompt, dim=0)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         latents = self.prepare_latents(
             latents, latent_timestep, batch_size, num_images_per_prompt, prompt_embeds.dtype, device, generator
         )
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
         if hasattr(self, "text_encoder_offload_hook") and self.text_encoder_offload_hook is not None:
             self.text_encoder_offload_hook.offload()
 
         # 7. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        # TODO(Yiyi): Correct the following line and use correctly
+        # num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 latent_model_input = (
@@ -568,16 +558,11 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
                 )
 
                 # predict the noise residual
-                new_t = torch.tensor([t]).repeat(latent_model_input.shape[0]).to(device)
                 noise_pred = self.unet(
                     latent_model_input,
-                    new_t,
-                    context=prompt_embeds,
-                    context_mask=attention_mask,
-                    image_mask=None,
-                    use_projections=False,
-                    split_context=split_context,
-                    return_dict=False
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=attention_mask,
                 )[0]
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)

@@ -18,9 +18,10 @@ import unittest
 
 import numpy as np
 import torch
+from PIL import Image
 from transformers import AutoTokenizer, T5EncoderModel
 
-from diffusers import Kandinsky3UNet, KandinskyV3Pipeline, VQModel
+from diffusers import Kandinsky3UNet, KandinskyV3Pipeline, KandinskyV3Img2ImgPipeline, VQModel, AutoPipelineForText2Image, AutoPipelineForImage2Image
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.utils.testing_utils import (
@@ -29,6 +30,8 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     slow,
 )
+
+from diffusers.pipelines.auto_pipeline import AutoPipelineForInpainting, AutoPipelineForText2Image
 
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
@@ -180,7 +183,7 @@ class KandinskyV3PipelineIntegrationTests(unittest.TestCase):
         unet = Kandinsky3UNet()
         unet.load_state_dict(state_dict)
         unet.to(torch.float16)
-        pipe = KandinskyV3Pipeline.from_pretrained("/home/patrick/kandinsky-3", unet=unet, variant="fp16", torch_dtype=torch.float16)
+        pipe = AutoPipelineForText2Image.from_pretrained("/home/patrick/kandinsky-3", unet=unet, variant="fp16", torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
@@ -194,6 +197,45 @@ class KandinskyV3PipelineIntegrationTests(unittest.TestCase):
 
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/t2i.png"
+        )
+
+        image_processor = VaeImageProcessor()
+
+        image_np = image_processor.pil_to_numpy(image)
+        expected_image_np = image_processor.pil_to_numpy(expected_image)
+
+        self.assertTrue(np.allclose(image_np, expected_image_np, atol=5e-2))
+
+    def test_kandinskyV3_img2img(self):
+        from safetensors.torch import load_file
+
+        from ...convert_kandinsky3_unet import convert_state_dict
+
+        state_dict = load_file("/home/patrick/kandinsky-3/unet/diffusion_pytorch_model.fp16.safetensors")
+        state_dict = convert_state_dict(state_dict)
+        unet = Kandinsky3UNet()
+        unet.load_state_dict(state_dict)
+        unet.to(torch.float16)
+        pipe = AutoPipelineForImage2Image.from_pretrained("/home/patrick/kandinsky-3", unet=unet, variant="fp16", torch_dtype=torch.float16)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/t2i.png"
+        )
+        w, h = 512, 512
+        image = image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
+        prompt = "A painting of the inside of a subway train with tiny raccoons."
+
+        image = pipe(prompt, image=image, strength=0.75, num_inference_steps=25, generator=generator).images[0]
+
+        assert image.size == (512, 512)
+
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/i2i.png"
         )
 
         image_processor = VaeImageProcessor()

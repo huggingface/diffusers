@@ -273,7 +273,6 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         self,
         prompt: Union[str, List[str]] = None,
         num_inference_steps: int = 100,
-        timesteps: List[int] = None,
         guidance_scale: float = 3.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
@@ -413,15 +412,11 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 )
 
                 # predict the noise residual
-                new_t = torch.tensor([t]).repeat(latent_model_input.shape[0]).to(device)
                 noise_pred = self.unet(
                     latent_model_input,
-                    new_t,
-                    context=prompt_embeds,
-                    context_mask=attention_mask,
-                    image_mask=None,
-                    use_projections=False,
-                    split_context=split_context,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=attention_mask,
                     return_dict=False
                 )[0]
 
