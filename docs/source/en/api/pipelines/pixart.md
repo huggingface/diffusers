@@ -73,13 +73,9 @@ Now, use the `pipe` to encode a prompt:
 with torch.no_grad():
     prompt = "cute cat"
     prompt_embeds, prompt_attention_mask, negative_embeds, negative_prompt_attention_mask = pipe.encode_prompt(prompt)
-
-del text_encoder
-del pipe
-flush()
 ```
 
-Free up some GPU VRAM with the `flush()` utility function:
+Since text embeddings have been computed, remove the `text_encoder` and `pipe` from the memory, and free up som GPU VRAM:
 
 ```python
 import gc 
@@ -87,6 +83,10 @@ import gc
 def flush():
     gc.collect()
     torch.cuda.empty_cache()
+
+del text_encoder
+del pipe
+flush()
 ```
 
 Then compute the latents with the prompt embeddings as inputs:
@@ -123,7 +123,7 @@ Once the latents are computed, pass it off to the VAE to decode into a real imag
 ```python
 with torch.no_grad():
     image = pipe.vae.decode(latents / pipe.vae.config.scaling_factor, return_dict=False)[0]
-image = pipe.image_processor.postprocess(image, output_type="pil")
+image = pipe.image_processor.postprocess(image, output_type="pil")[0]
 image.save("cat.png")
 ```
 
