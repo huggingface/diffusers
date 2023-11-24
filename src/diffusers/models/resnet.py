@@ -1386,6 +1386,7 @@ class SpatioTemporalResBlock(nn.Module):
         batch_size = batch_frames // num_frames
 
         hidden_states = self.spatial_res_block(hidden_states, temb, scale=scale)
+        
         hidden_states_mix = (
             hidden_states[None, :]
             .reshape(batch_size, num_frames, channels, height, width)
@@ -1396,6 +1397,8 @@ class SpatioTemporalResBlock(nn.Module):
             .reshape(batch_size, num_frames, channels, height, width)
             .permute(0, 2, 1, 3, 4)
         )
+        
+        temb = temb.reshape(batch_size, num_frames, -1)
         hidden_states = self.temporal_res_block(hidden_states, temb)
         hidden_states = self.time_mixer(
             x_spatial=hidden_states_mix,
