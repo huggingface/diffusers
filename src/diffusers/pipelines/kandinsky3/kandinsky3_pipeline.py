@@ -267,7 +267,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        num_inference_steps: int = 100,
+        num_inference_steps: int = 25,
         guidance_scale: float = 3.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
