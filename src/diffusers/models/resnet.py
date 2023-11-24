@@ -1303,10 +1303,11 @@ class TemporalResnetBlock(nn.Module):
 
         hidden_states = self.conv1(hidden_states)
         if self.time_emb_proj is not None:
+            temb = self.nonlinearity(temb)
             temb = self.time_emb_proj(temb)[:, :, :, None, None]
 
         if temb is not None:
-            temb = temb.permute(0, 2, 1)
+            temb = temb.permute(0, 2, 1, 3, 4)
             hidden_states = hidden_states + temb
 
         hidden_states = self.norm2(hidden_states)
@@ -1381,10 +1382,11 @@ class SpatioTemporalResBlock(nn.Module):
         image_only_indicator: Optional[torch.Tensor] = None,
         scale: float = 1.0,
     ):
+        hidden_states = self.spatial_res_block(hidden_states, temb, scale=scale)
+
         batch_frames, channels, height, width = hidden_states.shape
         batch_size = batch_frames // num_frames
-
-        hidden_states = self.spatial_res_block(hidden_states, temb, scale=scale)
+        
         hidden_states_mix = (
             hidden_states[None, :]
             .reshape(batch_size, num_frames, channels, height, width)
@@ -1395,6 +1397,8 @@ class SpatioTemporalResBlock(nn.Module):
             .reshape(batch_size, num_frames, channels, height, width)
             .permute(0, 2, 1, 3, 4)
         )
+        
+        temb = temb.reshape(batch_size, num_frames, -1)
         hidden_states = self.temporal_res_block(hidden_states, temb)
         hidden_states = self.time_mixer(
             x_spatial=hidden_states_mix,
@@ -1435,7 +1439,7 @@ class AlphaBlender(nn.Module):
         else:
             raise ValueError(f"Unknown merge strategy {self.merge_strategy}")
 
-    def get_alpha(self, image_only_indicator: torch.Tensor) -> torch.Tensor:
+    def get_alpha(self, image_only_indicator: torch.Tensor, ndims: int) -> torch.Tensor:
         if self.merge_strategy == "fixed":
             alpha = self.mix_factor
 
@@ -1449,9 +1453,17 @@ class AlphaBlender(nn.Module):
             alpha = torch.where(
                 image_only_indicator.bool(),
                 torch.ones(1, 1, device=image_only_indicator.device),
-                torch.sigmoid(self.mix_factor)[None, :],
+                torch.sigmoid(self.mix_factor)[..., None],
             )
-            alpha = alpha.reshape(-1)[:, None, None]
+
+            # (batch, channel, frames, height, width)
+            if ndims == 5:
+                alpha = alpha[:, None, :, None, None]
+            # (batch*frames, height*width, channels)
+            elif ndims == 3:
+                alpha = alpha.reshape(-1)[:, None, None]
+            else:
+                raise ValueError(f"Unexpected ndims {ndims}. Dimensions should be 3 or 5")
 
         else:
             raise NotImplementedError
@@ -1464,7 +1476,7 @@ class AlphaBlender(nn.Module):
         x_temporal: torch.Tensor,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        alpha = self.get_alpha(image_only_indicator)
+        alpha = self.get_alpha(image_only_indicator, x_spatial.ndim)
         x = (
             alpha.to(x_spatial.dtype) * x_spatial
             + (1.0 - alpha).to(x_spatial.dtype) * x_temporal

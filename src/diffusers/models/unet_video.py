@@ -3,726 +3,26 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from einops import rearrange, repeat
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import USE_PEFT_BACKEND, BaseOutput, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
-from ..utils.torch_utils import apply_freeu, maybe_allow_in_graph
+from ..utils.torch_utils import apply_freeu
 from .activations import get_activation
-from .attention import BasicTransformerBlock, FeedForward
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
-    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
 from .embeddings import TimestepEmbedding, Timesteps
-from .lora import LoRACompatibleLinear
 from .modeling_utils import ModelMixin
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .resnet import Downsample2D, SpatioTemporalResBlock, Upsample2D
+from .transformer_temporal import TransformerSpatioTemporalModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-class AlphaBlender(nn.Module):
-    strategies = ["learned", "fixed", "learned_with_images"]
-
-    def __init__(
-        self,
-        alpha: float,
-        merge_strategy: str = "learned_with_images",
-        rearrange_pattern: str = "b t -> (b t) 1 1",
-    ):
-        super().__init__()
-        self.merge_strategy = merge_strategy
-        self.rearrange_pattern = rearrange_pattern
-
-        assert merge_strategy in self.strategies, f"merge_strategy needs to be in {self.strategies}"
-
-        if self.merge_strategy == "fixed":
-            self.register_buffer("mix_factor", torch.Tensor([alpha]))
-        elif self.merge_strategy == "learned" or self.merge_strategy == "learned_with_images":
-            self.register_parameter("mix_factor", torch.nn.Parameter(torch.Tensor([alpha])))
-        else:
-            raise ValueError(f"unknown merge strategy {self.merge_strategy}")
-
-    def get_alpha(self, image_only_indicator: torch.Tensor) -> torch.Tensor:
-        if self.merge_strategy == "fixed":
-            alpha = self.mix_factor
-        elif self.merge_strategy == "learned":
-            alpha = torch.sigmoid(self.mix_factor)
-        elif self.merge_strategy == "learned_with_images":
-            assert image_only_indicator is not None, "need image_only_indicator ..."
-            alpha = torch.where(
-                image_only_indicator.bool(),
-                torch.ones(1, 1, device=image_only_indicator.device),
-                rearrange(torch.sigmoid(self.mix_factor), "... -> ... 1"),
-            )
-            alpha = rearrange(alpha, self.rearrange_pattern)
-        else:
-            raise NotImplementedError
-        return alpha
-
-    def forward(
-        self,
-        x_spatial: torch.Tensor,
-        x_temporal: torch.Tensor,
-        image_only_indicator: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        alpha = self.get_alpha(image_only_indicator)
-        x = alpha.to(x_spatial.dtype) * x_spatial + (1.0 - alpha).to(x_spatial.dtype) * x_temporal
-        return x
-
-
-class ResnetBlock3D(nn.Module):
-    r"""
-    A Resnet block.
-
-    Parameters:
-        in_channels (`int`): The number of channels in the input.
-        out_channels (`int`, *optional*, default to be `None`):
-            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
-        dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
-        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
-        groups (`int`, *optional*, default to `32`): The number of groups to use for the first normalization layer.
-        groups_out (`int`, *optional*, default to None):
-            The number of groups to use for the second normalization layer. if set to None, same as `groups`.
-        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
-        non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
-        time_embedding_norm (`str`, *optional*, default to `"default"` ): Time scale shift config.
-            By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift" or
-            "ada_group" for a stronger conditioning with scale and shift.
-        kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
-            [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
-        output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
-        use_in_shortcut (`bool`, *optional*, default to `True`):
-            If `True`, add a 1x1 nn.conv2d layer for skip-connection.
-        up (`bool`, *optional*, default to `False`): If `True`, add an upsample layer.
-        down (`bool`, *optional*, default to `False`): If `True`, add a downsample layer.
-        conv_shortcut_bias (`bool`, *optional*, default to `True`):  If `True`, adds a learnable bias to the
-            `conv_shortcut` output.
-        conv_2d_out_channels (`int`, *optional*, default to `None`): the number of channels in the output.
-            If None, same as `out_channels`.
-    """
-
-    def __init__(
-        self,
-        *,
-        in_channels: int,
-        out_channels: Optional[int] = None,
-        conv_shortcut: bool = False,
-        dropout: float = 0.0,
-        temb_channels: int = 512,
-        groups: int = 32,
-        groups_out: Optional[int] = None,
-        eps: float = 1e-6,
-        non_linearity: str = "swish",
-        kernel_size: Optional[torch.FloatTensor] = (3, 1, 1),
-        output_scale_factor: float = 1.0,
-        use_in_shortcut: Optional[bool] = None,
-        conv_shortcut_bias: bool = True,
-        conv_2d_out_channels: Optional[int] = None,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        out_channels = in_channels if out_channels is None else out_channels
-        self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
-        self.output_scale_factor = output_scale_factor
-
-        linear_cls = nn.Linear
-        conv_cls = nn.Conv3d
-
-        padding = [k // 2 for k in kernel_size]
-
-        if groups_out is None:
-            groups_out = groups
-
-        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=kernel_size, stride=1, padding=padding)
-
-        if temb_channels is not None:
-            self.time_emb_proj = linear_cls(temb_channels, out_channels)
-        else:
-            self.time_emb_proj = None
-
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
-
-        self.dropout = torch.nn.Dropout(dropout)
-        conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=kernel_size, stride=1, padding=padding)
-
-        self.nonlinearity = get_activation(non_linearity)
-
-        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
-
-        self.conv_shortcut = None
-        if self.use_in_shortcut:
-            self.conv_shortcut = conv_cls(
-                in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
-            )
-
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
-        hidden_states = input_tensor
-
-        hidden_states = self.norm1(hidden_states)
-
-        hidden_states = self.nonlinearity(hidden_states)
-
-        hidden_states = self.conv1(hidden_states)
-        if self.time_emb_proj is not None:
-            temb = self.time_emb_proj(temb)[:, :, :, None, None]
-
-        if temb is not None:
-            temb = rearrange(temb, "b t c ... -> b c t ...")
-            hidden_states = hidden_states + temb
-
-        hidden_states = self.norm2(hidden_states)
-
-        hidden_states = self.nonlinearity(hidden_states)
-
-        hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states)
-
-        if self.conv_shortcut is not None:
-            input_tensor = self.conv_shortcut(input_tensor)
-
-        output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
-
-        return output_tensor
-
-
-class VideoResBlock(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: Optional[int] = None,
-        dropout: float = 0.0,
-        temb_channels: int = 512,
-        groups: int = 32,
-        pre_norm: bool = True,
-        eps: float = 1e-6,
-        non_linearity: str = "swish",
-        time_embedding_norm: str = "default",  # default, scale_shift, ada_group, spatial
-        output_scale_factor: float = 1.0,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
-        merge_factor: float = 0.5,
-    ):
-        super().__init__()
-
-        self.spatial_res_block = ResnetBlock2D(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            temb_channels=temb_channels,
-            eps=eps,
-            groups=groups,
-            dropout=dropout,
-            time_embedding_norm=time_embedding_norm,
-            non_linearity=non_linearity,
-            output_scale_factor=output_scale_factor,
-            pre_norm=pre_norm,
-        )
-
-        self.temporal_res_block = ResnetBlock3D(
-            in_channels=out_channels if out_channels is not None else in_channels,
-            out_channels=out_channels if out_channels is not None else in_channels,
-            temb_channels=temb_channels,
-            eps=eps,
-            groups=groups,
-            dropout=dropout,
-            non_linearity=non_linearity,
-            output_scale_factor=output_scale_factor,
-            kernel_size=kernel_size_3d,
-        )
-
-        self.time_mixer = AlphaBlender(
-            alpha=merge_factor,
-            merge_strategy="learned_with_images",
-            rearrange_pattern="b t -> b 1 t 1 1",
-        )
-
-    def forward(
-        self,
-        input_tensor: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        num_video_frames: int,
-        image_only_indicator: Optional[torch.Tensor] = None,
-        scale: float = 1.0,
-    ):
-        hidden_states = self.spatial_res_block(input_tensor, temb, scale=scale)
-        hidden_states_mix = rearrange(hidden_states, "(b t) c h w -> b c t h w", t=num_video_frames)
-        hidden_states = rearrange(hidden_states, "(b t) c h w -> b c t h w", t=num_video_frames)
-        temb = rearrange(temb, "(b t) ... -> b t ...", t=num_video_frames)
-
-        hidden_states = self.temporal_res_block(hidden_states, temb)
-        hidden_states = self.time_mixer(
-            x_spatial=hidden_states_mix,
-            x_temporal=hidden_states,
-            image_only_indicator=image_only_indicator,
-        )
-
-        hidden_states = rearrange(hidden_states, "b c t h w -> (b t) c h w")
-
-        return hidden_states
-
-
-@maybe_allow_in_graph
-class TemporalBasicTransformerBlock(nn.Module):
-    r"""
-    A basic Transformer block.
-
-    Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        attention_bias (:
-            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
-        upcast_attention (`bool`, *optional*):
-            Whether to upcast the attention computation to float32. This is useful for mixed precision training.
-        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
-            Whether to use learnable elementwise affine parameters for normalization.
-        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
-            The normalization layer to use. Can be `"layer_norm"`, `"ada_norm"` or `"ada_norm_zero"`.
-        final_dropout (`bool` *optional*, defaults to False):
-            Whether to apply a final dropout after the last feed-forward layer.
-        attention_type (`str`, *optional*, defaults to `"default"`):
-            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
-    """
-
-    def __init__(
-        self,
-        dim: int,
-        time_mix_inner_dim: int,
-        num_attention_heads: int,
-        attention_head_dim: int,
-        dropout=0.0,
-        cross_attention_dim: Optional[int] = None,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        attention_bias: bool = False,
-        upcast_attention: bool = False,
-        norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single'
-        norm_eps: float = 1e-5,
-        final_dropout: bool = False,
-        attention_type: str = "default",
-    ):
-        super().__init__()
-        self.is_res = dim == time_mix_inner_dim
-
-        self.norm_in = nn.LayerNorm(dim, eps=norm_eps)
-
-        # Define 3 blocks. Each block has its own normalization layer.
-        # 1. Self-Attn
-        self.norm_in = nn.LayerNorm(dim, eps=norm_eps)
-        self.ff_in = FeedForward(
-            dim, dim_out=time_mix_inner_dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout
-        )
-
-        self.norm1 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
-        self.attn1 = Attention(
-            query_dim=time_mix_inner_dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            dropout=dropout,
-            bias=attention_bias,
-            cross_attention_dim=None,
-            upcast_attention=upcast_attention,
-        )
-
-        # 2. Cross-Attn
-        if cross_attention_dim is not None:
-            # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
-            # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
-            # the second cross attention block.
-            self.norm2 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
-            self.attn2 = Attention(
-                query_dim=time_mix_inner_dim,
-                cross_attention_dim=cross_attention_dim,
-                heads=num_attention_heads,
-                dim_head=attention_head_dim,
-                dropout=dropout,
-                bias=attention_bias,
-                upcast_attention=upcast_attention,
-            )  # is self-attn if encoder_hidden_states is none
-        else:
-            self.norm2 = None
-            self.attn2 = None
-
-        # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
-        self.ff = FeedForward(
-            time_mix_inner_dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout
-        )
-
-        # let chunk size default to None
-        self._chunk_size = None
-        self._chunk_dim = 0
-
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int):
-        # Sets chunk feed-forward
-        self._chunk_size = chunk_size
-        self._chunk_dim = dim
-
-    def forward(
-        self,
-        hidden_states: torch.FloatTensor,
-        num_video_frames: int,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-    ) -> torch.FloatTensor:
-        # Notice that normalization is always applied before the real computation in the following blocks.
-        # 0. Self-Attention
-        # batch_size = hidden_states.shape[0]
-
-        B, S, C = hidden_states.shape
-        hidden_states = rearrange(hidden_states, "(b t) s c -> (b s) t c", t=num_video_frames)
-
-        residual = hidden_states
-        hidden_states = self.norm_in(hidden_states)
-        hidden_states = self.ff_in(hidden_states)
-        if self.is_res:
-            hidden_states = hidden_states + residual
-
-        # 1. Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
-
-        norm_hidden_states = self.norm1(hidden_states)
-        attn_output = self.attn1(
-            norm_hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=attention_mask,
-            **cross_attention_kwargs,
-        )
-
-        hidden_states = attn_output + hidden_states
-        # if hidden_states.ndim == 4:
-        # hidden_states = hidden_states.squeeze(1)
-
-        # 3. Cross-Attention
-        if self.attn2 is not None:
-            norm_hidden_states = self.norm2(hidden_states)
-            attn_output = self.attn2(
-                norm_hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=encoder_attention_mask,
-                **cross_attention_kwargs,
-            )
-            hidden_states = attn_output + hidden_states
-
-        # 4. Feed-forward
-        norm_hidden_states = self.norm3(hidden_states)
-
-        if self._chunk_size is not None:
-            # "feed_forward_chunk_size" can be used to save memory
-            if norm_hidden_states.shape[self._chunk_dim] % self._chunk_size != 0:
-                raise ValueError(
-                    f"`hidden_states` dimension to be chunked: {norm_hidden_states.shape[self._chunk_dim]} has to be divisible by chunk size: {self._chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
-                )
-
-            num_chunks = norm_hidden_states.shape[self._chunk_dim] // self._chunk_size
-            ff_output = torch.cat(
-                [
-                    self.ff(hid_slice, scale=lora_scale)
-                    for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)
-                ],
-                dim=self._chunk_dim,
-            )
-        else:
-            ff_output = self.ff(norm_hidden_states, scale=lora_scale)
-
-        if self.is_res:
-            hidden_states = ff_output + hidden_states
-        else:
-            hidden_states = ff_output
-        # if hidden_states.ndim == 4:
-        # hidden_states = hidden_states.squeeze(1)
-
-        hidden_states = rearrange(
-            hidden_states, "(b s) t c -> (b t) s c", s=S, b=B // num_video_frames, t=num_video_frames
-        )
-
-        return hidden_states
-
-
-@dataclass
-class Transformer2DModelOutput(BaseOutput):
-    """
-    The output of [`Transformer2DModel`].
-
-    Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
-            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
-            distributions for the unnoised latent pixels.
-    """
-
-    sample: torch.FloatTensor
-
-
-class Transformer2DModelVideo(ModelMixin, ConfigMixin):
-    """
-    A 2D Transformer model for image-like data.
-
-    Parameters:
-        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
-        in_channels (`int`, *optional*):
-            The number of channels in the input and output (specify if the input is **continuous**).
-        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
-        attention_bias (`bool`, *optional*):
-            Configure if the `TransformerBlocks` attention should contain a bias parameter.
-    """
-
-    @register_to_config
-    def __init__(
-        self,
-        num_attention_heads: int = 16,
-        attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
-        out_channels: Optional[int] = None,
-        num_layers: int = 1,
-        dropout: float = 0.0,
-        norm_num_groups: int = 32,
-        cross_attention_dim: Optional[int] = None,
-        attention_bias: bool = False,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        only_cross_attention: bool = False,
-        double_self_attention: bool = False,
-        upcast_attention: bool = False,
-        norm_type: str = "layer_norm",
-        norm_elementwise_affine: bool = True,
-        norm_eps: float = 1e-5,
-        attention_type: str = "default",
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
-    ):
-        super().__init__()
-        self.num_attention_heads = num_attention_heads
-        self.attention_head_dim = attention_head_dim
-        self.max_time_embed_period = max_time_embed_period
-        inner_dim = num_attention_heads * attention_head_dim
-        self.inner_dim = inner_dim
-
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
-
-        # 2. Define input layers
-        self.in_channels = in_channels
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-        self.proj_in = linear_cls(in_channels, inner_dim)
-
-        # 3. Define transformers blocks
-        self.transformer_blocks = nn.ModuleList(
-            [
-                BasicTransformerBlock(
-                    inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
-                )
-                for d in range(num_layers)
-            ]
-        )
-
-        time_mix_inner_dim = inner_dim
-        self.temporal_transformer_blocks = nn.ModuleList(
-            [
-                TemporalBasicTransformerBlock(
-                    inner_dim,
-                    time_mix_inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
-                )
-                for _ in range(num_layers)
-            ]
-        )
-
-        time_embed_dim = in_channels * 4
-        self.time_pos_embed = TimestepEmbedding(in_channels, time_embed_dim, out_dim=in_channels)
-
-        self.time_mixer = AlphaBlender(alpha=merge_factor, merge_strategy=merge_strategy)
-
-        # 4. Define output layers
-        self.out_channels = in_channels if out_channels is None else out_channels
-        # TODO: should use out_channels for continuous projections
-        self.proj_out = linear_cls(inner_dim, in_channels)
-
-        self.time_proj = Timesteps(in_channels, True, 0)
-
-        self.gradient_checkpointing = False
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        num_video_frames: int,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
-        added_cond_kwargs: Dict[str, torch.Tensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        image_only_indicator: Optional[torch.Tensor] = None,
-        return_dict: bool = True,
-    ):
-        """
-        The [`Transformer2DModel`] forward method.
-
-        Args:
-            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
-                Input `hidden_states`.
-            encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
-                Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
-                self-attention.
-            timestep ( `torch.LongTensor`, *optional*):
-                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
-            class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
-                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
-                `AdaLayerZeroNorm`.
-            cross_attention_kwargs ( `Dict[str, Any]`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            attention_mask ( `torch.Tensor`, *optional*):
-                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
-                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
-                negative values to the attention scores corresponding to "discard" tokens.
-            encoder_attention_mask ( `torch.Tensor`, *optional*):
-                Cross-attention mask applied to `encoder_hidden_states`. Two formats supported:
-
-                    * Mask `(batch, sequence_length)` True = keep, False = discard.
-                    * Bias `(batch, 1, sequence_length)` 0 = keep, -10000 = discard.
-
-                If `ndim == 2`: will be interpreted as a mask, then converted into a bias consistent with the format
-                above. This bias will be added to the cross-attention scores.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
-                tuple.
-
-        Returns:
-            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
-        """
-        # Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-
-        assert (
-            encoder_hidden_states.ndim == 3
-        ), f"n dims of spatial context should be 3 but are {encoder_hidden_states.ndim}"
-
-        _, _, h, w = hidden_states.shape
-        time_context = encoder_hidden_states
-        time_context_first_timestep = time_context[::num_video_frames]
-        time_context = repeat(time_context_first_timestep, "b ... -> (b n) ...", n=h * w)
-
-        # 1. Input
-        batch, _, height, width = hidden_states.shape
-        residual = hidden_states
-
-        hidden_states = self.norm(hidden_states)
-        inner_dim = hidden_states.shape[1]
-        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-        hidden_states = (
-            self.proj_in(hidden_states, scale=lora_scale) if not USE_PEFT_BACKEND else self.proj_in(hidden_states)
-        )
-
-        num_frames = torch.arange(num_video_frames, device=hidden_states.device)
-        num_frames = repeat(num_frames, "t -> b t", b=hidden_states.shape[0] // num_video_frames)
-        num_frames = rearrange(num_frames, "b t -> (b t)")
-        t_emb = self.time_proj(num_frames)
-        emb = self.time_pos_embed(t_emb)
-        emb = emb[:, None, :]
-
-        # 2. Blocks
-        for block, temporal_block in zip(self.transformer_blocks, self.temporal_transformer_blocks):
-            if self.training and self.gradient_checkpointing:
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    block,
-                    hidden_states,
-                    None,
-                    encoder_hidden_states,
-                    None,
-                    timestep,
-                    cross_attention_kwargs,
-                    class_labels,
-                    use_reentrant=False,
-                )
-            else:
-                hidden_states = block(
-                    hidden_states,
-                    attention_mask=None,
-                    encoder_hidden_states=encoder_hidden_states,
-                    encoder_attention_mask=None,
-                    timestep=timestep,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    class_labels=class_labels,
-                )
-
-            hidden_states_mix = hidden_states
-            hidden_states_mix = hidden_states_mix + emb
-
-            hidden_states_mix = temporal_block(
-                hidden_states_mix,
-                num_video_frames=num_video_frames,
-                encoder_hidden_states=time_context,
-                cross_attention_kwargs=cross_attention_kwargs,
-            )
-            hidden_states = self.time_mixer(
-                x_spatial=hidden_states,
-                x_temporal=hidden_states_mix,
-                image_only_indicator=image_only_indicator,
-            )
-
-        # 3. Output
-        hidden_states = (
-            self.proj_out(hidden_states, scale=lora_scale) if not USE_PEFT_BACKEND else self.proj_out(hidden_states)
-        )
-        hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-
-        output = hidden_states + residual
-
-        if not return_dict:
-            return (output,)
-
-        return Transformer2DModelOutput(sample=output)
 
 
 class DownBlockVideo(nn.Module):
@@ -743,6 +43,7 @@ class DownBlockVideo(nn.Module):
         downsample_padding: int = 1,
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
+        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         resnets = []
@@ -750,7 +51,7 @@ class DownBlockVideo(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -763,6 +64,7 @@ class DownBlockVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -790,7 +92,6 @@ class DownBlockVideo(nn.Module):
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
-
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
 
@@ -823,7 +124,7 @@ class DownBlockVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                     scale=scale,
                 )
@@ -880,7 +181,7 @@ class CrossAttnDownBlock2DVideo(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -893,17 +194,17 @@ class CrossAttnDownBlock2DVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
             attentions.append(
-                Transformer2DModelVideo(
+                TransformerSpatioTemporalModel(
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    # use_linear_projection=use_linear_projection,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                     attention_type=attention_type,
@@ -946,7 +247,6 @@ class CrossAttnDownBlock2DVideo(nn.Module):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         blocks = list(zip(self.resnets, self.attentions))
-
         for i, (resnet, attn) in enumerate(blocks):
             if self.training and self.gradient_checkpointing:  # TODO
 
@@ -978,13 +278,13 @@ class CrossAttnDownBlock2DVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                     scale=lora_scale,
                 )
                 hidden_states = attn(
                     hidden_states,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
@@ -1027,6 +327,7 @@ class UpBlockVideo(nn.Module):
         add_upsample: bool = True,
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
+        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         resnets = []
@@ -1036,7 +337,7 @@ class UpBlockVideo(nn.Module):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -1049,6 +350,7 @@ class UpBlockVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -1129,7 +431,7 @@ class UpBlockVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                     scale=scale,
                 )
@@ -1186,7 +488,7 @@ class CrossAttnUpBlock2DVideo(nn.Module):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -1199,10 +501,11 @@ class CrossAttnUpBlock2DVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
             attentions.append(
-                Transformer2DModelVideo(
+                TransformerSpatioTemporalModel(
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
@@ -1299,13 +602,13 @@ class CrossAttnUpBlock2DVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                     scale=lora_scale,
                 )
                 hidden_states = attn(
                     hidden_states,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
@@ -1358,7 +661,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
 
         # there is always at least one resnet
         resnets = [
-            VideoResBlock(
+            SpatioTemporalResBlock(
                 in_channels=in_channels,
                 out_channels=in_channels,
                 temb_channels=temb_channels,
@@ -1371,13 +674,14 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
                 pre_norm=resnet_pre_norm,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
+                merge_strategy=merge_strategy,
             )
         ]
         attentions = []
 
         for i in range(num_layers):
             attentions.append(
-                Transformer2DModelVideo(
+                TransformerSpatioTemporalModel(
                     num_attention_heads,
                     in_channels // num_attention_heads,
                     in_channels=in_channels,
@@ -1393,7 +697,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
             )
 
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=in_channels,
                     out_channels=in_channels,
                     temb_channels=temb_channels,
@@ -1406,6 +710,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -1429,9 +734,9 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
         hidden_states = self.resnets[0](
             hidden_states,
             temb,
-            num_video_frames=num_video_frames,
-            scale=lora_scale,
+            num_frames=num_video_frames,
             image_only_indicator=image_only_indicator,
+            scale=lora_scale,
         )
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.training and self.gradient_checkpointing:  # TODO
@@ -1463,7 +768,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
             else:
                 hidden_states = attn(
                     hidden_states,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
@@ -1474,9 +779,9 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
-                    scale=lora_scale,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
+                    scale=lora_scale,
                 )
 
         return hidden_states
@@ -1510,6 +815,7 @@ def get_down_block(
     dropout: float = 0.0,
     kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
+    merge_strategy: str = "learned_with_images",
     max_time_embed_period: int = 10000,
 ):
     # If attn head dim is not defined, we default it to the number of heads
@@ -1542,6 +848,7 @@ def get_down_block(
             attention_type=attention_type,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
             max_time_embed_period=max_time_embed_period,
         )
     elif down_block_type == "DownBlockVideo":
@@ -1559,6 +866,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -1592,6 +900,7 @@ def get_up_block(
     dropout: float = 0.0,
     kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
+    merge_strategy: str = "learned_with_images",
     max_time_embed_period: int = 10000,
 ) -> nn.Module:
     # If attn head dim is not defined, we default it to the number of heads
@@ -1625,6 +934,7 @@ def get_up_block(
             attention_type=attention_type,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
             max_time_embed_period=max_time_embed_period,
         )
     elif up_block_type == "UpBlockVideo":
@@ -1643,6 +953,7 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
         )
     raise ValueError(f"{up_block_type} does not exist.")
 
@@ -1965,6 +1276,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
+                merge_strategy=merge_strategy,
                 max_time_embed_period=max_time_embed_period,
             )
             self.down_blocks.append(down_block)
@@ -1988,6 +1300,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             attention_type=attention_type,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
             max_time_embed_period=max_time_embed_period,
         )
 
@@ -2049,6 +1362,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
+                merge_strategy=merge_strategy,
                 max_time_embed_period=max_time_embed_period,
             )
             self.up_blocks.append(up_block)
@@ -2391,13 +1705,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_embeds = time_embeds.reshape((batch_size, -1))
         time_embeds = time_embeds.to(emb.dtype)
         aug_emb = self.add_embedding(time_embeds)
-
         emb = emb + aug_emb
 
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
 
-        
         # Flatten the batch and frames dimensions
         # sample: [batch, frames, channels, height, width] -> [batch * frames, channels, height, width]
         sample = sample.flatten(0, 1)

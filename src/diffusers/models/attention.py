@@ -522,18 +522,13 @@ class TemporalBasicTransformerBlock(nn.Module):
             hidden_states = hidden_states + residual
 
         # 1. Retrieve lora scale.
-        lora_scale = (
-            cross_attention_kwargs.get("scale", 1.0)
-            if cross_attention_kwargs is not None
-            else 1.0
-        )
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
 
         norm_hidden_states = self.norm1(hidden_states)
         attn_output = self.attn1(
             norm_hidden_states,
-            encoder_hidden_states=encoder_hidden_states
-            if self.only_cross_attention
-            else None,
+            encoder_hidden_states=None,
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )

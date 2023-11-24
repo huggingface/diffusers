@@ -94,9 +94,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         self.in_channels = in_channels
 
-        self.norm = torch.nn.GroupNorm(
-            num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True
-        )
+        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
         self.proj_in = nn.Linear(in_channels, inner_dim)
 
         # 3. Define transformers blocks
@@ -166,15 +164,11 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
 
         residual = hidden_states
 
-        hidden_states = hidden_states[None, :].reshape(
-            batch_size, num_frames, channel, height, width
-        )
+        hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, channel, height, width)
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4)
 
         hidden_states = self.norm(hidden_states)
-        hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(
-            batch_size * height * width, num_frames, channel
-        )
+        hidden_states = hidden_states.permute(0, 3, 4, 2, 1).reshape(batch_size * height * width, num_frames, channel)
 
         hidden_states = self.proj_in(hidden_states)
 
@@ -274,9 +268,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         # 2. Define input layers
         # 2. Define input layers
         self.in_channels = in_channels
-        self.norm = torch.nn.GroupNorm(
-            num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True
-        )
+        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
         self.proj_in = linear_cls(in_channels, inner_dim)
 
         # 3. Define transformers blocks
@@ -327,13 +319,9 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         )
 
         time_embed_dim = in_channels * 4
-        self.time_pos_embed = TimestepEmbedding(
-            in_channels, time_embed_dim, out_dim=in_channels
-        )
+        self.time_pos_embed = TimestepEmbedding(in_channels, time_embed_dim, out_dim=in_channels)
         self.time_proj = Timesteps(in_channels, True, 0)
-        self.time_mixer = AlphaBlender(
-            alpha=merge_factor, merge_strategy=merge_strategy
-        )
+        self.time_mixer = AlphaBlender(alpha=merge_factor, merge_strategy=merge_strategy)
 
         # 4. Define output layers
         self.out_channels = in_channels if out_channels is None else out_channels
@@ -383,55 +371,39 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                 If `return_dict` is True, an [`~models.transformer_temporal.TransformerTemporalModelOutput`] is
                 returned, otherwise a `tuple` where the first element is the sample tensor.
         """
-        # 1. Input
-        batch_frames, channel, height, width = hidden_states.shape
-        batch_size = batch_frames // num_frames
-
-        residual = hidden_states
-
         # Retrieve lora scale.
-        lora_scale = (
-            cross_attention_kwargs.get("scale", 1.0)
-            if cross_attention_kwargs is not None
-            else 1.0
-        )
+        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         assert (
             encoder_hidden_states.ndim == 3
         ), f"n dims of spatial context should be 3 but are {encoder_hidden_states.ndim}"
 
+        # 1. Input
+        batch_frames, channel, height, width = hidden_states.shape
+        batch_size = batch_frames // num_frames
+
         time_context = encoder_hidden_states
         time_context_first_timestep = time_context[::num_frames]
-        time_context = time_context_first_timestep.repeat(
-            batch_frames * height * width, 1, 1
-        )
-        # time_context = repeat(time_context_first_timestep, "b ... -> (b n) ...", n=h * w)
+        time_context = time_context_first_timestep.repeat(height * width, 1, 1)
+
+        residual = hidden_states
 
         hidden_states = self.norm(hidden_states)
         inner_dim = hidden_states.shape[1]
-        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(
-            batch_frames, height * width, inner_dim
-        )
+        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_frames, height * width, inner_dim)
         hidden_states = (
-            self.proj_in(hidden_states, scale=lora_scale)
-            if not USE_PEFT_BACKEND
-            else self.proj_in(hidden_states)
+            self.proj_in(hidden_states, scale=lora_scale) if not USE_PEFT_BACKEND else self.proj_in(hidden_states)
         )
 
-        num_frames = torch.arange(num_frames, device=hidden_states.device)
-        num_frames = num_frames.repeat(batch_size, 1)
-        # num_frames = repeat(num_frames, "t -> b t", b=hidden_states.shape[0] // num_frames)
-        num_frames = num_frames.reshape(-1)
-        # num_frames = rearrange(num_frames, "b t -> (b t)")
-
-        t_emb = self.time_proj(num_frames)
+        num_frames_emb = torch.arange(num_frames, device=hidden_states.device)
+        num_frames_emb = num_frames_emb.repeat(batch_size, 1)
+        num_frames_emb = num_frames_emb.reshape(-1)
+        t_emb = self.time_proj(num_frames_emb)
         emb = self.time_pos_embed(t_emb)
         emb = emb[:, None, :]
 
         # 2. Blocks
-        for block, temporal_block in zip(
-            self.transformer_blocks, self.temporal_transformer_blocks
-        ):
+        for block, temporal_block in zip(self.transformer_blocks, self.temporal_transformer_blocks):
             if self.training and self.gradient_checkpointing:
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     block,
@@ -472,15 +444,9 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
 
         # 3. Output
         hidden_states = (
-            self.proj_out(hidden_states, scale=lora_scale)
-            if not USE_PEFT_BACKEND
-            else self.proj_out(hidden_states)
+            self.proj_out(hidden_states, scale=lora_scale) if not USE_PEFT_BACKEND else self.proj_out(hidden_states)
         )
-        hidden_states = (
-            hidden_states.reshape(batch_frames, height, width, inner_dim)
-            .permute(0, 3, 1, 2)
-            .contiguous()
-        )
+        hidden_states = hidden_states.reshape(batch_frames, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
 
         output = hidden_states + residual
 
