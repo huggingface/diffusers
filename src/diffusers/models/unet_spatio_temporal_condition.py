@@ -641,7 +641,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNet2DConditionOutput, Tuple]:
+    ) -> Union[UNetSpatioTemporalConditionOutput, Tuple]:
         r"""
         The [`UNet2DConditionModel`] forward method.
 
@@ -888,4 +888,4 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         if not return_dict:
             return (sample,)
 
-        return UNet2DConditionOutput(sample=sample)
+        return UNetSpatioTemporalConditionOutput(sample=sample)
