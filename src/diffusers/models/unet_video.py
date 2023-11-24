@@ -10,7 +10,7 @@ from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import USE_PEFT_BACKEND, BaseOutput, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ..utils.torch_utils import apply_freeu, maybe_allow_in_graph
 from .activations import get_activation
-from .attention import BasicTransformerBlock, FeedForward
+from .attention import BasicTransformerBlock, FeedForward, TemporalBasicTransformerBlock
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -26,194 +26,6 @@ from .resnet import AlphaBlender, Downsample2D, SpatioTemporalResBlock, Upsample
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-@maybe_allow_in_graph
-class TemporalBasicTransformerBlock(nn.Module):
-    r"""
-    A basic Transformer block.
-
-    Parameters:
-        dim (`int`): The number of channels in the input and output.
-        num_attention_heads (`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`): The number of channels in each head.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The size of the encoder_hidden_states vector for cross attention.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        attention_bias (:
-            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
-        upcast_attention (`bool`, *optional*):
-            Whether to upcast the attention computation to float32. This is useful for mixed precision training.
-        norm_elementwise_affine (`bool`, *optional*, defaults to `True`):
-            Whether to use learnable elementwise affine parameters for normalization.
-        norm_type (`str`, *optional*, defaults to `"layer_norm"`):
-            The normalization layer to use. Can be `"layer_norm"`, `"ada_norm"` or `"ada_norm_zero"`.
-        final_dropout (`bool` *optional*, defaults to False):
-            Whether to apply a final dropout after the last feed-forward layer.
-        attention_type (`str`, *optional*, defaults to `"default"`):
-            The type of attention to use. Can be `"default"` or `"gated"` or `"gated-text-image"`.
-    """
-
-    def __init__(
-        self,
-        dim: int,
-        time_mix_inner_dim: int,
-        num_attention_heads: int,
-        attention_head_dim: int,
-        dropout=0.0,
-        cross_attention_dim: Optional[int] = None,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        attention_bias: bool = False,
-        upcast_attention: bool = False,
-        norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single'
-        norm_eps: float = 1e-5,
-        final_dropout: bool = False,
-        attention_type: str = "default",
-    ):
-        super().__init__()
-        self.is_res = dim == time_mix_inner_dim
-
-        self.norm_in = nn.LayerNorm(dim, eps=norm_eps)
-
-        # Define 3 blocks. Each block has its own normalization layer.
-        # 1. Self-Attn
-        self.norm_in = nn.LayerNorm(dim, eps=norm_eps)
-        self.ff_in = FeedForward(
-            dim, dim_out=time_mix_inner_dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout
-        )
-
-        self.norm1 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
-        self.attn1 = Attention(
-            query_dim=time_mix_inner_dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            dropout=dropout,
-            bias=attention_bias,
-            cross_attention_dim=None,
-            upcast_attention=upcast_attention,
-        )
-
-        # 2. Cross-Attn
-        if cross_attention_dim is not None:
-            # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
-            # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
-            # the second cross attention block.
-            self.norm2 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
-            self.attn2 = Attention(
-                query_dim=time_mix_inner_dim,
-                cross_attention_dim=cross_attention_dim,
-                heads=num_attention_heads,
-                dim_head=attention_head_dim,
-                dropout=dropout,
-                bias=attention_bias,
-                upcast_attention=upcast_attention,
-            )  # is self-attn if encoder_hidden_states is none
-        else:
-            self.norm2 = None
-            self.attn2 = None
-
-        # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
-        self.ff = FeedForward(
-            time_mix_inner_dim, dropout=dropout, activation_fn=activation_fn, final_dropout=final_dropout
-        )
-
-        # let chunk size default to None
-        self._chunk_size = None
-        self._chunk_dim = 0
-
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int):
-        # Sets chunk feed-forward
-        self._chunk_size = chunk_size
-        self._chunk_dim = dim
-
-    def forward(
-        self,
-        hidden_states: torch.FloatTensor,
-        num_video_frames: int,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-    ) -> torch.FloatTensor:
-        # Notice that normalization is always applied before the real computation in the following blocks.
-        # 0. Self-Attention
-        # batch_size = hidden_states.shape[0]
-
-        B, S, C = hidden_states.shape
-        hidden_states = rearrange(hidden_states, "(b t) s c -> (b s) t c", t=num_video_frames)
-
-        residual = hidden_states
-        hidden_states = self.norm_in(hidden_states)
-        hidden_states = self.ff_in(hidden_states)
-        if self.is_res:
-            hidden_states = hidden_states + residual
-
-        # 1. Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
-
-        norm_hidden_states = self.norm1(hidden_states)
-        attn_output = self.attn1(
-            norm_hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=attention_mask,
-            **cross_attention_kwargs,
-        )
-
-        hidden_states = attn_output + hidden_states
-        # if hidden_states.ndim == 4:
-        # hidden_states = hidden_states.squeeze(1)
-
-        # 3. Cross-Attention
-        if self.attn2 is not None:
-            norm_hidden_states = self.norm2(hidden_states)
-            attn_output = self.attn2(
-                norm_hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=encoder_attention_mask,
-                **cross_attention_kwargs,
-            )
-            hidden_states = attn_output + hidden_states
-
-        # 4. Feed-forward
-        norm_hidden_states = self.norm3(hidden_states)
-
-        if self._chunk_size is not None:
-            # "feed_forward_chunk_size" can be used to save memory
-            if norm_hidden_states.shape[self._chunk_dim] % self._chunk_size != 0:
-                raise ValueError(
-                    f"`hidden_states` dimension to be chunked: {norm_hidden_states.shape[self._chunk_dim]} has to be divisible by chunk size: {self._chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
-                )
-
-            num_chunks = norm_hidden_states.shape[self._chunk_dim] // self._chunk_size
-            ff_output = torch.cat(
-                [
-                    self.ff(hid_slice, scale=lora_scale)
-                    for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)
-                ],
-                dim=self._chunk_dim,
-            )
-        else:
-            ff_output = self.ff(norm_hidden_states, scale=lora_scale)
-
-        if self.is_res:
-            hidden_states = ff_output + hidden_states
-        else:
-            hidden_states = ff_output
-        # if hidden_states.ndim == 4:
-        # hidden_states = hidden_states.squeeze(1)
-
-        hidden_states = rearrange(
-            hidden_states, "(b s) t c -> (b t) s c", s=S, b=B // num_video_frames, t=num_video_frames
-        )
-
-        return hidden_states
-
 
 @dataclass
 class Transformer2DModelOutput(BaseOutput):
@@ -458,7 +270,7 @@ class Transformer2DModelVideo(ModelMixin, ConfigMixin):
 
             hidden_states_mix = temporal_block(
                 hidden_states_mix,
-                num_video_frames=num_video_frames,
+                num_frames=num_video_frames,
                 encoder_hidden_states=time_context,
                 cross_attention_kwargs=cross_attention_kwargs,
             )
