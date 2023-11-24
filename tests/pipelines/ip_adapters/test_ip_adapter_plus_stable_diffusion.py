@@ -61,9 +61,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
         return image_processor
 
-    def get_dummy_inputs(
-        self, for_image_to_image=False, for_inpainting=False, for_sdxl=False
-    ):
+    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False):
         image = load_image(
             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
         )
@@ -79,12 +77,8 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
             "output_type": "np",
         }
         if for_image_to_image:
-            image = load_image(
-                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg"
-            )
-            ip_image = load_image(
-                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png"
-            )
+            image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
+            ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
 
             if for_sdxl:
                 image = image.resize((1024, 1024))
@@ -93,24 +87,16 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
             input_kwargs.update({"image": image, "ip_adapter_image": ip_image})
 
         elif for_inpainting:
-            image = load_image(
-                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/inpaint_image.png"
-            )
-            mask = load_image(
-                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/mask.png"
-            )
-            ip_image = load_image(
-                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/girl.png"
-            )
+            image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/inpaint_image.png")
+            mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/mask.png")
+            ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/girl.png")
 
             if for_sdxl:
                 image = image.resize((1024, 1024))
                 mask = mask.resize((1024, 1024))
                 ip_image = ip_image.resize((1024, 1024))
 
-            input_kwargs.update(
-                {"image": image, "mask_image": mask, "ip_adapter_image": ip_image}
-            )
+            input_kwargs.update({"image": image, "mask_image": mask, "ip_adapter_image": ip_image})
 
         return input_kwargs
 
@@ -119,9 +105,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
 @require_torch_gpu
 class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image(self):
-        image_encoder = self.get_image_encoder(
-            repo_id="h94/IP-Adapter", subfolder="models/image_encoder"
-        )
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5",
             image_encoder=image_encoder,
@@ -129,24 +113,18 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
             torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
-        pipeline.load_ip_adapter(
-            "h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin"
-        )
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
         inputs = self.get_dummy_inputs()
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.3015, 0.2615, 0.2200, 0.2725, 0.2510, 0.2021, 0.2498, 0.2415, 0.2131]
-        )
+        expected_slice = np.array([0.3015, 0.2615, 0.2200, 0.2725, 0.2510, 0.2021, 0.2498, 0.2415, 0.2131])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     def test_image_to_image(self):
-        image_encoder = self.get_image_encoder(
-            repo_id="h94/IP-Adapter", subfolder="models/image_encoder"
-        )
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5",
             image_encoder=image_encoder,
@@ -154,24 +132,18 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
             torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
-        pipeline.load_ip_adapter(
-            "h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin"
-        )
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.3518, 0.2554, 0.2495, 0.2363, 0.1836, 0.3823, 0.1414, 0.1868, 0.5386]
-        )
+        expected_slice = np.array([0.3518, 0.2554, 0.2495, 0.2363, 0.1836, 0.3823, 0.1414, 0.1868, 0.5386])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     def test_inpainting(self):
-        image_encoder = self.get_image_encoder(
-            repo_id="h94/IP-Adapter", subfolder="models/image_encoder"
-        )
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5",
             image_encoder=image_encoder,
@@ -179,17 +151,13 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
             torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
-        pipeline.load_ip_adapter(
-            "h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin"
-        )
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.2756, 0.2422, 0.2214, 0.2346, 0.2102, 0.2060, 0.2188, 0.2043, 0.1941]
-        )
+        expected_slice = np.array([0.2756, 0.2422, 0.2214, 0.2346, 0.2102, 0.2060, 0.2188, 0.2043, 0.1941])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -198,12 +166,8 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 @require_torch_gpu
 class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_text_to_image_sdxl(self):
-        image_encoder = self.get_image_encoder(
-            repo_id="h94/IP-Adapter", subfolder="models/image_encoder"
-        )
-        feature_extractor = self.get_image_processor(
-            "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-        )
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
@@ -222,19 +186,13 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.0587, 0.0567, 0.0454, 0.0537, 0.0553, 0.0518, 0.0494, 0.0535, 0.0497]
-        )
+        expected_slice = np.array([0.0587, 0.0567, 0.0454, 0.0537, 0.0553, 0.0518, 0.0494, 0.0535, 0.0497])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     def test_image_to_image_sdxl(self):
-        image_encoder = self.get_image_encoder(
-            repo_id="h94/IP-Adapter", subfolder="models/image_encoder"
-        )
-        feature_extractor = self.get_image_processor(
-            "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-        )
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
         pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
@@ -253,19 +211,13 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.0711, 0.0700, 0.0734, 0.0758, 0.0742, 0.0688, 0.0751, 0.0827, 0.0851]
-        )
+        expected_slice = np.array([0.0711, 0.0700, 0.0734, 0.0758, 0.0742, 0.0688, 0.0751, 0.0827, 0.0851])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
     def test_inpainting_sdxl(self):
-        image_encoder = self.get_image_encoder(
-            repo_id="h94/IP-Adapter", subfolder="models/image_encoder"
-        )
-        feature_extractor = self.get_image_processor(
-            "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-        )
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
         pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
@@ -285,8 +237,6 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         image_slice = images[0, :3, :3, -1].flatten()
         image_slice.tolist()
 
-        expected_slice = np.array(
-            [0.1398, 0.1476, 0.1407, 0.1441, 0.1470, 0.1480, 0.1448, 0.1481, 0.1494]
-        )
+        expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1441, 0.1470, 0.1480, 0.1448, 0.1481, 0.1494])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)

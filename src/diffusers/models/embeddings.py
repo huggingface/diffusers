@@ -802,10 +802,7 @@ class PerceiverAttention(nn.Module):
         num_heads (int): Parallel attention heads. Defaults to 16.
     """
 
-    def __init__(self,
-                 embed_dims: int,
-                 head_dims=64,
-                 num_heads: int = 16) -> None:
+    def __init__(self, embed_dims: int, head_dims=64, num_heads: int = 16) -> None:
         super().__init__()
         self.head_dims = head_dims
         self.num_heads = num_heads
@@ -896,8 +893,7 @@ class Resampler(nn.Module):
     ) -> None:
         super().__init__()
 
-        self.latents = nn.Parameter(
-            torch.randn(1, num_queries, hidden_dims) / hidden_dims**0.5)
+        self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dims) / hidden_dims**0.5)
 
         self.proj_in = nn.Linear(embed_dims, hidden_dims)
 
@@ -907,13 +903,13 @@ class Resampler(nn.Module):
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(
-                nn.ModuleList([
-                    PerceiverAttention(
-                        embed_dims=hidden_dims,
-                        head_dims=head_dims,
-                        num_heads=num_heads),
-                    self._get_ffn(embed_dims=hidden_dims, ffn_ratio=ffn_ratio),
-                ]))
+                nn.ModuleList(
+                    [
+                        PerceiverAttention(embed_dims=hidden_dims, head_dims=head_dims, num_heads=num_heads),
+                        self._get_ffn(embed_dims=hidden_dims, ffn_ratio=ffn_ratio),
+                    ]
+                )
+            )
 
     def _get_ffn(self, embed_dims, ffn_ratio=4) -> nn.Sequential:
         """Get feedforward network."""

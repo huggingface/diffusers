@@ -55,11 +55,7 @@ def create_ip_adapter_state_dict(model):
     key_id = 1
 
     for name in model.attn_processors.keys():
-        cross_attention_dim = (
-            None
-            if name.endswith("attn1.processor")
-            else model.config.cross_attention_dim
-        )
+        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
         if name.startswith("mid_block"):
             hidden_size = model.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -119,11 +115,7 @@ def create_ip_adapter_plus_state_dict(model):
     key_id = 1
 
     for name in model.attn_processors.keys():
-        cross_attention_dim = (
-            None
-            if name.endswith("attn1.processor")
-            else model.config.cross_attention_dim
-        )
+        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
         if name.startswith("mid_block"):
             hidden_size = model.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -176,11 +168,7 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
 
     st = model.state_dict()
     for name, _ in model.attn_processors.items():
-        cross_attention_dim = (
-            None
-            if name.endswith("attn1.processor")
-            else model.config.cross_attention_dim
-        )
+        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
         if name.startswith("mid_block"):
             hidden_size = model.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -196,12 +184,8 @@ def create_custom_diffusion_layers(model, mock_weights: bool = True):
         }
         if train_q_out:
             weights["to_q_custom_diffusion.weight"] = st[layer_name + ".to_q.weight"]
-            weights["to_out_custom_diffusion.0.weight"] = st[
-                layer_name + ".to_out.0.weight"
-            ]
-            weights["to_out_custom_diffusion.0.bias"] = st[
-                layer_name + ".to_out.0.bias"
-            ]
+            weights["to_out_custom_diffusion.0.weight"] = st[layer_name + ".to_out.0.weight"]
+            weights["to_out_custom_diffusion.0.bias"] = st[layer_name + ".to_out.0.bias"]
         if cross_attention_dim is not None:
             custom_diffusion_attn_procs[name] = CustomDiffusionAttnProcessor(
                 train_kv=train_kv,
@@ -280,9 +264,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model.enable_xformers_memory_efficient_attention()
 
         assert (
-            model.mid_block.attentions[0]
-            .transformer_blocks[0]
-            .attn1.processor.__class__.__name__
+            model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
@@ -325,11 +307,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         named_params = dict(model.named_parameters())
         named_params_2 = dict(model_2.named_parameters())
         for name, param in named_params.items():
-            self.assertTrue(
-                torch_all_close(
-                    param.grad.data, named_params_2[name].grad.data, atol=5e-5
-                )
-            )
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
     def test_model_with_attention_head_dim_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -348,9 +326,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_with_use_linear_projection(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -369,9 +345,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_with_cross_attention_dim_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -390,9 +364,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_with_simple_projection(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -402,9 +374,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         init_dict["class_embed_type"] = "simple_projection"
         init_dict["projection_class_embeddings_input_dim"] = sample_size
 
-        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(
-            torch_device
-        )
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -418,9 +388,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_with_class_embeddings_concat(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -431,9 +399,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         init_dict["projection_class_embeddings_input_dim"] = sample_size
         init_dict["class_embeddings_concat"] = True
 
-        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(
-            torch_device
-        )
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -447,9 +413,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -547,17 +511,11 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                 number=None,
             ):
                 batch_size, sequence_length, _ = hidden_states.shape
-                attention_mask = attn.prepare_attention_mask(
-                    attention_mask, sequence_length, batch_size
-                )
+                attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
                 query = attn.to_q(hidden_states)
 
-                encoder_hidden_states = (
-                    encoder_hidden_states
-                    if encoder_hidden_states is not None
-                    else hidden_states
-                )
+                encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
                 key = attn.to_k(encoder_hidden_states)
                 value = attn.to_v(encoder_hidden_states)
 
@@ -620,33 +578,21 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             full_cond_out = model(**inputs_dict).sample
             assert full_cond_out is not None
 
-            keepall_mask = torch.ones(
-                *cond.shape[:-1], device=cond.device, dtype=mask_dtype
-            )
-            full_cond_keepallmask_out = model(
-                **{**inputs_dict, "encoder_attention_mask": keepall_mask}
-            ).sample
+            keepall_mask = torch.ones(*cond.shape[:-1], device=cond.device, dtype=mask_dtype)
+            full_cond_keepallmask_out = model(**{**inputs_dict, "encoder_attention_mask": keepall_mask}).sample
             assert full_cond_keepallmask_out.allclose(
                 full_cond_out, rtol=1e-05, atol=1e-05
             ), "a 'keep all' mask should give the same result as no mask"
 
             trunc_cond = cond[:, :-1, :]
-            trunc_cond_out = model(
-                **{**inputs_dict, "encoder_hidden_states": trunc_cond}
-            ).sample
+            trunc_cond_out = model(**{**inputs_dict, "encoder_hidden_states": trunc_cond}).sample
             assert not trunc_cond_out.allclose(
                 full_cond_out, rtol=1e-05, atol=1e-05
             ), "discarding the last token from our cond should change the result"
 
             batch, tokens, _ = cond.shape
-            mask_last = (
-                (torch.arange(tokens) < tokens - 1)
-                .expand(batch, -1)
-                .to(cond.device, mask_dtype)
-            )
-            masked_cond_out = model(
-                **{**inputs_dict, "encoder_attention_mask": mask_last}
-            ).sample
+            mask_last = (torch.arange(tokens) < tokens - 1).expand(batch, -1).to(cond.device, mask_dtype)
+            masked_cond_out = model(**{**inputs_dict, "encoder_attention_mask": mask_last}).sample
             assert masked_cond_out.allclose(
                 trunc_cond_out, rtol=1e-05, atol=1e-05
             ), "masking the last token from our cond should be equivalent to truncating that token out of the condition"
@@ -671,24 +617,12 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             assert full_cond_out is not None
 
             batch, tokens, _ = cond.shape
-            keeplast_mask = (
-                (torch.arange(tokens) == tokens - 1)
-                .expand(batch, -1)
-                .to(cond.device, torch.bool)
-            )
-            keeplast_out = model(
-                **{**inputs_dict, "encoder_attention_mask": keeplast_mask}
-            ).sample
-            assert not keeplast_out.allclose(
-                full_cond_out
-            ), "a 'keep last token' mask should change the result"
+            keeplast_mask = (torch.arange(tokens) == tokens - 1).expand(batch, -1).to(cond.device, torch.bool)
+            keeplast_out = model(**{**inputs_dict, "encoder_attention_mask": keeplast_mask}).sample
+            assert not keeplast_out.allclose(full_cond_out), "a 'keep last token' mask should change the result"
 
-            trunc_mask = torch.zeros(
-                batch, tokens - 1, device=cond.device, dtype=torch.bool
-            )
-            trunc_mask_out = model(
-                **{**inputs_dict, "encoder_attention_mask": trunc_mask}
-            ).sample
+            trunc_mask = torch.zeros(batch, tokens - 1, device=cond.device, dtype=torch.bool)
+            trunc_mask_out = model(**{**inputs_dict, "encoder_attention_mask": trunc_mask}).sample
             assert trunc_mask_out.allclose(
                 keeplast_out
             ), "a mask with fewer tokens than condition, will be padded with 'keep' tokens. a 'discard-all' mask missing the final token is thus equivalent to a 'keep last' mask."
@@ -705,9 +639,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        custom_diffusion_attn_procs = create_custom_diffusion_layers(
-            model, mock_weights=False
-        )
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
 
         # make sure we can set a list of attention processors
         model.set_attn_processor(custom_diffusion_attn_procs)
@@ -734,9 +666,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        custom_diffusion_attn_procs = create_custom_diffusion_layers(
-            model, mock_weights=False
-        )
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
         model.set_attn_processor(custom_diffusion_attn_procs)
 
         with torch.no_grad():
@@ -744,16 +674,10 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_attn_procs(tmpdirname, safe_serialization=False)
-            self.assertTrue(
-                os.path.isfile(
-                    os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")
-                )
-            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_custom_diffusion_weights.bin")))
             torch.manual_seed(0)
             new_model = self.model_class(**init_dict)
-            new_model.load_attn_procs(
-                tmpdirname, weight_name="pytorch_custom_diffusion_weights.bin"
-            )
+            new_model.load_attn_procs(tmpdirname, weight_name="pytorch_custom_diffusion_weights.bin")
             new_model.to(torch_device)
 
         with torch.no_grad():
@@ -777,9 +701,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
-        custom_diffusion_attn_procs = create_custom_diffusion_layers(
-            model, mock_weights=False
-        )
+        custom_diffusion_attn_procs = create_custom_diffusion_layers(model, mock_weights=False)
         model.set_attn_processor(custom_diffusion_attn_procs)
 
         # default
@@ -825,9 +747,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         expected_shape = inputs_dict["sample"].shape
 
         # Check if input and output shapes are the same
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_ip_adapter(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -843,20 +763,14 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
-        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(
-            torch_device
-        )
+        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
 
         # make ip_adapter_1 and ip_adapter_2
         ip_adapter_1 = create_ip_adapter_state_dict(model)
 
-        image_proj_state_dict_2 = {
-            k: w + 1.0 for k, w in ip_adapter_1["image_proj"].items()
-        }
-        cross_attn_state_dict_2 = {
-            k: w + 1.0 for k, w in ip_adapter_1["ip_adapter"].items()
-        }
+        image_proj_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["image_proj"].items()}
+        cross_attn_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["ip_adapter"].items()}
         ip_adapter_2 = {}
         ip_adapter_2.update(
             {
@@ -869,9 +783,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model._load_ip_adapter_weights(ip_adapter_1)
         assert model.config.encoder_hid_dim_type == "ip_image_proj"
         assert model.encoder_hid_proj is not None
-        assert model.down_blocks[0].attentions[0].transformer_blocks[
-            0
-        ].attn2.processor.__class__.__name__ in (
+        assert model.down_blocks[0].attentions[0].transformer_blocks[0].attn2.processor.__class__.__name__ in (
             "IPAdapterAttnProcessor",
             "IPAdapterAttnProcessor2_0",
         )
@@ -906,20 +818,14 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
-        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(
-            torch_device
-        )
+        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
 
         # make ip_adapter_1 and ip_adapter_2
         ip_adapter_1 = create_ip_adapter_plus_state_dict(model)
 
-        image_proj_state_dict_2 = {
-            k: w + 1.0 for k, w in ip_adapter_1["image_proj"].items()
-        }
-        cross_attn_state_dict_2 = {
-            k: w + 1.0 for k, w in ip_adapter_1["ip_adapter"].items()
-        }
+        image_proj_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["image_proj"].items()}
+        cross_attn_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["ip_adapter"].items()}
         ip_adapter_2 = {}
         ip_adapter_2.update(
             {
@@ -932,9 +838,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model._load_ip_adapter_weights(ip_adapter_1)
         assert model.config.encoder_hid_dim_type == "ip_image_proj"
         assert model.encoder_hid_proj is not None
-        assert model.down_blocks[0].attentions[0].transformer_blocks[
-            0
-        ].attn2.processor.__class__.__name__ in (
+        assert model.down_blocks[0].attentions[0].transformer_blocks[0].attn2.processor.__class__.__name__ in (
             "IPAdapterAttnProcessor",
             "IPAdapterAttnProcessor2_0",
         )
@@ -969,11 +873,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
     def get_latents(self, seed=0, shape=(4, 4, 64, 64), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        image = (
-            torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape)))
-            .to(torch_device)
-            .to(dtype)
-        )
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
     def get_unet_model(self, fp16=False, model_id="CompVis/stable-diffusion-v1-4"):
@@ -1000,9 +900,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         timestep = 1
 
         with torch.no_grad():
-            _ = unet(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = torch.cuda.max_memory_allocated()
 
@@ -1021,9 +919,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         timestep = 1
 
         with torch.no_grad():
-            _ = unet(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = torch.cuda.max_memory_allocated()
 
@@ -1042,9 +938,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         timestep = 1
 
         with torch.no_grad():
-            _ = unet(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = torch.cuda.max_memory_allocated()
 
@@ -1065,9 +959,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         timestep = 1
 
         with torch.no_grad():
-            _ = unet(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = torch.cuda.max_memory_allocated()
 
@@ -1075,11 +967,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
     def get_encoder_hidden_states(self, seed=0, shape=(4, 77, 768), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        hidden_states = (
-            torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape)))
-            .to(torch_device)
-            .to(dtype)
-        )
+        hidden_states = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return hidden_states
 
     @parameterized.expand(
@@ -1101,9 +989,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
-            sample = model(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         assert sample.shape == latents.shape
 
@@ -1131,9 +1017,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
-            sample = model(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         assert sample.shape == latents.shape
 
@@ -1161,9 +1045,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
-            sample = model(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         assert sample.shape == latents.shape
 
@@ -1184,18 +1066,14 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_gpu
     def test_compvis_sd_v1_5_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(
-            model_id="runwayml/stable-diffusion-v1-5", fp16=True
-        )
+        model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5", fp16=True)
         latents = self.get_latents(seed, fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
         timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
-            sample = model(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         assert sample.shape == latents.shape
 
@@ -1223,9 +1101,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
-            sample = model(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         assert sample.shape == (4, 4, 64, 64)
 
@@ -1246,18 +1122,14 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_gpu
     def test_compvis_sd_inpaint_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(
-            model_id="runwayml/stable-diffusion-inpainting", fp16=True
-        )
+        model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting", fp16=True)
         latents = self.get_latents(seed, shape=(4, 9, 64, 64), fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
         timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
-            sample = model(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         assert sample.shape == (4, 4, 64, 64)
 
@@ -1278,20 +1150,14 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_gpu
     def test_stabilityai_sd_v2_fp16(self, seed, timestep, expected_slice):
-        model = self.get_unet_model(
-            model_id="stabilityai/stable-diffusion-2", fp16=True
-        )
+        model = self.get_unet_model(model_id="stabilityai/stable-diffusion-2", fp16=True)
         latents = self.get_latents(seed, shape=(4, 4, 96, 96), fp16=True)
-        encoder_hidden_states = self.get_encoder_hidden_states(
-            seed, shape=(4, 77, 1024), fp16=True
-        )
+        encoder_hidden_states = self.get_encoder_hidden_states(seed, shape=(4, 77, 1024), fp16=True)
 
         timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
-            sample = model(
-                latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states
-            ).sample
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         assert sample.shape == latents.shape
 
