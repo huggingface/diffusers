@@ -19,6 +19,7 @@ from torch import nn
 
 from ..utils import is_torch_version
 from ..utils.torch_utils import apply_freeu
+from .attention import Attention
 from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import (
     Downsample2D,
@@ -1742,7 +1743,6 @@ class MidBlockTemporalDecoder(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_pre_norm: bool = True,
         output_scale_factor: float = 1.0,
-        add_upsample: bool = True,
         temb_channels: Optional[int] = None,
         cross_attention_dim: Optional[int] = None,
         norm_num_groups: int = 32,
@@ -1782,31 +1782,24 @@ class MidBlockTemporalDecoder(nn.Module):
             )
 
         attentions.append(
-            TransformerSpatioTemporalModel(
-                num_attention_heads,
-                out_channels // num_attention_heads,
-                in_channels=out_channels,
-                num_layers=transformer_layers_per_block[-1],
-                cross_attention_dim=cross_attention_dim,
-                norm_num_groups=norm_num_groups,
-                only_cross_attention=only_cross_attention,
+            Attention(
+                query_dim=in_channels,
+                cross_attention_dim=None,
+                heads=num_attention_heads,
+                dim_head=in_channels // num_attention_heads,
+                dropout=0.0,
+                bias=False,
                 upcast_attention=upcast_attention,
-                attention_type=attention_type,
-                merge_factor=merge_factor,
-                merge_strategy=merge_strategy,
-                max_time_embed_period=max_time_embed_period,
+                upcast_softmax=False,
+                norm_num_groups=norm_num_groups,
+                only_cross_attention=False,
+                eps=1e-5,
+                rescale_output_factor=1.0,
             )
         )
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-
-        if add_upsample:
-            self.upsamplers = nn.ModuleList(
-                [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
-            )
-        else:
-            self.upsamplers = None
 
     def forward(
         self,
@@ -1822,11 +1815,7 @@ class MidBlockTemporalDecoder(nn.Module):
             image_only_indicator=image_only_indicator,
         )
         for resnet, attn in zip(self.resnets[1:], self.attentions):
-            hidden_states = attn(
-                hidden_states,
-                num_frames=num_frames,
-                image_only_indicator=image_only_indicator,
-            )
+            hidden_states = attn(hidden_states)
             hidden_states = resnet(
                 hidden_states,
                 temb,
@@ -1871,8 +1860,6 @@ class UpBlockTemporalDecoder(nn.Module):
     ):
         super().__init__()
         resnets = []
-        attentions = []
-
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
 
@@ -1890,24 +1877,6 @@ class UpBlockTemporalDecoder(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                TransformerSpatioTemporalModel(
-                    num_attention_heads,
-                    out_channels // num_attention_heads,
-                    in_channels=out_channels,
-                    num_layers=1,
-                    cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=norm_num_groups,
-                    only_cross_attention=only_cross_attention,
-                    upcast_attention=upcast_attention,
-                    attention_type=attention_type,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
-                    max_time_embed_period=max_time_embed_period,
-                )
-            )
-
-        self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
@@ -1925,16 +1894,11 @@ class UpBlockTemporalDecoder(nn.Module):
         scale: float = 1.0,
         num_frames: int = 1,
     ) -> torch.FloatTensor:
-        for resnet, attn in zip(self.resnets, self.attentions):
+        for resnet in self.resnets:
             hidden_states = resnet(
                 hidden_states,
                 temb=temb,
                 scale=scale,
-                num_frames=num_frames,
-                image_only_indicator=image_only_indicator,
-            )
-            hidden_states = attn(
-                hidden_states,
                 num_frames=num_frames,
                 image_only_indicator=image_only_indicator,
             )
