@@ -131,11 +131,11 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         return image_embeddings
 
-    def _encode_vae_image(self, device, image: torch.Tensor, num_videos_per_prompt, do_classifier_free_guidance):
+    def _encode_vae_image(self, image: torch.Tensor, device, num_videos_per_prompt, do_classifier_free_guidance):
         dtype = next(self.vae.parameters()).dtype
-        image.to(device=device, dtype=dtype)
+        image = image.to(device=device, dtype=dtype)
 
-        image_latents = self.vae.encode(image).mode()
+        image_latents = self.vae.encode(image).latent_dist.mode()
         image_latents = self.vae.config.scaling_factor * image_latents
 
         if do_classifier_free_guidance:
@@ -231,7 +231,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         shape = (
             batch_size,
             num_frames,
-            num_channels_latents,
+            num_channels_latents // 2,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
@@ -440,6 +440,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         guidance_scales = torch.linspace(1.0, 2.5, num_frames).unsqueeze(0).to(device)
         guidance_scales = guidance_scales.repeat(batch_size * num_videos_per_prompt, 1)
         guidance_scales = append_dims(guidance_scales, latents.ndim)
+        
+        added_cond_kwargs = {"time_ids": added_time_ids}
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -448,14 +450,16 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-                _, _, _, c_noise = self.scheduler.get_scalings(t)
+                
+                _, _, _, c_noise = self.scheduler.get_scalings()
 
                 # Concatenate image_latents over channels dimention
                 latent_model_input = torch.cat([latent_model_input, image_latents], dim=2)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, c_noise, encoder_hidden_states=image_embeddings).sample
+                noise_pred = self.unet(
+                    latent_model_input, c_noise, encoder_hidden_states=image_embeddings, added_cond_kwargs=added_cond_kwargs
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
@@ -477,12 +481,14 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         if not output_type == "latent":
             # latents [batch, num_frames, channels, height, width] -> [batch*num_frames, channels, height, width]
             latents = latents.flatten(0, 1)
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            self.vae.to(torch.float32)
+            with torch.autocast("cuda", enabled=False):
+                image = self.vae.decode(latents.float() / self.vae.config.scaling_factor, return_dict=False)[0]
         else:
             image = latents
 
         do_denormalize = [True] * image.shape[0]
-        image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        # image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
         self.maybe_free_model_hooks()
 

@@ -354,7 +354,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             step_index = index_candidates[1]
         else:
             step_index = index_candidates[0]
-
+        
+        step_index = index_candidates[0]
         self._step_index = step_index.item()
 
     def step(
@@ -420,7 +421,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
-        c_skip, c_out, _, _ = self.get_scalings(timestep)
+        c_skip, c_out, _, _ = self.get_scalings()
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
