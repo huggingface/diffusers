@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 import numpy as np
 import torch
@@ -1040,8 +1040,6 @@ class DecoderTiny(nn.Module):
 
 
 class TemporalDecoder(nn.Module):
-    available_time_modes = ["all", "conv-only", "attn-only"]
-
     def __init__(
         self,
         in_channels: int = 4,
@@ -1053,7 +1051,7 @@ class TemporalDecoder(nn.Module):
         norm_type: str = "group",  # group, spatial
         alpha: float = 0.0,
         merge_strategy: str = "learned",
-        time_mode: str = "conv-only",
+        conv_out_kernel_size=(3, 1, 1),
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -1069,7 +1067,6 @@ class TemporalDecoder(nn.Module):
             num_layers=self.layers_per_block,
             in_channels=block_out_channels[-1],
             out_channels=block_out_channels[-1],
-            add_upsample=False,
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
             norm_num_groups=norm_num_groups,
@@ -1104,6 +1101,28 @@ class TemporalDecoder(nn.Module):
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
+
+        self.conv_norm_out = nn.GroupNorm(
+            num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6
+        )
+
+        if isinstance(conv_out_kernel_size, Iterable):
+            padding = [int(k // 2) for k in conv_out_kernel_size]
+        else:
+            padding = int(conv_out_kernel_size // 2)
+
+        self.conv_out = torch.nn.Conv2d(
+            in_channels=block_out_channels[0],
+            out_channels=out_channels,
+            kernel_size=3,
+            padding=1,
+        )
+        self.time_conv_out = torch.nn.Conv3d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=conv_out_kernel_size,
+            padding=padding,
+        )
 
         self.gradient_checkpointing = False
 
@@ -1181,7 +1200,20 @@ class TemporalDecoder(nn.Module):
             sample = self.conv_norm_out(sample)
         else:
             sample = self.conv_norm_out(sample, latent_embeds)
-        sample = self.conv_act(sample)
+
         sample = self.conv_out(sample)
+
+        batch_frames, channels, height, width = sample.shape
+        batch_size = batch_frames // num_frames
+        sample = (
+            sample[None, :]
+            .reshape(batch_size, num_frames, channels, height, width)
+            .permute(0, 2, 1, 3, 4)
+        )
+        sample = self.time_conv_out(sample)
+
+        sample = sample.permute(0, 2, 1, 3, 4).reshape(
+            batch_frames, channels, height, width
+        )
 
         return sample
