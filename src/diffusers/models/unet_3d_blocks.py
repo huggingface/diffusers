@@ -1901,17 +1901,13 @@ class MidBlockTemporalDecoder(nn.Module):
         attentions.append(
             Attention(
                 query_dim=in_channels,
+                bias=True,
                 cross_attention_dim=None,
                 heads=num_attention_heads,
                 dim_head=in_channels // num_attention_heads,
-                dropout=0.0,
-                bias=False,
                 upcast_attention=upcast_attention,
-                upcast_softmax=False,
                 norm_num_groups=norm_num_groups,
                 only_cross_attention=False,
-                eps=1e-5,
-                rescale_output_factor=1.0,
             )
         )
 
