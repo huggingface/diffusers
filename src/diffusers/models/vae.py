@@ -1063,10 +1063,25 @@ class TemporalDecoder(nn.Module):
         self.conv_in = conv_cls(
             in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1
         )
-        self.mid_block = MidBlockTemporalDecoder()
         self.up_blocks = nn.ModuleList([])
 
         temb_channels = in_channels if norm_type == "spatial" else None
+        self.mid_block = MidBlockTemporalDecoder(
+            num_layers=self.layers_per_block,
+            in_channels=in_channels,
+            out_channels=in_channels,
+            prev_output_channel=None,
+            add_upsample=False,
+            resnet_eps=1e-6,
+            resnet_act_fn=act_fn,
+            resnet_groups=norm_num_groups,
+            attention_head_dim=out_channels,
+            temb_channels=temb_channels,
+            resnet_time_scale_shift=norm_type,
+            alpha=alpha,
+            merge_strategy=merge_strategy,
+            time_mode=time_mode,
+        )
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))

@@ -23,7 +23,7 @@ from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import (
     Downsample2D,
     ResnetBlock2D,
-    SpatialTemporalResnetBlock,
+    SpatioTemporalResnetBlock,
     TemporalConvLayer,
     Upsample2D,
 )
@@ -1733,17 +1733,32 @@ class MidBlockTemporalDecoder(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        temb_channels: Optional[int] = None,
+        num_attention_heads: int = 16,
+        attention_head_dim: int = 88,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
-        resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
+        temb_channels: Optional[int] = None,
+        cross_attention_dim: Optional[int] = None,
+        norm_num_groups: int = 32,
+        double_self_attention: bool = False,
+        upcast_attention: bool = False,
+        activation_fn: str = "geglu",
+        num_embeds_ada_norm: Optional[int] = None,
+        only_cross_attention: bool = False,
+        norm_type: str = "layer_norm",
+        norm_elementwise_affine: bool = True,
+        norm_eps: float = 1e-5,
+        attention_type: str = "default",
+        merge_factor: float = 0.5,
+        merge_strategy: str = "learned_with_images",
+        max_time_embed_period: int = 10000,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
     ):
         super().__init__()
 
@@ -1752,12 +1767,12 @@ class MidBlockTemporalDecoder(nn.Module):
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                SpatialTemporalResnetBlock(
+                SpatioTemporalResnetBlock(
                     in_channels=input_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    groups=resnet_groups,
+                    groups=norm_num_groups,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
@@ -1768,8 +1783,18 @@ class MidBlockTemporalDecoder(nn.Module):
 
         attentions.append(
             TransformerSpatioTemporalModel(
-                num_attention_heads=1,
-                attention_head_dim=input_channels,
+                num_attention_heads,
+                out_channels // num_attention_heads,
+                in_channels=out_channels,
+                num_layers=transformer_layers_per_block[i],
+                cross_attention_dim=cross_attention_dim,
+                norm_num_groups=norm_num_groups,
+                only_cross_attention=only_cross_attention,
+                upcast_attention=upcast_attention,
+                attention_type=attention_type,
+                merge_factor=merge_factor,
+                merge_strategy=merge_strategy,
+                max_time_embed_period=max_time_embed_period,
             )
         )
 
@@ -1797,18 +1822,32 @@ class UpBlockTemporalDecoder(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        resolution_idx: Optional[int] = None,
+        num_attention_heads: int = 16,
+        attention_head_dim: int = 88,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
-        resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
         temb_channels: Optional[int] = None,
+        cross_attention_dim: Optional[int] = None,
+        norm_num_groups: int = 32,
+        double_self_attention: bool = False,
+        upcast_attention: bool = False,
+        activation_fn: str = "geglu",
+        num_embeds_ada_norm: Optional[int] = None,
+        only_cross_attention: bool = False,
+        norm_type: str = "layer_norm",
+        norm_elementwise_affine: bool = True,
+        norm_eps: float = 1e-5,
+        attention_type: str = "default",
+        merge_factor: float = 0.5,
+        merge_strategy: str = "learned_with_images",
+        max_time_embed_period: int = 10000,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
     ):
         super().__init__()
         resnets = []
@@ -1818,12 +1857,12 @@ class UpBlockTemporalDecoder(nn.Module):
             input_channels = in_channels if i == 0 else out_channels
 
             resnets.append(
-                SpatialTemporalResnetBlock(
+                SpatioTemporalResnetBlock(
                     in_channels=input_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    groups=resnet_groups,
+                    groups=norm_num_groups,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
@@ -1833,8 +1872,18 @@ class UpBlockTemporalDecoder(nn.Module):
             )
             attentions.append(
                 TransformerSpatioTemporalModel(
-                    num_attention_heads=1,
-                    attention_head_dim=input_channels,
+                    num_attention_heads,
+                    out_channels // num_attention_heads,
+                    in_channels=out_channels,
+                    num_layers=transformer_layers_per_block[i],
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=norm_num_groups,
+                    only_cross_attention=only_cross_attention,
+                    upcast_attention=upcast_attention,
+                    attention_type=attention_type,
+                    merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
+                    max_time_embed_period=max_time_embed_period,
                 )
             )
 
