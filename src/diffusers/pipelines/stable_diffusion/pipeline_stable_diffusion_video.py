@@ -32,6 +32,17 @@ from ..pipeline_utils import DiffusionPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+# TODO: remove this function later
+def append_dims(x, target_dims):
+    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
+    dims_to_append = target_dims - x.ndim
+    if dims_to_append < 0:
+        raise ValueError(
+            f"input has {x.ndim} dims but target_dims is {target_dims}, which is less"
+        )
+    return x[(...,) + (None,) * dims_to_append]
+
+
 @dataclass
 class StableDiffusionVideoPipelineOutput(BaseOutput):
     r"""
@@ -424,6 +435,11 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+
+        # TODO: take the min and max scales as arguments
+        guidance_scales = torch.linspace(1.0, 2.5, num_frames).unsqueeze(0).to(device)
+        guidance_scales = guidance_scales.repeat(batch_size * num_videos_per_prompt, 1)
+        guidance_scales = append_dims(guidance_scales, latents.ndim)
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
