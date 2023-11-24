@@ -261,32 +261,38 @@ class UpSampleBlock(nn.Module):
         super().__init__()
         up_resolutions = [[None, set_default_item(up_sample, True), None, None]] + [[None] * 4] * (num_blocks - 1)
         hidden_channels = [(in_channels + cat_dim, in_channels)] + [(in_channels, in_channels)] * (num_blocks - 2) + [(in_channels, out_channels)]
-        self.resnet_attn_blocks = nn.ModuleList([
-            nn.ModuleList([
-                ResNetBlock(in_channel, in_channel, time_embed_dim, groups, compression_ratio, up_resolution),
-                set_default_layer(
-                    context_dim is not None,
-                    AttentionBlock,
-                    (in_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
-                    layer_2=Identity
-                ),
-                ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio),
-            ]) for (in_channel, out_channel), up_resolution in zip(hidden_channels, up_resolutions)
-        ])
+        attentions = []
+        resnets_in = []
+        resnets_out = []
 
-        self.self_attention_block = set_default_layer(
+        attentions.append(set_default_layer(
             self_attention,
             AttentionBlock,
             (out_channels, time_embed_dim, None, groups, head_dim, expansion_ratio),
             layer_2=Identity
-        )
+        ))
+
+        for (in_channel, out_channel), up_resolution in zip(hidden_channels, up_resolutions):
+            resnets_in.append(ResNetBlock(in_channel, in_channel, time_embed_dim, groups, compression_ratio, up_resolution))
+            attentions.append(set_default_layer(
+                context_dim is not None,
+                AttentionBlock,
+                (in_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
+                layer_2=Identity
+            ))
+            resnets_out.append(ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio))
+
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets_in = nn.ModuleList(resnets_in)
+        self.resnets_out = nn.ModuleList(resnets_out)
 
     def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
-        for in_resnet_block, attention, out_resnet_block in self.resnet_attn_blocks:
-            x = in_resnet_block(x, time_embed)
+        for attention, resnet_in, resnet_out in zip(self.attentions[1:], self.resnets_in, self.resnets_out):
+            x = resnet_in(x, time_embed)
             x = attention(x, time_embed, context, context_mask, image_mask)
-            x = out_resnet_block(x, time_embed)
-        x = self.self_attention_block(x, time_embed, image_mask=image_mask)
+            x = resnet_out(x, time_embed)
+
+        x = self.attentions[0](x, time_embed, image_mask=image_mask)
         return x
 
 class DownSampleBlock(nn.Module):
@@ -296,34 +302,39 @@ class DownSampleBlock(nn.Module):
             down_sample=True, self_attention=True
     ):
         super().__init__()
-        self.self_attention_block = set_default_layer(
+        attentions = []
+        resnets_in = []
+        resnets_out = []
+        attentions.append(set_default_layer(
             self_attention,
             AttentionBlock,
             (in_channels, time_embed_dim, None, groups, head_dim, expansion_ratio),
             layer_2=Identity
-        )
+        ))
 
         up_resolutions = [[None] * 4] * (num_blocks - 1) + [[None, None, set_default_item(down_sample, False), None]]
         hidden_channels = [(in_channels, out_channels)] + [(out_channels, out_channels)] * (num_blocks - 1)
-        self.resnet_attn_blocks = nn.ModuleList([
-            nn.ModuleList([
-                ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio),
-                set_default_layer(
-                    context_dim is not None,
-                    AttentionBlock,
-                    (out_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
-                    layer_2=Identity
-                ),
-                ResNetBlock(out_channel, out_channel, time_embed_dim, groups, compression_ratio, up_resolution),
-            ]) for (in_channel, out_channel), up_resolution in zip(hidden_channels, up_resolutions)
-        ])
+        for (in_channel, out_channel), up_resolution in zip(hidden_channels, up_resolutions):
+            resnets_in.append(ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio))
+            attentions.append(set_default_layer(
+                context_dim is not None,
+                AttentionBlock,
+                (out_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
+                layer_2=Identity
+            ))
+            resnets_out.append(ResNetBlock(out_channel, out_channel, time_embed_dim, groups, compression_ratio, up_resolution))
+        
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets_in = nn.ModuleList(resnets_in)
+        self.resnets_out = nn.ModuleList(resnets_out)
 
     def forward(self, x, time_embed, context=None, context_mask=None, image_mask=None):
-        x = self.self_attention_block(x, time_embed, image_mask=image_mask)
-        for in_resnet_block, attention, out_resnet_block in self.resnet_attn_blocks:
-            x = in_resnet_block(x, time_embed)
+        x = self.attentions[0](x, time_embed, image_mask=image_mask)
+
+        for attention, resnet_in, resnet_out in zip(self.attentions[1:], self.resnets_in, self.resnets_out):
+            x = resnet_in(x, time_embed)
             x = attention(x, time_embed, context, context_mask, image_mask)
-            x = out_resnet_block(x, time_embed)
+            x = resnet_out(x, time_embed)
         return x
 
 class ConditionalGroupNorm(nn.Module):

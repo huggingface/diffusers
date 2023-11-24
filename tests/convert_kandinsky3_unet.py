@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import torch
+import fnmatch
 import argparse
 from diffusers import Kandinsky3UNet
 from safetensors.torch import load_file
@@ -19,6 +20,13 @@ MAPPING = {
     "to_key": "to_k",
     "to_value": "to_v",
     "output_layer": "to_out.0",
+    "self_attention_block": "attentions.0",
+}
+
+DYNAMIC_MAP = {
+    "resnet_attn_blocks.*.0": "resnets_in.*",
+    "resnet_attn_blocks.*.1": ("attentions.*", 1),
+    "resnet_attn_blocks.*.2": "resnets_out.*",
 }
 # MAPPING = {}
 
@@ -39,6 +47,23 @@ def convert_state_dict(unet_state_dict):
         new_key = key
         for pattern, new_pattern in MAPPING.items():
             new_key = new_key.replace(pattern, new_pattern)
+
+        for dyn_pattern, dyn_new_pattern in DYNAMIC_MAP.items():
+            has_matched = False
+            if fnmatch.fnmatch(new_key, f"*.{dyn_pattern}.*") and not has_matched:
+                star = int(new_key.split(dyn_pattern.split(".")[0])[-1].split(".")[1])
+
+                if isinstance(dyn_new_pattern, tuple):
+                    new_star = star + dyn_new_pattern[-1]
+                    dyn_new_pattern = dyn_new_pattern[0]
+                else:
+                    new_star = star
+
+                pattern = dyn_pattern.replace("*", str(star))
+                new_pattern = dyn_new_pattern.replace("*", str(new_star))
+
+                new_key = new_key.replace(pattern, new_pattern)
+                has_matched = True
 
         converted_state_dict[new_key] = unet_state_dict[key]
 
