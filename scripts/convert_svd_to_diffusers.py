@@ -27,7 +27,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     resolution = 1
     for i in range(len(block_out_channels)):
         block_type = (
-            "CrossAttnDownBlock2DVideo" if resolution in unet_params.attention_resolutions else "DownBlockVideo"
+            "CrossAttnDownBlockSpatioTemporal" if resolution in unet_params.attention_resolutions else "DownBlockSpatioTemporal"
         )
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
@@ -35,7 +35,7 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnUpBlock2DVideo" if resolution in unet_params.attention_resolutions else "UpBlockVideo"
+        block_type = "CrossAttnUpBlockSpatioTemporal" if resolution in unet_params.attention_resolutions else "UpBlockSpatioTemporal"
         up_block_types.append(block_type)
         resolution //= 2
 
