@@ -23,275 +23,12 @@ from .embeddings import TimestepEmbedding, Timesteps
 from .lora import LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 from .resnet import AlphaBlender, Downsample2D, SpatioTemporalResBlock, Upsample2D
+from .transformer_temporal import TransformerSpatioTemporalModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-@dataclass
-class Transformer2DModelOutput(BaseOutput):
-    """
-    The output of [`Transformer2DModel`].
 
-    Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
-            The hidden states output conditioned on the `encoder_hidden_states` input. If discrete, returns probability
-            distributions for the unnoised latent pixels.
-    """
-
-    sample: torch.FloatTensor
-
-
-class Transformer2DModelVideo(ModelMixin, ConfigMixin):
-    """
-    A 2D Transformer model for image-like data.
-
-    Parameters:
-        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
-        in_channels (`int`, *optional*):
-            The number of channels in the input and output (specify if the input is **continuous**).
-        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to use in feed-forward.
-        attention_bias (`bool`, *optional*):
-            Configure if the `TransformerBlocks` attention should contain a bias parameter.
-    """
-
-    @register_to_config
-    def __init__(
-        self,
-        num_attention_heads: int = 16,
-        attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
-        out_channels: Optional[int] = None,
-        num_layers: int = 1,
-        dropout: float = 0.0,
-        norm_num_groups: int = 32,
-        cross_attention_dim: Optional[int] = None,
-        attention_bias: bool = False,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        only_cross_attention: bool = False,
-        double_self_attention: bool = False,
-        upcast_attention: bool = False,
-        norm_type: str = "layer_norm",
-        norm_elementwise_affine: bool = True,
-        norm_eps: float = 1e-5,
-        attention_type: str = "default",
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
-    ):
-        super().__init__()
-        self.num_attention_heads = num_attention_heads
-        self.attention_head_dim = attention_head_dim
-        self.max_time_embed_period = max_time_embed_period
-        inner_dim = num_attention_heads * attention_head_dim
-        self.inner_dim = inner_dim
-
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
-
-        # 2. Define input layers
-        self.in_channels = in_channels
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-        self.proj_in = linear_cls(in_channels, inner_dim)
-
-        # 3. Define transformers blocks
-        self.transformer_blocks = nn.ModuleList(
-            [
-                BasicTransformerBlock(
-                    inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
-                )
-                for d in range(num_layers)
-            ]
-        )
-
-        time_mix_inner_dim = inner_dim
-        self.temporal_transformer_blocks = nn.ModuleList(
-            [
-                TemporalBasicTransformerBlock(
-                    inner_dim,
-                    time_mix_inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
-                )
-                for _ in range(num_layers)
-            ]
-        )
-
-        time_embed_dim = in_channels * 4
-        self.time_pos_embed = TimestepEmbedding(in_channels, time_embed_dim, out_dim=in_channels)
-
-        self.time_mixer = AlphaBlender(alpha=merge_factor, merge_strategy=merge_strategy)
-
-        # 4. Define output layers
-        self.out_channels = in_channels if out_channels is None else out_channels
-        # TODO: should use out_channels for continuous projections
-        self.proj_out = linear_cls(inner_dim, in_channels)
-
-        self.time_proj = Timesteps(in_channels, True, 0)
-
-        self.gradient_checkpointing = False
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        num_video_frames: int,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
-        added_cond_kwargs: Dict[str, torch.Tensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        image_only_indicator: Optional[torch.Tensor] = None,
-        return_dict: bool = True,
-    ):
-        """
-        The [`Transformer2DModel`] forward method.
-
-        Args:
-            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
-                Input `hidden_states`.
-            encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
-                Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
-                self-attention.
-            timestep ( `torch.LongTensor`, *optional*):
-                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
-            class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
-                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
-                `AdaLayerZeroNorm`.
-            cross_attention_kwargs ( `Dict[str, Any]`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            attention_mask ( `torch.Tensor`, *optional*):
-                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
-                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
-                negative values to the attention scores corresponding to "discard" tokens.
-            encoder_attention_mask ( `torch.Tensor`, *optional*):
-                Cross-attention mask applied to `encoder_hidden_states`. Two formats supported:
-
-                    * Mask `(batch, sequence_length)` True = keep, False = discard.
-                    * Bias `(batch, 1, sequence_length)` 0 = keep, -10000 = discard.
-
-                If `ndim == 2`: will be interpreted as a mask, then converted into a bias consistent with the format
-                above. This bias will be added to the cross-attention scores.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
-                tuple.
-
-        Returns:
-            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
-        """
-        # Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-
-        assert (
-            encoder_hidden_states.ndim == 3
-        ), f"n dims of spatial context should be 3 but are {encoder_hidden_states.ndim}"
-
-        _, _, h, w = hidden_states.shape
-        time_context = encoder_hidden_states
-        time_context_first_timestep = time_context[::num_video_frames]
-        time_context = repeat(time_context_first_timestep, "b ... -> (b n) ...", n=h * w)
-
-        # 1. Input
-        batch, _, height, width = hidden_states.shape
-        residual = hidden_states
-
-        hidden_states = self.norm(hidden_states)
-        inner_dim = hidden_states.shape[1]
-        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-        hidden_states = (
-            self.proj_in(hidden_states, scale=lora_scale) if not USE_PEFT_BACKEND else self.proj_in(hidden_states)
-        )
-
-        num_frames = torch.arange(num_video_frames, device=hidden_states.device)
-        num_frames = repeat(num_frames, "t -> b t", b=hidden_states.shape[0] // num_video_frames)
-        num_frames = rearrange(num_frames, "b t -> (b t)")
-        t_emb = self.time_proj(num_frames)
-        emb = self.time_pos_embed(t_emb)
-        emb = emb[:, None, :]
-
-        # 2. Blocks
-        for block, temporal_block in zip(self.transformer_blocks, self.temporal_transformer_blocks):
-            if self.training and self.gradient_checkpointing:
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    block,
-                    hidden_states,
-                    None,
-                    encoder_hidden_states,
-                    None,
-                    timestep,
-                    cross_attention_kwargs,
-                    class_labels,
-                    use_reentrant=False,
-                )
-            else:
-                hidden_states = block(
-                    hidden_states,
-                    attention_mask=None,
-                    encoder_hidden_states=encoder_hidden_states,
-                    encoder_attention_mask=None,
-                    timestep=timestep,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    class_labels=class_labels,
-                )
-
-            hidden_states_mix = hidden_states
-            hidden_states_mix = hidden_states_mix + emb
-
-            hidden_states_mix = temporal_block(
-                hidden_states_mix,
-                num_frames=num_video_frames,
-                encoder_hidden_states=time_context,
-                cross_attention_kwargs=cross_attention_kwargs,
-            )
-            hidden_states = self.time_mixer(
-                x_spatial=hidden_states,
-                x_temporal=hidden_states_mix,
-                image_only_indicator=image_only_indicator,
-            )
-
-        # 3. Output
-        hidden_states = (
-            self.proj_out(hidden_states, scale=lora_scale) if not USE_PEFT_BACKEND else self.proj_out(hidden_states)
-        )
-        hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-
-        output = hidden_states + residual
-
-        if not return_dict:
-            return (output,)
-
-        return Transformer2DModelOutput(sample=output)
 
 
 class DownBlockVideo(nn.Module):
@@ -467,14 +204,13 @@ class CrossAttnDownBlock2DVideo(nn.Module):
                 )
             )
             attentions.append(
-                Transformer2DModelVideo(
+                TransformerSpatioTemporalModel(
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    # use_linear_projection=use_linear_projection,
                     only_cross_attention=only_cross_attention,
                     upcast_attention=upcast_attention,
                     attention_type=attention_type,
@@ -554,7 +290,7 @@ class CrossAttnDownBlock2DVideo(nn.Module):
                 )
                 hidden_states = attn(
                     hidden_states,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
@@ -775,7 +511,7 @@ class CrossAttnUpBlock2DVideo(nn.Module):
                 )
             )
             attentions.append(
-                Transformer2DModelVideo(
+                TransformerSpatioTemporalModel(
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
@@ -878,7 +614,7 @@ class CrossAttnUpBlock2DVideo(nn.Module):
                 )
                 hidden_states = attn(
                     hidden_states,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
@@ -951,7 +687,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
 
         for i in range(num_layers):
             attentions.append(
-                Transformer2DModelVideo(
+                TransformerSpatioTemporalModel(
                     num_attention_heads,
                     in_channels // num_attention_heads,
                     in_channels=in_channels,
@@ -1038,7 +774,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
             else:
                 hidden_states = attn(
                     hidden_states,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     cross_attention_kwargs=cross_attention_kwargs,
                     attention_mask=attention_mask,
