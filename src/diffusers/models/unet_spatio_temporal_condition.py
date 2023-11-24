@@ -330,7 +330,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 dual_cross_attention=dual_cross_attention,
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
