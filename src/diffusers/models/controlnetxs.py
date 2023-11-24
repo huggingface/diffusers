@@ -668,12 +668,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             interpolation_param = self.config.time_embedding_mix**0.3
 
             temb = ctrl_temb * interpolation_param + base_temb * (1 - interpolation_param)
-
-            print(f"Of course I've not learned a time embedding. I'm smart! Let me collaborate with the base model. Me {interpolation_param:.2f}, him {1-interpolation_param:.2f}")
-            print(f"> Before: {t_emb.flatten()[:5]}")
-            print(f"> After: {temb.flatten()[:5]}")
         else:
-            print("Nah man, I've not learned any time embedding. Let the base model do it.")
             temb = base_model.time_embedding(t_emb)
 
         # added time & text embeddings
@@ -769,7 +764,10 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         udl.print_if('------ enc ------', conditions=RUN_ONCE)
 
         for m_base, m_ctrl in zip(base_down_subblocks, ctrl_down_subblocks):
-            h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
+            connection = next(it_down_convs_in)
+            to_concat = connection(h_base)
+
+            h_ctrl = torch.cat([h_ctrl, to_concat], dim=1)  # A - concat base -> ctrl
             udl.log_if('enc.h_ctrl', h_ctrl, condition='SUBBLOCK')
 
             h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # B - apply base subblock
@@ -787,10 +785,22 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # 2 - mid
         h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
         udl.log_if('enc.h_ctrl', h_ctrl, 'SUBBLOCK')
+
+        # Because Heidelberg treats the R/A/R as one block, they first execute the full base mid block,
+        # then the full ctrl mid block; while I execute them interlaced.
+        # This doesn't change the computation, but messes up parts of the logs.
+        # So let's, while debugging, first execute full base mid block and then full ctrl mid block.
+
+        for m_base in base_mid_subblocks:
+            h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
+
+        for m_ctrl in ctrl_mid_subblocks:
+            h_ctrl = m_ctrl(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)
         
-        for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
-            h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # B - apply base subblock
-            h_ctrl = m_ctrl(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # C - apply ctrl subblock
+        #for m_base, m_ctrl in zip(base_mid_subblocks, ctrl_mid_subblocks):
+        #    h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # B - apply base subblock
+        #    h_ctrl = m_ctrl(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # C - apply ctrl subblock
+        
         h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)  # D - add ctrl -> base
         udl.log_if('mid.h_base', h_base, condition='SUBBLOCK')
         udl.log_if('mid.h_ctrl', h_ctrl, condition='SUBBLOCK')
@@ -965,17 +975,20 @@ def adjust_group_norms(unet: UNet2DConditionModel, max_num_group:int=32):
                 return start
             start -= 1
 
-    # resnets
-    for d in unet.down_blocks:
-        for r in d.resnets:
+    for block in [*unet.down_blocks, unet.mid_block]:
+        # resnets
+        for r in block.resnets:
             if r.norm1.num_groups < max_num_group:
                 r.norm1.num_groups = find_denominator(r.norm1.num_channels ,start=32)
             
             if r.norm2.num_groups < max_num_group:
                 r.norm2.num_groups = find_denominator(r.norm2.num_channels ,start=32)
 
-    # transformers
-    pass # TODO
+        # transformers
+        if hasattr(block, 'attentions'):
+            for a in block.attentions:
+                if a.norm.num_groups < max_num_group:
+                    a.norm.num_groups = find_denominator(a.norm.num_channels ,start=32)
 
 def is_iterable(o):
     if isinstance(o, str):
