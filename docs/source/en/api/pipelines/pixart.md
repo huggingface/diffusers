@@ -50,6 +50,7 @@ Then load the text encoder in 8-bit:
 ```python
 from transformers import T5EncoderModel
 from diffusers import PixArtAlphaPipeline
+import torch
 
 text_encoder = T5EncoderModel.from_pretrained(
     "PixArt-alpha/PixArt-XL-2-1024-MS",
@@ -138,7 +139,7 @@ Text embeddings computed in 8-bit can impact the quality of the generated images
 
 </Tip>
 
-While loading the `text_encoder`, you set `load_in_8bit` to `True`. Instead of `load_in_8bit`, if you specify `load_in_4bit`, the memory requirements will be down under 7GB. 
+While loading the `text_encoder`, you set `load_in_8bit` to `True`. You could also specify `load_in_4bit` to bring your memory requirements down even further to under 7GB.
 
 ## PixArtAlphaPipeline
 
