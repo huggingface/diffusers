@@ -1044,7 +1044,12 @@ class TemporalDecoder(nn.Module):
         self,
         in_channels: int = 4,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (64,),
+        block_out_channels: Tuple[int, ...] = (
+            128,
+            256,
+            512,
+            512,
+        ),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
         act_fn: str = "silu",
@@ -1060,8 +1065,6 @@ class TemporalDecoder(nn.Module):
         self.conv_in = conv_cls(
             in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1
         )
-        self.up_blocks = nn.ModuleList([])
-
         temb_channels = in_channels if norm_type == "spatial" else None
         self.mid_block = MidBlockTemporalDecoder(
             num_layers=self.layers_per_block,
@@ -1078,6 +1081,7 @@ class TemporalDecoder(nn.Module):
         )
 
         # up
+        self.up_blocks = nn.ModuleList([])
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
         for i in range(len(block_out_channels)):
