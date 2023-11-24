@@ -418,13 +418,10 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
             else self.proj_in(hidden_states)
         )
 
-        num_frames = torch.arange(num_frames, device=hidden_states.device)
-        num_frames = num_frames.repeat(batch_size, 1)
-        # num_frames = repeat(num_frames, "t -> b t", b=hidden_states.shape[0] // num_frames)
-        num_frames = num_frames.reshape(-1)
-        # num_frames = rearrange(num_frames, "b t -> (b t)")
-
-        t_emb = self.time_proj(num_frames)
+        num_frames_emb = torch.arange(num_frames, device=hidden_states.device)
+        num_frames_emb = num_frames_emb.repeat(batch_size, 1)
+        num_frames_emb = num_frames_emb.reshape(-1)
+        t_emb = self.time_proj(num_frames_emb)
         emb = self.time_pos_embed(t_emb)
         emb = emb[:, None, :]
 
