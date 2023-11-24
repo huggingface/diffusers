@@ -1212,7 +1212,6 @@ class TemporalResnetBlock(nn.Module):
 
     def __init__(
         self,
-        *,
         in_channels: int,
         out_channels: Optional[int] = None,
         conv_shortcut: bool = False,
@@ -1243,32 +1242,59 @@ class TemporalResnetBlock(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
+        self.norm1 = torch.nn.GroupNorm(
+            num_groups=groups, num_channels=in_channels, eps=eps, affine=True
+        )
 
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=kernel_size, stride=1, padding=padding)
+        self.conv1 = conv_cls(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
+        )
 
         if temb_channels is not None:
             self.time_emb_proj = linear_cls(temb_channels, out_channels)
         else:
             self.time_emb_proj = None
 
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
+        self.norm2 = torch.nn.GroupNorm(
+            num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True
+        )
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=kernel_size, stride=1, padding=padding)
+        self.conv2 = conv_cls(
+            out_channels,
+            conv_2d_out_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
+        )
 
         self.nonlinearity = get_activation(non_linearity)
 
-        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
+        self.use_in_shortcut = (
+            self.in_channels != conv_2d_out_channels
+            if use_in_shortcut is None
+            else use_in_shortcut
+        )
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
             self.conv_shortcut = conv_cls(
-                in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
+                in_channels,
+                conv_2d_out_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+                bias=conv_shortcut_bias,
             )
 
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(
+        self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor
+    ) -> torch.FloatTensor:
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
@@ -1295,7 +1321,7 @@ class TemporalResnetBlock(nn.Module):
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
-        return output_tensorr
+        return output_tensor
 
 
 # VideoResBlock
@@ -1314,6 +1340,7 @@ class SpatioTemporalResBlock(nn.Module):
         output_scale_factor: float = 1.0,
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
+        merge_strategy="learned",
     ):
         super().__init__()
 
@@ -1342,7 +1369,9 @@ class SpatioTemporalResBlock(nn.Module):
             kernel_size=kernel_size_3d,
         )
 
-        self.time_mixer = AlphaBlender(alpha=merge_factor, merge_strategy="learned_with_images")
+        self.time_mixer = AlphaBlender(
+            alpha=merge_factor, merge_strategy=merge_strategy
+        )
 
     def forward(
         self,
@@ -1420,7 +1449,7 @@ class AlphaBlender(nn.Module):
             alpha = torch.where(
                 image_only_indicator.bool(),
                 torch.ones(1, 1, device=image_only_indicator.device),
-                torch.sigmoid(alpha)[None, :],
+                torch.sigmoid(self.mix_factor)[None, :],
             )
             alpha = alpha.reshape(-1)[:, None, None]
 

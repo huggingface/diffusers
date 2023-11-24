@@ -23,7 +23,7 @@ from .dual_transformer_2d import DualTransformer2DModel
 from .resnet import (
     Downsample2D,
     ResnetBlock2D,
-    SpatioTemporalResnetBlock,
+    SpatioTemporalResBlock,
     TemporalConvLayer,
     Upsample2D,
 )
@@ -1758,7 +1758,7 @@ class MidBlockTemporalDecoder(nn.Module):
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
         max_time_embed_period: int = 10000,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
     ):
         super().__init__()
 
@@ -1767,7 +1767,7 @@ class MidBlockTemporalDecoder(nn.Module):
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                SpatioTemporalResnetBlock(
+                SpatioTemporalResBlock(
                     in_channels=input_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -1786,7 +1786,7 @@ class MidBlockTemporalDecoder(nn.Module):
                 num_attention_heads,
                 out_channels // num_attention_heads,
                 in_channels=out_channels,
-                num_layers=transformer_layers_per_block[i],
+                num_layers=transformer_layers_per_block[-1],
                 cross_attention_dim=cross_attention_dim,
                 norm_num_groups=norm_num_groups,
                 only_cross_attention=only_cross_attention,
@@ -1808,11 +1808,31 @@ class MidBlockTemporalDecoder(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor, temb: torch.FloatTensor):
-        hidden_states = self.resnets[0](hidden_states, temb)
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        image_only_indicator: torch.FloatTensor,
+        temb: torch.FloatTensor,
+        num_frames: int = 1,
+    ):
+        hidden_states = self.resnets[0](
+            hidden_states,
+            temb,
+            num_frames=num_frames,
+            image_only_indicator=image_only_indicator,
+        )
         for resnet, attn in zip(self.resnets[1:], self.attentions):
-            hidden_states = attn(hidden_states, temb)
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = attn(
+                hidden_states,
+                num_frames=num_frames,
+                image_only_indicator=image_only_indicator,
+            )
+            hidden_states = resnet(
+                hidden_states,
+                temb,
+                num_frames=num_frames,
+                image_only_indicator=image_only_indicator,
+            )
 
         return hidden_states
 
@@ -1847,7 +1867,7 @@ class UpBlockTemporalDecoder(nn.Module):
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
         max_time_embed_period: int = 10000,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
     ):
         super().__init__()
         resnets = []
@@ -1857,7 +1877,7 @@ class UpBlockTemporalDecoder(nn.Module):
             input_channels = in_channels if i == 0 else out_channels
 
             resnets.append(
-                SpatioTemporalResnetBlock(
+                SpatioTemporalResBlock(
                     in_channels=input_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -1875,7 +1895,7 @@ class UpBlockTemporalDecoder(nn.Module):
                     num_attention_heads,
                     out_channels // num_attention_heads,
                     in_channels=out_channels,
-                    num_layers=transformer_layers_per_block[i],
+                    num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=norm_num_groups,
                     only_cross_attention=only_cross_attention,
@@ -1900,12 +1920,24 @@ class UpBlockTemporalDecoder(nn.Module):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
+        image_only_indicator: torch.FloatTensor,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
+        num_frames: int = 1,
     ) -> torch.FloatTensor:
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb=temb, scale=scale)
-            hidden_states = attn(hidden_states)
+            hidden_states = resnet(
+                hidden_states,
+                temb=temb,
+                scale=scale,
+                num_frames=num_frames,
+                image_only_indicator=image_only_indicator,
+            )
+            hidden_states = attn(
+                hidden_states,
+                num_frames=num_frames,
+                image_only_indicator=image_only_indicator,
+            )
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

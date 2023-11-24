@@ -1044,9 +1044,8 @@ class TemporalDecoder(nn.Module):
 
     def __init__(
         self,
-        in_channels: int = 3,
+        in_channels: int = 4,
         out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
         block_out_channels: Tuple[int, ...] = (64,),
         layers_per_block: int = 2,
         norm_num_groups: int = 32,
@@ -1068,25 +1067,23 @@ class TemporalDecoder(nn.Module):
         temb_channels = in_channels if norm_type == "spatial" else None
         self.mid_block = MidBlockTemporalDecoder(
             num_layers=self.layers_per_block,
-            in_channels=in_channels,
-            out_channels=in_channels,
-            prev_output_channel=None,
+            in_channels=block_out_channels[-1],
+            out_channels=block_out_channels[-1],
             add_upsample=False,
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
-            resnet_groups=norm_num_groups,
+            norm_num_groups=norm_num_groups,
             attention_head_dim=out_channels,
             temb_channels=temb_channels,
             resnet_time_scale_shift=norm_type,
-            alpha=alpha,
+            merge_factor=alpha,
             merge_strategy=merge_strategy,
-            time_mode=time_mode,
         )
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
-        for i, up_block_type in enumerate(up_block_types):
+        for i in range(len(block_out_channels)):
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
 
@@ -1095,25 +1092,27 @@ class TemporalDecoder(nn.Module):
                 num_layers=self.layers_per_block + 1,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
-                prev_output_channel=None,
                 add_upsample=not is_final_block,
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
-                resnet_groups=norm_num_groups,
+                norm_num_groups=norm_num_groups,
                 attention_head_dim=output_channel,
                 temb_channels=temb_channels,
                 resnet_time_scale_shift=norm_type,
-                alpha=alpha,
+                merge_factor=alpha,
                 merge_strategy=merge_strategy,
-                time_mode=time_mode,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
+        self.gradient_checkpointing = False
+
     def forward(
         self,
         sample: torch.FloatTensor,
+        image_only_indicator: torch.FloatTensor,
         latent_embeds: Optional[torch.FloatTensor] = None,
+        num_frames: int = 1,
     ) -> torch.FloatTensor:
         r"""The forward method of the `Decoder` class."""
 
@@ -1160,12 +1159,22 @@ class TemporalDecoder(nn.Module):
                     )
         else:
             # middle
-            sample = self.mid_block(sample, latent_embeds)
+            sample = self.mid_block(
+                sample,
+                temb=latent_embeds,
+                num_frames=num_frames,
+                image_only_indicator=image_only_indicator,
+            )
             sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
-                sample = up_block(sample, latent_embeds)
+                sample = up_block(
+                    sample,
+                    temb=latent_embeds,
+                    num_frames=num_frames,
+                    image_only_indicator=image_only_indicator,
+                )
 
         # post-process
         if latent_embeds is None:
