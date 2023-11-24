@@ -24,8 +24,8 @@ from transformers import AutoTokenizer, T5EncoderModel
 from diffusers import (
     AutoPipelineForImage2Image,
     AutoPipelineForText2Image,
-    Kandinsky3UNet,
     Kandinsky3Pipeline,
+    Kandinsky3UNet,
     VQModel,
 )
 from diffusers.image_processor import VaeImageProcessor
@@ -180,7 +180,9 @@ class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_kandinskyV3(self):
-        pipe = AutoPipelineForText2Image.from_pretrained("/home/patrick/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
+        )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
@@ -205,7 +207,7 @@ class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
 
     def test_kandinskyV3_img2img(self):
         pipe = AutoPipelineForImage2Image.from_pretrained(
-            "/home/patrick/kandinsky-3", variant="fp16", torch_dtype=torch.float16
+            "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)

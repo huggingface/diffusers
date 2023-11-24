@@ -2245,7 +2245,7 @@ class Kandi3AttnProcessor:
 
         attention_matrix = einsum("b h i d, b h j d -> b h i j", query, key)
 
-        if exist(context_mask):
+        if context_mask is not None:
             max_neg_value = -torch.finfo(attention_matrix.dtype).max
             context_mask = context_mask.unsqueeze(1).unsqueeze(1)
             attention_matrix = attention_matrix.masked_fill(~(context_mask != 0), max_neg_value)
