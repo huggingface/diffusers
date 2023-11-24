@@ -67,7 +67,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .unet_kandi3 import Kandinsky3UNet
         from .unet_motion_model import MotionAdapter, UNetMotionModel
         from .vq_model import VQModel
-        from .unet_kandi3 import Kandinsky3UNet
 
     if is_flax_available():
         from .controlnet_flax import FlaxControlNetModel

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-import torch
 import argparse
-from diffusers import Kandinsky3UNet
+
 from safetensors.torch import load_file
+
+from diffusers import Kandinsky3UNet
+
 
 MAPPING = {
     "to_time_embed.1": "time_embedding.linear_1",

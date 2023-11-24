@@ -18,25 +18,26 @@ import unittest
 
 import numpy as np
 import torch
+from transformers import AutoTokenizer, T5EncoderModel
 
-from transformers import T5EncoderModel, AutoTokenizer
-from diffusers import KandinskyV3Pipeline, Kandinsky3UNet, VQModel
+from diffusers import Kandinsky3UNet, KandinskyV3Pipeline, VQModel
 from diffusers.image_processor import VaeImageProcessor
+from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
     require_torch_gpu,
     slow,
 )
+
 from ..pipeline_params import (
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from ..test_pipelines_common import PipelineTesterMixin
+
 
 enable_full_determinism()
 
@@ -170,7 +171,8 @@ class KandinskyV3PipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_kandinskyV3(self):
-        from safetensors.torch import load_file 
+        from safetensors.torch import load_file
+
         from ...convert_kandinsky3_unet import convert_state_dict
 
         state_dict = load_file("/home/patrick/kandinsky-3/unet/diffusion_pytorch_model.fp16.safetensors")

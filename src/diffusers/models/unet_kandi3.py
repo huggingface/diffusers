@@ -1,24 +1,25 @@
-import torch
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-import torch.nn.functional as F
-from .attention_processor import AttentionProcessor, Kandi3AttnProcessor
-import torch.utils.checkpoint
-
 import math
+from dataclasses import dataclass
+from typing import Dict, Tuple, Union
+
+import torch
+import torch.nn.functional as F
+import torch.utils.checkpoint
 from torch import nn
-from ..utils import BaseOutput, logging
-from .modeling_utils import ModelMixin
+
 from ..configuration_utils import ConfigMixin, register_to_config
-from .embeddings import Timesteps, TimestepEmbedding
+from ..utils import BaseOutput, logging
+from .attention_processor import AttentionProcessor, Kandi3AttnProcessor
+from .embeddings import TimestepEmbedding
+from .modeling_utils import ModelMixin
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
-class Kandinsky3UNet(BaseOutput):
+class Kandinsky3UNetOutput(BaseOutput):
     sample: torch.FloatTensor = None
-    
+
 # TODO(Yiyi): This class needs to be removed
 def set_default_item(condition, item_1, item_2=None):
     if condition:
@@ -202,7 +203,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-    
+
     def forward(self, x, time, context=None, context_mask=None, image_mask=None, use_projections=False,
                 return_dict=True, split_context=False, uncondition_mask_idx=None, control_hidden_states=None):
 
@@ -211,7 +212,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
             # TODO(Patrick): pretty sure that this is never used and can be removed
             context[uncondition_mask_idx] = torch.zeros_like(context[uncondition_mask_idx])
             context_mask[uncondition_mask_idx] = torch.zeros_like(context_mask[uncondition_mask_idx])
-            
+
         time_embed_input = self.time_proj(time).to(x.dtype)
         time_embed = self.time_embedding(time_embed_input)
 
@@ -224,7 +225,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
             x = down_sample(x, time_embed, context, context_mask, image_mask)
             if level != self.num_levels - 1:
                 hidden_states.append(x)
-        
+
         for level, up_sample in enumerate(self.up_blocks):
             if level != 0:
                 if control_hidden_states is not None:
@@ -232,14 +233,14 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
                 else:
                     x = torch.cat([x, hidden_states.pop()], dim=1)
             x = up_sample(x, time_embed, context, context_mask, image_mask)
-        
+
         x = self.conv_norm_out(x)
         x = self.conv_act_out(x)
         x = self.conv_out(x)
 
         if not return_dict:
             return (x,)
-        return Kandinsky3UNet(sample=x)
+        return Kandinsky3UNetOutput(sample=x)
 
 
 class Kandinsky3UpSampleBlock(nn.Module):
@@ -322,7 +323,7 @@ class Kandinsky3DownSampleBlock(nn.Module):
                 layer_2=nn.Identity
             ))
             resnets_out.append(Kandinsky3ResNetBlock(out_channel, out_channel, time_embed_dim, groups, compression_ratio, up_resolution))
-        
+
         self.attentions = nn.ModuleList(attentions)
         self.resnets_in = nn.ModuleList(resnets_in)
         self.resnets_out = nn.ModuleList(resnets_out)
@@ -379,9 +380,9 @@ class Attention(nn.Module):
         # to_out
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(out_channels, out_channels, bias=False))
-        
-        
-    def set_processor(self, processor: "AttnProcessor"):
+
+
+    def set_processor(self, processor: "AttnProcessor"):  # noqa: F821
         # if current processor is in `self._modules` and if passed `processor` is not, we need to
         # pop `processor` from `self._modules`
         if (
@@ -393,8 +394,8 @@ class Attention(nn.Module):
             self._modules.pop("processor")
 
         self.processor = processor
-        
-        
+
+
     def forward(self, x, context, context_mask=None, image_mask=None):
         return self.processor(
             self,

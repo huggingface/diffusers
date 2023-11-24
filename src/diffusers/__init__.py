@@ -449,6 +449,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             ControlNetModel,
+            Kandinsky3UNet,
             ModelMixin,
             MotionAdapter,
             MultiAdapter,
@@ -462,7 +463,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet3DConditionModel,
             UNetMotionModel,
             VQModel,
-            Kandinsky3UNet,
         )
         from .optimization import (
             get_constant_schedule,
@@ -571,6 +571,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyInpaintPipeline,
             KandinskyPipeline,
             KandinskyPriorPipeline,
+            KandinskyV3Img2ImgPipeline,
+            KandinskyV3Pipeline,
             KandinskyV22CombinedPipeline,
             KandinskyV22ControlnetImg2ImgPipeline,
             KandinskyV22ControlnetPipeline,
@@ -581,8 +583,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
-            KandinskyV3Pipeline,
-            KandinskyV3Img2ImgPipeline,
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
             LDMTextToImagePipeline,

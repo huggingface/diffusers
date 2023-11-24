@@ -16,14 +16,12 @@ from typing import Callable, Optional, Union
 
 import torch
 import torch.nn.functional as F
-from torch import nn
+from torch import einsum, nn
 
 from ..utils import USE_PEFT_BACKEND, deprecate, logging
 from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRACompatibleLinear, LoRALinearLayer
-from einops import rearrange
-from torch import einsum
 
 
 def exist(item):
@@ -2230,7 +2228,7 @@ class Kandi3AttnProcessor:
     r"""
     Default kandinsky3 proccesor for performing attention-related computations.
     """
-    
+
     @staticmethod
     def _reshape(hid_states, h):
         b, n, f  = hid_states.shape

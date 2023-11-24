@@ -343,8 +343,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22PriorPipeline,
         )
         from .kandinsky3 import (
-            KandinskyV3Pipeline,
             KandinskyV3Img2ImgPipeline,
+            KandinskyV3Pipeline,
         )
         from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
         from .latent_diffusion import LDMTextToImagePipeline

@@ -1,27 +1,23 @@
-import html
 import inspect
-import re
-import urllib.parse as ul
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
+
 import numpy as np
+import PIL
 import PIL.Image
-from PIL import Image
 import torch
-from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
+from PIL import Image
+from transformers import T5EncoderModel, T5Tokenizer
 
 from ...loaders import LoraLoaderMixin
 from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
-    BACKENDS_MAPPING,
     is_accelerate_available,
     logging,
-    replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from PIL import Image
-import PIL
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def downscale_height_and_width(height, width, scale_factor=8):
@@ -72,7 +68,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         timesteps = self.scheduler.timesteps[t_start:]
 
         return timesteps, num_inference_steps - t_start
-    
+
     def remove_all_hooks(self):
         if is_accelerate_available():
             from accelerate.hooks import remove_hook_from_module
@@ -86,7 +82,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.unet_offload_hook = None
         self.text_encoder_offload_hook = None
         self.final_offload_hook = None
-    
+
     def process_embeds(self,embeddings, attention_mask, cut_context):
         #return embeddings, attention_mask
         if cut_context:
@@ -95,13 +91,13 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
             embeddings = embeddings[:, :max_seq_length]
             attention_mask = attention_mask[:, :max_seq_length]
         return embeddings, attention_mask
-    
+
     @torch.no_grad()
     def project_emb(self, emb):
         emb = self.unet.projection_lin(emb)
         emb = self.unet.projection_ln(emb)
         return emb
-    
+
     @torch.no_grad()
     def encode_prompt(
         self,
@@ -192,7 +188,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             uncond_tokens: List[str]
-            
+
             if negative_prompt is None:
                 split_context = True
                 uncond_tokens = [""] * batch_size
@@ -227,7 +223,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
                 negative_attention_mask = negative_attention_mask[:, :prompt_embeds.shape[1]]
                 negative_prompt_embeds = self.project_emb(negative_prompt_embeds)
                 negative_prompt_embeds = negative_prompt_embeds * negative_attention_mask.unsqueeze(2)
-                
+
             else:
                 negative_prompt_embeds = torch.zeros_like(prompt_embeds)
                 negative_attention_mask = torch.zeros_like(attention_mask)
@@ -248,7 +244,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             negative_prompt_embeds = None
         return prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask, split_context
-    
+
     @torch.no_grad()
     def encode_prompt(
         self,
@@ -315,7 +311,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             uncond_tokens: List[str]
-            
+
             if negative_prompt is None:
                 split_context = True
                 uncond_tokens = [""] * batch_size
@@ -350,7 +346,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
                 negative_attention_mask = negative_attention_mask[:, :prompt_embeds.shape[1]]
                 negative_prompt_embeds = self.project_emb(negative_prompt_embeds)
                 negative_prompt_embeds = negative_prompt_embeds * negative_attention_mask.unsqueeze(2)
-                
+
             else:
                 negative_prompt_embeds = torch.zeros_like(prompt_embeds)
                 negative_attention_mask = torch.zeros_like(attention_mask)
@@ -371,8 +367,8 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             negative_prompt_embeds = None
         return prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask, split_context
-    
-    
+
+
     def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         if not isinstance(image, (torch.Tensor, PIL.Image.Image, list)):
             raise ValueError(
@@ -412,11 +408,11 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
         init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
 
         latents = init_latents
-        
+
 
         return latents
-    
-    
+
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -570,7 +566,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
                 latent_model_input = (
                     torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 )
-                
+
                 # predict the noise residual
                 new_t = torch.tensor([t]).repeat(latent_model_input.shape[0]).to(device)
                 noise_pred = self.unet(
@@ -585,7 +581,7 @@ class KandinskyV3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
                 )[0]
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    
+
                     noise_pred = (guidance_scale + 1.) * noise_pred_text - guidance_scale * noise_pred_uncond
 
                 # compute the previous noisy sample x_t -> x_t-1

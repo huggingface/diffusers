@@ -1,20 +1,14 @@
-import html
-import inspect
-import re
-import urllib.parse as ul
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
-from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
+from transformers import T5EncoderModel, T5Tokenizer
 
 from ...loaders import LoraLoaderMixin
 from ...models import Kandinsky3UNet, VQModel
-from ...schedulers import DDPMScheduler 
+from ...schedulers import DDPMScheduler
 from ...utils import (
-    BACKENDS_MAPPING,
     is_accelerate_available,
     logging,
-    replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
@@ -67,7 +61,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         self.unet_offload_hook = None
         self.text_encoder_offload_hook = None
         self.final_offload_hook = None
-    
+
     def process_embeds(self,embeddings, attention_mask, cut_context):
         if cut_context:
             embeddings[attention_mask == 0] = torch.zeros_like(embeddings[attention_mask == 0])
@@ -75,14 +69,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             embeddings = embeddings[:, :max_seq_length]
             attention_mask = attention_mask[:, :max_seq_length]
         return embeddings, attention_mask
-    
-    @torch.no_grad()
-    def project_emb(self, emb):
-        emb = self.unet.projection_lin(emb)
-        emb = self.unet.projection_ln(emb)
-        return emb
-    
-    
+
     @torch.no_grad()
     def encode_prompt(
         self,
@@ -172,7 +159,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
             uncond_tokens: List[str]
-            
+
             if negative_prompt is None:
                 split_context = True
                 uncond_tokens = [""] * batch_size
@@ -206,7 +193,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 negative_prompt_embeds = negative_prompt_embeds[:, :prompt_embeds.shape[1]]
                 negative_attention_mask = negative_attention_mask[:, :prompt_embeds.shape[1]]
                 negative_prompt_embeds = negative_prompt_embeds * negative_attention_mask.unsqueeze(2)
-                
+
             else:
                 negative_prompt_embeds = torch.zeros_like(prompt_embeds)
                 negative_attention_mask = torch.zeros_like(attention_mask)
@@ -227,7 +214,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             negative_prompt_embeds = None
         return prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask, split_context
-    
+
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
@@ -238,24 +225,6 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
 
         latents = latents * scheduler.init_noise_sigma
         return latents
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(self, generator, eta):
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-        return extra_step_kwargs
 
     def check_inputs(
         self,
@@ -310,7 +279,6 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         num_images_per_prompt: Optional[int] = 1,
         height: Optional[int] = 1024,
         width: Optional[int] = 1024,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -432,20 +400,18 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             self.scheduler,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-
         if hasattr(self, "text_encoder_offload_hook") and self.text_encoder_offload_hook is not None:
             self.text_encoder_offload_hook.offload()
 
         # 7. Denoising loop
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        # TODO(Yiyi): Correct the following line and use correctly
+        # num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 latent_model_input = (
                     torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 )
-                
+
                 # predict the noise residual
                 new_t = torch.tensor([t]).repeat(latent_model_input.shape[0]).to(device)
                 noise_pred = self.unet(
@@ -461,7 +427,7 @@ class KandinskyV3Pipeline(DiffusionPipeline, LoraLoaderMixin):
 
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    
+
                     noise_pred = (guidance_scale + 1.) * noise_pred_text - guidance_scale * noise_pred_uncond
                     #noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 

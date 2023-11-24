@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-import torch
-import fnmatch
 import argparse
-from diffusers import Kandinsky3UNet
+import fnmatch
+
 from safetensors.torch import load_file
+
+from diffusers import Kandinsky3UNet
+
 
 MAPPING = {
     "to_time_embed.1": "time_embedding.linear_1",
