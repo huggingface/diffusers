@@ -14,12 +14,7 @@
 
 from typing import TYPE_CHECKING
 
-from ..utils import (
-    DIFFUSERS_SLOW_IMPORT,
-    _LazyModule,
-    is_flax_available,
-    is_torch_available,
-)
+from ..utils import DIFFUSERS_SLOW_IMPORT, _LazyModule, is_flax_available, is_torch_available
 
 
 _import_structure = {}

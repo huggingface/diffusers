@@ -24,10 +24,7 @@ from parameterized import parameterized
 from pytest import mark
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.attention_processor import (
-    CustomDiffusionAttnProcessor,
-    IPAdapterAttnProcessor,
-)
+from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, IPAdapterAttnProcessor
 from diffusers.models.embeddings import ImageProjection, Resampler
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
@@ -66,9 +63,7 @@ def create_ip_adapter_state_dict(model):
             hidden_size = model.config.block_out_channels[block_id]
         if cross_attention_dim is not None:
             sd = IPAdapterAttnProcessor(
-                hidden_size=hidden_size,
-                cross_attention_dim=cross_attention_dim,
-                scale=1.0,
+                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
             ).state_dict()
             ip_cross_attn_state_dict.update(
                 {
@@ -82,9 +77,7 @@ def create_ip_adapter_state_dict(model):
     # "image_proj" (ImageProjection layer weights)
     cross_attention_dim = model.config["cross_attention_dim"]
     image_projection = ImageProjection(
-        cross_attention_dim=cross_attention_dim,
-        image_embed_dim=cross_attention_dim,
-        num_image_text_embeds=4,
+        cross_attention_dim=cross_attention_dim, image_embed_dim=cross_attention_dim, num_image_text_embeds=4
     )
 
     ip_image_projection_state_dict = {}
@@ -100,12 +93,7 @@ def create_ip_adapter_state_dict(model):
 
     del sd
     ip_state_dict = {}
-    ip_state_dict.update(
-        {
-            "image_proj": ip_image_projection_state_dict,
-            "ip_adapter": ip_cross_attn_state_dict,
-        }
-    )
+    ip_state_dict.update({"image_proj": ip_image_projection_state_dict, "ip_adapter": ip_cross_attn_state_dict})
     return ip_state_dict
 
 
@@ -126,9 +114,7 @@ def create_ip_adapter_plus_state_dict(model):
             hidden_size = model.config.block_out_channels[block_id]
         if cross_attention_dim is not None:
             sd = IPAdapterAttnProcessor(
-                hidden_size=hidden_size,
-                cross_attention_dim=cross_attention_dim,
-                scale=1.0,
+                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
             ).state_dict()
             ip_cross_attn_state_dict.update(
                 {
@@ -142,22 +128,13 @@ def create_ip_adapter_plus_state_dict(model):
     # "image_proj" (ImageProjection layer weights)
     cross_attention_dim = model.config["cross_attention_dim"]
     image_projection = Resampler(
-        embed_dims=cross_attention_dim,
-        output_dims=cross_attention_dim,
-        hidden_dims=32,
-        num_heads=2,
-        num_queries=4,
+        embed_dims=cross_attention_dim, output_dims=cross_attention_dim, hidden_dims=32, num_heads=2, num_queries=4
     )
 
     ip_image_projection_state_dict = image_projection.state_dict()
 
     ip_state_dict = {}
-    ip_state_dict.update(
-        {
-            "image_proj": ip_image_projection_state_dict,
-            "ip_adapter": ip_cross_attn_state_dict,
-        }
-    )
+    ip_state_dict.update({"image_proj": ip_image_projection_state_dict, "ip_adapter": ip_cross_attn_state_dict})
     return ip_state_dict
 
 
@@ -224,11 +201,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         time_step = torch.tensor([10]).to(torch_device)
         encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
 
-        return {
-            "sample": noise,
-            "timestep": time_step,
-            "encoder_hidden_states": encoder_hidden_states,
-        }
+        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
 
     @property
     def input_shape(self):
@@ -502,14 +475,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
                 self.number = 0
                 self.counter = 0
 
-            def __call__(
-                self,
-                attn,
-                hidden_states,
-                encoder_hidden_states=None,
-                attention_mask=None,
-                number=None,
-            ):
+            def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, number=None):
                 batch_size, sequence_length, _ = hidden_states.shape
                 attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
@@ -772,12 +738,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         image_proj_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["image_proj"].items()}
         cross_attn_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["ip_adapter"].items()}
         ip_adapter_2 = {}
-        ip_adapter_2.update(
-            {
-                "image_proj": image_proj_state_dict_2,
-                "ip_adapter": cross_attn_state_dict_2,
-            }
-        )
+        ip_adapter_2.update({"image_proj": image_proj_state_dict_2, "ip_adapter": cross_attn_state_dict_2})
 
         # forward pass ip_adapter_1
         model._load_ip_adapter_weights(ip_adapter_1)
@@ -827,12 +788,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         image_proj_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["image_proj"].items()}
         cross_attn_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["ip_adapter"].items()}
         ip_adapter_2 = {}
-        ip_adapter_2.update(
-            {
-                "image_proj": image_proj_state_dict_2,
-                "ip_adapter": cross_attn_state_dict_2,
-            }
-        )
+        ip_adapter_2.update({"image_proj": image_proj_state_dict_2, "ip_adapter": cross_attn_state_dict_2})
 
         # forward pass ip_adapter_1
         model._load_ip_adapter_weights(ip_adapter_1)
