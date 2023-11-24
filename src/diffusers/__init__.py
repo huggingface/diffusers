@@ -91,6 +91,7 @@ else:
             "UNet2DModel",
             "UNet3DConditionModel",
             "UNetMotionModel",
+            "UNetSpatioTemporalConditionModel",
             "VQModel",
         ]
     )
@@ -458,6 +459,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet2DModel,
             UNet3DConditionModel,
             UNetMotionModel,
+            UNetSpatioTemporalConditionModel,
             VQModel,
         )
         from .optimization import (

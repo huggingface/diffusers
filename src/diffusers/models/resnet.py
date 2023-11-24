@@ -1398,7 +1398,7 @@ class SpatioTemporalResBlock(nn.Module):
             .permute(0, 2, 1, 3, 4)
         )
 
-        if temb:
+        if temb is not None:
             temb = temb.reshape(batch_size, num_frames, -1)
 
         hidden_states = self.temporal_res_block(hidden_states, temb)

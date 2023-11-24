@@ -24,9 +24,9 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
-class UNet2DConditionOutput(BaseOutput):
+class UNetSpatioTemporalConditionOutput(BaseOutput):
     """
-    The output of [`UNet2DConditionModel`].
+    The output of [`UNetSpatioTemporalConditionModel`].
 
     Args:
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
@@ -36,7 +36,7 @@ class UNet2DConditionOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
-class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
+class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output.
@@ -178,7 +178,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
-        resnet_skip_time_act: bool = False,
         resnet_out_scale_factor: int = 1.0,
         time_embedding_type: str = "positional",
         time_embedding_dim: Optional[int] = None,
@@ -188,7 +187,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
-        attention_type: str = "default",
         class_embeddings_concat: bool = False,
         mid_block_only_cross_attention: Optional[bool] = None,
         cross_attention_norm: Optional[str] = None,
@@ -330,14 +328,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 num_attention_heads=num_attention_heads[i],
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
-                use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                attention_type=attention_type,
-                resnet_skip_time_act=resnet_skip_time_act,
-                resnet_out_scale_factor=resnet_out_scale_factor,
-                cross_attention_norm=cross_attention_norm,
-                attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
@@ -351,7 +343,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             block_out_channels[-1],
             temb_channels=blocks_time_embed_dim,
             transformer_layers_per_block=transformer_layers_per_block[-1],
-            dropout=dropout,
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
@@ -360,9 +351,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             num_attention_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
             dual_cross_attention=dual_cross_attention,
-            use_linear_projection=use_linear_projection,
             upcast_attention=upcast_attention,
-            attention_type=attention_type,
+            dropout=dropout,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
@@ -415,14 +405,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=dual_cross_attention,
-                use_linear_projection=use_linear_projection,
                 upcast_attention=upcast_attention,
                 resnet_time_scale_shift=resnet_time_scale_shift,
-                attention_type=attention_type,
-                resnet_skip_time_act=resnet_skip_time_act,
-                resnet_out_scale_factor=resnet_out_scale_factor,
-                cross_attention_norm=cross_attention_norm,
-                attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
@@ -641,7 +625,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
-    ) -> Union[UNet2DConditionOutput, Tuple]:
+    ) -> Union[UNetSpatioTemporalConditionOutput, Tuple]:
         r"""
         The [`UNet2DConditionModel`] forward method.
 
@@ -888,4 +872,4 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if not return_dict:
             return (sample,)
 
-        return UNet2DConditionOutput(sample=sample)
+        return UNetSpatioTemporalConditionOutput(sample=sample)
