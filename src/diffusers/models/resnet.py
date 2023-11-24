@@ -1377,8 +1377,8 @@ class SpatioTemporalResBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        num_frames: int,
+        temb: Optional[torch.FloatTensor] = None,
+        num_frames: int = 1,
         image_only_indicator: Optional[torch.Tensor] = None,
         scale: float = 1.0,
     ):
@@ -1386,7 +1386,7 @@ class SpatioTemporalResBlock(nn.Module):
 
         batch_frames, channels, height, width = hidden_states.shape
         batch_size = batch_frames // num_frames
-        
+
         hidden_states_mix = (
             hidden_states[None, :]
             .reshape(batch_size, num_frames, channels, height, width)
@@ -1397,8 +1397,10 @@ class SpatioTemporalResBlock(nn.Module):
             .reshape(batch_size, num_frames, channels, height, width)
             .permute(0, 2, 1, 3, 4)
         )
-        
-        temb = temb.reshape(batch_size, num_frames, -1)
+
+        if temb:
+            temb = temb.reshape(batch_size, num_frames, -1)
+
         hidden_states = self.temporal_res_block(hidden_states, temb)
         hidden_states = self.time_mixer(
             x_spatial=hidden_states_mix,
@@ -1463,7 +1465,9 @@ class AlphaBlender(nn.Module):
             elif ndims == 3:
                 alpha = alpha.reshape(-1)[:, None, None]
             else:
-                raise ValueError(f"Unexpected ndims {ndims}. Dimensions should be 3 or 5")
+                raise ValueError(
+                    f"Unexpected ndims {ndims}. Dimensions should be 3 or 5"
+                )
 
         else:
             raise NotImplementedError
