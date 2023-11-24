@@ -22,253 +22,10 @@ from .attention_processor import (
 from .embeddings import TimestepEmbedding, Timesteps
 from .lora import LoRACompatibleLinear
 from .modeling_utils import ModelMixin
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .resnet import Downsample2D, ResnetBlock2D, Upsample2D, TemporalResnetBlock, SpatioTemporalResBlock, AlphaBlender
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-class AlphaBlender(nn.Module):
-    strategies = ["learned", "fixed", "learned_with_images"]
-
-    def __init__(
-        self,
-        alpha: float,
-        merge_strategy: str = "learned_with_images",
-        rearrange_pattern: str = "b t -> (b t) 1 1",
-    ):
-        super().__init__()
-        self.merge_strategy = merge_strategy
-        self.rearrange_pattern = rearrange_pattern
-
-        assert merge_strategy in self.strategies, f"merge_strategy needs to be in {self.strategies}"
-
-        if self.merge_strategy == "fixed":
-            self.register_buffer("mix_factor", torch.Tensor([alpha]))
-        elif self.merge_strategy == "learned" or self.merge_strategy == "learned_with_images":
-            self.register_parameter("mix_factor", torch.nn.Parameter(torch.Tensor([alpha])))
-        else:
-            raise ValueError(f"unknown merge strategy {self.merge_strategy}")
-
-    def get_alpha(self, image_only_indicator: torch.Tensor) -> torch.Tensor:
-        if self.merge_strategy == "fixed":
-            alpha = self.mix_factor
-        elif self.merge_strategy == "learned":
-            alpha = torch.sigmoid(self.mix_factor)
-        elif self.merge_strategy == "learned_with_images":
-            assert image_only_indicator is not None, "need image_only_indicator ..."
-            alpha = torch.where(
-                image_only_indicator.bool(),
-                torch.ones(1, 1, device=image_only_indicator.device),
-                rearrange(torch.sigmoid(self.mix_factor), "... -> ... 1"),
-            )
-            alpha = rearrange(alpha, self.rearrange_pattern)
-        else:
-            raise NotImplementedError
-        return alpha
-
-    def forward(
-        self,
-        x_spatial: torch.Tensor,
-        x_temporal: torch.Tensor,
-        image_only_indicator: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        alpha = self.get_alpha(image_only_indicator)
-        x = alpha.to(x_spatial.dtype) * x_spatial + (1.0 - alpha).to(x_spatial.dtype) * x_temporal
-        return x
-
-
-class ResnetBlock3D(nn.Module):
-    r"""
-    A Resnet block.
-
-    Parameters:
-        in_channels (`int`): The number of channels in the input.
-        out_channels (`int`, *optional*, default to be `None`):
-            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
-        dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
-        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
-        groups (`int`, *optional*, default to `32`): The number of groups to use for the first normalization layer.
-        groups_out (`int`, *optional*, default to None):
-            The number of groups to use for the second normalization layer. if set to None, same as `groups`.
-        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
-        non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
-        time_embedding_norm (`str`, *optional*, default to `"default"` ): Time scale shift config.
-            By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift" or
-            "ada_group" for a stronger conditioning with scale and shift.
-        kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
-            [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
-        output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
-        use_in_shortcut (`bool`, *optional*, default to `True`):
-            If `True`, add a 1x1 nn.conv2d layer for skip-connection.
-        up (`bool`, *optional*, default to `False`): If `True`, add an upsample layer.
-        down (`bool`, *optional*, default to `False`): If `True`, add a downsample layer.
-        conv_shortcut_bias (`bool`, *optional*, default to `True`):  If `True`, adds a learnable bias to the
-            `conv_shortcut` output.
-        conv_2d_out_channels (`int`, *optional*, default to `None`): the number of channels in the output.
-            If None, same as `out_channels`.
-    """
-
-    def __init__(
-        self,
-        *,
-        in_channels: int,
-        out_channels: Optional[int] = None,
-        conv_shortcut: bool = False,
-        dropout: float = 0.0,
-        temb_channels: int = 512,
-        groups: int = 32,
-        groups_out: Optional[int] = None,
-        eps: float = 1e-6,
-        non_linearity: str = "swish",
-        kernel_size: Optional[torch.FloatTensor] = (3, 1, 1),
-        output_scale_factor: float = 1.0,
-        use_in_shortcut: Optional[bool] = None,
-        conv_shortcut_bias: bool = True,
-        conv_2d_out_channels: Optional[int] = None,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        out_channels = in_channels if out_channels is None else out_channels
-        self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
-        self.output_scale_factor = output_scale_factor
-
-        linear_cls = nn.Linear
-        conv_cls = nn.Conv3d
-
-        padding = [k // 2 for k in kernel_size]
-
-        if groups_out is None:
-            groups_out = groups
-
-        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=kernel_size, stride=1, padding=padding)
-
-        if temb_channels is not None:
-            self.time_emb_proj = linear_cls(temb_channels, out_channels)
-        else:
-            self.time_emb_proj = None
-
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
-
-        self.dropout = torch.nn.Dropout(dropout)
-        conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=kernel_size, stride=1, padding=padding)
-
-        self.nonlinearity = get_activation(non_linearity)
-
-        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
-
-        self.conv_shortcut = None
-        if self.use_in_shortcut:
-            self.conv_shortcut = conv_cls(
-                in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
-            )
-
-    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
-        hidden_states = input_tensor
-
-        hidden_states = self.norm1(hidden_states)
-
-        hidden_states = self.nonlinearity(hidden_states)
-
-        hidden_states = self.conv1(hidden_states)
-        if self.time_emb_proj is not None:
-            temb = self.time_emb_proj(temb)[:, :, :, None, None]
-
-        if temb is not None:
-            temb = rearrange(temb, "b t c ... -> b c t ...")
-            hidden_states = hidden_states + temb
-
-        hidden_states = self.norm2(hidden_states)
-
-        hidden_states = self.nonlinearity(hidden_states)
-
-        hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states)
-
-        if self.conv_shortcut is not None:
-            input_tensor = self.conv_shortcut(input_tensor)
-
-        output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
-
-        return output_tensor
-
-
-class VideoResBlock(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: Optional[int] = None,
-        dropout: float = 0.0,
-        temb_channels: int = 512,
-        groups: int = 32,
-        pre_norm: bool = True,
-        eps: float = 1e-6,
-        non_linearity: str = "swish",
-        time_embedding_norm: str = "default",  # default, scale_shift, ada_group, spatial
-        output_scale_factor: float = 1.0,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
-        merge_factor: float = 0.5,
-    ):
-        super().__init__()
-
-        self.spatial_res_block = ResnetBlock2D(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            temb_channels=temb_channels,
-            eps=eps,
-            groups=groups,
-            dropout=dropout,
-            time_embedding_norm=time_embedding_norm,
-            non_linearity=non_linearity,
-            output_scale_factor=output_scale_factor,
-            pre_norm=pre_norm,
-        )
-
-        self.temporal_res_block = ResnetBlock3D(
-            in_channels=out_channels if out_channels is not None else in_channels,
-            out_channels=out_channels if out_channels is not None else in_channels,
-            temb_channels=temb_channels,
-            eps=eps,
-            groups=groups,
-            dropout=dropout,
-            non_linearity=non_linearity,
-            output_scale_factor=output_scale_factor,
-            kernel_size=kernel_size_3d,
-        )
-
-        self.time_mixer = AlphaBlender(
-            alpha=merge_factor,
-            merge_strategy="learned_with_images",
-            rearrange_pattern="b t -> b 1 t 1 1",
-        )
-
-    def forward(
-        self,
-        input_tensor: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        num_video_frames: int,
-        image_only_indicator: Optional[torch.Tensor] = None,
-        scale: float = 1.0,
-    ):
-        hidden_states = self.spatial_res_block(input_tensor, temb, scale=scale)
-        hidden_states_mix = rearrange(hidden_states, "(b t) c h w -> b c t h w", t=num_video_frames)
-        hidden_states = rearrange(hidden_states, "(b t) c h w -> b c t h w", t=num_video_frames)
-        temb = rearrange(temb, "(b t) ... -> b t ...", t=num_video_frames)
-
-        hidden_states = self.temporal_res_block(hidden_states, temb)
-        hidden_states = self.time_mixer(
-            x_spatial=hidden_states_mix,
-            x_temporal=hidden_states,
-            image_only_indicator=image_only_indicator,
-        )
-
-        hidden_states = rearrange(hidden_states, "b c t h w -> (b t) c h w")
-
-        return hidden_states
 
 
 @maybe_allow_in_graph
@@ -743,6 +500,7 @@ class DownBlockVideo(nn.Module):
         downsample_padding: int = 1,
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
+        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         resnets = []
@@ -750,7 +508,7 @@ class DownBlockVideo(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -763,6 +521,7 @@ class DownBlockVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -790,7 +549,6 @@ class DownBlockVideo(nn.Module):
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
-
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
 
@@ -823,7 +581,7 @@ class DownBlockVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                     scale=scale,
                 )
@@ -880,7 +638,7 @@ class CrossAttnDownBlock2DVideo(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -893,6 +651,7 @@ class CrossAttnDownBlock2DVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
             attentions.append(
@@ -946,7 +705,6 @@ class CrossAttnDownBlock2DVideo(nn.Module):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         blocks = list(zip(self.resnets, self.attentions))
-
         for i, (resnet, attn) in enumerate(blocks):
             if self.training and self.gradient_checkpointing:  # TODO
 
@@ -978,7 +736,7 @@ class CrossAttnDownBlock2DVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                     scale=lora_scale,
                 )
@@ -1027,6 +785,7 @@ class UpBlockVideo(nn.Module):
         add_upsample: bool = True,
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
+        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         resnets = []
@@ -1036,7 +795,7 @@ class UpBlockVideo(nn.Module):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -1049,6 +808,7 @@ class UpBlockVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -1129,7 +889,7 @@ class UpBlockVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                     scale=scale,
                 )
@@ -1186,7 +946,7 @@ class CrossAttnUpBlock2DVideo(nn.Module):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -1199,6 +959,7 @@ class CrossAttnUpBlock2DVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
             attentions.append(
@@ -1299,7 +1060,7 @@ class CrossAttnUpBlock2DVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                     scale=lora_scale,
                 )
@@ -1358,7 +1119,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
 
         # there is always at least one resnet
         resnets = [
-            VideoResBlock(
+            SpatioTemporalResBlock(
                 in_channels=in_channels,
                 out_channels=in_channels,
                 temb_channels=temb_channels,
@@ -1371,6 +1132,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
                 pre_norm=resnet_pre_norm,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
+                merge_strategy=merge_strategy,
             )
         ]
         attentions = []
@@ -1393,7 +1155,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
             )
 
             resnets.append(
-                VideoResBlock(
+                SpatioTemporalResBlock(
                     in_channels=in_channels,
                     out_channels=in_channels,
                     temb_channels=temb_channels,
@@ -1406,6 +1168,7 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
                     pre_norm=resnet_pre_norm,
                     kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -1429,9 +1192,9 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
         hidden_states = self.resnets[0](
             hidden_states,
             temb,
-            num_video_frames=num_video_frames,
-            scale=lora_scale,
+            num_frames=num_video_frames,
             image_only_indicator=image_only_indicator,
+            scale=lora_scale,
         )
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.training and self.gradient_checkpointing:  # TODO
@@ -1474,9 +1237,9 @@ class UNetMidBlockCrossAttnVideo(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_video_frames=num_video_frames,
-                    scale=lora_scale,
+                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
+                    scale=lora_scale,
                 )
 
         return hidden_states
@@ -1510,6 +1273,7 @@ def get_down_block(
     dropout: float = 0.0,
     kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
+    merge_strategy: str = "learned_with_images",
     max_time_embed_period: int = 10000,
 ):
     # If attn head dim is not defined, we default it to the number of heads
@@ -1542,6 +1306,7 @@ def get_down_block(
             attention_type=attention_type,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
             max_time_embed_period=max_time_embed_period,
         )
     elif down_block_type == "DownBlockVideo":
@@ -1559,6 +1324,7 @@ def get_down_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
         )
     raise ValueError(f"{down_block_type} does not exist.")
 
@@ -1592,6 +1358,7 @@ def get_up_block(
     dropout: float = 0.0,
     kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
+    merge_strategy: str = "learned_with_images",
     max_time_embed_period: int = 10000,
 ) -> nn.Module:
     # If attn head dim is not defined, we default it to the number of heads
@@ -1625,6 +1392,7 @@ def get_up_block(
             attention_type=attention_type,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
             max_time_embed_period=max_time_embed_period,
         )
     elif up_block_type == "UpBlockVideo":
@@ -1643,6 +1411,7 @@ def get_up_block(
             resnet_time_scale_shift=resnet_time_scale_shift,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
         )
     raise ValueError(f"{up_block_type} does not exist.")
 
@@ -1965,6 +1734,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
+                merge_strategy=merge_strategy,
                 max_time_embed_period=max_time_embed_period,
             )
             self.down_blocks.append(down_block)
@@ -1988,6 +1758,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             attention_type=attention_type,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
+            merge_strategy=merge_strategy,
             max_time_embed_period=max_time_embed_period,
         )
 
@@ -2049,6 +1820,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
+                merge_strategy=merge_strategy,
                 max_time_embed_period=max_time_embed_period,
             )
             self.up_blocks.append(up_block)
@@ -2391,13 +2163,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         time_embeds = time_embeds.reshape((batch_size, -1))
         time_embeds = time_embeds.to(emb.dtype)
         aug_emb = self.add_embedding(time_embeds)
-
         emb = emb + aug_emb
 
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
 
-        
         # Flatten the batch and frames dimensions
         # sample: [batch, frames, channels, height, width] -> [batch * frames, channels, height, width]
         sample = sample.flatten(0, 1)

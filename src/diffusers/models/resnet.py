@@ -1454,11 +1454,11 @@ class AlphaBlender(nn.Module):
             )
 
             # (batch, channel, frames, height, width)
-            if ndims == 5: 
+            if ndims == 5:
                 alpha = alpha[:, None, :, None, None]
             # (batch*frames, height*width, channels)
-            elif ndims == 3: 
-                alpha = alpha2.reshape(-1)[:, None, None]
+            elif ndims == 3:
+                alpha = alpha.reshape(-1)[:, None, None]
             else:
                 raise ValueError(f"Unexpected ndims {ndims}. Dimensions should be 3 or 5")
 
