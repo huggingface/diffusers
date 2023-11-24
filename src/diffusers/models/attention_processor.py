@@ -24,10 +24,6 @@ from ..utils.torch_utils import maybe_allow_in_graph
 from .lora import LoRACompatibleLinear, LoRALinearLayer
 
 
-def exist(item):
-    return item is not None
-
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
