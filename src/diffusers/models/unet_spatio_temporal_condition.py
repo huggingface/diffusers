@@ -344,7 +344,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             block_out_channels[-1],
             temb_channels=blocks_time_embed_dim,
             transformer_layers_per_block=transformer_layers_per_block[-1],
-            dropout=dropout,
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
