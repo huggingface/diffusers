@@ -22,10 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..models.embeddings import ImageProjection, Resampler
-from ..models.modeling_utils import (
-    _LOW_CPU_MEM_USAGE_DEFAULT,
-    load_model_dict_into_meta,
-)
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     DIFFUSERS_CACHE,
     HF_HUB_OFFLINE,
@@ -65,11 +62,7 @@ class UNet2DConditionLoadersMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
 
-    def load_attn_procs(
-        self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        **kwargs,
-    ):
+    def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
         defined in
@@ -135,12 +128,7 @@ class UNet2DConditionLoadersMixin:
         ```
         """
         from ..models.attention_processor import CustomDiffusionAttnProcessor
-        from ..models.lora import (
-            LoRACompatibleConv,
-            LoRACompatibleLinear,
-            LoRAConv2dLayer,
-            LoRALinearLayer,
-        )
+        from ..models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -329,10 +317,7 @@ class UNet2DConditionLoadersMixin:
             for key, value_dict in custom_diffusion_grouped_dict.items():
                 if len(value_dict) == 0:
                     attn_processors[key] = CustomDiffusionAttnProcessor(
-                        train_kv=False,
-                        train_q_out=False,
-                        hidden_size=None,
-                        cross_attention_dim=None,
+                        train_kv=False, train_q_out=False, hidden_size=None, cross_attention_dim=None
                     )
                 else:
                     cross_attention_dim = value_dict["to_k_custom_diffusion.weight"].shape[1]
@@ -482,11 +467,7 @@ class UNet2DConditionLoadersMixin:
         is_custom_diffusion = any(
             isinstance(
                 x,
-                (
-                    CustomDiffusionAttnProcessor,
-                    CustomDiffusionAttnProcessor2_0,
-                    CustomDiffusionXFormersAttnProcessor,
-                ),
+                (CustomDiffusionAttnProcessor, CustomDiffusionAttnProcessor2_0, CustomDiffusionXFormersAttnProcessor),
             )
             for (_, x) in self.attn_processors.items()
         )
