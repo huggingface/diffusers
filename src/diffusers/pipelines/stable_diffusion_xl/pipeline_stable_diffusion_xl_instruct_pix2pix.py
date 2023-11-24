@@ -151,6 +151,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
             watermark output images. If not defined, it will default to True if the package is installed, otherwise no
             watermarker will be used.
     """
+
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
     _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
 
