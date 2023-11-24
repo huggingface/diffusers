@@ -144,6 +144,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         prediction_type: str = "epsilon",
         interpolation_type: str = "linear",
         use_karras_sigmas: Optional[bool] = False,
+        sigma_min: Optional[float] = None,
+        sigma_max: Optional[float] = None,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
@@ -301,15 +303,42 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
-
+        sigma_min = self.config.sigma_min if self.config.sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = self.config.sigma_max if self.config.sigma_max is not None else in_sigmas[0].item()
+        
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
+    
+    def get_scalings(self):
+        """
+        Get the scalings for the current timestep.
+        Returns:
+            `torch.FloatTensor`:
+                The scaling factors for the current timestep.
+        """
+
+        sigma = self.sigmas[self.step_index]
+
+        if self.config.prediction_type == "epsilon":
+            c_skip = torch.ones_like(sigma, device=sigma.device)
+            c_out = -sigma
+            c_in = 1 / (sigma**2 + 1.0) ** 0.5
+            c_noise = sigma.clone()
+        elif self.config.prediction_type == "v_prediction":
+            c_skip = 1.0 / (sigma**2 + 1.0)
+            c_out = -sigma / (sigma**2 + 1.0) ** 0.5
+            c_in = 1.0 / (sigma**2 + 1.0) ** 0.5
+            c_noise = 0.25 * sigma.log()
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+            )
+
+        return c_skip, c_out, c_in, c_noise
 
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
@@ -391,6 +420,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
+        c_skip, c_out, _, _ = self.get_scalings(timestep)
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
@@ -413,7 +443,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = sample - sigma_hat * model_output
         elif self.config.prediction_type == "v_prediction":
             # * c_out + input * c_skip
-            pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
+            # pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
+            pred_original_sample = model_output * c_out + sample * c_skip
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"

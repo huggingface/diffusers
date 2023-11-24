@@ -404,6 +404,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         added_time_ids = added_time_ids.to(device)
 
         # 4. Prepare timesteps
+        self.scheduler.use_karras_sigmas = True # TODO: remove this line once we have a better way to handle sigmas
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
@@ -432,11 +433,13 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+                _, _, _, c_noise = self.scheduler.get_scalings(t)
+
                 # Concatenate image_latents over channels dimention
                 latent_model_input = torch.cat([latent_model_input, image_latents], dim=2)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=image_embeddings).sample
+                noise_pred = self.unet(latent_model_input, c_noise, encoder_hidden_states=image_embeddings).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:
