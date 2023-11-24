@@ -1307,7 +1307,7 @@ class TemporalResnetBlock(nn.Module):
             temb = self.time_emb_proj(temb)[:, :, :, None, None]
 
         if temb is not None:
-            temb = temb.permute(0, 2, 1)
+            temb = temb.permute(0, 2, 1, 3, 4)
             hidden_states = hidden_states + temb
 
         hidden_states = self.norm2(hidden_states)
@@ -1382,10 +1382,10 @@ class SpatioTemporalResBlock(nn.Module):
         image_only_indicator: Optional[torch.Tensor] = None,
         scale: float = 1.0,
     ):
+        hidden_states = self.spatial_res_block(hidden_states, temb, scale=scale)
+
         batch_frames, channels, height, width = hidden_states.shape
         batch_size = batch_frames // num_frames
-
-        hidden_states = self.spatial_res_block(hidden_states, temb, scale=scale)
         
         hidden_states_mix = (
             hidden_states[None, :]
