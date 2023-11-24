@@ -2243,11 +2243,10 @@ class Kandi3AttnProcessor:
         x,
         context,
         context_mask=None,
-        image_mask=None
     ):
-        query = self._reshape(attn.to_query(x), h=attn.num_heads)
-        key = self._reshape(attn.to_key(context), h=attn.num_heads)
-        value = self._reshape(attn.to_value(context), h=attn.num_heads)
+        query = self._reshape(attn.to_q(x), h=attn.num_heads)
+        key = self._reshape(attn.to_k(context), h=attn.num_heads)
+        value = self._reshape(attn.to_v(context), h=attn.num_heads)
 
         attention_matrix = einsum('b h i d, b h j d -> b h i j', query, key)
 
@@ -2259,8 +2258,7 @@ class Kandi3AttnProcessor:
 
         out = einsum('b h i j, b h j d -> b h i d', attention_matrix, value)
         out = out.permute(0, 2, 1, 3).reshape(out.shape[0], out.shape[2], -1)
-        # out = rearrange(out, 'b h n d -> b n (h d)')
-        out = attn.output_layer(out)
+        out = attn.to_out[0](out)
         return out
 
 

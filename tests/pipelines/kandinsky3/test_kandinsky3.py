@@ -170,7 +170,15 @@ class KandinskyV3PipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_kandinskyV3(self):
-        pipe = KandinskyV3Pipeline.from_pretrained("/home/patrick/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+        from safetensors.torch import load_file 
+        from ...convert_kandinsky3_unet import convert_state_dict
+
+        state_dict = load_file("/home/patrick/kandinsky-3/unet/diffusion_pytorch_model.fp16.safetensors")
+        state_dict = convert_state_dict(state_dict)
+        unet = Kandinsky3UNet()
+        unet.load_state_dict(state_dict)
+        unet.to(torch.float16)
+        pipe = KandinskyV3Pipeline.from_pretrained("/home/patrick/kandinsky-3", unet=unet, variant="fp16", torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
