@@ -503,7 +503,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         self.vae.to(torch.float32)
         with torch.autocast("cuda", enabled=False):
-            frames = self.decode_latents(latents, num_frames)
+            frames = self.decode_latents(latents, num_frames, decoding_t)
 
         if not output_type == "latent":
             frames = tensor2vid(frames, self.image_processor, output_type=output_type)
