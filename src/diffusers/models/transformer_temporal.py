@@ -399,6 +399,12 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         num_frames_emb = num_frames_emb.repeat(batch_size, 1)
         num_frames_emb = num_frames_emb.reshape(-1)
         t_emb = self.time_proj(num_frames_emb)
+
+        # `Timesteps` does not contain any weights and will always return f32 tensors
+        # but time_embedding might actually be running in fp16. so we need to cast here.
+        # there might be better ways to encapsulate this.
+        t_emb = t_emb.to(dtype=hidden_states.dtype)
+        
         emb = self.time_pos_embed(t_emb)
         emb = emb[:, None, :]
 
