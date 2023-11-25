@@ -192,7 +192,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         latents = latents.flatten(0, 1)
 
         latents = 1 / self.vae.config.scaling_factor * latents
-        frames = self.vae.decode(latents).sample
+        frames = self.vae.decode(latents.float()).sample
 
         # [batch*frames, channels, height, width] -> [batch, channels, frames, height, width]
         frames = frames.reshape(-1, num_frames, *frames.shape[1:]).permute(0, 2, 1, 3, 4)
