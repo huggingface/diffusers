@@ -1873,8 +1873,8 @@ class MidBlockTemporalDecoder(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         attention_type: str = "default",
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
+        merge_factor: float = 0.0,
+        merge_strategy: str = "learned",
         max_time_embed_period: int = 10000,
         transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
     ):
@@ -1897,6 +1897,8 @@ class MidBlockTemporalDecoder(nn.Module):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -1969,8 +1971,8 @@ class UpBlockTemporalDecoder(nn.Module):
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         attention_type: str = "default",
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
+        merge_factor: float = 0.0,
+        merge_strategy: str = "learned",
         max_time_embed_period: int = 10000,
         transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
     ):
@@ -1992,6 +1994,8 @@ class UpBlockTemporalDecoder(nn.Module):
                     non_linearity=resnet_act_fn,
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
+                    merge_factor=merge_factor,
+                    merge_strategy=merge_strategy,
                 )
             )
         self.resnets = nn.ModuleList(resnets)
