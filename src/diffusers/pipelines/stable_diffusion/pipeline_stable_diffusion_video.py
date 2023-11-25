@@ -24,7 +24,7 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, UNetSpatioTemporalConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import BaseOutput, deprecate, logging
+from ...utils import BaseOutput, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
@@ -43,18 +43,33 @@ def append_dims(x, target_dims):
     return x[(...,) + (None,) * dims_to_append]
 
 
+def tensor2vid(video: torch.Tensor, processor, output_type="np"):
+    # Based on:
+    # https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
+
+    batch_size, channels, num_frames, height, width = video.shape
+    outputs = []
+    for batch_idx in range(batch_size):
+        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
+        batch_output = processor.postprocess(batch_vid, output_type)
+
+        outputs.append(batch_output)
+
+    return outputs
+
+
 @dataclass
 class StableDiffusionVideoPipelineOutput(BaseOutput):
     r"""
     Output class for zero-shot text-to-video pipeline.
 
     Args:
-        images (`[List[PIL.Image.Image]`, `np.ndarray`]):
+        frames (`[List[PIL.Image.Image]`, `np.ndarray`]):
             List of denoised PIL images of length `batch_size` or NumPy array of shape `(batch_size, height, width,
             num_channels)`.
     """
 
-    images: Union[List[PIL.Image.Image], np.ndarray]
+    frames: Union[List[PIL.Image.Image], np.ndarray]
 
 
 class StableDiffusionVideoPipeline(DiffusionPipeline):
@@ -172,17 +187,19 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         return add_time_ids
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    def decode_latents(self, latents):
-        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
-        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
+    def decode_latents(self, latents, num_frames):
+        # [batch, frames, channels, height, width] -> [batch*frames, channels, height, width]
+        latents = latents.flatten(0, 1)
 
         latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
+        frames = self.vae.decode(latents).sample
+
+        # [batch*frames, channels, height, width] -> [batch, channels, frames, height, width]
+        frames = frames.reshape(-1, num_frames, *frames.shape[1:]).permute(0, 2, 1, 3, 4)
+
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
+        frames = frames.float()
+        return frames
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -295,7 +312,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "pil",
+        output_type: Optional[str] = "np",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
@@ -478,21 +495,18 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         self.maybe_free_model_hooks()
 
-        if not output_type == "latent":
-            # latents [batch, num_frames, channels, height, width] -> [batch*num_frames, channels, height, width]
-            latents = latents.flatten(0, 1)
-            self.vae.to(torch.float32)
-            with torch.autocast("cuda", enabled=False):
-                image = self.vae.decode(latents.float() / self.vae.config.scaling_factor, return_dict=False)[0]
-        else:
-            image = latents
+        self.vae.to(torch.float32)
+        with torch.autocast("cuda", enabled=False):
+            frames = self.decode_latents(latents, num_frames)
 
-        do_denormalize = [True] * image.shape[0]
-        # image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+        if not output_type == "latent":
+            frames = tensor2vid(frames, self.image_processor, output_type=output_type)
+        else:
+            frames = latents
 
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return image
+            return frames
 
-        return StableDiffusionVideoPipelineOutput(images=image)
+        return StableDiffusionVideoPipelineOutput(frames=frames)
