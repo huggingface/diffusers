@@ -422,6 +422,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         image = self.image_processor.preprocess(image, height=height, width=width)
         image = image + cond_aug * torch.randn_like(image)
         image_latents = self._encode_vae_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
+        image_latents = image_latents.to(image_embeddings.dtype)
 
         # Repeat the image latents for each frame so we can concatenate them with the noise
         # image_latents [batch, channels, height, width] ->[batch, num_frames, channels, height, width]
