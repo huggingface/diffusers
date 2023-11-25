@@ -147,10 +147,12 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         return image_embeddings
 
     def _encode_vae_image(self, image: torch.Tensor, device, num_videos_per_prompt, do_classifier_free_guidance):
-        dtype = next(self.vae.parameters()).dtype
-        image = image.to(device=device, dtype=dtype)
-
-        image_latents = self.vae.encode(image).latent_dist.mode()
+        # encode image in fp32
+        self.vae.to(torch.float32)
+        image = image.to(device=device)
+        with torch.autocast("cuda", enabled=False):
+            image_latents = self.vae.encode(image).latent_dist.mode()
+        
         image_latents = self.vae.config.scaling_factor * image_latents
 
         if do_classifier_free_guidance:
@@ -501,6 +503,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         self.maybe_free_model_hooks()
 
+        # decode image in fp32
         self.vae.to(torch.float32)
         with torch.autocast("cuda", enabled=False):
             frames = self.decode_latents(latents, num_frames, decoding_t)
