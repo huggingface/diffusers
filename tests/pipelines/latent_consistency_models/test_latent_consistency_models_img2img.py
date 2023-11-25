@@ -97,6 +97,7 @@ class LatentConsistencyModelImg2ImgPipelineFastTests(
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
+            "image_encoder": None,
             "requires_safety_checker": False,
         }
         return components
