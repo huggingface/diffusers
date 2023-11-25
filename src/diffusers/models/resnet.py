@@ -1336,6 +1336,7 @@ class SpatioTemporalResBlock(nn.Module):
         groups: int = 32,
         pre_norm: bool = True,
         eps: float = 1e-6,
+        temporal_eps: Optional[float] = None,
         non_linearity: str = "swish",
         time_embedding_norm: str = "default",  # default, scale_shift, ada_group, spatial
         output_scale_factor: float = 1.0,
@@ -1362,7 +1363,7 @@ class SpatioTemporalResBlock(nn.Module):
             in_channels=out_channels if out_channels is not None else in_channels,
             out_channels=out_channels if out_channels is not None else in_channels,
             temb_channels=temb_channels,
-            eps=eps,
+            eps=temporal_eps if temporal_eps is not None else eps,
             groups=groups,
             dropout=dropout,
             non_linearity=non_linearity,
