@@ -307,16 +307,20 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def _decode(
-        self, z: torch.FloatTensor, return_dict: bool = True
+        self, z: torch.FloatTensor, num_frames: int, return_dict: bool = True
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         if self.use_tiling and (
             z.shape[-1] > self.tile_latent_min_size
             or z.shape[-2] > self.tile_latent_min_size
         ):
             return self.tiled_decode(z, return_dict=return_dict)
+        
+        batch_size = z.shape[0] // num_frames
+        # TODO: dont hardcode this
+        image_only_indicator = torch.zeros(batch_size, num_frames, dtype=z.dtype, device=z.device)
 
         z = self.post_quant_conv(z)
-        dec = self.decoder(z)
+        dec = self.decoder(z, num_frames=num_frames, image_only_indicator=image_only_indicator)
 
         if not return_dict:
             return (dec,)
@@ -325,7 +329,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
     @apply_forward_hook
     def decode(
-        self, z: torch.FloatTensor, return_dict: bool = True, generator=None
+        self, z: torch.FloatTensor, num_frames: int, return_dict: bool = True, generator=None
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         """
         Decode a batch of images.
@@ -342,10 +346,10 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
         """
         if self.use_slicing and z.shape[0] > 1:
-            decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
+            decoded_slices = [self._decode(z_slice, num_frames // 2).sample for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
         else:
-            decoded = self._decode(z).sample
+            decoded = self._decode(z, num_frames).sample
 
         if not return_dict:
             return (decoded,)

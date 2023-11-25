@@ -1136,8 +1136,8 @@ class TemporalDecoder(nn.Module):
         self,
         sample: torch.FloatTensor,
         image_only_indicator: torch.FloatTensor,
-        latent_embeds: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
+        latent_embeds: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         r"""The forward method of the `Decoder` class."""
 
