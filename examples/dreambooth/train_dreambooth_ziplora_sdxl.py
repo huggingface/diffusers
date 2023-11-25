@@ -60,8 +60,6 @@ from diffusers.training_utils import compute_snr, unet_lora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from ziplora_pytorch.utils import (
-    get_lora_weights,
-    merge_lora_weights,
     initialize_ziplora_layer,
     unet_ziplora_state_dict,
     ziplora_set_forward_type,

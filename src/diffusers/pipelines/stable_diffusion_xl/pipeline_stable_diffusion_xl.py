@@ -84,6 +84,54 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+def constitute_loras(
+    unet: UNet2DConditionModel, ziplora_name_or_path: str, **kwargs
+):
+    tensors = get_lora_weights(ziplora_name_or_path, **kwargs)
+    for attn_processor_name, attn_processor in unet.attn_processors.items():
+        # Parse the attention module.
+        attn_module = unet
+        for n in attn_processor_name.split(".")[:-1]:
+            attn_module = getattr(attn_module, n)
+        # Get prepared for ziplora
+        attn_name = ".".join(attn_processor_name.split(".")[:-1])
+        state_dict = merge_lora_weights_for_inference(tensors, key=attn_name)
+        # Set the `lora_layer` attribute of the attention-related matrices.
+        kwargs = {"state_dict": state_dict}
+
+        attn_module.to_q.set_lora_layer(
+            initialize_ziplora_layer_for_inference(
+                in_features=attn_module.to_q.in_features,
+                out_features=attn_module.to_q.out_features,
+                part="to_q",
+                **kwargs,
+            )
+        )
+        attn_module.to_k.set_lora_layer(
+            initialize_ziplora_layer_for_inference(
+                in_features=attn_module.to_k.in_features,
+                out_features=attn_module.to_k.out_features,
+                part="to_k",
+                **kwargs,
+            )
+        )
+        attn_module.to_v.set_lora_layer(
+            initialize_ziplora_layer_for_inference(
+                in_features=attn_module.to_v.in_features,
+                out_features=attn_module.to_v.out_features,
+                part="to_v",
+                **kwargs,
+            )
+        )
+        attn_module.to_out[0].set_lora_layer(
+            initialize_ziplora_layer_for_inference(
+                in_features=attn_module.to_out[0].in_features,
+                out_features=attn_module.to_out[0].out_features,
+                part="to_out.0",
+                **kwargs,
+            )
+        )
+    return unet
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):

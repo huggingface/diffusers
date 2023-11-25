@@ -226,77 +226,77 @@ class LoRALinearLayer(nn.Module):
         return up_hidden_states.to(orig_dtype)
 
 class ZipLoRALinearLayer(nn.Module):
-    r"""
-    A linear layer that is used with ZipLoRA.
-
-    Parameters:
-        in_features (`int`):
-            Number of input features.
-        out_features (`int`):
-            Number of output features.
-        rank (`int`, `optional`, defaults to 4):
-            The rank of the LoRA layer.
-        network_alpha (`float`, `optional`, defaults to `None`):
-            The value of the network alpha used for stable learning and preventing underflow. This value has the same
-            meaning as the `--network_alpha` option in the kohya-ss trainer script. See
-            https://github.com/darkstorm2150/sd-scripts/blob/main/docs/train_network_README-en.md#execute-learning
-        device (`torch.device`, `optional`, defaults to `None`):
-            The device to use for the layer's weights.
-        dtype (`torch.dtype`, `optional`, defaults to `None`):
-            The dtype to use for the layer's weights.
-    """
     def __init__(
         self,
         in_features: int,
         out_features: int,
         init_merger_value: Optional[float] = 1.0,
         init_merger_value_2: Optional[float] = 1.0,
+        use_merger: bool = True,
         device: Optional[Union[torch.device, str]] = None,
         dtype: Optional[torch.dtype] = None,
     ):
         super().__init__()
 
-        self.weight_1 = nn.Parameter(
-            torch.zeros((out_features, in_features), device=device, dtype=dtype),
-            requires_grad=False,
-        )
-        self.weight_2 = nn.Parameter(
-            torch.zeros((out_features, in_features), device=device, dtype=dtype),
-            requires_grad=False,
-        )
-        self.merger_1 = nn.Parameter(
-            torch.ones((in_features,), device=device, dtype=dtype) * init_merger_value
-        )
-        self.merger_2 = nn.Parameter(
-            torch.ones((in_features,), device=device, dtype=dtype) * init_merger_value_2
-        )
+        self.use_merger = use_merger
+
+        if self.use_merger:
+            self.weight_1 = nn.Parameter(
+                torch.zeros((out_features, in_features), device=device, dtype=dtype),
+                requires_grad=False,
+            )
+            self.weight_2 = nn.Parameter(
+                torch.zeros((out_features, in_features), device=device, dtype=dtype),
+                requires_grad=False,
+            )
+            self.merger_1 = nn.Parameter(
+                torch.ones((in_features,), device=device, dtype=dtype) * init_merger_value
+            )
+            self.merger_2 = nn.Parameter(
+                torch.ones((in_features,), device=device, dtype=dtype) * init_merger_value_2
+            )
+
+        else:
+            self.weight = nn.Parameter(
+                torch.zeros((out_features, in_features), device=device, dtype=dtype),
+                requires_grad=False,
+            )
+
         self.out_features = out_features
         self.in_features = in_features
-        self.forward_type = "merge"
+        self.forward_type = "merge" if self.use_merger else "weight"
 
     def set_forward_type(self, type: str = "merge"):
-        assert type in ["merge", "weight_1", "weight_2"]
+        assert type in ["merge", "weight"]
         self.forward_type = type
 
     def compute_mergers_similarity(self):
+        if not self.use_merger:
+            raise ValueError("Mergers are not applicable for this configuration.")
         return nn.functional.cosine_similarity(
             self.merger_1, self.merger_2, dim=0
         ).abs()
 
     def get_ziplora_weight(self):
+        if not self.use_merger:
+            raise ValueError("Mergers are not applicable for this configuration.")
         return self.merger_1 * self.weight_1 + self.merger_2 * self.weight_2
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         orig_dtype = hidden_states.dtype
-        dtype = self.weight_1.dtype
-        if self.forward_type == "merge":
-            weight = self.get_ziplora_weight()
-        elif self.forward_type == "weight_1":
-            weight = self.weight_1
-        elif self.forward_type == "weight_2":
-            weight = self.weight_2
+        dtype = (
+            self.weight_1.dtype if self.use_merger else self.weight.dtype
+        )
+        if self.use_merger:
+            if self.forward_type == "merge":
+                weight = self.get_ziplora_weight()
+            elif self.forward_type == "weight":
+                weight = self.weight_1
+            else:
+                raise ValueError(self.forward_type)
         else:
-            raise ValueError(self.forward_type)
+            weight = self.weight
+
         hidden_states = nn.functional.linear(hidden_states.to(dtype), weight=weight)
         return hidden_states.to(orig_dtype)
 
