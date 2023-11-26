@@ -468,6 +468,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         guidance_scales = torch.linspace(1.0, 2.5, num_frames).unsqueeze(0).to(device)
         guidance_scales = guidance_scales.repeat(batch_size * num_videos_per_prompt, 1)
         guidance_scales = append_dims(guidance_scales, latents.ndim)
+        guidance_scales = guidance_scales.to(latents.dtype)
         
         added_cond_kwargs = {"time_ids": added_time_ids}
 
