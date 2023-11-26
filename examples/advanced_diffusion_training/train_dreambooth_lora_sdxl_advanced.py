@@ -492,7 +492,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--train_text_encoder_frac",
         type=float,
-        default=0.5,
+        default=1.0,
         help=("The percentage of epochs to perform text encoder tuning"),
     )
 
