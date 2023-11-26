@@ -76,6 +76,7 @@ else:
         [
             "AsymmetricAutoencoderKL",
             "AutoencoderKL",
+            "AutoencoderKLTemporalDecoder",
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
@@ -265,6 +266,7 @@ else:
             "StableDiffusionPix2PixZeroPipeline",
             "StableDiffusionSAGPipeline",
             "StableDiffusionUpscalePipeline",
+            "StableDiffusionVideoPipeline",
             "StableDiffusionXLAdapterPipeline",
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
@@ -444,6 +446,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
+            AutoencoderKLTemporalDecoder,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             ControlNetModel,
@@ -612,6 +615,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionPix2PixZeroPipeline,
             StableDiffusionSAGPipeline,
             StableDiffusionUpscalePipeline,
+            StableDiffusionVideoPipeline,
             StableDiffusionXLAdapterPipeline,
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,

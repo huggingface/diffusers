@@ -144,6 +144,7 @@ else:
             "StableDiffusionPix2PixZeroPipeline",
             "StableDiffusionSAGPipeline",
             "StableDiffusionUpscalePipeline",
+            "StableDiffusionVideoPipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
         ]
@@ -367,6 +368,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionPix2PixZeroPipeline,
             StableDiffusionSAGPipeline,
             StableDiffusionUpscalePipeline,
+            StableDiffusionVideoPipeline,
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
         )
