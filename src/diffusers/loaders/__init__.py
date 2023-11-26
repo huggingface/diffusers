@@ -60,7 +60,7 @@ if is_torch_available():
 
     if is_transformers_available():
         _import_structure["single_file"].extend(["FromSingleFileMixin"])
-        _import_structure["lora"] = ["LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin"]
+        _import_structure["lora"] = ["LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin","ControlLoRAMixin"]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = ["IPAdapterMixin"]
 
@@ -73,7 +73,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 
         if is_transformers_available():
             from .ip_adapter import IPAdapterMixin
-            from .lora import LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin
+            from .lora import LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin, ControlLoRAMixin
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin
 else:
