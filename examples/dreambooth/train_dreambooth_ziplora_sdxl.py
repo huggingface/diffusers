@@ -56,11 +56,10 @@ from diffusers import (
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.models.lora import LoRALinearLayer, ZipLoRALinearLayer
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_snr, unet_lora_state_dict
+from diffusers.training_utils import compute_snr, unet_lora_state_dict, unet_ziplora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from ziplora_pytorch.utils import (
-    initialize_ziplora_layer,
     unet_ziplora_state_dict,
     ziplora_set_forward_type,
     ziplora_compute_mergers_similarity,
@@ -119,7 +118,6 @@ def merge_lora_weights(
         merged_weight = tensors[up_key] @ tensors[down_key]
         out[part] = merged_weight
     return out
-
 
 # TODO: This function should be removed once training scripts are rewritten in PEFT
 def text_encoder_lora_state_dict(text_encoder):

@@ -71,6 +71,21 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
 
     return lora_state_dict
 
+def unet_ziplora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
+    r"""
+    Returns:
+        A state dict containing just the LoRA parameters.
+    """
+    lora_state_dict = {}
+
+    for name, module in unet.named_modules():
+        if hasattr(module, "set_lora_layer"):
+            lora_layer = getattr(module, "lora_layer")
+            if lora_layer is not None:
+                assert hasattr(lora_layer, "get_ziplora_weight"), lora_layer
+                weight = lora_layer.get_ziplora_weight()
+                lora_state_dict[f"unet.{name}.lora.weight"] = weight
+    return lora_state_dict
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
 class EMAModel:

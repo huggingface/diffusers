@@ -79,6 +79,24 @@ def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
             mlp_module.fc1.lora_scale = lora_scale
             mlp_module.fc2.lora_scale = lora_scale
 
+def initialize_ziplora_layer(state_dict, state_dict_2, part, use_merger, **model_kwargs):
+    ziplora_layer = ZipLoRALinearLayer(**model_kwargs) is use_merger else ZipLoRALinearLayerInference(**model_kwargs)
+    if use_merger:
+        ziplora_layer.load_state_dict(
+            {
+                "weight": state_dict[part],
+            },
+            strict=False,
+        )
+    else:
+        ziplora_layer.load_state_dict(
+            {
+                "weight_1": state_dict[part],
+                "weight_2": state_dict_2[part],
+            },
+            strict=False,
+        )
+    return ziplora_layer
 
 class PatchedLoraProjection(torch.nn.Module):
     def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
@@ -299,6 +317,7 @@ class ZipLoRALinearLayer(nn.Module):
 
         hidden_states = nn.functional.linear(hidden_states.to(dtype), weight=weight)
         return hidden_states.to(orig_dtype)
+
 
 class LoRAConv2dLayer(nn.Module):
     r"""

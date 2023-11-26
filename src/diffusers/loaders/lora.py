@@ -1228,6 +1228,70 @@ class LoraLoaderMixin:
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
 
+    def fuse_ziplora(
+        self,
+        state_dict: tensor.Tensor,
+        key: str,
+        prefix: str = "unet.unet"
+    ):
+        target_key = prefix + key
+        out = {}
+        for part in ["to_q", "to_k", "to_v", "to_out.0"]:
+            down_key = target_key + f".{part}.lora.down.weight"
+            up_key = target_key + f".{part}.lora.up.weight"
+            merged_weight = tensors[up_key] @ tensors[down_key]
+            out[part] = merged_weight
+        return out
+
+    def constitute_ziplora_to_unet(self, 
+        unet:UNet2DConditionalModel, ziplora_name_or_path:str, **kwargs
+    ):
+        tensors = get_lora_weights(ziplora_name_or_path, **kwargs)
+        for attn_processor_name, attn_processor in unet.attn_processors.items():
+            # Parse the attention module.
+            attn_module = unet
+            for n in attn_processor_name.split(".")[:-1]:
+                attn_module = getattr(attn_module, n)
+            # Get prepared for ziplora
+            attn_name = ".".join(attn_processor_name.split(".")[:-1])
+            state_dict = merge_lora_weights_for_inference(tensors, key=attn_name)
+            # Set the `lora_layer` attribute of the attention-related matrices.
+            kwargs = {"state_dict": state_dict}
+
+            attn_module.to_q.set_lora_layer(
+                initialize_ziplora_layer_for_inference(
+                    in_features=attn_module.to_q.in_features,
+                    out_features=attn_module.to_q.out_features,
+                    part="to_q",
+                    **kwargs,
+                )
+            )
+            attn_module.to_k.set_lora_layer(
+                initialize_ziplora_layer_for_inference(
+                    in_features=attn_module.to_k.in_features,
+                    out_features=attn_module.to_k.out_features,
+                    part="to_k",
+                    **kwargs,
+                )
+            )
+            attn_module.to_v.set_lora_layer(
+                initialize_ziplora_layer_for_inference(
+                    in_features=attn_module.to_v.in_features,
+                    out_features=attn_module.to_v.out_features,
+                    part="to_v",
+                    **kwargs,
+                )
+            )
+            attn_module.to_out[0].set_lora_layer(
+                initialize_ziplora_layer_for_inference(
+                    in_features=attn_module.to_out[0].in_features,
+                    out_features=attn_module.to_out[0].out_features,
+                    part="to_out.0",
+                    **kwargs,
+                )
+            )
+        return unet
+
     def fuse_lora(
         self,
         fuse_unet: bool = True,
