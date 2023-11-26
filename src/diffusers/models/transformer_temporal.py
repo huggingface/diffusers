@@ -404,7 +404,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=hidden_states.dtype)
-        
+
         emb = self.time_pos_embed(t_emb)
         emb = emb[:, None, :]
 

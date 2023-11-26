@@ -37,9 +37,7 @@ def append_dims(x, target_dims):
     """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
     dims_to_append = target_dims - x.ndim
     if dims_to_append < 0:
-        raise ValueError(
-            f"input has {x.ndim} dims but target_dims is {target_dims}, which is less"
-        )
+        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
     return x[(...,) + (None,) * dims_to_append]
 
 
@@ -152,7 +150,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         image = image.to(device=device)
         with torch.autocast("cuda", enabled=False):
             image_latents = self.vae.encode(image).latent_dist.mode()
-        
+
         image_latents = self.vae.config.scaling_factor * image_latents
 
         if do_classifier_free_guidance:
@@ -443,7 +441,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         added_time_ids = added_time_ids.to(device)
 
         # 4. Prepare timesteps
-        self.scheduler.use_karras_sigmas = True # TODO: remove this line once we have a better way to handle sigmas
+        self.scheduler.use_karras_sigmas = True  # TODO: remove this line once we have a better way to handle sigmas
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
@@ -469,7 +467,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         guidance_scales = guidance_scales.repeat(batch_size * num_videos_per_prompt, 1)
         guidance_scales = append_dims(guidance_scales, latents.ndim)
         guidance_scales = guidance_scales.to(latents.dtype)
-        
+
         added_cond_kwargs = {"time_ids": added_time_ids}
 
         # 7. Denoising loop
@@ -479,7 +477,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                
+
                 _, _, _, c_noise = self.scheduler.get_scalings()
 
                 # Concatenate image_latents over channels dimention
@@ -487,7 +485,10 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
                 # predict the noise residual
                 noise_pred = self.unet(
-                    latent_model_input, c_noise, encoder_hidden_states=image_embeddings, added_cond_kwargs=added_cond_kwargs
+                    latent_model_input,
+                    c_noise,
+                    encoder_hidden_states=image_embeddings,
+                    added_cond_kwargs=added_cond_kwargs,
                 ).sample
 
                 # perform guidance

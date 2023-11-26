@@ -27,7 +27,9 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     resolution = 1
     for i in range(len(block_out_channels)):
         block_type = (
-            "CrossAttnDownBlockSpatioTemporal" if resolution in unet_params.attention_resolutions else "DownBlockSpatioTemporal"
+            "CrossAttnDownBlockSpatioTemporal"
+            if resolution in unet_params.attention_resolutions
+            else "DownBlockSpatioTemporal"
         )
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
@@ -35,7 +37,11 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnUpBlockSpatioTemporal" if resolution in unet_params.attention_resolutions else "UpBlockSpatioTemporal"
+        block_type = (
+            "CrossAttnUpBlockSpatioTemporal"
+            if resolution in unet_params.attention_resolutions
+            else "UpBlockSpatioTemporal"
+        )
         up_block_types.append(block_type)
         resolution //= 2
 
@@ -565,18 +571,17 @@ def renew_vae_resnet_paths(old_list, n_shave_prefix_segments=0, is_temporal=Fals
         new_item = new_item.replace("skip_connection", "conv_shortcut")
 
         new_item = new_item.replace("time_stack.", "temporal_res_block.")
-        
+
         # Spatial resnet
         new_item = new_item.replace("conv1", "spatial_res_block.conv1")
         new_item = new_item.replace("norm1", "spatial_res_block.norm1")
-        
+
         new_item = new_item.replace("conv2", "spatial_res_block.conv2")
         new_item = new_item.replace("norm2", "spatial_res_block.norm2")
-        
-        new_item = new_item.replace("nin_shortcut", "spatial_res_block.conv_shortcut")
-        
-        new_item = new_item.replace("mix_factor", "spatial_res_block.time_mixer.mix_factor")
 
+        new_item = new_item.replace("nin_shortcut", "spatial_res_block.conv_shortcut")
+
+        new_item = new_item.replace("mix_factor", "spatial_res_block.time_mixer.mix_factor")
 
         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
 
@@ -691,10 +696,9 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
 
     for i in range(num_up_blocks):
         block_id = num_up_blocks - 1 - i
-        
+
         resnets = [
-            key for key in up_blocks[block_id] if f"up.{block_id}" in key 
-            and f"up.{block_id}.upsample" not in key
+            key for key in up_blocks[block_id] if f"up.{block_id}" in key and f"up.{block_id}.upsample" not in key
         ]
 
         if f"decoder.up.{block_id}.upsample.conv.weight" in vae_state_dict:

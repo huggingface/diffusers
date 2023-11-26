@@ -305,14 +305,14 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         sigma_min = self.config.sigma_min if self.config.sigma_min is not None else in_sigmas[-1].item()
         sigma_max = self.config.sigma_max if self.config.sigma_max is not None else in_sigmas[0].item()
-        
+
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
         min_inv_rho = sigma_min ** (1 / rho)
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
-    
+
     def get_scalings(self):
         """
         Get the scalings for the current timestep.
@@ -354,7 +354,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             step_index = index_candidates[1]
         else:
             step_index = index_candidates[0]
-        
+
         step_index = index_candidates[0]
         self._step_index = step_index.item()
 

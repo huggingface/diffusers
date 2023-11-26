@@ -28,9 +28,7 @@ if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoder_kl"] = ["AutoencoderKL"]
-    _import_structure["autoencoder_kl_temporal_decoder"] = [
-        "AutoencoderKLTemporalDecoder"
-    ]
+    _import_structure["autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["controlnet"] = ["ControlNetModel"]
@@ -45,9 +43,7 @@ if is_torch_available():
     _import_structure["unet_2d_condition"] = ["UNet2DConditionModel"]
     _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
     _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
-    _import_structure["unet_spatio_temporal_condition"] = [
-        "UNetSpatioTemporalConditionModel"
-    ]
+    _import_structure["unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
     _import_structure["vq_model"] = ["VQModel"]
 
 if is_flax_available():
@@ -86,6 +82,4 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 else:
     import sys
 
-    sys.modules[__name__] = _LazyModule(
-        __name__, globals()["__file__"], _import_structure, module_spec=__spec__
-    )
+    sys.modules[__name__] = _LazyModule(__name__, globals()["__file__"], _import_structure, module_spec=__spec__)

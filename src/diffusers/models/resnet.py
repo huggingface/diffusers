@@ -110,9 +110,7 @@ class Downsample1D(nn.Module):
         self.name = name
 
         if use_conv:
-            self.conv = nn.Conv1d(
-                self.channels, self.out_channels, 3, stride=stride, padding=padding
-            )
+            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
         else:
             assert self.channels == self.out_channels
             self.conv = nn.AvgPool1d(kernel_size=stride, stride=stride)
@@ -191,13 +189,9 @@ class Upsample2D(nn.Module):
         # if `output_size` is passed we force the interpolation output
         # size and do not make use of `scale_factor=2`
         if output_size is None:
-            hidden_states = F.interpolate(
-                hidden_states, scale_factor=2.0, mode="nearest"
-            )
+            hidden_states = F.interpolate(hidden_states, scale_factor=2.0, mode="nearest")
         else:
-            hidden_states = F.interpolate(
-                hidden_states, size=output_size, mode="nearest"
-            )
+            hidden_states = F.interpolate(hidden_states, size=output_size, mode="nearest")
 
         # If the input is bfloat16, we cast back to bfloat16
         if dtype == torch.bfloat16:
@@ -211,10 +205,7 @@ class Upsample2D(nn.Module):
                 else:
                     hidden_states = self.conv(hidden_states)
             else:
-                if (
-                    isinstance(self.Conv2d_0, LoRACompatibleConv)
-                    and not USE_PEFT_BACKEND
-                ):
+                if isinstance(self.Conv2d_0, LoRACompatibleConv) and not USE_PEFT_BACKEND:
                     hidden_states = self.Conv2d_0(hidden_states, scale)
                 else:
                     hidden_states = self.Conv2d_0(hidden_states)
@@ -256,9 +247,7 @@ class Downsample2D(nn.Module):
         conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
 
         if use_conv:
-            conv = conv_cls(
-                self.channels, self.out_channels, 3, stride=stride, padding=padding
-            )
+            conv = conv_cls(self.channels, self.out_channels, 3, stride=stride, padding=padding)
         else:
             assert self.channels == self.out_channels
             conv = nn.AvgPool2d(kernel_size=stride, stride=stride)
@@ -272,9 +261,7 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(
-        self, hidden_states: torch.FloatTensor, scale: float = 1.0
-    ) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
         assert hidden_states.shape[1] == self.channels
 
         if self.use_conv and self.padding == 0:
@@ -318,9 +305,7 @@ class FirUpsample2D(nn.Module):
         super().__init__()
         out_channels = out_channels if out_channels else channels
         if use_conv:
-            self.Conv2d_0 = nn.Conv2d(
-                channels, out_channels, kernel_size=3, stride=1, padding=1
-            )
+            self.Conv2d_0 = nn.Conv2d(channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.use_conv = use_conv
         self.fir_kernel = fir_kernel
         self.out_channels = out_channels
@@ -422,9 +407,7 @@ class FirUpsample2D(nn.Module):
 
     def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
         if self.use_conv:
-            height = self._upsample_2d(
-                hidden_states, self.Conv2d_0.weight, kernel=self.fir_kernel
-            )
+            height = self._upsample_2d(hidden_states, self.Conv2d_0.weight, kernel=self.fir_kernel)
             height = height + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
         else:
             height = self._upsample_2d(hidden_states, kernel=self.fir_kernel, factor=2)
@@ -456,9 +439,7 @@ class FirDownsample2D(nn.Module):
         super().__init__()
         out_channels = out_channels if out_channels else channels
         if use_conv:
-            self.Conv2d_0 = nn.Conv2d(
-                channels, out_channels, kernel_size=3, stride=1, padding=1
-            )
+            self.Conv2d_0 = nn.Conv2d(channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.fir_kernel = fir_kernel
         self.use_conv = use_conv
         self.out_channels = out_channels
@@ -531,14 +512,10 @@ class FirDownsample2D(nn.Module):
 
     def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
         if self.use_conv:
-            downsample_input = self._downsample_2d(
-                hidden_states, weight=self.Conv2d_0.weight, kernel=self.fir_kernel
-            )
+            downsample_input = self._downsample_2d(hidden_states, weight=self.Conv2d_0.weight, kernel=self.fir_kernel)
             hidden_states = downsample_input + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
         else:
-            hidden_states = self._downsample_2d(
-                hidden_states, kernel=self.fir_kernel, factor=2
-            )
+            hidden_states = self._downsample_2d(hidden_states, kernel=self.fir_kernel, factor=2)
 
         return hidden_states
 
@@ -682,28 +659,19 @@ class ResnetBlock2D(nn.Module):
         elif self.time_embedding_norm == "spatial":
             self.norm1 = SpatialNorm(in_channels, temb_channels)
         else:
-            self.norm1 = torch.nn.GroupNorm(
-                num_groups=groups, num_channels=in_channels, eps=eps, affine=True
-            )
+            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        self.conv1 = conv_cls(
-            in_channels, out_channels, kernel_size=3, stride=1, padding=1
-        )
+        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
                 self.time_emb_proj = linear_cls(temb_channels, out_channels)
             elif self.time_embedding_norm == "scale_shift":
                 self.time_emb_proj = linear_cls(temb_channels, 2 * out_channels)
-            elif (
-                self.time_embedding_norm == "ada_group"
-                or self.time_embedding_norm == "spatial"
-            ):
+            elif self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
                 self.time_emb_proj = None
             else:
-                raise ValueError(
-                    f"unknown time_embedding_norm : {self.time_embedding_norm} "
-                )
+                raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
         else:
             self.time_emb_proj = None
 
@@ -712,15 +680,11 @@ class ResnetBlock2D(nn.Module):
         elif self.time_embedding_norm == "spatial":
             self.norm2 = SpatialNorm(out_channels, temb_channels)
         else:
-            self.norm2 = torch.nn.GroupNorm(
-                num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True
-            )
+            self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(
-            out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1
-        )
+        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -740,15 +704,9 @@ class ResnetBlock2D(nn.Module):
             elif kernel == "sde_vp":
                 self.downsample = partial(F.avg_pool2d, kernel_size=2, stride=2)
             else:
-                self.downsample = Downsample2D(
-                    in_channels, use_conv=False, padding=1, name="op"
-                )
+                self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
 
-        self.use_in_shortcut = (
-            self.in_channels != conv_2d_out_channels
-            if use_in_shortcut is None
-            else use_in_shortcut
-        )
+        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
@@ -769,10 +727,7 @@ class ResnetBlock2D(nn.Module):
     ) -> torch.FloatTensor:
         hidden_states = input_tensor
 
-        if (
-            self.time_embedding_norm == "ada_group"
-            or self.time_embedding_norm == "spatial"
-        ):
+        if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm1(hidden_states, temb)
         else:
             hidden_states = self.norm1(hidden_states)
@@ -806,11 +761,7 @@ class ResnetBlock2D(nn.Module):
                 else self.downsample(hidden_states)
             )
 
-        hidden_states = (
-            self.conv1(hidden_states, scale)
-            if not USE_PEFT_BACKEND
-            else self.conv1(hidden_states)
-        )
+        hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
@@ -824,10 +775,7 @@ class ResnetBlock2D(nn.Module):
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
 
-        if (
-            self.time_embedding_norm == "ada_group"
-            or self.time_embedding_norm == "spatial"
-        ):
+        if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm2(hidden_states, temb)
         else:
             hidden_states = self.norm2(hidden_states)
@@ -839,17 +787,11 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
-        hidden_states = (
-            self.conv2(hidden_states, scale)
-            if not USE_PEFT_BACKEND
-            else self.conv2(hidden_states)
-        )
+        hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
             input_tensor = (
-                self.conv_shortcut(input_tensor, scale)
-                if not USE_PEFT_BACKEND
-                else self.conv_shortcut(input_tensor)
+                self.conv_shortcut(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv_shortcut(input_tensor)
             )
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
@@ -891,9 +833,7 @@ class Conv1dBlock(nn.Module):
     ):
         super().__init__()
 
-        self.conv1d = nn.Conv1d(
-            inp_channels, out_channels, kernel_size, padding=kernel_size // 2
-        )
+        self.conv1d = nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2)
         self.group_norm = nn.GroupNorm(n_groups, out_channels)
         self.mish = get_activation(activation)
 
@@ -935,9 +875,7 @@ class ResidualTemporalBlock1D(nn.Module):
         self.time_emb = nn.Linear(embed_dim, out_channels)
 
         self.residual_conv = (
-            nn.Conv1d(inp_channels, out_channels, 1)
-            if inp_channels != out_channels
-            else nn.Identity()
+            nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
         )
 
     def forward(self, inputs: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
@@ -1073,9 +1011,7 @@ def upfirdn2d_native(
     out = F.pad(out, [0, 0, 0, up_x - 1, 0, 0, 0, up_y - 1])
     out = out.view(-1, in_h * up_y, in_w * up_x, minor)
 
-    out = F.pad(
-        out, [0, 0, max(pad_x0, 0), max(pad_x1, 0), max(pad_y0, 0), max(pad_y1, 0)]
-    )
+    out = F.pad(out, [0, 0, max(pad_x0, 0), max(pad_x1, 0), max(pad_y0, 0), max(pad_y1, 0)])
     out = out.to(tensor.device)  # Move back to mps if necessary
     out = out[
         :,
@@ -1085,9 +1021,7 @@ def upfirdn2d_native(
     ]
 
     out = out.permute(0, 3, 1, 2)
-    out = out.reshape(
-        [-1, 1, in_h * up_y + pad_y0 + pad_y1, in_w * up_x + pad_x0 + pad_x1]
-    )
+    out = out.reshape([-1, 1, in_h * up_y + pad_y0 + pad_y1, in_w * up_x + pad_x0 + pad_x1])
     w = torch.flip(kernel, [0, 1]).view(1, 1, kernel_h, kernel_w)
     out = F.conv2d(out, w)
     out = out.reshape(
@@ -1159,9 +1093,7 @@ class TemporalConvLayer(nn.Module):
 
     def forward(self, hidden_states: torch.Tensor, num_frames: int = 1) -> torch.Tensor:
         hidden_states = (
-            hidden_states[None, :]
-            .reshape((-1, num_frames) + hidden_states.shape[1:])
-            .permute(0, 2, 1, 3, 4)
+            hidden_states[None, :].reshape((-1, num_frames) + hidden_states.shape[1:]).permute(0, 2, 1, 3, 4)
         )
 
         identity = hidden_states
@@ -1173,8 +1105,7 @@ class TemporalConvLayer(nn.Module):
         hidden_states = identity + hidden_states
 
         hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(
-            (hidden_states.shape[0] * hidden_states.shape[2], -1)
-            + hidden_states.shape[3:]
+            (hidden_states.shape[0] * hidden_states.shape[2], -1) + hidden_states.shape[3:]
         )
         return hidden_states
 
@@ -1242,9 +1173,7 @@ class TemporalResnetBlock(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        self.norm1 = torch.nn.GroupNorm(
-            num_groups=groups, num_channels=in_channels, eps=eps, affine=True
-        )
+        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
         self.conv1 = conv_cls(
             in_channels,
@@ -1259,9 +1188,7 @@ class TemporalResnetBlock(nn.Module):
         else:
             self.time_emb_proj = None
 
-        self.norm2 = torch.nn.GroupNorm(
-            num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True
-        )
+        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
@@ -1275,11 +1202,7 @@ class TemporalResnetBlock(nn.Module):
 
         self.nonlinearity = get_activation(non_linearity)
 
-        self.use_in_shortcut = (
-            self.in_channels != conv_2d_out_channels
-            if use_in_shortcut is None
-            else use_in_shortcut
-        )
+        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
@@ -1292,9 +1215,7 @@ class TemporalResnetBlock(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(
-        self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor
-    ) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
@@ -1373,7 +1294,9 @@ class SpatioTemporalResBlock(nn.Module):
         )
 
         self.time_mixer = AlphaBlender(
-            alpha=merge_factor, merge_strategy=merge_strategy, switch_spatial_to_temporal_mix=switch_spatial_to_temporal_mix
+            alpha=merge_factor,
+            merge_strategy=merge_strategy,
+            switch_spatial_to_temporal_mix=switch_spatial_to_temporal_mix,
         )
 
     def forward(
@@ -1390,14 +1313,10 @@ class SpatioTemporalResBlock(nn.Module):
         batch_size = batch_frames // num_frames
 
         hidden_states_mix = (
-            hidden_states[None, :]
-            .reshape(batch_size, num_frames, channels, height, width)
-            .permute(0, 2, 1, 3, 4)
+            hidden_states[None, :].reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
         )
         hidden_states = (
-            hidden_states[None, :]
-            .reshape(batch_size, num_frames, channels, height, width)
-            .permute(0, 2, 1, 3, 4)
+            hidden_states[None, :].reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
         )
 
         if temb is not None:
@@ -1410,9 +1329,7 @@ class SpatioTemporalResBlock(nn.Module):
             image_only_indicator=image_only_indicator,
         )
 
-        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(
-            batch_frames, channels, height, width
-        )
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(batch_frames, channels, height, width)
         return hidden_states
 
 
@@ -1427,21 +1344,14 @@ class AlphaBlender(nn.Module):
     ):
         super().__init__()
         self.merge_strategy = merge_strategy
-        self.switch_spatial_to_temporal_mix = switch_spatial_to_temporal_mix # For TemporalVAE
+        self.switch_spatial_to_temporal_mix = switch_spatial_to_temporal_mix  # For TemporalVAE
 
-        assert (
-            merge_strategy in self.strategies
-        ), f"merge_strategy needs to be in {self.strategies}"
+        assert merge_strategy in self.strategies, f"merge_strategy needs to be in {self.strategies}"
 
         if self.merge_strategy == "fixed":
             self.register_buffer("mix_factor", torch.Tensor([alpha]))
-        elif (
-            self.merge_strategy == "learned"
-            or self.merge_strategy == "learned_with_images"
-        ):
-            self.register_parameter(
-                "mix_factor", torch.nn.Parameter(torch.Tensor([alpha]))
-            )
+        elif self.merge_strategy == "learned" or self.merge_strategy == "learned_with_images":
+            self.register_parameter("mix_factor", torch.nn.Parameter(torch.Tensor([alpha])))
         else:
             raise ValueError(f"Unknown merge strategy {self.merge_strategy}")
 
@@ -1469,9 +1379,7 @@ class AlphaBlender(nn.Module):
             elif ndims == 3:
                 alpha = alpha.reshape(-1)[:, None, None]
             else:
-                raise ValueError(
-                    f"Unexpected ndims {ndims}. Dimensions should be 3 or 5"
-                )
+                raise ValueError(f"Unexpected ndims {ndims}. Dimensions should be 3 or 5")
 
         else:
             raise NotImplementedError
