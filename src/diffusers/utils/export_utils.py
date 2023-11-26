@@ -3,7 +3,7 @@ import random
 import struct
 import tempfile
 from contextlib import contextmanager
-from typing import List
+from typing import List, Union
 
 import numpy as np
 import PIL.Image
@@ -115,13 +115,18 @@ def export_to_obj(mesh, output_obj_path: str = None):
         f.writelines("\n".join(combined_data))
 
 
-def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
+def export_to_video(
+    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None
+) -> str:
     if is_opencv_available():
         import cv2
     else:
         raise ImportError(BACKENDS_MAPPING["opencv"][1].format("export_to_video"))
     if output_video_path is None:
         output_video_path = tempfile.NamedTemporaryFile(suffix=".mp4").name
+
+    if isinstance(video_frames[0], PIL.Image.Image):
+        video_frames = [np.array(frame) for frame in video_frames]
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     h, w, c = video_frames[0].shape
