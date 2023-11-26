@@ -59,12 +59,6 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr, unet_lora_state_dict, unet_ziplora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-from ziplora_pytorch.utils import (
-    unet_ziplora_state_dict,
-    ziplora_set_forward_type,
-    ziplora_compute_mergers_similarity,
-    insert_ziplora_to_unet,
-)
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -118,6 +112,28 @@ def merge_lora_weights(
         merged_weight = tensors[up_key] @ tensors[down_key]
         out[part] = merged_weight
     return out
+
+def ziplora_set_forward_type(unet: UNet2DConditionModel, type: str = "merge"):
+    assert type in ["merge", "weight_1", "weight_2"]
+
+    for name, module in unet.named_modules():
+        if hasattr(module, "set_lora_layer"):
+            lora_layer = getattr(module, "lora_layer")
+            if lora_layer is not None:
+                assert hasattr(lora_layer, "set_forward_type"), lora_layer
+                lora_layer.set_forward_type(type)
+    return unet
+
+def ziplora_compute_mergers_similarity(unet):
+    similarities = []
+    for name, module in unet.named_modules():
+        if hasattr(module, "set_lora_layer"):
+            lora_layer = getattr(module, "lora_layer")
+            if lora_layer is not None:
+                assert hasattr(lora_layer, "compute_mergers_similarity"), lora_layer
+                similarities.append(lora_layer.compute_mergers_similarity())
+    similarity = torch.stack(similarities).sum(dim=0)
+    return similarity
 
 # TODO: This function should be removed once training scripts are rewritten in PEFT
 def text_encoder_lora_state_dict(text_encoder):
