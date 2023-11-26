@@ -311,7 +311,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         width: int = 1024,
         num_frames: int = 14,
         num_inference_steps: int = 50,
-        guidance_scale: float = 7.5,
+        min_guidance_scale: float = 1.0,
+        max_guidance_scale: float = 2.5,
         fps_id: int = 6,
         motion_bucket_id: int = 127,
         cond_aug: int = 0.02,
@@ -413,7 +414,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
+        do_classifier_free_guidance = max_guidance_scale > 1.0
 
         # 3. Encode input image
         image_embeddings = self._encode_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
@@ -462,15 +463,15 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # TODO: take the min and max scales as arguments
-        guidance_scales = torch.linspace(1.0, 2.5, num_frames).unsqueeze(0).to(device)
-        guidance_scales = guidance_scales.repeat(batch_size * num_videos_per_prompt, 1)
-        guidance_scales = append_dims(guidance_scales, latents.ndim)
-        guidance_scales = guidance_scales.to(latents.dtype)
+        # 7. Prepare guidance scale
+        guidance_scale = torch.linspace(min_guidance_scale, max_guidance_scale, num_frames).unsqueeze(0)
+        guidance_scale = guidance_scale.to(device, latents.dtype)
+        guidance_scale = guidance_scale.repeat(batch_size * num_videos_per_prompt, 1)
+        guidance_scale = append_dims(guidance_scale, latents.ndim)
 
         added_cond_kwargs = {"time_ids": added_time_ids}
 
-        # 7. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -494,7 +495,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 # perform guidance
                 if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scales * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
