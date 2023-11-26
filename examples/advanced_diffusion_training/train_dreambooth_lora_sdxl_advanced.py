@@ -730,19 +730,6 @@ class TokenEmbeddingsHandler:
     def device(self):
         return self.text_encoders[0].device
 
-    # def _load_embeddings(self, loaded_embeddings, tokenizer, text_encoder):
-    #     # Assuming new tokens are of the format <s_i>
-    #     self.inserting_toks = [f"<s{i}>" for i in range(loaded_embeddings.shape[0])]
-    #     special_tokens_dict = {"additional_special_tokens": self.inserting_toks}
-    #     tokenizer.add_special_tokens(special_tokens_dict)
-    #     text_encoder.resize_token_embeddings(len(tokenizer))
-    #
-    #     self.train_ids = tokenizer.convert_tokens_to_ids(self.inserting_toks)
-    #     assert self.train_ids is not None, "New tokens could not be converted to IDs."
-    #     text_encoder.text_model.embeddings.token_embedding.weight.data[
-    #         self.train_ids
-    #     ] = loaded_embeddings.to(device=self.device).to(dtype=self.dtype)
-
     @torch.no_grad()
     def retract_embeddings(self):
         for idx, text_encoder in enumerate(self.text_encoders):
@@ -763,15 +750,6 @@ class TokenEmbeddingsHandler:
 
             new_embeddings = new_embeddings * (off_ratio**0.1)
             text_encoder.text_model.embeddings.token_embedding.weight.data[index_updates] = new_embeddings
-
-    # def load_embeddings(self, file_path: str):
-    #     with safe_open(file_path, framework="pt", device=self.device.type) as f:
-    #         for idx in range(len(self.text_encoders)):
-    #             text_encoder = self.text_encoders[idx]
-    #             tokenizer = self.tokenizers[idx]
-    #
-    #             loaded_embeddings = f.get_tensor(f"text_encoders_{idx}")
-    #             self._load_embeddings(loaded_embeddings, tokenizer, text_encoder)
 
 
 class DreamBoothDataset(Dataset):
@@ -1250,6 +1228,8 @@ def main(args):
         text_lora_parameters_one = []
         for name, param in text_encoder_one.named_parameters():
             if "token_embedding" in name:
+                # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
+                param = param.to(dtype=torch.float32)
                 param.requires_grad = True
                 text_lora_parameters_one.append(param)
             else:
@@ -1257,6 +1237,8 @@ def main(args):
         text_lora_parameters_two = []
         for name, param in text_encoder_two.named_parameters():
             if "token_embedding" in name:
+                # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
+                param = param.to(dtype=torch.float32)
                 param.requires_grad = True
                 text_lora_parameters_two.append(param)
             else:
