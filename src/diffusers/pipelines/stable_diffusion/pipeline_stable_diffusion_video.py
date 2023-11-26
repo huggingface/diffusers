@@ -22,7 +22,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, UNetSpatioTemporalConditionModel
+from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import randn_tensor
@@ -101,7 +101,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        vae: AutoencoderKL,
+        vae: AutoencoderKLTemporalDecoder,
         image_encoder: CLIPVisionModelWithProjection,
         unet: UNetSpatioTemporalConditionModel,
         scheduler: KarrasDiffusionSchedulers,
