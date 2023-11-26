@@ -199,7 +199,9 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # decode decoding_t frames at a time to avoid OOM
         frames = []
         for i in range(0, latents.shape[0], decoding_t):
-            frames.append(self.vae.decode(latents[i : i + decoding_t], num_frames).sample)
+            num_frames_in = latents[i : i + decoding_t].shape[0]
+            frame = self.vae.decode(latents[i : i + decoding_t], num_frames_in).sample
+            frames.append(frame)
         frames = torch.cat(frames, dim=0)
 
         # [batch*frames, channels, height, width] -> [batch, channels, frames, height, width]
