@@ -105,6 +105,7 @@ def save_model_card(
     images=None,
     base_model=str,
     train_text_encoder=False,
+    train_text_encoder_ti=False,
     instance_prompt=str,
     validation_prompt=str,
     repo_folder=None,
@@ -148,6 +149,8 @@ license: openrail++
 The weights were trained  using [DreamBooth](https://dreambooth.github.io/).
 
 LoRA for the text encoder was enabled: {train_text_encoder}.
+
+Pivotal tuning was enabled: {train_text_encoder_ti}.
 
 Special VAE used for training: {vae_path}.
 
@@ -1964,6 +1967,7 @@ def main(args):
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 train_text_encoder=args.train_text_encoder,
+                train_text_encoder_ti=args.train_text_encoder_ti,
                 instance_prompt=args.instance_prompt,
                 validation_prompt=args.validation_prompt,
                 repo_folder=args.output_dir,
