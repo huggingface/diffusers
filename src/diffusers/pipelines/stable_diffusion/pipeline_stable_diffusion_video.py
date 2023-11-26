@@ -151,8 +151,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         with torch.autocast("cuda", enabled=False):
             image_latents = self.vae.encode(image).latent_dist.mode()
 
-        image_latents = self.vae.config.scaling_factor * image_latents
-
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
 
