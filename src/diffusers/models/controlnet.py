@@ -20,6 +20,8 @@ from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalControlnetMixin
+from ..loaders import ControlLoRAMixin, FromOriginalControlnetMixin, UNet2DConditionLoadersMixin
+from ..models.lora import LoRACompatibleConv
 from ..utils import BaseOutput, logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -80,7 +82,7 @@ class ControlNetConditioningEmbedding(nn.Module):
     ):
         super().__init__()
 
-        self.conv_in = nn.Conv2d(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
+        self.conv_in = LoRACompatibleConv(conditioning_channels, block_out_channels[0], kernel_size=3, padding=1)
 
         self.blocks = nn.ModuleList([])
 
@@ -106,8 +108,9 @@ class ControlNetConditioningEmbedding(nn.Module):
 
         return embedding
 
-
-class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
+class ControlNetModel(
+    ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, FromOriginalControlnetMixin, ControlLoRAMixin
+):
     """
     A ControlNet model.
 
@@ -250,7 +253,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         # input
         conv_in_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
-        self.conv_in = nn.Conv2d(
+        self.conv_in = LoRACompatibleConv(
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
         )
 

@@ -179,6 +179,7 @@ class LoraLoaderMixin:
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        controlnet: bool=False,
         **kwargs,
     ):
         r"""
@@ -310,20 +311,21 @@ class LoraLoaderMixin:
 
         network_alphas = None
         # TODO: replace it with a method from `state_dict_utils`
-        if all(
-            (
-                k.startswith("lora_te_")
-                or k.startswith("lora_unet_")
-                or k.startswith("lora_te1_")
-                or k.startswith("lora_te2_")
-            )
-            for k in state_dict.keys()
-        ):
-            # Map SDXL blocks correctly.
-            if unet_config is not None:
-                # use unet config to remap block numbers
-                state_dict = cls._maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
-            state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
+        if not controlnet:
+            if all(
+                (
+                    k.startswith("lora_te_")
+                    or k.startswith("lora_unet_")
+                    or k.startswith("lora_te1_")
+                    or k.startswith("lora_te2_")
+                )
+                for k in state_dict.keys()
+            ):
+                # Map SDXL blocks correctly.
+                if unet_config is not None:
+                    # use unet config to remap block numbers
+                    state_dict = cls._maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
+                state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
 
@@ -1867,3 +1869,105 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         else:
             self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder)
             self._remove_text_encoder_monkey_patch_classmethod(self.text_encoder_2)
+
+
+class ControlLoRAMixin(LoraLoaderMixin):
+    # Simplify ControlNet LoRA loading.
+    def load_lora_weights(self, pretrained_model_name_or_path_or_dict, **kwargs):
+        from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
+        from .pipelines.stable_diffusion.convert_from_ckpt import convert_ldm_unet_checkpoint
+
+        state_dict, _ = self.lora_state_dict(pretrained_model_name_or_path_or_dict, controlnet=True, **kwargs)
+        controlnet_config = kwargs.pop("controlnet_config", None)
+        if controlnet_config is None:
+            raise ValueError("Must provide a `controlnet_config`.")
+
+        # ControlNet LoRA has a mix of things. Some parameters correspond to LoRA and some correspond
+        # to the ones belonging to the original state_dict (initialized from the underlying UNet).
+        # So, we first map the LoRA parameters and then we load the remaining state_dict into
+        # the ControlNet.
+        converted_state_dict = convert_ldm_unet_checkpoint(
+            state_dict, controlnet=True, config=controlnet_config, skip_extract_state_dict=True, controlnet_lora=True
+        )
+
+        # Load whatever is matching.
+        load_state_dict_results = self.load_state_dict(converted_state_dict, strict=False)
+        if not all("lora" in k for k in load_state_dict_results.unexpected_keys):
+            raise ValueError(
+                f"The unexpected keys must only belong to LoRA parameters at this point, but found the following keys that are non-LoRA\n: {load_state_dict_results.unexpected_keys}"
+            )
+
+        # Filter out the rest of the state_dict for handling LoRA.
+        remaining_state_dict = {
+            k: v for k, v in converted_state_dict.items() if k in load_state_dict_results.unexpected_keys
+        }
+
+        # Handle LoRA.
+        lora_grouped_dict = defaultdict(dict)
+        lora_layers_list = []
+
+        all_keys = list(remaining_state_dict.keys())
+        for key in all_keys:
+            value = remaining_state_dict.pop(key)
+            attn_processor_key, sub_key = ".".join(key.split(".")[:-3]), ".".join(key.split(".")[-3:])
+            lora_grouped_dict[attn_processor_key][sub_key] = value
+
+        if len(remaining_state_dict) > 0:
+            raise ValueError(
+                f"The `remaining_state_dict` has to be empty at this point but has the following keys \n\n {', '.join(state_dict.keys())}"
+            )
+
+        for key, value_dict in lora_grouped_dict.items():
+            attn_processor = self
+            for sub_key in key.split("."):
+                attn_processor = getattr(attn_processor, sub_key)
+
+            # Process non-attention layers, which don't have to_{k,v,q,out_proj}_lora layers
+            # or add_{k,v,q,out_proj}_proj_lora layers.
+            rank = value_dict["lora.down.weight"].shape[0]
+
+            if isinstance(attn_processor, LoRACompatibleConv):
+                in_features = attn_processor.in_channels
+                out_features = attn_processor.out_channels
+                kernel_size = attn_processor.kernel_size
+
+                lora = LoRAConv2dLayer(
+                    in_features=in_features,
+                    out_features=out_features,
+                    rank=rank,
+                    kernel_size=kernel_size,
+                    stride=attn_processor.stride,
+                    padding=attn_processor.padding,
+                    # initial_weight=attn_processor.weight,
+                    # initial_bias=attn_processor.bias,
+                )
+            elif isinstance(attn_processor, LoRACompatibleLinear):
+                lora = LoRALinearLayer(
+                    attn_processor.in_features,
+                    attn_processor.out_features,
+                    rank,
+                    # initial_weight=attn_processor.weight,
+                    # initial_bias=attn_processor.bias,
+                )
+            else:
+                raise ValueError(f"Module {key} is not a LoRACompatibleConv or LoRACompatibleLinear module.")
+
+            value_dict = {k.replace("lora.", ""): v for k, v in value_dict.items()}
+            load_state_dict_results = lora.load_state_dict(value_dict, strict=False)
+            if not all("initial" in k for k in load_state_dict_results.unexpected_keys):
+                raise ValueError("Incorrect `value_dict` for the LoRA layer.")
+            lora_layers_list.append((attn_processor, lora))
+
+            # set correct dtype & device
+            lora_layers_list = [(t, l.to(device=self.device, dtype=self.dtype)) for t, l in lora_layers_list]
+
+            # set lora layers
+            for target_module, lora_layer in lora_layers_list:
+                target_module.set_lora_layer(lora_layer)
+
+    def unload_lora_weights(self):
+        for _, module in self.named_modules():
+            if hasattr(module, "set_lora_layer"):
+                module.set_lora_layer(None)
+
+    # Implement `fuse_lora()` and `unfuse_lora()` (sayakpaul).
