@@ -53,10 +53,10 @@ from diffusers import (
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
-from diffusers.models.lora import LoRALinearLayer, ZipLoRALinearLayer
+from diffusers.loaders import LoraLoaderMixin ## maybe change to loraloaderXL
+from diffusers.models.lora import ZipLoRALinearLayer, initialize_ziplora_layer,
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_snr, unet_lora_state_dict, unet_ziplora_state_dict
+from diffusers.training_utils import compute_snr, unet_ziplora_state_dict
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
