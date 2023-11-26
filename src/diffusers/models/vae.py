@@ -1117,6 +1117,7 @@ class TemporalDecoder(nn.Module):
         else:
             padding = int(conv_out_kernel_size // 2)
 
+        self.conv_act = nn.SiLU()
         self.conv_out = torch.nn.Conv2d(
             in_channels=block_out_channels[0],
             out_channels=out_channels,
@@ -1207,6 +1208,7 @@ class TemporalDecoder(nn.Module):
         else:
             sample = self.conv_norm_out(sample, latent_embeds)
 
+        sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
         batch_frames, channels, height, width = sample.shape
