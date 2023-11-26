@@ -442,7 +442,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         added_time_ids = added_time_ids.to(device)
 
         # 4. Prepare timesteps
-        self.scheduler.use_karras_sigmas = True  # TODO: remove this line once we have a better way to handle sigmas
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
