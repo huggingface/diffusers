@@ -1513,6 +1513,12 @@ def main(args):
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
 
+    if args.train_text_encoder_ti and args.validation_prompt:
+        # replace instances of --token_abstraction in validation prompt with the new tokens: "<si><si+1>" etc.
+        for token_abs, token_replacement in train_dataset.token_abstraction_dict.items():
+            args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
+    print("validation prompt:", args.validation_prompt)
+
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1647,7 +1653,7 @@ def main(args):
             with accelerator.accumulate(unet):
                 pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                 prompts = batch["prompts"]
-                print(prompts)
+                # print(prompts)
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     if freeze_text_encoder:
