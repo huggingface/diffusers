@@ -1877,6 +1877,7 @@ class MidBlockTemporalDecoder(nn.Module):
         merge_strategy: str = "learned",
         max_time_embed_period: int = 10000,
         transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
+        switch_spatial_to_temporal_mix: bool = True,
     ):
         super().__init__()
 
@@ -1899,6 +1900,7 @@ class MidBlockTemporalDecoder(nn.Module):
                     pre_norm=resnet_pre_norm,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
+                    switch_spatial_to_temporal_mix=switch_spatial_to_temporal_mix,
                 )
             )
 
@@ -1975,6 +1977,7 @@ class UpBlockTemporalDecoder(nn.Module):
         merge_strategy: str = "learned",
         max_time_embed_period: int = 10000,
         transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
+        switch_spatial_to_temporal_mix: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -1996,6 +1999,7 @@ class UpBlockTemporalDecoder(nn.Module):
                     pre_norm=resnet_pre_norm,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
+                    switch_spatial_to_temporal_mix=switch_spatial_to_temporal_mix,
                 )
             )
         self.resnets = nn.ModuleList(resnets)

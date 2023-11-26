@@ -1343,6 +1343,7 @@ class SpatioTemporalResBlock(nn.Module):
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy="learned",
+        switch_spatial_to_temporal_mix: bool = False,
     ):
         super().__init__()
 
@@ -1372,7 +1373,7 @@ class SpatioTemporalResBlock(nn.Module):
         )
 
         self.time_mixer = AlphaBlender(
-            alpha=merge_factor, merge_strategy=merge_strategy
+            alpha=merge_factor, merge_strategy=merge_strategy, switch_spatial_to_temporal_mix=switch_spatial_to_temporal_mix
         )
 
     def forward(
@@ -1422,9 +1423,11 @@ class AlphaBlender(nn.Module):
         self,
         alpha: float,
         merge_strategy: str = "learned_with_images",
+        switch_spatial_to_temporal_mix: bool = False,
     ):
         super().__init__()
         self.merge_strategy = merge_strategy
+        self.switch_spatial_to_temporal_mix = switch_spatial_to_temporal_mix # For TemporalVAE
 
         assert (
             merge_strategy in self.strategies
@@ -1482,8 +1485,9 @@ class AlphaBlender(nn.Module):
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         alpha = self.get_alpha(image_only_indicator, x_spatial.ndim)
-        x = (
-            alpha.to(x_spatial.dtype) * x_spatial
-            + (1.0 - alpha).to(x_spatial.dtype) * x_temporal
-        )
+
+        if self.switch_spatial_to_temporal_mix:
+            alpha = 1.0 - alpha
+
+        x = alpha * x_spatial + (1.0 - alpha) * x_temporal
         return x
