@@ -46,8 +46,47 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> import torch
+        >>> from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
+        >>> from diffusers.pipelines import DiffusionPipeline
+        >>> from diffusers.schedulers import DPMSolverMultistepScheduler
+        >>> from PIL import Image
+
+        >>> motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+        >>> adapter = MotionAdapter.from_pretrained(motion_id)
+        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
+        >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+
+        >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+        >>> pipe = AnimateDiffControlNetPipeline.from_pretrained(
+        ...     model_id,
+        ...     motion_adapter=adapter,
+        ...     controlnet=controlnet,
+        ...     vae=vae,
+        ... ).to(device="cuda", dtype=torch.float16)
+        >>> pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
+        ...     model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+        ... )
+        >>> pipe.enable_vae_slicing()
+
+        >>> conditioning_frames = []
+        >>> for i in range(1, 16 + 1):
+        ...     conditioning_frames.append(Image.open(f"frame_{i}.png"))
+
+        >>> prompt = "astronaut in space, dancing"
+        >>> negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
+        >>> result = pipe(
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     width=512,
+        ...     height=768,
+        ...     conditioning_frames=conditioning_frames,
+        ...     num_inference_steps=12,
+        ... ).frames[0]
+
+        >>> from diffusers.utils import export_to_gif
+        >>> export_to_gif(result.frames[0], "result.gif")
         ```
-        TODO(a-r-r-o-w): Complete this after finishing implementation
 """
 
 
@@ -733,7 +772,7 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        openpose_frames: Optional[List[PipelineImageInput]] = None,
+        conditioning_frames: Optional[List[PipelineImageInput]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -787,8 +826,8 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
-            openpose_frames (`List[PipelineImageInput]`, *optional*):
-                The ControlNet input condition to provide guidance to the `unet` for generation.If multiple ControlNets
+            conditioning_frames (`List[PipelineImageInput]`, *optional*):
+                The ControlNet input condition to provide guidance to the `unet` for generation. If multiple ControlNets
                 are specified, images must be passed as a list such that each element of the list can be correctly
                 batched for input to a single ControlNet.
             output_type (`str`, *optional*, defaults to `"pil"`):
@@ -878,7 +917,7 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            image=openpose_frames,
+            image=conditioning_frames,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
             control_guidance_start=control_guidance_start,
             control_guidance_end=control_guidance_end,
@@ -935,8 +974,8 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         if isinstance(controlnet, ControlNetModel):
-            openpose_frames = self.prepare_image(
-                image=openpose_frames,
+            conditioning_frames = self.prepare_image(
+                image=conditioning_frames,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_videos_per_prompt * num_frames,
@@ -948,7 +987,7 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
             )
         elif isinstance(controlnet, MultiControlNetModel):
             cond_prepared_frames = []
-            for frame_ in openpose_frames:
+            for frame_ in conditioning_frames:
                 prepared_frame = self.prepare_image(
                     image=frame_,
                     width=width,
@@ -963,7 +1002,7 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
 
                 cond_prepared_frames.append(prepared_frame)
 
-            openpose_frames = cond_prepared_frames
+            conditioning_frames = cond_prepared_frames
         else:
             assert False
 
@@ -1036,7 +1075,7 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
                     control_model_input,
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=openpose_frames,
+                    controlnet_cond=conditioning_frames,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
