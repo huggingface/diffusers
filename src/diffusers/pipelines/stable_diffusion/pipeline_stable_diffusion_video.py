@@ -23,6 +23,12 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
+from ...models.attention_processor import (
+    AttnProcessor2_0,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
+)
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import randn_tensor
@@ -138,11 +144,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         return image_embeddings
 
     def _encode_vae_image(self, image: torch.Tensor, device, num_videos_per_prompt, do_classifier_free_guidance):
-        # encode image in fp32
-        self.vae.to(torch.float32)
         image = image.to(device=device)
-        with torch.autocast("cuda", enabled=False):
-            image_latents = self.vae.encode(image).latent_dist.mode()
+        image_latents = self.vae.encode(image).latent_dist.mode()
 
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
@@ -264,6 +267,26 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
+    def upcast_vae(self):
+        dtype = self.vae.dtype
+        self.vae.to(dtype=torch.float32)
+        use_torch_2_0_or_xformers = isinstance(
+            self.vae.decoder.mid_block.attentions[0].processor,
+            (
+                AttnProcessor2_0,
+                XFormersAttnProcessor,
+                LoRAXFormersAttnProcessor,
+                LoRAAttnProcessor2_0,
+            ),
+        )
+        # if xformers or torch_2_0 is used attention block does not need
+        # to be in float32 which can save lots of memory
+        if use_torch_2_0_or_xformers:
+            self.vae.post_quant_conv.to(dtype)
+            self.vae.decoder.conv_in.to(dtype)
+            self.vae.decoder.mid_block.to(dtype)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
@@ -415,8 +438,17 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # 4. Encode input image using VAE
         image = self.image_processor.preprocess(image, height=height, width=width)
         image = image + cond_aug * torch.randn_like(image)
+
+        needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+        if needs_upcasting:
+            self.upcast_vae()
+
         image_latents = self._encode_vae_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
         image_latents = image_latents.to(image_embeddings.dtype)
+
+        # cast back to fp16 if needed
+        if needs_upcasting:
+            self.vae.to(dtype=torch.float16)
 
         # Repeat the image latents for each frame so we can concatenate them with the noise
         # image_latents [batch, channels, height, width] ->[batch, num_frames, channels, height, width]
@@ -499,10 +531,15 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         self.maybe_free_model_hooks()
 
-        # decode image in fp32
-        self.vae.to(torch.float32)
-        with torch.autocast("cuda", enabled=False):
-            frames = self.decode_latents(latents, num_frames, decoding_t)
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        if needs_upcasting:
+            self.upcast_vae()
+
+        frames = self.decode_latents(latents, num_frames, decoding_t)
+
+        # cast back to fp16 if needed
+        if needs_upcasting:
+            self.vae.to(dtype=torch.float16)
 
         if not output_type == "latent":
             frames = tensor2vid(frames, self.image_processor, output_type=output_type)
