@@ -186,13 +186,21 @@
   - sections:
     - local: api/configuration
       title: Configuration
-    - local: api/loaders
-      title: Loaders
     - local: api/logging
       title: Logging
     - local: api/outputs
       title: Outputs
     title: Main Classes
+  - sections:
+    - local: api/loaders/lora
+      title: LoRA
+    - local: api/loaders/single_file
+      title: Single files
+    - local: api/loaders/textual_inversion
+      title: Textual Inversion
+    - local: api/loaders/unet
+      title: UNet
+    title: Loaders
   - sections:
     - local: api/models/overview
       title: Overview
@@ -270,6 +278,8 @@
       title: Kandinsky 2.1
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
+    - local: api/pipelines/kandinsky3
+      title: Kandinsky 3
     - local: api/pipelines/latent_consistency_models
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
