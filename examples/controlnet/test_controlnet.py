@@ -18,9 +18,9 @@ import os
 import sys
 import tempfile
 
-sys.path.append("..")
 
-from test_examples_utils import ExamplesTestsAccelerate, run_command
+sys.path.append("..")
+from test_examples_utils import ExamplesTestsAccelerate, run_command  # noqa: E402
 
 
 logging.basicConfig(level=logging.DEBUG)
