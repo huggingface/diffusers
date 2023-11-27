@@ -38,7 +38,7 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..models.test_models_vae import (
-    get_assym_autoencoder_kl_config,
+    get_asym_autoencoder_kl_config,
     get_autoencoder_kl_config,
     get_autoencoder_tiny_config,
     get_consistency_vae_config,
@@ -186,7 +186,7 @@ class PipelineLatentTesterMixin:
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
 
-    def test_test_multi_vae(self):
+    def test_multi_vae(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
@@ -198,7 +198,7 @@ class PipelineLatentTesterMixin:
         vae_classes = [AutoencoderKL, AsymmetricAutoencoderKL, ConsistencyDecoderVAE, AutoencoderTiny]
         configs = [
             get_autoencoder_kl_config(block_out_channels, norm_num_groups),
-            get_assym_autoencoder_kl_config(block_out_channels, norm_num_groups),
+            get_asym_autoencoder_kl_config(block_out_channels, norm_num_groups),
             get_consistency_vae_config(block_out_channels, norm_num_groups),
             get_autoencoder_tiny_config(block_out_channels),
         ]

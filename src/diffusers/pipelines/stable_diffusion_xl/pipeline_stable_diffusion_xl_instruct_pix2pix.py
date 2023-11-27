@@ -88,7 +88,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_instruct_pix2pix.retrieve_latents
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(encoder_output):
     if hasattr(encoder_output, "latent_dist"):
         return encoder_output.latent_dist.mode()
@@ -543,7 +543,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 self.upcast_vae()
                 image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-            image_latents = retrieve_latents(self.vae.encode(image))
+            image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
 
             # cast back to fp16 if needed
             if needs_upcasting:

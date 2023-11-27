@@ -61,7 +61,7 @@ def get_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
     return init_dict
 
 
-def get_assym_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
+def get_asym_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
     block_out_channels = block_out_channels or [32, 64]
     norm_num_groups = norm_num_groups or 32
     init_dict = {
@@ -283,7 +283,7 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = get_assym_autoencoder_kl_config()
+        init_dict = get_asym_autoencoder_kl_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 

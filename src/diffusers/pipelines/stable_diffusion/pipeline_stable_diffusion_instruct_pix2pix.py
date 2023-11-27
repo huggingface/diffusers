@@ -58,6 +58,7 @@ def preprocess(image):
     return image
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
 def retrieve_latents(encoder_output):
     if hasattr(encoder_output, "latent_dist"):
         return encoder_output.latent_dist.mode()
@@ -724,7 +725,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         if image.shape[1] == 4:
             image_latents = image
         else:
-            image_latents = retrieve_latents(self.vae.encode(image))
+            image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
