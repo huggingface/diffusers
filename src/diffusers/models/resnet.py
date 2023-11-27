@@ -1148,12 +1148,8 @@ class TemporalResnetBlock(nn.Module):
         conv_shortcut: bool = False,
         dropout: float = 0.0,
         temb_channels: int = 512,
-        groups: int = 32,
-        groups_out: Optional[int] = None,
         eps: float = 1e-6,
-        non_linearity: str = "swish",
         kernel_size: Optional[torch.FloatTensor] = (3, 1, 1),
-        output_scale_factor: float = 1.0,
         use_in_shortcut: Optional[bool] = None,
         conv_shortcut_bias: bool = True,
         conv_2d_out_channels: Optional[int] = None,
@@ -1163,19 +1159,11 @@ class TemporalResnetBlock(nn.Module):
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
-        self.output_scale_factor = output_scale_factor
-
-        linear_cls = nn.Linear
-        conv_cls = nn.Conv3d
 
         padding = [k // 2 for k in kernel_size]
 
-        if groups_out is None:
-            groups_out = groups
-
-        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-
-        self.conv1 = conv_cls(
+        self.norm1 = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=eps, affine=True)
+        self.conv1 = nn.Conv3d(
             in_channels,
             out_channels,
             kernel_size=kernel_size,
@@ -1184,15 +1172,15 @@ class TemporalResnetBlock(nn.Module):
         )
 
         if temb_channels is not None:
-            self.time_emb_proj = linear_cls(temb_channels, out_channels)
+            self.time_emb_proj = nn.Linear(temb_channels, out_channels)
         else:
             self.time_emb_proj = None
 
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
+        self.norm2 = torch.nn.GroupNorm(num_groups=32, num_channels=out_channels, eps=eps, affine=True)
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(
+        self.conv2 = nn.Conv3d(
             out_channels,
             conv_2d_out_channels,
             kernel_size=kernel_size,
@@ -1200,13 +1188,13 @@ class TemporalResnetBlock(nn.Module):
             padding=padding,
         )
 
-        self.nonlinearity = get_activation(non_linearity)
+        self.nonlinearity = get_activation("silu")
 
         self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = conv_cls(
+            self.conv_shortcut = nn.Conv3d(
                 in_channels,
                 conv_2d_out_channels,
                 kernel_size=1,
@@ -1219,29 +1207,24 @@ class TemporalResnetBlock(nn.Module):
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
-
         hidden_states = self.nonlinearity(hidden_states)
-
         hidden_states = self.conv1(hidden_states)
+
         if self.time_emb_proj is not None:
             temb = self.nonlinearity(temb)
             temb = self.time_emb_proj(temb)[:, :, :, None, None]
-
-        if temb is not None:
             temb = temb.permute(0, 2, 1, 3, 4)
             hidden_states = hidden_states + temb
 
         hidden_states = self.norm2(hidden_states)
-
         hidden_states = self.nonlinearity(hidden_states)
-
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
             input_tensor = self.conv_shortcut(input_tensor)
 
-        output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
+        output_tensor = input_tensor + hidden_states
 
         return output_tensor
 
@@ -1254,13 +1237,8 @@ class SpatioTemporalResBlock(nn.Module):
         out_channels: Optional[int] = None,
         dropout: float = 0.0,
         temb_channels: int = 512,
-        groups: int = 32,
-        pre_norm: bool = True,
         eps: float = 1e-6,
         temporal_eps: Optional[float] = None,
-        non_linearity: str = "swish",
-        time_embedding_norm: str = "default",  # default, scale_shift, ada_group, spatial
-        output_scale_factor: float = 1.0,
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy="learned",
@@ -1273,12 +1251,7 @@ class SpatioTemporalResBlock(nn.Module):
             out_channels=out_channels,
             temb_channels=temb_channels,
             eps=eps,
-            groups=groups,
             dropout=dropout,
-            time_embedding_norm=time_embedding_norm,
-            non_linearity=non_linearity,
-            output_scale_factor=output_scale_factor,
-            pre_norm=pre_norm,
         )
 
         self.temporal_res_block = TemporalResnetBlock(
@@ -1286,10 +1259,7 @@ class SpatioTemporalResBlock(nn.Module):
             out_channels=out_channels if out_channels is not None else in_channels,
             temb_channels=temb_channels,
             eps=temporal_eps if temporal_eps is not None else eps,
-            groups=groups,
             dropout=dropout,
-            non_linearity=non_linearity,
-            output_scale_factor=output_scale_factor,
             kernel_size=kernel_size_3d,
         )
 
@@ -1305,9 +1275,8 @@ class SpatioTemporalResBlock(nn.Module):
         temb: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
         image_only_indicator: Optional[torch.Tensor] = None,
-        scale: float = 1.0,
     ):
-        hidden_states = self.spatial_res_block(hidden_states, temb, scale=scale)
+        hidden_states = self.spatial_res_block(hidden_states, temb)
 
         batch_frames, channels, height, width = hidden_states.shape
         batch_size = batch_frames // num_frames
