@@ -235,37 +235,25 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         self,
         num_attention_heads: int = 16,
         attention_head_dim: int = 88,
-        in_channels: Optional[int] = None,
+        in_channels: int = 320,
         out_channels: Optional[int] = None,
         num_layers: int = 1,
         dropout: float = 0.0,
         norm_num_groups: int = 32,
         cross_attention_dim: Optional[int] = None,
-        attention_bias: bool = False,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        only_cross_attention: bool = False,
-        double_self_attention: bool = False,
-        upcast_attention: bool = False,
-        norm_type: str = "layer_norm",
-        norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
-        attention_type: str = "default",
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
-        self.max_time_embed_period = max_time_embed_period
 
         inner_dim = num_attention_heads * attention_head_dim
         self.inner_dim = inner_dim
 
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        # 2. Define input layers
         # 2. Define input layers
         self.in_channels = in_channels
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=norm_eps)
@@ -280,16 +268,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                     attention_head_dim,
                     dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
                     norm_eps=norm_eps,
-                    attention_type=attention_type,
                 )
                 for d in range(num_layers)
             ]
@@ -305,14 +284,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                     attention_head_dim,
                     dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
                     norm_eps=norm_eps,
-                    attention_type=attention_type,
                 )
                 for _ in range(num_layers)
             ]

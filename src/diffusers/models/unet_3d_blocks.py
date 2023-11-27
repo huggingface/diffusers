@@ -60,7 +60,6 @@ def get_down_block(
     kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
     merge_strategy: str = "learned_with_images",
-    max_time_embed_period: int = 10000,
 ) -> Union[
     "DownBlock3D",
     "CrossAttnDownBlock3D",
@@ -175,15 +174,10 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            dual_cross_attention=dual_cross_attention,
-            use_linear_projection=use_linear_projection,
-            only_cross_attention=only_cross_attention,
-            upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
-            max_time_embed_period=max_time_embed_period,
         )
 
     raise ValueError(f"{down_block_type} does not exist.")
@@ -216,7 +210,6 @@ def get_up_block(
     kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
     merge_strategy: str = "learned_with_images",
-    max_time_embed_period: int = 10000,
 ) -> Union[
     "UpBlock3D",
     "CrossAttnUpBlock3D",
@@ -336,16 +329,11 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            dual_cross_attention=dual_cross_attention,
-            use_linear_projection=use_linear_projection,
-            only_cross_attention=only_cross_attention,
-            upcast_attention=upcast_attention,
             resnet_time_scale_shift=resnet_time_scale_shift,
             resolution_idx=resolution_idx,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
-            max_time_embed_period=max_time_embed_period,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -1919,7 +1907,6 @@ class UpBlockTemporalDecoder(nn.Module):
         attention_type: str = "default",
         merge_factor: float = 0.0,
         merge_strategy: str = "learned",
-        max_time_embed_period: int = 10000,
         transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
         switch_spatial_to_temporal_mix: bool = True,
     ):
@@ -1993,14 +1980,9 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        upcast_attention: bool = False,
-        attention_type: str = "default",
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
 
@@ -2041,11 +2023,8 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    upcast_attention=upcast_attention,
-                    attention_type=attention_type,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
-                    max_time_embed_period=max_time_embed_period,
                 )
             )
 
@@ -2278,15 +2257,9 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         output_scale_factor: float = 1.0,
         downsample_padding: int = 1,
         add_downsample: bool = True,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        only_cross_attention: bool = False,
-        upcast_attention: bool = False,
-        attention_type: str = "default",
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
         resnets = []
@@ -2324,12 +2297,8 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    only_cross_attention=only_cross_attention,
-                    upcast_attention=upcast_attention,
-                    attention_type=attention_type,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
-                    max_time_embed_period=max_time_embed_period,
                 )
             )
 
@@ -2586,15 +2555,9 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         cross_attention_dim: int = 1280,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        only_cross_attention: bool = False,
-        upcast_attention: bool = False,
-        attention_type: str = "default",
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
         resnets = []
@@ -2635,12 +2598,8 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
-                    only_cross_attention=only_cross_attention,
-                    upcast_attention=upcast_attention,
-                    attention_type=attention_type,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
-                    max_time_embed_period=max_time_embed_period,
                 )
             )
 
