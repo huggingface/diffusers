@@ -9,7 +9,25 @@ specific language governing permissions and limitations under the License.
 
 # Kandinsky 3
 
-TODO
+Kandinsky 3 is created by [Arkhipkin Vladimir](https://github.com/oriBetelgeuse), [Igor Pavlov](https://github.com/boomb0om), [Andrei Filatov](https://github.com/anvilarth), [Zein Shaheen](https://github.com/zeinsh).
+
+The description from it's Github page: 
+
+*Kandinsky 3.0 is an open-source text-to-image diffusion model built upon the Kandinsky2-x model family. In comparison to its predecessors, Kandinsky 3.0 incorporates more data and specifically related to Russian culture, which allows to generate pictures related to Russin culture. Furthermore, enhancements have been made to the text understanding and visual quality of the model, achieved by increasing the size of the text encoder and Diffusion U-Net models, respectively.*
+
+The original codebase can be found at [ai-forever/Kandinsky-3](https://github.com/ai-forever/Kandinsky-3).
+
+<Tip>
+
+Check out the [Kandinsky Community](https://huggingface.co/kandinsky-community) organization on the Hub for the official model checkpoints for tasks like text-to-image, image-to-image, and inpainting.
+
+</Tip>
+
+<Tip>
+
+Make sure to check out the schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
 
 ## Kandinsky3Pipeline
 
