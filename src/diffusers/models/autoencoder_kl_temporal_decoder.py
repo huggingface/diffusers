@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -45,18 +45,11 @@ class TemporalDecoder(nn.Module):
             512,
         ),
         layers_per_block: int = 2,
-        norm_num_groups: int = 32,
-        act_fn: str = "silu",
-        norm_type: str = "group",  # group, spatial
-        alpha: float = 0.0,
-        merge_strategy: str = "learned",
-        conv_out_kernel_size=(3, 1, 1),
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
 
         self.conv_in = nn.Conv2d(in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
-        temb_channels = in_channels if norm_type == "spatial" else None
         self.mid_block = MidBlockTemporalDecoder(
             num_layers=self.layers_per_block,
             in_channels=block_out_channels[-1],
@@ -64,12 +57,9 @@ class TemporalDecoder(nn.Module):
             attention_head_dim=block_out_channels[-1],
             resnet_eps=1e-6,
             temporal_resnet_eps=1e-5,
-            resnet_act_fn=act_fn,
-            norm_num_groups=norm_num_groups,
-            temb_channels=temb_channels,
-            resnet_time_scale_shift=norm_type,
-            merge_factor=alpha,
-            merge_strategy=merge_strategy,
+            norm_num_groups=32,
+            merge_factor=0.0,
+            merge_strategy="learned",
         )
 
         # up
@@ -88,23 +78,14 @@ class TemporalDecoder(nn.Module):
                 add_upsample=not is_final_block,
                 resnet_eps=1e-6,
                 temporal_resnet_eps=1e-5,
-                resnet_act_fn=act_fn,
-                norm_num_groups=norm_num_groups,
                 attention_head_dim=output_channel,
-                temb_channels=temb_channels,
-                resnet_time_scale_shift=norm_type,
-                merge_factor=alpha,
-                merge_strategy=merge_strategy,
+                merge_factor=0.0,
+                merge_strategy="learned",
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
-
-        if isinstance(conv_out_kernel_size, Iterable):
-            padding = [int(k // 2) for k in conv_out_kernel_size]
-        else:
-            padding = int(conv_out_kernel_size // 2)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=32, eps=1e-6)
 
         self.conv_act = nn.SiLU()
         self.conv_out = torch.nn.Conv2d(
@@ -113,6 +94,9 @@ class TemporalDecoder(nn.Module):
             kernel_size=3,
             padding=1,
         )
+
+        conv_out_kernel_size = (3, 1, 1)
+        padding = [int(k // 2) for k in conv_out_kernel_size]
         self.time_conv_out = torch.nn.Conv3d(
             in_channels=out_channels,
             out_channels=out_channels,
@@ -127,7 +111,6 @@ class TemporalDecoder(nn.Module):
         sample: torch.FloatTensor,
         image_only_indicator: torch.FloatTensor,
         num_frames: int = 1,
-        latent_embeds: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         r"""The forward method of the `Decoder` class."""
 
@@ -148,7 +131,6 @@ class TemporalDecoder(nn.Module):
                     create_custom_forward(self.mid_block),
                     sample,
                     image_only_indicator,
-                    latent_embeds,
                     num_frames,
                     use_reentrant=False,
                 )
@@ -160,7 +142,6 @@ class TemporalDecoder(nn.Module):
                         create_custom_forward(up_block),
                         sample,
                         image_only_indicator,
-                        latent_embeds,
                         num_frames,
                         use_reentrant=False,
                     )
@@ -170,7 +151,6 @@ class TemporalDecoder(nn.Module):
                     create_custom_forward(self.mid_block),
                     sample,
                     image_only_indicator,
-                    latent_embeds,
                     num_frames,
                 )
                 sample = sample.to(upscale_dtype)
@@ -181,14 +161,12 @@ class TemporalDecoder(nn.Module):
                         create_custom_forward(up_block),
                         sample,
                         image_only_indicator,
-                        latent_embeds,
                         num_frames,
                     )
         else:
             # middle
             sample = self.mid_block(
                 sample,
-                temb=latent_embeds,
                 num_frames=num_frames,
                 image_only_indicator=image_only_indicator,
             )
@@ -198,17 +176,12 @@ class TemporalDecoder(nn.Module):
             for up_block in self.up_blocks:
                 sample = up_block(
                     sample,
-                    temb=latent_embeds,
                     num_frames=num_frames,
                     image_only_indicator=image_only_indicator,
                 )
 
         # post-process
-        if latent_embeds is None:
-            sample = self.conv_norm_out(sample)
-        else:
-            sample = self.conv_norm_out(sample, latent_embeds)
-
+        sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
@@ -248,11 +221,8 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
             Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
             Tuple of block output channels.
-        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         latent_channels (`int`, *optional*, defaults to 4): Number of channels in the latent space.
         sample_size (`int`, *optional*, defaults to `32`): Sample input size.
         scaling_factor (`float`, *optional*, defaults to 0.18215):
@@ -278,9 +248,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         down_block_types: Tuple[str] = ("DownEncoderBlock2D",),
         block_out_channels: Tuple[int] = (64,),
         layers_per_block: int = 1,
-        act_fn: str = "silu",
         latent_channels: int = 4,
-        norm_num_groups: int = 32,
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
         force_upcast: float = True,
@@ -294,8 +262,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
             down_block_types=down_block_types,
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
-            act_fn=act_fn,
-            norm_num_groups=norm_num_groups,
             double_z=True,
         )
 
@@ -305,8 +271,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
             out_channels=out_channels,
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
-            norm_num_groups=norm_num_groups,
-            act_fn=act_fn,
         )
 
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)

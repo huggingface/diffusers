@@ -1786,10 +1786,6 @@ class MidBlockTemporalDecoder(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         temporal_resnet_eps: Optional[float] = None,
-        resnet_time_scale_shift: str = "default",
-        resnet_act_fn: str = "swish",
-        resnet_pre_norm: bool = True,
-        output_scale_factor: float = 1.0,
         temb_channels: Optional[int] = None,
         norm_num_groups: int = 32,
         upcast_attention: bool = False,
@@ -1837,12 +1833,10 @@ class MidBlockTemporalDecoder(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         image_only_indicator: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
     ):
         hidden_states = self.resnets[0](
             hidden_states,
-            temb,
             num_frames=num_frames,
             image_only_indicator=image_only_indicator,
         )
@@ -1850,7 +1844,6 @@ class MidBlockTemporalDecoder(nn.Module):
             hidden_states = attn(hidden_states)
             hidden_states = resnet(
                 hidden_states,
-                temb,
                 num_frames=num_frames,
                 image_only_indicator=image_only_indicator,
             )
@@ -1863,32 +1856,14 @@ class UpBlockTemporalDecoder(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        num_attention_heads: int = 16,
-        attention_head_dim: int = 88,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         temporal_resnet_eps: Optional[float] = None,
-        resnet_time_scale_shift: str = "default",
-        resnet_act_fn: str = "swish",
-        resnet_pre_norm: bool = True,
-        output_scale_factor: float = 1.0,
         add_upsample: bool = True,
         temb_channels: Optional[int] = None,
-        cross_attention_dim: Optional[int] = None,
-        norm_num_groups: int = 32,
-        double_self_attention: bool = False,
-        upcast_attention: bool = False,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        only_cross_attention: bool = False,
-        norm_type: str = "layer_norm",
-        norm_elementwise_affine: bool = True,
-        norm_eps: float = 1e-5,
-        attention_type: str = "default",
         merge_factor: float = 0.0,
         merge_strategy: str = "learned",
-        transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
         switch_spatial_to_temporal_mix: bool = True,
     ):
         super().__init__()
@@ -1920,15 +1895,11 @@ class UpBlockTemporalDecoder(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         image_only_indicator: torch.FloatTensor,
-        temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
         num_frames: int = 1,
     ) -> torch.FloatTensor:
         for resnet in self.resnets:
             hidden_states = resnet(
                 hidden_states,
-                temb=temb,
-                scale=scale,
                 num_frames=num_frames,
                 image_only_indicator=image_only_indicator,
             )
