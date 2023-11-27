@@ -716,12 +716,19 @@ class TokenEmbeddingsHandler:
     def save_embeddings(self, file_path: str):
         assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
+        # text_encoder_0 - CLIP ViT-L/14, text_encoder_1 -  CLIP ViT-G/14
+        idx_to_text_encoder_name = {0:"clip_l", 1:"clip_g"}
         for idx, text_encoder in enumerate(self.text_encoders):
             assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[0] == len(
                 self.tokenizers[0]
             ), "Tokenizers should be the same."
             new_token_embeddings = text_encoder.text_model.embeddings.token_embedding.weight.data[self.train_ids]
-            tensors[f"text_encoders_{idx}"] = new_token_embeddings
+
+            # New tokens for each text encoder are saved under "clip_l" (for text_encoder 0), "clip_g" (for
+            # text_encoder 1) to keep compatible with the ecosystem.
+            # Note: When loading with diffusers, any name can work - simply specify in inference
+            tensors[idx_to_text_encoder_name[idx]] = new_token_embeddings
+            # tensors[f"text_encoders_{idx}"] = new_token_embeddings
 
         save_file(tensors, file_path)
 
