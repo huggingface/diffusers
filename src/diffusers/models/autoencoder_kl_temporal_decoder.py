@@ -54,9 +54,8 @@ class TemporalDecoder(nn.Module):
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
-        conv_cls = nn.Conv2d
 
-        self.conv_in = conv_cls(in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
+        self.conv_in = nn.Conv2d(in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
         temb_channels = in_channels if norm_type == "spatial" else None
         self.mid_block = MidBlockTemporalDecoder(
             num_layers=self.layers_per_block,
@@ -148,7 +147,9 @@ class TemporalDecoder(nn.Module):
                 sample = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(self.mid_block),
                     sample,
+                    image_only_indicator,
                     latent_embeds,
+                    num_frames,
                     use_reentrant=False,
                 )
                 sample = sample.to(upscale_dtype)
@@ -158,19 +159,31 @@ class TemporalDecoder(nn.Module):
                     sample = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(up_block),
                         sample,
+                        image_only_indicator,
                         latent_embeds,
+                        num_frames,
                         use_reentrant=False,
                     )
             else:
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block), sample, latent_embeds
+                    create_custom_forward(self.mid_block),
+                    sample,
+                    image_only_indicator,
+                    latent_embeds,
+                    num_frames,
                 )
                 sample = sample.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
-                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block),
+                        sample,
+                        image_only_indicator,
+                        latent_embeds,
+                        num_frames,
+                    )
         else:
             # middle
             sample = self.mid_block(
@@ -310,9 +323,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
             if isinstance(self.config.sample_size, (list, tuple))
             else self.config.sample_size
         )
-        self.tile_latent_min_size = int(
-            sample_size / (2 ** (len(self.config.block_out_channels) - 1))
-        )
+        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
         self.tile_overlap_factor = 0.25
 
     def _set_gradient_checkpointing(self, module, value=False):
@@ -365,9 +376,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
             processors: Dict[str, AttentionProcessor],
         ):
             if hasattr(module, "get_processor"):
-                processors[f"{name}.processor"] = module.get_processor(
-                    return_deprecated_lora=True
-                )
+                processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
 
             for sub_name, child in module.named_children():
                 fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
@@ -410,9 +419,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
                 if not isinstance(processor, dict):
                     module.set_processor(processor, _remove_lora=_remove_lora)
                 else:
-                    module.set_processor(
-                        processor.pop(f"{name}.processor"), _remove_lora=_remove_lora
-                    )
+                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -425,15 +432,9 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        if all(
-            proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS
-            for proc in self.attn_processors.values()
-        ):
+        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnAddedKVProcessor()
-        elif all(
-            proc.__class__ in CROSS_ATTENTION_PROCESSORS
-            for proc in self.attn_processors.values()
-        ):
+        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnProcessor()
         else:
             raise ValueError(
@@ -458,10 +459,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        if self.use_tiling and (
-            x.shape[-1] > self.tile_sample_min_size
-            or x.shape[-2] > self.tile_sample_min_size
-        ):
+        if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
             return self.tiled_encode(x, return_dict=return_dict)
 
         if self.use_slicing and x.shape[0] > 1:
@@ -481,23 +479,16 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
     def _decode(
         self, z: torch.FloatTensor, num_frames: int, return_dict: bool = True
     ) -> Union[DecoderOutput, torch.FloatTensor]:
-        if self.use_tiling and (
-            z.shape[-1] > self.tile_latent_min_size
-            or z.shape[-2] > self.tile_latent_min_size
-        ):
+        if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
             return self.tiled_decode(z, return_dict=return_dict)
 
         batch_size = z.shape[0] // num_frames
         # TODO: dont hardcode this
-        image_only_indicator = torch.zeros(
-            batch_size, num_frames, dtype=z.dtype, device=z.device
-        )
+        image_only_indicator = torch.zeros(batch_size, num_frames, dtype=z.dtype, device=z.device)
 
         if not self.config.skip_post_quant_conv:
             z = self.post_quant_conv(z)
-        dec = self.decoder(
-            z, num_frames=num_frames, image_only_indicator=image_only_indicator
-        )
+        dec = self.decoder(z, num_frames=num_frames, image_only_indicator=image_only_indicator)
 
         if not return_dict:
             return (dec,)
@@ -527,9 +518,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
         """
         if self.use_slicing and z.shape[0] > 1:
-            decoded_slices = [
-                self._decode(z_slice, num_frames // 2).sample for z_slice in z.split(1)
-            ]
+            decoded_slices = [self._decode(z_slice, num_frames // 2).sample for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
         else:
             decoded = self._decode(z, num_frames).sample
@@ -539,29 +528,19 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
         return DecoderOutput(sample=decoded)
 
-    def blend_v(
-        self, a: torch.Tensor, b: torch.Tensor, blend_extent: int
-    ) -> torch.Tensor:
+    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[2], b.shape[2], blend_extent)
         for y in range(blend_extent):
-            b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[
-                :, :, y, :
-            ] * (y / blend_extent)
+            b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, y, :] * (y / blend_extent)
         return b
 
-    def blend_h(
-        self, a: torch.Tensor, b: torch.Tensor, blend_extent: int
-    ) -> torch.Tensor:
+    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[3], b.shape[3], blend_extent)
         for x in range(blend_extent):
-            b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[
-                :, :, :, x
-            ] * (x / blend_extent)
+            b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(
-        self, x: torch.FloatTensor, return_dict: bool = True
-    ) -> AutoencoderKLOutput:
+    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
@@ -620,9 +599,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def tiled_decode(
-        self, z: torch.FloatTensor, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
+    def tiled_decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         Decode a batch of images using a tiled decoder.
 
