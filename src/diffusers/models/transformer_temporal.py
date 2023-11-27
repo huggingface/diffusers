@@ -212,21 +212,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
-        attention_bias (`bool`, *optional*):
-            Configure if the `TransformerBlock` attention should contain a bias parameter.
-        sample_size (`int`, *optional*): The width of the latent images (specify if the input is **discrete**).
-            This is fixed during training since it is used to learn a number of position embeddings.
-        activation_fn (`str`, *optional*, defaults to `"geglu"`):
-            Activation function to use in feed-forward. See `diffusers.models.activations.get_activation` for supported
-            activation functions.
-        norm_elementwise_affine (`bool`, *optional*):
-            Configure if the `TransformerBlock` should use learnable elementwise affine parameters for normalization.
-        double_self_attention (`bool`, *optional*):
-            Configure if each `TransformerBlock` should contain two self-attention layers.
-        positional_embeddings: (`str`, *optional*):
-            The type of positional embeddings to apply to the sequence input before passing use.
-        num_positional_embeddings: (`int`, *optional*):
-            The maximum length of the sequence over which to apply positional embeddings.
     """
 
     @register_to_config
@@ -238,9 +223,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         out_channels: Optional[int] = None,
         num_layers: int = 1,
         dropout: float = 0.0,
-        norm_num_groups: int = 32,
         cross_attention_dim: Optional[int] = None,
-        norm_eps: float = 1e-5,
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
     ):
@@ -255,7 +238,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
 
         # 2. Define input layers
         self.in_channels = in_channels
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=norm_eps)
+        self.norm = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6)
         self.proj_in = linear_cls(in_channels, inner_dim)
 
         # 3. Define transformers blocks
@@ -267,7 +250,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                     attention_head_dim,
                     dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
-                    norm_eps=norm_eps,
                 )
                 for d in range(num_layers)
             ]
@@ -283,7 +265,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                     attention_head_dim,
                     dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
-                    norm_eps=norm_eps,
                 )
                 for _ in range(num_layers)
             ]
@@ -306,11 +287,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         hidden_states: torch.Tensor,
         num_frames: int,
         encoder_hidden_states: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
@@ -318,20 +294,11 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         Args:
             hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
                 Input hidden_states.
+            num_frames (`int`):
+                The number of frames to be processed per batch. This is used to reshape the hidden states.
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
-            timestep ( `torch.LongTensor`, *optional*):
-                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
-            class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
-                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
-                `AdaLayerZeroNorm`.
-            num_frames (`int`, *optional*, defaults to 1):
-                The number of frames to be processed per batch. This is used to reshape the hidden states.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
                 tuple.
@@ -341,12 +308,8 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                 If `return_dict` is True, an [`~models.transformer_temporal.TransformerTemporalModelOutput`] is
                 returned, otherwise a `tuple` where the first element is the sample tensor.
         """
-        assert (
-            encoder_hidden_states.ndim == 3
-        ), f"n dims of spatial context should be 3 but are {encoder_hidden_states.ndim}"
-
         # 1. Input
-        batch_frames, channel, height, width = hidden_states.shape
+        batch_frames, _, height, width = hidden_states.shape
         batch_size = batch_frames // num_frames
 
         time_context = encoder_hidden_states
@@ -382,20 +345,12 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                     None,
                     encoder_hidden_states,
                     None,
-                    timestep,
-                    cross_attention_kwargs,
-                    class_labels,
                     use_reentrant=False,
                 )
             else:
                 hidden_states = block(
                     hidden_states,
-                    attention_mask=None,
                     encoder_hidden_states=encoder_hidden_states,
-                    encoder_attention_mask=None,
-                    timestep=timestep,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    class_labels=class_labels,
                 )
 
             hidden_states_mix = hidden_states
@@ -405,7 +360,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                 hidden_states_mix,
                 num_frames=num_frames,
                 encoder_hidden_states=time_context,
-                cross_attention_kwargs=cross_attention_kwargs,
             )
             hidden_states = self.time_mixer(
                 x_spatial=hidden_states,

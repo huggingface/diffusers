@@ -378,26 +378,23 @@ class TemporalBasicTransformerBlock(nn.Module):
         attention_head_dim: int,
         dropout=0.0,
         cross_attention_dim: Optional[int] = None,
-        norm_eps: float = 1e-5,
-        final_dropout: bool = False,
     ):
         super().__init__()
         self.is_res = dim == time_mix_inner_dim
 
-        self.norm_in = nn.LayerNorm(dim, eps=norm_eps)
+        self.norm_in = nn.LayerNorm(dim)
 
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
-        self.norm_in = nn.LayerNorm(dim, eps=norm_eps)
+        self.norm_in = nn.LayerNorm(dim)
         self.ff_in = FeedForward(
             dim,
             dim_out=time_mix_inner_dim,
             dropout=dropout,
             activation_fn="geglu",
-            final_dropout=final_dropout,
         )
 
-        self.norm1 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
+        self.norm1 = nn.LayerNorm(time_mix_inner_dim)
         self.attn1 = Attention(
             query_dim=time_mix_inner_dim,
             heads=num_attention_heads,
@@ -411,7 +408,7 @@ class TemporalBasicTransformerBlock(nn.Module):
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
             # the second cross attention block.
-            self.norm2 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
+            self.norm2 = nn.LayerNorm(time_mix_inner_dim)
             self.attn2 = Attention(
                 query_dim=time_mix_inner_dim,
                 cross_attention_dim=cross_attention_dim,
@@ -424,12 +421,11 @@ class TemporalBasicTransformerBlock(nn.Module):
             self.attn2 = None
 
         # 3. Feed-forward
-        self.norm3 = nn.LayerNorm(time_mix_inner_dim, eps=norm_eps)
+        self.norm3 = nn.LayerNorm(time_mix_inner_dim)
         self.ff = FeedForward(
             time_mix_inner_dim,
             dropout=dropout,
             activation_fn="geglu",
-            final_dropout=final_dropout,
         )
 
         # let chunk size default to None
@@ -445,10 +441,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         num_frames: int,
-        attention_mask: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
     ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
@@ -467,26 +460,14 @@ class TemporalBasicTransformerBlock(nn.Module):
         if self.is_res:
             hidden_states = hidden_states + residual
 
-        cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
-
         norm_hidden_states = self.norm1(hidden_states)
-        attn_output = self.attn1(
-            norm_hidden_states,
-            encoder_hidden_states=None,
-            attention_mask=attention_mask,
-            **cross_attention_kwargs,
-        )
+        attn_output = self.attn1(norm_hidden_states, encoder_hidden_states=None)
         hidden_states = attn_output + hidden_states
 
         # 3. Cross-Attention
         if self.attn2 is not None:
             norm_hidden_states = self.norm2(hidden_states)
-            attn_output = self.attn2(
-                norm_hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=encoder_attention_mask,
-                **cross_attention_kwargs,
-            )
+            attn_output = self.attn2(norm_hidden_states, encoder_hidden_states=encoder_hidden_states)
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward
