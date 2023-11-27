@@ -1328,12 +1328,16 @@ def main(args):
         # different learning rate for text encoder and unet
         text_lora_parameters_one_with_lr = {
             "params": text_lora_parameters_one,
-            "weight_decay": args.adam_weight_decay_text_encoder if args.adam_weight_decay_text_encoder else args.adam_weight_decay,
+            "weight_decay": args.adam_weight_decay_text_encoder
+            if args.adam_weight_decay_text_encoder
+            else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
         text_lora_parameters_two_with_lr = {
             "params": text_lora_parameters_two,
-            "weight_decay": args.adam_weight_decay_text_encoder if args.adam_weight_decay_text_encoder else args.adam_weight_decay,
+            "weight_decay": args.adam_weight_decay_text_encoder
+            if args.adam_weight_decay_text_encoder
+            else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
         params_to_optimize = [
