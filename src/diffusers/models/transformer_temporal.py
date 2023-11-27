@@ -223,8 +223,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         out_channels: Optional[int] = None,
         num_layers: int = 1,
         cross_attention_dim: Optional[int] = None,
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -268,7 +266,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         time_embed_dim = in_channels * 4
         self.time_pos_embed = TimestepEmbedding(in_channels, time_embed_dim, out_dim=in_channels)
         self.time_proj = Timesteps(in_channels, True, 0)
-        self.time_mixer = AlphaBlender(alpha=merge_factor, merge_strategy=merge_strategy)
+        self.time_mixer = AlphaBlender(alpha=0.5, merge_strategy="learned_with_images")
 
         # 4. Define output layers
         self.out_channels = in_channels if out_channels is None else out_channels

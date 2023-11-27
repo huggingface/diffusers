@@ -57,8 +57,6 @@ def get_down_block(
     temporal_max_seq_length: int = 32,
     transformer_layers_per_block: int = 1,
     dropout: float = 0.0,
-    merge_factor: float = 0.5,
-    merge_strategy: str = "learned_with_images",
 ) -> Union[
     "DownBlock3D",
     "CrossAttnDownBlock3D",
@@ -149,8 +147,6 @@ def get_down_block(
             dropout=dropout,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
-            merge_factor=merge_factor,
-            merge_strategy=merge_strategy,
         )
     elif down_block_type == "CrossAttnDownBlockSpatioTemporal":
         # added for SDV
@@ -167,8 +163,6 @@ def get_down_block(
             resnet_eps=resnet_eps,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            merge_factor=merge_factor,
-            merge_strategy=merge_strategy,
         )
 
     raise ValueError(f"{down_block_type} does not exist.")
@@ -198,8 +192,6 @@ def get_up_block(
     temporal_max_seq_length: int = 32,
     transformer_layers_per_block: int = 1,
     dropout: float = 0.0,
-    merge_factor: float = 0.5,
-    merge_strategy: str = "learned_with_images",
 ) -> Union[
     "UpBlock3D",
     "CrossAttnUpBlock3D",
@@ -296,8 +288,6 @@ def get_up_block(
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
-            merge_factor=merge_factor,
-            merge_strategy=merge_strategy,
         )
     elif up_block_type == "CrossAttnUpBlockSpatioTemporal":
         # added for SDV
@@ -316,8 +306,6 @@ def get_up_block(
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
             resolution_idx=resolution_idx,
-            merge_factor=merge_factor,
-            merge_strategy=merge_strategy,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -2051,8 +2039,6 @@ class DownBlockSpatioTemporal(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         add_downsample: bool = True,
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         resnets = []
@@ -2066,8 +2052,6 @@ class DownBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -2155,8 +2139,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         add_downsample: bool = True,
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         resnets = []
@@ -2176,8 +2158,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
                 )
             )
             attentions.append(
@@ -2187,8 +2167,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     in_channels=out_channels,
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -2285,8 +2263,6 @@ class UpBlockSpatioTemporal(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         add_upsample: bool = True,
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         resnets = []
@@ -2302,8 +2278,6 @@ class UpBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
                 )
             )
 
@@ -2387,8 +2361,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         add_upsample: bool = True,
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
         resnets = []
@@ -2411,8 +2383,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
                 )
             )
             attentions.append(
@@ -2422,8 +2392,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     in_channels=out_channels,
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
                 )
             )
 

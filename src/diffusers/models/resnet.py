@@ -1240,7 +1240,7 @@ class SpatioTemporalResBlock(nn.Module):
         eps: float = 1e-6,
         temporal_eps: Optional[float] = None,
         merge_factor: float = 0.5,
-        merge_strategy="learned",
+        merge_strategy="learned_with_images",
         switch_spatial_to_temporal_mix: bool = False,
     ):
         super().__init__()
