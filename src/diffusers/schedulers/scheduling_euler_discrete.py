@@ -147,7 +147,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_min: Optional[float] = None,
         sigma_max: Optional[float] = None,
         timestep_spacing: str = "linspace",
-        timestep_type: str = "discrete", # can be "discrete" or "continuous"
+        timestep_type: str = "discrete",  # can be "discrete" or "continuous"
         steps_offset: int = 0,
     ):
         if trained_betas is not None:
@@ -270,7 +270,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
-        
+
         # when timestep_type is continuous, we need to convert the timesteps to continuous values using c_noise
         if self.config.timestep_type == "continuous":
             timesteps = np.array([self.get_scalings(sigma)[-1] for sigma in sigmas])
@@ -308,8 +308,20 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
-        sigma_min = self.config.sigma_min if self.config.sigma_min is not None else in_sigmas[-1].item()
-        sigma_max = self.config.sigma_max if self.config.sigma_max is not None else in_sigmas[0].item()
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
@@ -337,7 +349,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             c_skip = 1.0 / (sigma**2 + 1.0)
             c_out = -sigma / (sigma**2 + 1.0) ** 0.5
             c_in = 1.0 / (sigma**2 + 1.0) ** 0.5
-            c_noise = 0.25 * sigma.log()
+            c_noise = 0.25 * math.log(sigma)
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
@@ -360,7 +372,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0]
 
-        step_index = index_candidates[0]
         self._step_index = step_index.item()
 
     def step(
@@ -448,8 +459,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.prediction_type == "epsilon":
             pred_original_sample = sample - sigma_hat * model_output
         elif self.config.prediction_type == "v_prediction":
-            # * c_out + input * c_skip
-            # pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
             pred_original_sample = model_output * c_out + sample * c_skip
         else:
             raise ValueError(

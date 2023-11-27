@@ -23,6 +23,12 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
+from ...models.attention_processor import (
+    AttnProcessor2_0,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
+)
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import randn_tensor
@@ -32,8 +38,7 @@ from ..pipeline_utils import DiffusionPipeline
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# TODO: remove this function later
-def append_dims(x, target_dims):
+def _append_dims(x, target_dims):
     """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
     dims_to_append = target_dims - x.ndim
     if dims_to_append < 0:
@@ -74,7 +79,7 @@ class StableDiffusionVideoPipelineOutput(BaseOutput):
 
 class StableDiffusionVideoPipeline(DiffusionPipeline):
     r"""
-    Pipeline to generate image variations from an input image using Stable Diffusion.
+    Pipeline to generate video from an input image using Stable Video Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -84,19 +89,13 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
             Frozen CLIP image-encoder ([laion/CLIP-ViT-H-14-laion2B-s32B-b79K](https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K)).
-        tokenizer ([`~transformers.CLIPTokenizer`]):
-            A `CLIPTokenizer` to tokenize text.
         unet ([`UNetSpatioTemporalConditionModel`]):
             A `UNetSpatioTemporalConditionModel` to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for more details
-            about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
-            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
+            A `CLIPImageProcessor` to extract features from generated images.
     """
 
     model_cpu_offload_seq = "image_encoder->unet->vae"
@@ -159,11 +158,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         num_videos_per_prompt,
         do_classifier_free_guidance,
     ):
-        # encode image in fp32
-        self.vae.to(torch.float32)
         image = image.to(device=device)
-        with torch.autocast("cuda", enabled=False):
-            image_latents = self.vae.encode(image).latent_dist.mode()
+        image_latents = self.vae.encode(image).latent_dist.mode()
 
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
@@ -213,7 +209,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         latents = latents.flatten(0, 1)
 
         latents = 1 / self.vae.config.scaling_factor * latents
-        latents = latents.to(torch.float32)
 
         # decode decoding_t frames at a time to avoid OOM
         frames = []
@@ -279,7 +274,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -362,7 +356,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "np",
+        output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
@@ -378,12 +372,23 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
+            num_frames (`int`, *optional*, defaults to 14):
+                The number of video frames to generate.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
-            guidance_scale (`float`, *optional*, defaults to 7.5):
-                A higher guidance scale value encourages the model to generate images closely linked to the text
-                `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
+            min_guidance_scale (`float`, *optional*, defaults to 1.0):
+                The minimum guidance scale. Used for the classifier free guidance with first frame.
+            max_guidance_scale (`float`, *optional*, defaults to 2.5):
+                The maximum guidance scale. Used for the classifier free guidance with last frame.
+            fps_id (`int`, *optional*, defaults to 6):
+                The frame rate ID. Used as conditioning for the generation.
+            motion_bucket_id (`int`, *optional*, defaults to 127):
+                The motion bucket ID. Used as conditioning for the generation. The higher the number the more motion will be in the video.
+            cond_aug (`int`, *optional*, defaults to 0.02):
+                The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
+            decoding_t (`int`, *optional*, defaults to 14):
+                The number of frames to decode at a time. This is used to avoid OOM errors.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -409,32 +414,24 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 every step.
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is a list with the generated images and the
-                second element is a list of `bool`s indicating whether the corresponding generated image contains
-                "not-safe-for-work" (nsfw) content.
+            [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] is returned,
+                otherwise a `tuple` is returned where the first element is a list of list with the generated frames.
 
         Examples:
 
         ```py
         from diffusers import StableDiffusionVideoPipeline
-        from PIL import Image
-        from io import BytesIO
-        import requests
+        from diffusers.utils import load_image, export_to_video
 
-        pipe = StableDiffusionVideoPipeline.from_pretrained(
-            "lambdalabs/sd-image-variations-diffusers", revision="v2.0"
-        )
-        pipe = pipe.to("cuda")
+        pipe = StableDiffusionVideoPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid", torch_dtype=torch.float16, variant="fp16")
+        pipe.to("cuda")
 
-        url = "https://lh3.googleusercontent.com/y-iFOHfLTwkuQSUegpwDdgKmOjRSTvPxat63dQLB25xkTs4lhIbRUFeNBWZzYf370g=s1200"
+        image = load_image("https://lh3.googleusercontent.com/y-iFOHfLTwkuQSUegpwDdgKmOjRSTvPxat63dQLB25xkTs4lhIbRUFeNBWZzYf370g=s1200")
+        image = image.resize((1024, 576))
 
-        response = requests.get(url)
-        image = Image.open(BytesIO(response.content)).convert("RGB")
-
-        out = pipe(image, num_videos_per_prompt=3, guidance_scale=15)
-        out["images"][0].save("result.jpg")
+        frames = pipe(image, num_frames=14, decoding_t=8).frames[0]
+        export_to_video(frames, "generated.mp4", fps=7)
         ```
         """
         # 0. Default height and width to unet
@@ -465,10 +462,21 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # 4. Encode input image using VAE
         image = self.image_processor.preprocess(image, height=height, width=width)
         image = image + cond_aug * torch.randn_like(image)
+
+        needs_upcasting = (
+            self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+        )
+        if needs_upcasting:
+            self.vae.to(dtype=torch.float32)
+
         image_latents = self._encode_vae_image(
             image, device, num_videos_per_prompt, do_classifier_free_guidance
         )
         image_latents = image_latents.to(image_embeddings.dtype)
+
+        # cast back to fp16 if needed
+        if needs_upcasting:
+            self.vae.to(dtype=torch.float16)
 
         # Repeat the image latents for each frame so we can concatenate them with the noise
         # image_latents [batch, channels, height, width] ->[batch, num_frames, channels, height, width]
@@ -513,9 +521,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         ).unsqueeze(0)
         guidance_scale = guidance_scale.to(device, latents.dtype)
         guidance_scale = guidance_scale.repeat(batch_size * num_videos_per_prompt, 1)
-        guidance_scale = append_dims(guidance_scale, latents.ndim)
-
-        added_cond_kwargs = {"time_ids": added_time_ids}
+        guidance_scale = _append_dims(guidance_scale, latents.ndim)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -539,7 +545,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                     latent_model_input,
                     t,
                     encoder_hidden_states=image_embeddings,
-                    added_cond_kwargs=added_cond_kwargs,
+                    added_time_ids=added_time_ids,
                 ).sample
 
                 # perform guidance
@@ -563,23 +569,18 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
-        self.maybe_free_model_hooks()
+        frames = self.decode_latents(latents, num_frames, decoding_t)
 
-        if output_type == "latent":
-            return StableDiffusionVideoPipelineOutput(frames=latents)
+        # cast back to fp16 if needed
+        if needs_upcasting:
+            self.vae.to(dtype=torch.float16)
 
-        # Post-processing
-        # decode image in fp32
-        self.vae.to(torch.float32)
-        with torch.autocast("cuda", enabled=False):
-            frames_tensor = self.decode_latents(latents, num_frames, decoding_t)
-
-        if output_type == "pt":
-            frames = frames_tensor
+        if not output_type == "latent":
+            frames = tensor2vid(frames, self.image_processor, output_type=output_type)
         else:
-            frames = tensor2vid(
-                frames_tensor, self.image_processor, output_type=output_type
-            )
+            frames = latents
+
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return frames
