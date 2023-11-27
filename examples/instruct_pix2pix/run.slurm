@@ -67,7 +67,7 @@ PROGRAM="train_instruct_pix2pix_sdxl.py \
     --checkpointing_steps=2500 \
     --learning_rate=1e-5 --lr_warmup_steps=0 \
     --mixed_precision=fp16 \
-    --val_image_url='https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png' \
+    --val_image_url_or_path='https://hf.co/datasets/diffusers/diffusers-images-docs/resolve/main/mountain.png' \
     --validation_prompt='Turn sky into a cloudy one' \
     --seed=42 \
     --output_dir=$OUTPUT_DIR \

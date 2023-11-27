@@ -1176,7 +1176,7 @@ def main():
 
         if accelerator.is_main_process:
             if (
-                (args.val_image_url is not None)
+                (args.val_image_url_or_path is not None)
                 and (args.validation_prompt is not None)
                 and (epoch % args.validation_epochs == 0)
             ):
