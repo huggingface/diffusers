@@ -525,7 +525,7 @@ def parse_args(input_args=None):
     parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-04, help="Weight decay to use for unet params")
     parser.add_argument(
-        "--adam_weight_decay_text_encoder", type=float, default=1e-03, help="Weight decay to use for text_encoder"
+        "--adam_weight_decay_text_encoder", type=float, default=None, help="Weight decay to use for text_encoder"
     )
 
     parser.add_argument(
@@ -1328,12 +1328,12 @@ def main(args):
         # different learning rate for text encoder and unet
         text_lora_parameters_one_with_lr = {
             "params": text_lora_parameters_one,
-            "weight_decay": args.adam_weight_decay_text_encoder,
+            "weight_decay": args.adam_weight_decay_text_encoder if args.adam_weight_decay_text_encoder else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
         text_lora_parameters_two_with_lr = {
             "params": text_lora_parameters_two,
-            "weight_decay": args.adam_weight_decay_text_encoder,
+            "weight_decay": args.adam_weight_decay_text_encoder if args.adam_weight_decay_text_encoder else args.adam_weight_decay,
             "lr": args.text_encoder_lr if args.text_encoder_lr else args.learning_rate,
         }
         params_to_optimize = [
