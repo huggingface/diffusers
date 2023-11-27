@@ -717,7 +717,7 @@ class TokenEmbeddingsHandler:
         assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
         tensors = {}
         # text_encoder_0 - CLIP ViT-L/14, text_encoder_1 -  CLIP ViT-G/14
-        idx_to_text_encoder_name = {0:"clip_l", 1:"clip_g"}
+        idx_to_text_encoder_name = {0: "clip_l", 1: "clip_g"}
         for idx, text_encoder in enumerate(self.text_encoders):
             assert text_encoder.text_model.embeddings.token_embedding.weight.data.shape[0] == len(
                 self.tokenizers[0]
