@@ -256,7 +256,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
 
         # 2. Define input layers
         self.in_channels = in_channels
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=norm_eps)
+        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6)
         self.proj_in = linear_cls(in_channels, inner_dim)
 
         # 3. Define transformers blocks
