@@ -192,7 +192,7 @@ def parse_args():
     parser.add_argument(
         "--validation_steps",
         type=int,
-        default=500,
+        default=None,
         help=(
             "Run fine-tuning validation every X steps. The validation process consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
@@ -201,7 +201,7 @@ def parse_args():
     parser.add_argument(
         "--validation_epochs",
         type=int,
-        default=1,
+        default=None,
         help=(
             "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
