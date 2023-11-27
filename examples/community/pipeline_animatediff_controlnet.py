@@ -58,11 +58,12 @@ EXAMPLE_DOC_STRING = """
         >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
 
         >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-        >>> pipe = AnimateDiffControlNetPipeline.from_pretrained(
+        >>> pipe = DiffusionPipeline.from_pretrained(
         ...     model_id,
         ...     motion_adapter=adapter,
         ...     controlnet=controlnet,
         ...     vae=vae,
+        ...     custom_pipeline="pipeline_animatediff_controlnet",
         ... ).to(device="cuda", dtype=torch.float16)
         >>> pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
         ...     model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
