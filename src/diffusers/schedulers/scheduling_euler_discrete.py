@@ -337,7 +337,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             c_skip = 1.0 / (sigma**2 + 1.0)
             c_out = -sigma / (sigma**2 + 1.0) ** 0.5
             c_in = 1.0 / (sigma**2 + 1.0) ** 0.5
-            c_noise = 0.25 * sigma.log()
+            c_noise = 0.25 * math.log(sigma)
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
