@@ -62,6 +62,7 @@ enable_full_determinism()
 
 
 # todo umer: understand & adapt
+# -- my understanding is that cnxs can't be compiled because it's not a "full" model. it needs a base model to function. is this correct?
 # Will be run via run_test_in_subprocess
 def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     error = None
@@ -132,14 +133,12 @@ class ControlNetXSPipelineFastTests(
             time_cond_proj_dim=time_cond_proj_dim,
         )
         torch.manual_seed(0)
-        controlnet = ControlNetXSModel(
-            block_out_channels=(4, 8),
-            layers_per_block=2,
-            in_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            cross_attention_dim=32,
-            conditioning_embedding_out_channels=(16, 32),
-            norm_num_groups=1,
+        controlnet = ControlNetXSModel.from_unet(
+            unet=unet,
+            time_embedding_mix=0.95,
+            learn_embedding=True,
+            size_ratio=0.5,
+            conditioning_block_sizes=(16, 32),
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
@@ -256,7 +255,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-S2.1-canny")
+        controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-SD2.1-canny")
 
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-1", safety_checker=None, controlnet=controlnet
@@ -276,14 +275,12 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (768, 512, 3)
 
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out.npy"
-        )
-
-        assert np.abs(expected_image - image).max() < 9e-2
+        original_image = image[-3:, -3:, -1].flatten()
+        expected_image = np.array([0.1274, 0.1401, 0.147 , 0.1185, 0.1555, 0.1492, 0.1565, 0.1474, 0.1701])
+        assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_depth(self):
-        controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-S2.1-depth")
+        controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-SD2.1-depth")
 
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
             "stabilityai/stable-diffusion-2-1", safety_checker=None, controlnet=controlnet
@@ -303,48 +300,16 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (512, 512, 3)
 
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
-        )
-
-        assert np.abs(expected_image - image).max() < 8e-1
+        original_image = image[-3:, -3:, -1].flatten()
+        expected_image = np.array([0.1098, 0.1025, 0.1211, 0.1129, 0.1165, 0.1262, 0.1185, 0.1261, 0.1703])
+        assert np.allclose(original_image, expected_image, atol=1e-04)
 
     @require_python39_or_higher
     @require_torch_2
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
 
-    def test_v11_shuffle_global_pool_conditions(self):
-        controlnet = ControlNetXSModel.from_pretrained("lllyasviel/control_v11e_sd15_shuffle")
-
-        pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "New York"
-        image = load_image(
-            "https://huggingface.co/lllyasviel/control_v11e_sd15_shuffle/resolve/main/images/control.png"
-        )
-
-        output = pipe(
-            prompt,
-            image,
-            generator=generator,
-            output_type="np",
-            num_inference_steps=3,
-            guidance_scale=7.0,
-        )
-
-        image = output.images[0]
-        assert image.shape == (512, 640, 3)
-
-        image_slice = image[-3:, -3:, -1]
-        expected_slice = np.array([0.1338, 0.1597, 0.1202, 0.1687, 0.1377, 0.1017, 0.2070, 0.1574, 0.1348])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-
+    # todo umer
     def test_load_local(self):
         controlnet = ControlNetXSModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
         pipe_1 = StableDiffusionControlNetXSPipeline.from_pretrained(
