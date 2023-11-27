@@ -16,7 +16,6 @@ from typing import Any, Dict, Optional
 import torch
 from torch import nn
 
-from ..umer_debug_logger import udl
 from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU
@@ -272,10 +271,6 @@ class BasicTransformerBlock(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
-        udl.log_if("norm1", norm_hidden_states, "SUBBLOCK-MINUS-1")
-        udl.log_if("attn1", attn_output, "SUBBLOCK-MINUS-1")
-        udl.log_if("add attn1", hidden_states, "SUBBLOCK-MINUS-1")
-
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
             hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
@@ -303,10 +298,6 @@ class BasicTransformerBlock(nn.Module):
                 **cross_attention_kwargs,
             )
             hidden_states = attn_output + hidden_states
-        udl.log_if("norm2", norm_hidden_states, "SUBBLOCK-MINUS-1")
-        udl.log_if("context", encoder_hidden_states, "SUBBLOCK-MINUS-1")
-        udl.log_if("attn2", attn_output, "SUBBLOCK-MINUS-1")
-        udl.log_if("add attn2", hidden_states, "SUBBLOCK-MINUS-1")
 
         # 4. Feed-forward
         if not self.use_ada_layer_norm_single:
@@ -345,10 +336,6 @@ class BasicTransformerBlock(nn.Module):
         hidden_states = ff_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
-
-        udl.log_if("norm3", norm_hidden_states, "SUBBLOCK-MINUS-1")
-        udl.log_if("ff", ff_output, "SUBBLOCK-MINUS-1")
-        udl.log_if("add ff", hidden_states, "SUBBLOCK-MINUS-1")
 
         return hidden_states
 

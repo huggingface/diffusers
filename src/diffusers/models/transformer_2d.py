@@ -20,7 +20,6 @@ from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
-from ..umer_debug_logger import udl
 from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate
 from .attention import BasicTransformerBlock
 from .embeddings import CaptionProjection, PatchEmbed
@@ -320,7 +319,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             residual = hidden_states
 
             hidden_states = self.norm(hidden_states)
-            udl.log_if("norm", hidden_states, condition="SUBBLOCK-MINUS-1")
 
             if not self.use_linear_projection:
                 hidden_states = (
@@ -338,8 +336,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     if not USE_PEFT_BACKEND
                     else self.proj_in(hidden_states)
                 )
-
-            udl.log_if("proj_in", hidden_states, condition="SUBBLOCK-MINUS-1")
 
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
@@ -440,7 +436,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             output = hidden_states.reshape(
                 shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
             )
-        udl.log_if("proj_out", output, condition="SUBBLOCK-MINUS-1")
 
         if not return_dict:
             return (output,)
