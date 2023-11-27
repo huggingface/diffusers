@@ -186,7 +186,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         latents = latents.flatten(0, 1)
 
         latents = 1 / self.vae.config.scaling_factor * latents
-        latents = latents.to(torch.float32)
 
         # decode decoding_t frames at a time to avoid OOM
         frames = []
@@ -267,26 +266,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
-    def upcast_vae(self):
-        dtype = self.vae.dtype
-        self.vae.to(dtype=torch.float32)
-        use_torch_2_0_or_xformers = isinstance(
-            self.vae.decoder.mid_block.attentions[0].processor,
-            (
-                AttnProcessor2_0,
-                XFormersAttnProcessor,
-                LoRAXFormersAttnProcessor,
-                LoRAAttnProcessor2_0,
-            ),
-        )
-        # if xformers or torch_2_0 is used attention block does not need
-        # to be in float32 which can save lots of memory
-        if use_torch_2_0_or_xformers:
-            self.vae.post_quant_conv.to(dtype)
-            self.vae.decoder.conv_in.to(dtype)
-            self.vae.decoder.mid_block.to(dtype)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
@@ -441,7 +420,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
-            self.upcast_vae()
+            self.vae.to(dtype=torch.float32)
 
         image_latents = self._encode_vae_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
         image_latents = image_latents.to(image_embeddings.dtype)
@@ -531,7 +510,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         # make sure the VAE is in float32 mode, as it overflows in float16
         if needs_upcasting:
-            self.upcast_vae()
+            self.vae.to(dtype=torch.float32)
+            latents = latents.to(dtype=torch.float32)
 
         frames = self.decode_latents(latents, num_frames, decoding_t)
 
