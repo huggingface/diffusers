@@ -296,7 +296,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         cond_aug: int = 0.02,
         decoding_t: int = 14,
         num_videos_per_prompt: Optional[int] = 1,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
