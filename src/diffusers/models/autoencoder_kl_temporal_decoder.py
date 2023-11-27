@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Iterable, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalVAEMixin
-from ..utils import BaseOutput
+from ..utils import BaseOutput, is_torch_version
 from ..utils.accelerate_utils import apply_forward_hook
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -29,12 +29,184 @@ from .attention_processor import (
     AttnProcessor,
 )
 from .modeling_utils import ModelMixin
-from .vae import (
-    DecoderOutput,
-    DiagonalGaussianDistribution,
-    Encoder,
-    TemporalDecoder,
-)
+from .unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
+from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
+
+
+class TemporalDecoder(nn.Module):
+    def __init__(
+        self,
+        in_channels: int = 4,
+        out_channels: int = 3,
+        block_out_channels: Tuple[int, ...] = (
+            128,
+            256,
+            512,
+            512,
+        ),
+        layers_per_block: int = 2,
+        norm_num_groups: int = 32,
+        act_fn: str = "silu",
+        norm_type: str = "group",  # group, spatial
+        alpha: float = 0.0,
+        merge_strategy: str = "learned",
+        conv_out_kernel_size=(3, 1, 1),
+    ):
+        super().__init__()
+        self.layers_per_block = layers_per_block
+        conv_cls = nn.Conv2d
+
+        self.conv_in = conv_cls(in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
+        temb_channels = in_channels if norm_type == "spatial" else None
+        self.mid_block = MidBlockTemporalDecoder(
+            num_layers=self.layers_per_block,
+            in_channels=block_out_channels[-1],
+            out_channels=block_out_channels[-1],
+            attention_head_dim=block_out_channels[-1],
+            resnet_eps=1e-6,
+            temporal_resnet_eps=1e-5,
+            resnet_act_fn=act_fn,
+            norm_num_groups=norm_num_groups,
+            temb_channels=temb_channels,
+            resnet_time_scale_shift=norm_type,
+            merge_factor=alpha,
+            merge_strategy=merge_strategy,
+        )
+
+        # up
+        self.up_blocks = nn.ModuleList([])
+        reversed_block_out_channels = list(reversed(block_out_channels))
+        output_channel = reversed_block_out_channels[0]
+        for i in range(len(block_out_channels)):
+            prev_output_channel = output_channel
+            output_channel = reversed_block_out_channels[i]
+
+            is_final_block = i == len(block_out_channels) - 1
+            up_block = UpBlockTemporalDecoder(
+                num_layers=self.layers_per_block + 1,
+                in_channels=prev_output_channel,
+                out_channels=output_channel,
+                add_upsample=not is_final_block,
+                resnet_eps=1e-6,
+                temporal_resnet_eps=1e-5,
+                resnet_act_fn=act_fn,
+                norm_num_groups=norm_num_groups,
+                attention_head_dim=output_channel,
+                temb_channels=temb_channels,
+                resnet_time_scale_shift=norm_type,
+                merge_factor=alpha,
+                merge_strategy=merge_strategy,
+            )
+            self.up_blocks.append(up_block)
+            prev_output_channel = output_channel
+
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
+
+        if isinstance(conv_out_kernel_size, Iterable):
+            padding = [int(k // 2) for k in conv_out_kernel_size]
+        else:
+            padding = int(conv_out_kernel_size // 2)
+
+        self.conv_act = nn.SiLU()
+        self.conv_out = torch.nn.Conv2d(
+            in_channels=block_out_channels[0],
+            out_channels=out_channels,
+            kernel_size=3,
+            padding=1,
+        )
+        self.time_conv_out = torch.nn.Conv3d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=conv_out_kernel_size,
+            padding=padding,
+        )
+
+        self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        sample: torch.FloatTensor,
+        image_only_indicator: torch.FloatTensor,
+        num_frames: int = 1,
+        latent_embeds: Optional[torch.FloatTensor] = None,
+    ) -> torch.FloatTensor:
+        r"""The forward method of the `Decoder` class."""
+
+        sample = self.conv_in(sample)
+
+        upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
+        if self.training and self.gradient_checkpointing:
+
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+
+                return custom_forward
+
+            if is_torch_version(">=", "1.11.0"):
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block),
+                    sample,
+                    latent_embeds,
+                    use_reentrant=False,
+                )
+                sample = sample.to(upscale_dtype)
+
+                # up
+                for up_block in self.up_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(up_block),
+                        sample,
+                        latent_embeds,
+                        use_reentrant=False,
+                    )
+            else:
+                # middle
+                sample = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.mid_block), sample, latent_embeds
+                )
+                sample = sample.to(upscale_dtype)
+
+                # up
+                for up_block in self.up_blocks:
+                    sample = torch.utils.checkpoint.checkpoint(create_custom_forward(up_block), sample, latent_embeds)
+        else:
+            # middle
+            sample = self.mid_block(
+                sample,
+                temb=latent_embeds,
+                num_frames=num_frames,
+                image_only_indicator=image_only_indicator,
+            )
+            sample = sample.to(upscale_dtype)
+
+            # up
+            for up_block in self.up_blocks:
+                sample = up_block(
+                    sample,
+                    temb=latent_embeds,
+                    num_frames=num_frames,
+                    image_only_indicator=image_only_indicator,
+                )
+
+        # post-process
+        if latent_embeds is None:
+            sample = self.conv_norm_out(sample)
+        else:
+            sample = self.conv_norm_out(sample, latent_embeds)
+
+        sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
+
+        batch_frames, channels, height, width = sample.shape
+        batch_size = batch_frames // num_frames
+        sample = sample[None, :].reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
+        sample = self.time_conv_out(sample)
+
+        sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_frames, channels, height, width)
+
+        return sample
 
 
 @dataclass
@@ -313,7 +485,11 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
     @apply_forward_hook
     def decode(
-        self, z: torch.FloatTensor, num_frames: int, return_dict: bool = True, generator=None
+        self,
+        z: torch.FloatTensor,
+        num_frames: int,
+        return_dict: bool = True,
+        generator=None,
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         """
         Decode a batch of images.
