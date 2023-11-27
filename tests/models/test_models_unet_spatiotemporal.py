@@ -36,9 +36,7 @@ logger = logging.get_logger(__name__)
 enable_full_determinism()
 
 
-class UNetSpatioTemporalConditionModelTests(
-    ModelTesterMixin, UNetTesterMixin, unittest.TestCase
-):
+class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNetSpatioTemporalConditionModel
     main_input_name = "sample"
 
@@ -110,9 +108,7 @@ class UNetSpatioTemporalConditionModelTests(
         model.enable_xformers_memory_efficient_attention()
 
         assert (
-            model.mid_block.attentions[0]
-            .transformer_blocks[0]
-            .attn1.processor.__class__.__name__
+            model.mid_block.attentions[0].transformer_blocks[0].attn1.processor.__class__.__name__
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
@@ -155,11 +151,7 @@ class UNetSpatioTemporalConditionModelTests(
         named_params = dict(model.named_parameters())
         named_params_2 = dict(model_2.named_parameters())
         for name, param in named_params.items():
-            self.assertTrue(
-                torch_all_close(
-                    param.grad.data, named_params_2[name].grad.data, atol=5e-5
-                )
-            )
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
     def test_model_with_attention_head_dim_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -178,9 +170,7 @@ class UNetSpatioTemporalConditionModelTests(
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_with_use_linear_projection(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -199,9 +189,7 @@ class UNetSpatioTemporalConditionModelTests(
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_with_cross_attention_dim_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -220,9 +208,7 @@ class UNetSpatioTemporalConditionModelTests(
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_with_simple_projection(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -232,9 +218,7 @@ class UNetSpatioTemporalConditionModelTests(
         init_dict["class_embed_type"] = "simple_projection"
         init_dict["projection_class_embeddings_input_dim"] = sample_size
 
-        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(
-            torch_device
-        )
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -248,9 +232,7 @@ class UNetSpatioTemporalConditionModelTests(
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_with_class_embeddings_concat(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -261,9 +243,7 @@ class UNetSpatioTemporalConditionModelTests(
         init_dict["projection_class_embeddings_input_dim"] = sample_size
         init_dict["class_embeddings_concat"] = True
 
-        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(
-            torch_device
-        )
+        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -277,9 +257,7 @@ class UNetSpatioTemporalConditionModelTests(
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(
-            output.shape, expected_shape, "Input and output shapes do not match"
-        )
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()

@@ -140,7 +140,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         out_channels: int = 4,
         center_input_sample: bool = False,
         flip_sin_to_cos: bool = True,
-        freq_shift: int = 0,
         down_block_types: Tuple[str] = (
             "CrossAttnDownBlockSpatioTemporal",
             "CrossAttnDownBlockSpatioTemporal",
@@ -154,47 +153,26 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             "CrossAttnUpBlockSpatioTemporal",
             "CrossAttnUpBlockSpatioTemporal",
         ),
-        only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        projection_class_embeddings_input_dim: int = 768,
+        addition_time_embed_dim: int = 256,
         layers_per_block: Union[int, Tuple[int]] = 2,
-        downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
         dropout: float = 0.0,
         act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
-        cross_attention_dim: Union[int, Tuple[int]] = 1280,
+        cross_attention_dim: Union[int, Tuple[int]] = 1024,
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
-        reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
-        encoder_hid_dim: Optional[int] = None,
-        encoder_hid_dim_type: Optional[str] = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        class_embed_type: Optional[str] = None,
-        addition_embed_type: Optional[str] = None,
-        addition_time_embed_dim: Optional[int] = None,
-        num_class_embeds: Optional[int] = None,
         upcast_attention: bool = False,
-        resnet_time_scale_shift: str = "default",
-        resnet_out_scale_factor: int = 1.0,
-        time_embedding_type: str = "positional",
         time_embedding_dim: Optional[int] = None,
-        time_embedding_act_fn: Optional[str] = None,
-        timestep_post_act: Optional[str] = None,
-        time_cond_proj_dim: Optional[int] = None,
         conv_in_kernel: int = 3,
         conv_out_kernel: int = 3,
-        projection_class_embeddings_input_dim: Optional[int] = None,
-        class_embeddings_concat: bool = False,
-        mid_block_only_cross_attention: Optional[bool] = None,
-        cross_attention_norm: Optional[str] = None,
-        addition_embed_type_num_heads=64,
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
 
@@ -243,10 +221,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             raise ValueError(
                 f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
             )
-        if isinstance(transformer_layers_per_block, list) and reverse_transformer_layers_per_block is None:
-            for layer_number_per_block in transformer_layers_per_block:
-                if isinstance(layer_number_per_block, list):
-                    raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
@@ -257,34 +231,17 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         # time
         time_embed_dim = time_embedding_dim or block_out_channels[0] * 4
 
-        self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
+        self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, downscale_freq_shift=0)
         timestep_input_dim = block_out_channels[0]
 
         self.time_embedding = TimestepEmbedding(
             timestep_input_dim,
             time_embed_dim,
             act_fn=act_fn,
-            post_act_fn=timestep_post_act,
-            cond_proj_dim=time_cond_proj_dim,
         )
 
-        self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos, freq_shift)
+        self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos, downscale_freq_shift=0)
         self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
-
-        if encoder_hid_dim_type is None and encoder_hid_dim is not None:
-            encoder_hid_dim_type = "text_proj"
-            self.register_to_config(encoder_hid_dim_type=encoder_hid_dim_type)
-            logger.info("encoder_hid_dim_type defaults to 'text_proj' as `encoder_hid_dim` is defined.")
-
-        if encoder_hid_dim is None and encoder_hid_dim_type is not None:
-            raise ValueError(
-                f"`encoder_hid_dim` has to be defined when `encoder_hid_dim_type` is set to {encoder_hid_dim_type}."
-            )
-
-        if time_embedding_act_fn is None:
-            self.time_embed_act = None
-        else:
-            self.time_embed_act = get_activation(time_embedding_act_fn)
 
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
@@ -326,15 +283,12 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim[i],
                 num_attention_heads=num_attention_heads[i],
-                downsample_padding=downsample_padding,
-                dual_cross_attention=dual_cross_attention,
+                downsample_padding=1,
                 upcast_attention=upcast_attention,
-                resnet_time_scale_shift=resnet_time_scale_shift,
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
                 merge_strategy=merge_strategy,
-                max_time_embed_period=max_time_embed_period,
             )
             self.down_blocks.append(down_block)
 
@@ -345,18 +299,14 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             transformer_layers_per_block=transformer_layers_per_block[-1],
             resnet_eps=norm_eps,
             resnet_act_fn=act_fn,
-            output_scale_factor=mid_block_scale_factor,
-            resnet_time_scale_shift=resnet_time_scale_shift,
             cross_attention_dim=cross_attention_dim[-1],
             num_attention_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
-            dual_cross_attention=dual_cross_attention,
             upcast_attention=upcast_attention,
             dropout=dropout,
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
-            max_time_embed_period=max_time_embed_period,
         )
 
         # count how many layers upsample the images
@@ -367,12 +317,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         reversed_layers_per_block = list(reversed(layers_per_block))
         reversed_cross_attention_dim = list(reversed(cross_attention_dim))
-        reversed_transformer_layers_per_block = (
-            list(reversed(transformer_layers_per_block))
-            if reverse_transformer_layers_per_block is None
-            else reverse_transformer_layers_per_block
-        )
-        # only_cross_attention = list(reversed(only_cross_attention))
+        reversed_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
 
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
@@ -404,29 +349,18 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
-                dual_cross_attention=dual_cross_attention,
                 upcast_attention=upcast_attention,
-                resnet_time_scale_shift=resnet_time_scale_shift,
                 dropout=dropout,
                 kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
                 merge_strategy=merge_strategy,
-                max_time_embed_period=max_time_embed_period,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
         # out
-        if norm_num_groups is not None:
-            self.conv_norm_out = nn.GroupNorm(
-                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
-            )
-
-            self.conv_act = get_activation(act_fn)
-
-        else:
-            self.conv_norm_out = None
-            self.conv_act = None
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps)
+        self.conv_act = get_activation(act_fn)
 
         conv_out_padding = (conv_out_kernel - 1) // 2
         self.conv_out = nn.Conv2d(
@@ -614,15 +548,10 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
+        added_cond_kwargs: Dict[str, torch.Tensor],
         image_only_indicator: Optional[torch.Tensor] = None,
-        class_labels: Optional[torch.Tensor] = None,
-        timestep_cond: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
-        mid_block_additional_residual: Optional[torch.Tensor] = None,
-        down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
+        attention_mask: Optional[torch.Tensor] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNetSpatioTemporalConditionOutput, Tuple]:
@@ -634,12 +563,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 The noisy input tensor with the following shape `(batch, channel, height, width)`.
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.FloatTensor`):
-                The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
-            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
-                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
-            timestep_cond: (`torch.Tensor`, *optional*, defaults to `None`):
-                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
-                through the `self.time_embedding` layer to obtain the timestep embeddings.
             attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
                 An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
                 is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
@@ -648,13 +571,9 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            added_cond_kwargs: (`dict`, *optional*):
+            added_cond_kwargs: (`dict`):
                 A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
                 are passed along to the UNet blocks.
-            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
-                A tuple of tensors that if specified are added to the residuals of down unet blocks.
-            mid_block_additional_residual: (`torch.Tensor`, *optional*):
-                A tensor that if specified is added to the residual of the middle unet block.
             encoder_attention_mask (`torch.Tensor`):
                 A cross-attention mask of shape `(batch, sequence_length)` is applied to `encoder_hidden_states`. If
                 `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
@@ -664,17 +583,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
-            added_cond_kwargs: (`dict`, *optional*):
-                A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
-                are passed along to the UNet blocks.
-            down_block_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
-                additional residuals to be added to UNet long skip connections from down blocks to up blocks for
-                example from ControlNet side model(s)
-            mid_block_additional_residual (`torch.Tensor`, *optional*):
-                additional residual to be added to UNet mid block output, for example from ControlNet side model
-            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
-                additional residuals to be added within UNet down blocks, for example from T2I-Adapter side model(s)
-
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
                 If `return_dict` is True, an [`~models.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
@@ -746,7 +654,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=sample.dtype)
 
-        emb = self.time_embedding(t_emb, timestep_cond)
+        emb = self.time_embedding(t_emb)
 
         time_ids = added_cond_kwargs.get("time_ids")
         time_embeds = self.add_time_proj(time_ids.flatten())
@@ -754,9 +662,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         time_embeds = time_embeds.to(emb.dtype)
         aug_emb = self.add_embedding(time_embeds)
         emb = emb + aug_emb
-
-        if self.time_embed_act is not None:
-            emb = self.time_embed_act(emb)
 
         # Flatten the batch and frames dimensions
         # sample: [batch, frames, channels, height, width] -> [batch * frames, channels, height, width]
@@ -857,9 +762,8 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 )
 
         # 6. post-process
-        if self.conv_norm_out:
-            sample = self.conv_norm_out(sample)
-            sample = self.conv_act(sample)
+        sample = self.conv_norm_out(sample)
+        sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
         # 7. Reshape back to original shape

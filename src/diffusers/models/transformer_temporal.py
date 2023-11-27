@@ -253,12 +253,10 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         attention_type: str = "default",
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
-        self.max_time_embed_period = max_time_embed_period
 
         inner_dim = num_attention_heads * attention_head_dim
         self.inner_dim = inner_dim

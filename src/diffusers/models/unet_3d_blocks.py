@@ -60,7 +60,6 @@ def get_down_block(
     kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
     merge_strategy: str = "learned_with_images",
-    max_time_embed_period: int = 10000,
 ) -> Union[
     "DownBlock3D",
     "CrossAttnDownBlock3D",
@@ -183,7 +182,6 @@ def get_down_block(
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
-            max_time_embed_period=max_time_embed_period,
         )
 
     raise ValueError(f"{down_block_type} does not exist.")
@@ -216,7 +214,6 @@ def get_up_block(
     kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
     merge_strategy: str = "learned_with_images",
-    max_time_embed_period: int = 10000,
 ) -> Union[
     "UpBlock3D",
     "CrossAttnUpBlock3D",
@@ -345,7 +342,6 @@ def get_up_block(
             kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
-            max_time_embed_period=max_time_embed_period,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -1919,7 +1915,6 @@ class UpBlockTemporalDecoder(nn.Module):
         attention_type: str = "default",
         merge_factor: float = 0.0,
         merge_strategy: str = "learned",
-        max_time_embed_period: int = 10000,
         transformer_layers_per_block: Union[int, Tuple[int]] = (1,),
         switch_spatial_to_temporal_mix: bool = True,
     ):
@@ -2000,7 +1995,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
 
@@ -2045,7 +2039,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     attention_type=attention_type,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
-                    max_time_embed_period=max_time_embed_period,
                 )
             )
 
@@ -2286,7 +2279,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
         resnets = []
@@ -2329,7 +2321,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     attention_type=attention_type,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
-                    max_time_embed_period=max_time_embed_period,
                 )
             )
 
@@ -2594,7 +2585,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
-        max_time_embed_period: int = 10000,
     ):
         super().__init__()
         resnets = []
@@ -2640,7 +2630,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     attention_type=attention_type,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
-                    max_time_embed_period=max_time_embed_period,
                 )
             )
 
