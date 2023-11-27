@@ -586,7 +586,7 @@ def _resize_with_antialiasing(input, size, interpolation="bicubic", align_corner
     return output
 
 
-def _compute_padding(kernel_size: list[int]) -> list[int]:
+def _compute_padding(kernel_size):
     """Compute padding tuple."""
     # 4 or 6 ints:  (padding_left, padding_right,padding_top,padding_bottom)
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
