@@ -91,6 +91,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
             `force_upcast` can be set to `False` (see this fp16-friendly
             [AutoEncoder](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
     """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
