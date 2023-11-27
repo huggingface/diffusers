@@ -83,7 +83,9 @@ def get_down_block(
         )
     elif down_block_type == "CrossAttnDownBlock3D":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlock3D")
+            raise ValueError(
+                "cross_attention_dim must be specified for CrossAttnDownBlock3D"
+            )
         return CrossAttnDownBlock3D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -119,7 +121,9 @@ def get_down_block(
         )
     elif down_block_type == "CrossAttnDownBlockMotion":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockMotion")
+            raise ValueError(
+                "cross_attention_dim must be specified for CrossAttnDownBlockMotion"
+            )
         return CrossAttnDownBlockMotion(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -159,7 +163,9 @@ def get_down_block(
         )
     elif down_block_type == "CrossAttnDownBlockSpatioTemporal":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockSpatioTemporal")
+            raise ValueError(
+                "cross_attention_dim must be specified for CrossAttnDownBlockSpatioTemporal"
+            )
         return CrossAttnDownBlockSpatioTemporal(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -234,7 +240,9 @@ def get_up_block(
         )
     elif up_block_type == "CrossAttnUpBlock3D":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlock3D")
+            raise ValueError(
+                "cross_attention_dim must be specified for CrossAttnUpBlock3D"
+            )
         return CrossAttnUpBlock3D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -272,7 +280,9 @@ def get_up_block(
         )
     elif up_block_type == "CrossAttnUpBlockMotion":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockMotion")
+            raise ValueError(
+                "cross_attention_dim must be specified for CrossAttnUpBlockMotion"
+            )
         return CrossAttnUpBlockMotion(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -314,7 +324,9 @@ def get_up_block(
         )
     elif up_block_type == "CrossAttnUpBlockSpatioTemporal":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockSpatioTemporal")
+            raise ValueError(
+                "cross_attention_dim must be specified for CrossAttnUpBlockSpatioTemporal"
+            )
         return CrossAttnUpBlockSpatioTemporal(
             in_channels=in_channels,
             out_channels=out_channels,
@@ -362,7 +374,9 @@ class UNetMidBlock3DCrossAttn(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+        resnet_groups = (
+            resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+        )
 
         # there is always at least one resnet
         resnets = [
@@ -792,7 +806,9 @@ class CrossAttnUpBlock3D(nn.Module):
         self.temp_attentions = nn.ModuleList(temp_attentions)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList(
+                [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
+            )
         else:
             self.upsamplers = None
 
@@ -914,7 +930,9 @@ class UpBlock3D(nn.Module):
         self.temp_convs = nn.ModuleList(temp_convs)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList(
+                [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
+            )
         else:
             self.upsamplers = None
 
@@ -1218,7 +1236,11 @@ class CrossAttnDownBlockMotion(nn.Module):
     ):
         output_states = ()
 
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        lora_scale = (
+            cross_attention_kwargs.get("scale", 1.0)
+            if cross_attention_kwargs is not None
+            else 1.0
+        )
 
         blocks = list(zip(self.resnets, self.attentions, self.motion_modules))
         for i, (resnet, attn, motion_module) in enumerate(blocks):
@@ -1233,7 +1255,9 @@ class CrossAttnDownBlockMotion(nn.Module):
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
@@ -1379,7 +1403,9 @@ class CrossAttnUpBlockMotion(nn.Module):
         self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList(
+                [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
+            )
         else:
             self.upsamplers = None
 
@@ -1398,7 +1424,11 @@ class CrossAttnUpBlockMotion(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
     ) -> torch.FloatTensor:
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        lora_scale = (
+            cross_attention_kwargs.get("scale", 1.0)
+            if cross_attention_kwargs is not None
+            else 1.0
+        )
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -1437,7 +1467,9 @@ class CrossAttnUpBlockMotion(nn.Module):
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
@@ -1469,7 +1501,9 @@ class CrossAttnUpBlockMotion(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size, scale=lora_scale)
+                hidden_states = upsampler(
+                    hidden_states, upsample_size, scale=lora_scale
+                )
 
         return hidden_states
 
@@ -1537,7 +1571,9 @@ class UpBlockMotion(nn.Module):
         self.motion_modules = nn.ModuleList(motion_modules)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList(
+                [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
+            )
         else:
             self.upsamplers = None
 
@@ -1645,7 +1681,9 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+        resnet_groups = (
+            resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+        )
 
         # there is always at least one resnet
         resnets = [
@@ -1735,7 +1773,11 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
     ) -> torch.FloatTensor:
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        lora_scale = (
+            cross_attention_kwargs.get("scale", 1.0)
+            if cross_attention_kwargs is not None
+            else 1.0
+        )
         hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
 
         blocks = zip(self.attentions, self.resnets[1:], self.motion_modules)
@@ -1751,7 +1793,9 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1936,7 +1980,9 @@ class UpBlockTemporalDecoder(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList(
+                [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
+            )
         else:
             self.upsamplers = None
 
@@ -1988,7 +2034,9 @@ class UNetMidBlockSpatioTemporal(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+        resnet_groups = (
+            resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+        )
 
         # support for variable transformer layers per block
         if isinstance(transformer_layers_per_block, int):
@@ -2062,7 +2110,11 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        lora_scale = (
+            cross_attention_kwargs.get("scale", 1.0)
+            if cross_attention_kwargs is not None
+            else 1.0
+        )
         hidden_states = self.resnets[0](
             hidden_states,
             temb,
@@ -2082,7 +2134,9 @@ class UNetMidBlockSpatioTemporal(nn.Module):
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -2336,7 +2390,11 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
 
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        lora_scale = (
+            cross_attention_kwargs.get("scale", 1.0)
+            if cross_attention_kwargs is not None
+            else 1.0
+        )
 
         blocks = list(zip(self.resnets, self.attentions))
         for i, (resnet, attn) in enumerate(blocks):
@@ -2351,7 +2409,9 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
@@ -2449,7 +2509,9 @@ class UpBlockSpatioTemporal(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList(
+                [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
+            )
         else:
             self.upsamplers = None
 
@@ -2607,7 +2669,9 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
+            self.upsamplers = nn.ModuleList(
+                [Upsample2D(out_channels, use_conv=True, out_channels=out_channels)]
+            )
         else:
             self.upsamplers = None
 
@@ -2627,7 +2691,11 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        lora_scale = (
+            cross_attention_kwargs.get("scale", 1.0)
+            if cross_attention_kwargs is not None
+            else 1.0
+        )
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -2665,7 +2733,9 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(resnet),
                     hidden_states,
@@ -2701,6 +2771,8 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size, scale=lora_scale)
+                hidden_states = upsampler(
+                    hidden_states, upsample_size, scale=lora_scale
+                )
 
         return hidden_states
