@@ -8,6 +8,8 @@
 #SBATCH --partition=production-cluster
 #SBATCH --output=/admin/home/sayak/logs/instruct-pix2pix-sdxl-emu/%x-%j.out
 
+mkdir /admin/home/sayak/logs/instruct-pix2pix-sdxl-emu/
+
 set -x -e
 
 source /admin/home/sayak/.bashrc
