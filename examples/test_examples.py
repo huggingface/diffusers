@@ -535,31 +535,6 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {"checkpoint-4", "checkpoint-6"},
             )
 
-    def test_custom_diffusion(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_args = f"""
-                examples/custom_diffusion/train_custom_diffusion.py
-                --pretrained_model_name_or_path hf-internal-testing/tiny-stable-diffusion-pipe
-                --instance_data_dir docs/source/en/imgs
-                --instance_prompt <new1>
-                --resolution 64
-                --train_batch_size 1
-                --gradient_accumulation_steps 1
-                --max_train_steps 2
-                --learning_rate 1.0e-05
-                --scale_lr
-                --lr_scheduler constant
-                --lr_warmup_steps 0
-                --modifier_token <new1>
-                --no_safe_serialization
-                --output_dir {tmpdir}
-                """.split()
-
-            run_command(self._launch_args + test_args)
-            # save_pretrained smoke test
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "pytorch_custom_diffusion_weights.bin")))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "<new1>.bin")))
-
     def test_text_to_image(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -1485,92 +1460,6 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
             )
 
-    def test_controlnet_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_args = f"""
-            examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
-            --dataset_name=hf-internal-testing/fill10
-            --output_dir={tmpdir}
-            --resolution=64
-            --train_batch_size=1
-            --gradient_accumulation_steps=1
-            --max_train_steps=6
-            --checkpoints_total_limit=2
-            --checkpointing_steps=2
-            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet
-            """.split()
-
-            run_command(self._launch_args + test_args)
-
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
-            )
-
-    def test_controlnet_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_args = f"""
-            examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
-            --dataset_name=hf-internal-testing/fill10
-            --output_dir={tmpdir}
-            --resolution=64
-            --train_batch_size=1
-            --gradient_accumulation_steps=1
-            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet
-            --max_train_steps=9
-            --checkpointing_steps=2
-            """.split()
-
-            run_command(self._launch_args + test_args)
-
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6", "checkpoint-8"},
-            )
-
-            resume_run_args = f"""
-            examples/controlnet/train_controlnet.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
-            --dataset_name=hf-internal-testing/fill10
-            --output_dir={tmpdir}
-            --resolution=64
-            --train_batch_size=1
-            --gradient_accumulation_steps=1
-            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet
-            --max_train_steps=11
-            --checkpointing_steps=2
-            --resume_from_checkpoint=checkpoint-8
-            --checkpoints_total_limit=3
-            """.split()
-
-            run_command(self._launch_args + resume_run_args)
-
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-8", "checkpoint-10", "checkpoint-12"},
-            )
-
-    def test_controlnet_sdxl(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_args = f"""
-            examples/controlnet/train_controlnet_sdxl.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-xl-pipe
-            --dataset_name=hf-internal-testing/fill10
-            --output_dir={tmpdir}
-            --resolution=64
-            --train_batch_size=1
-            --gradient_accumulation_steps=1
-            --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet-sdxl
-            --max_train_steps=9
-            --checkpointing_steps=2
-            """.split()
-
-            run_command(self._launch_args + test_args)
-
-            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
-
     def test_t2i_adapter_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
@@ -1589,79 +1478,6 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             run_command(self._launch_args + test_args)
 
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "diffusion_pytorch_model.safetensors")))
-
-    def test_custom_diffusion_checkpointing_checkpoints_total_limit(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_args = f"""
-            examples/custom_diffusion/train_custom_diffusion.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
-            --instance_data_dir=docs/source/en/imgs
-            --output_dir={tmpdir}
-            --instance_prompt=<new1>
-            --resolution=64
-            --train_batch_size=1
-            --modifier_token=<new1>
-            --dataloader_num_workers=0
-            --max_train_steps=6
-            --checkpoints_total_limit=2
-            --checkpointing_steps=2
-            --no_safe_serialization
-            """.split()
-
-            run_command(self._launch_args + test_args)
-
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
-            )
-
-    def test_custom_diffusion_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_args = f"""
-            examples/custom_diffusion/train_custom_diffusion.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
-            --instance_data_dir=docs/source/en/imgs
-            --output_dir={tmpdir}
-            --instance_prompt=<new1>
-            --resolution=64
-            --train_batch_size=1
-            --modifier_token=<new1>
-            --dataloader_num_workers=0
-            --max_train_steps=9
-            --checkpointing_steps=2
-            --no_safe_serialization
-            """.split()
-
-            run_command(self._launch_args + test_args)
-
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6", "checkpoint-8"},
-            )
-
-            resume_run_args = f"""
-            examples/custom_diffusion/train_custom_diffusion.py
-            --pretrained_model_name_or_path=hf-internal-testing/tiny-stable-diffusion-pipe
-            --instance_data_dir=docs/source/en/imgs
-            --output_dir={tmpdir}
-            --instance_prompt=<new1>
-            --resolution=64
-            --train_batch_size=1
-            --modifier_token=<new1>
-            --dataloader_num_workers=0
-            --max_train_steps=11
-            --checkpointing_steps=2
-            --resume_from_checkpoint=checkpoint-8
-            --checkpoints_total_limit=3
-            --no_safe_serialization
-            """.split()
-
-            run_command(self._launch_args + resume_run_args)
-
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
-            )
 
     def test_text_to_image_lora_sdxl(self):
         with tempfile.TemporaryDirectory() as tmpdir:
