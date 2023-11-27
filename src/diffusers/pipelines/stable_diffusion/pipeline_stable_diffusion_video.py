@@ -493,8 +493,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         guidance_scale = guidance_scale.repeat(batch_size * num_videos_per_prompt, 1)
         guidance_scale = _append_dims(guidance_scale, latents.ndim)
 
-        added_cond_kwargs = {"time_ids": added_time_ids}
-
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -511,7 +509,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                     latent_model_input,
                     t,
                     encoder_hidden_states=image_embeddings,
-                    added_cond_kwargs=added_cond_kwargs,
+                    added_time_ids=added_time_ids,
                 ).sample
 
                 # perform guidance

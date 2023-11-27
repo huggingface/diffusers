@@ -544,7 +544,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        added_cond_kwargs: Dict[str, torch.Tensor],
+        added_time_ids: torch.Tensor,
         image_only_indicator: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -652,7 +652,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
         emb = self.time_embedding(t_emb)
 
-        time_ids = added_cond_kwargs.get("time_ids")
+        time_ids = added_time_ids
         time_embeds = self.add_time_proj(time_ids.flatten())
         time_embeds = time_embeds.reshape((batch_size, -1))
         time_embeds = time_embeds.to(emb.dtype)
