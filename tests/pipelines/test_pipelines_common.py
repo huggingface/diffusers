@@ -759,9 +759,10 @@ class PipelineTesterMixin:
             for k, v in pipe.components.items()
             if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
         ]
-        self.assertTrue(
-            all(v.device.type == "cpu" for v in offloaded_modules)
-        ), f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}"
+        (
+            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
+            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        )
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),

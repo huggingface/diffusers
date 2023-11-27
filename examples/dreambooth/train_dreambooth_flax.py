@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import logging
 import math
 import os
@@ -16,6 +15,7 @@ from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
 from huggingface_hub import create_repo, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from jax.experimental.compilation_cache import compilation_cache as cc
 from PIL import Image
 from torch.utils.data import Dataset
@@ -373,7 +373,7 @@ def main():
                 images = pipeline.numpy_to_pil(np.array(images))
 
                 for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 

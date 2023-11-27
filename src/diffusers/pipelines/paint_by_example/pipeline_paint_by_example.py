@@ -177,6 +177,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
 
     """
+
     # TODO: feature_extractor is required to encode initial images (if they are in PIL format),
     # we should give a descriptive message if the pipeline doesn't have one.
 
