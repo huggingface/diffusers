@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -538,29 +537,17 @@ def _compute_padding(kernel_size):
     return out_padding
 
 
-def _filter2d(
-    input,
-    kernel,
-    border_type: str = "reflect",
-    padding: str = "same",
-    behaviour: str = "corr",
-):
+def _filter2d(input, kernel):
     # prepare kernel
     b, c, h, w = input.shape
-    if str(behaviour).lower() == "conv":
-        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
-    else:
-        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
-        #  str(behaviour).lower() == 'conv':
+    tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
 
     tmp_kernel = tmp_kernel.expand(-1, c, -1, -1)
 
     height, width = tmp_kernel.shape[-2:]
 
-    # pad the input tensor
-    if padding == "same":
-        padding_shape: list[int] = _compute_padding([height, width])
-        input = torch.nn.functional.pad(input, padding_shape, mode=border_type)
+    padding_shape: list[int] = _compute_padding([height, width])
+    input = torch.nn.functional.pad(input, padding_shape, mode="reflect")
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
@@ -569,17 +556,13 @@ def _filter2d(
     # convolve the tensor with the kernel.
     output = torch.nn.functional.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
-    if padding == "same":
-        out = output.view(b, c, h, w)
-    else:
-        out = output.view(b, c, h - height + 1, w - width + 1)
-
+    out = output.view(b, c, h, w)
     return out
 
 
-def _gaussian(window_size: int, sigma, *, device=None, dtype=None):
+def _gaussian(window_size: int, sigma):
     if isinstance(sigma, float):
-        sigma = torch.tensor([[sigma]], device=device, dtype=dtype)
+        sigma = torch.tensor([[sigma]])
 
     batch_size = sigma.shape[0]
 
@@ -593,23 +576,17 @@ def _gaussian(window_size: int, sigma, *, device=None, dtype=None):
     return gauss / gauss.sum(-1, keepdim=True)
 
 
-def _gaussian_blur2d(
-    input,
-    kernel_size,
-    sigma,
-    border_type="reflect",
-    separable=True,
-):
+def _gaussian_blur2d(input, kernel_size, sigma):
     if isinstance(sigma, tuple):
-        sigma = torch.tensor([sigma], device=input.device, dtype=input.dtype)
+        sigma = torch.tensor([sigma], dtype=input.dtype)
     else:
-        sigma = sigma.to(device=input.device, dtype=input.dtype)
+        sigma = sigma.to(dtype=input.dtype)
 
     ky, kx = int(kernel_size[0]), int(kernel_size[1])
     bs = sigma.shape[0]
     kernel_x = _gaussian(kx, sigma[:, 1].view(bs, 1))
     kernel_y = _gaussian(ky, sigma[:, 0].view(bs, 1))
-    out_x = _filter2d(input, kernel_x[..., None, :], border_type, "same")
-    out = _filter2d(out_x, kernel_y[..., None], border_type, "same")
+    out_x = _filter2d(input, kernel_x[..., None, :])
+    out = _filter2d(out_x, kernel_y[..., None])
 
     return out
