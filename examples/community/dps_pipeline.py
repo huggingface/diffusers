@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Callable
 from math import pi
 
 import numpy as np
@@ -47,20 +47,27 @@ class DPSPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
+        measurement: torch.Tensor,
+        operator: torch.nn.Module,
+        loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
         batch_size: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        measurement = None,
-        operator = None,
-        loss_fn = None,
-        zeta = 0.3,
+        zeta: float = 0.3,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         The call function to the pipeline for generation.
 
         Args:
+            measurement (`torch.Tensor`, *required*):
+                A 'torch.Tensor', the corrupted image
+            operator (`torch.nn.Module`, *required*):
+                A 'torch.nn.Module', the operator generating the corrupted image
+            loss_fn (`Callable[[torch.Tensor, torch.Tensor], torch.Tensor]`, *required*):
+                A 'Callable[[torch.Tensor, torch.Tensor], torch.Tensor]', the loss function used 
+                between the measurements, for most of the cases using RMSE is fine.
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
             generator (`torch.Generator`, *optional*):
@@ -73,8 +80,7 @@ class DPSPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-            measurement ('torch.tensor', *required*):
-                A 'torch.tensor' 
+            
         Example:
 
         ```py
