@@ -147,6 +147,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_min: Optional[float] = None,
         sigma_max: Optional[float] = None,
         timestep_spacing: str = "linspace",
+        timestep_type: str = "discrete", # can be "discrete" or "continuous"
         steps_offset: int = 0,
     ):
         if trained_betas is not None:
@@ -269,6 +270,10 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+        
+        # when timestep_type is continuous, we need to convert the timesteps to continuous values using c_noise
+        if self.config.timestep_type == "continuous":
+            timesteps = np.array([self.get_scalings(sigma)[-1] for sigma in sigmas])
 
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -313,15 +318,15 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
-    def get_scalings(self):
+    def get_scalings(self, sigma=None):
         """
         Get the scalings for the current timestep.
         Returns:
             `torch.FloatTensor`:
                 The scaling factors for the current timestep.
         """
-
-        sigma = self.sigmas[self.step_index]
+        if sigma is None:
+            sigma = self.sigmas[self.step_index]
 
         if self.config.prediction_type == "epsilon":
             c_skip = torch.ones_like(sigma, device=sigma.device)
