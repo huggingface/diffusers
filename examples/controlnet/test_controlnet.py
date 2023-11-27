@@ -18,7 +18,9 @@ import os
 import sys
 import tempfile
 
-from ..test_examples_utils import ExamplesTestsAccelerate, run_command
+sys.path.append("..")
+
+from test_examples_utils import ExamplesTestsAccelerate, run_command
 
 
 logging.basicConfig(level=logging.DEBUG)
