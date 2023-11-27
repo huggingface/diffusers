@@ -23,7 +23,7 @@ from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import EulerDiscreteScheduler
 from ...utils import BaseOutput, logging
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -83,9 +83,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
             Frozen CLIP image-encoder ([laion/CLIP-ViT-H-14-laion2B-s32B-b79K](https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K)).
         unet ([`UNetSpatioTemporalConditionModel`]):
             A `UNetSpatioTemporalConditionModel` to denoise the encoded image latents.
-        scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        scheduler ([`EulerDiscreteScheduler`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images.
     """
@@ -97,7 +96,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         vae: AutoencoderKLTemporalDecoder,
         image_encoder: CLIPVisionModelWithProjection,
         unet: UNetSpatioTemporalConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
+        scheduler: EulerDiscreteScheduler,
         feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
