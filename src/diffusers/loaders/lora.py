@@ -1874,10 +1874,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
 class ControlLoRAMixin(LoraLoaderMixin):
     # Simplify ControlNet LoRA loading.
     def load_lora_weights(self, pretrained_model_name_or_path_or_dict, **kwargs):
-        from .models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
-        from .pipelines.stable_diffusion.convert_from_ckpt import convert_ldm_unet_checkpoint
+        from ..models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
+        from ..pipelines.stable_diffusion.convert_from_ckpt import convert_ldm_unet_checkpoint
 
         state_dict, _ = self.lora_state_dict(pretrained_model_name_or_path_or_dict, controlnet=True, **kwargs)
+        
         controlnet_config = kwargs.pop("controlnet_config", None)
         if controlnet_config is None:
             raise ValueError("Must provide a `controlnet_config`.")
