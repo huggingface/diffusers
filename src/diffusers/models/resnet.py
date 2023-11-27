@@ -1149,7 +1149,6 @@ class TemporalResnetBlock(nn.Module):
         dropout: float = 0.0,
         temb_channels: int = 512,
         eps: float = 1e-6,
-        kernel_size: Optional[torch.FloatTensor] = (3, 1, 1),
         use_in_shortcut: Optional[bool] = None,
         conv_shortcut_bias: bool = True,
         conv_2d_out_channels: Optional[int] = None,
@@ -1160,6 +1159,7 @@ class TemporalResnetBlock(nn.Module):
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
 
+        kernel_size = (3, 1, 1)
         padding = [k // 2 for k in kernel_size]
 
         self.norm1 = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=eps, affine=True)
@@ -1239,7 +1239,6 @@ class SpatioTemporalResBlock(nn.Module):
         temb_channels: int = 512,
         eps: float = 1e-6,
         temporal_eps: Optional[float] = None,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy="learned",
         switch_spatial_to_temporal_mix: bool = False,
@@ -1260,7 +1259,6 @@ class SpatioTemporalResBlock(nn.Module):
             temb_channels=temb_channels,
             eps=temporal_eps if temporal_eps is not None else eps,
             dropout=dropout,
-            kernel_size=kernel_size_3d,
         )
 
         self.time_mixer = AlphaBlender(

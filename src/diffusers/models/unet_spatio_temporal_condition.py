@@ -97,15 +97,11 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         addition_time_embed_dim: int = 256,
         layers_per_block: Union[int, Tuple[int]] = 2,
         dropout: float = 0.0,
-        norm_eps: float = 1e-5,
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         attention_head_dim: Union[int, Tuple[int]] = 8,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
         time_embedding_dim: Optional[int] = None,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
-        merge_factor: float = 0.5,
-        merge_strategy: str = "learned_with_images",
     ):
         super().__init__()
 
@@ -209,13 +205,12 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 out_channels=output_channel,
                 temb_channels=blocks_time_embed_dim,
                 add_downsample=not is_final_block,
-                resnet_eps=norm_eps,
+                resnet_eps=1e-5,
                 cross_attention_dim=cross_attention_dim[i],
                 num_attention_heads=num_attention_heads[i],
                 dropout=dropout,
-                kernel_size_3d=kernel_size_3d,
-                merge_factor=merge_factor,
-                merge_strategy=merge_strategy,
+                merge_factor=0.5,
+                merge_strategy="learned_with_images",
                 resnet_act_fn="silu",
             )
             self.down_blocks.append(down_block)
@@ -225,13 +220,12 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             block_out_channels[-1],
             temb_channels=blocks_time_embed_dim,
             transformer_layers_per_block=transformer_layers_per_block[-1],
-            resnet_eps=norm_eps,
+            resnet_eps=1e-5,
             cross_attention_dim=cross_attention_dim[-1],
             num_attention_heads=num_attention_heads[-1],
             dropout=dropout,
-            kernel_size_3d=kernel_size_3d,
-            merge_factor=merge_factor,
-            merge_strategy=merge_strategy,
+            merge_factor=0.5,
+            merge_strategy="learned_with_images",
         )
 
         # count how many layers upsample the images
@@ -268,21 +262,20 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 prev_output_channel=prev_output_channel,
                 temb_channels=blocks_time_embed_dim,
                 add_upsample=add_upsample,
-                resnet_eps=norm_eps,
+                resnet_eps=1e-5,
                 resolution_idx=i,
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
                 dropout=dropout,
-                kernel_size_3d=kernel_size_3d,
-                merge_factor=merge_factor,
-                merge_strategy=merge_strategy,
+                merge_factor=0.5,
+                merge_strategy="learned_with_images",
                 resnet_act_fn="silu",
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
         # out
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=32, eps=norm_eps)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=32, eps=1e-5)
         self.conv_act = nn.SiLU()
 
         self.conv_out = nn.Conv2d(

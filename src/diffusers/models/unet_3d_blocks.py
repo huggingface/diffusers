@@ -57,7 +57,6 @@ def get_down_block(
     temporal_max_seq_length: int = 32,
     transformer_layers_per_block: int = 1,
     dropout: float = 0.0,
-    kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
     merge_strategy: str = "learned_with_images",
 ) -> Union[
@@ -149,7 +148,6 @@ def get_down_block(
             dropout=dropout,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
-            kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
         )
@@ -167,7 +165,6 @@ def get_down_block(
             resnet_eps=resnet_eps,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
-            kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
         )
@@ -199,7 +196,6 @@ def get_up_block(
     temporal_max_seq_length: int = 32,
     transformer_layers_per_block: int = 1,
     dropout: float = 0.0,
-    kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
     merge_factor: float = 0.5,
     merge_strategy: str = "learned_with_images",
 ) -> Union[
@@ -297,7 +293,6 @@ def get_up_block(
             dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
-            kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
         )
@@ -317,7 +312,6 @@ def get_up_block(
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
             resolution_idx=resolution_idx,
-            kernel_size_3d=kernel_size_3d,
             merge_factor=merge_factor,
             merge_strategy=merge_strategy,
         )
@@ -1927,7 +1921,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
     ):
@@ -1949,7 +1942,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                 temb_channels=temb_channels,
                 eps=resnet_eps,
                 dropout=dropout,
-                kernel_size_3d=kernel_size_3d,
                 merge_factor=merge_factor,
                 merge_strategy=merge_strategy,
             )
@@ -1976,7 +1968,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
                 )
@@ -2056,7 +2047,6 @@ class DownBlockSpatioTemporal(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         add_downsample: bool = True,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
     ):
@@ -2072,7 +2062,6 @@ class DownBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
                 )
@@ -2162,7 +2151,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         add_downsample: bool = True,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
     ):
@@ -2184,7 +2172,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
                 )
@@ -2294,7 +2281,6 @@ class UpBlockSpatioTemporal(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         add_upsample: bool = True,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
     ):
@@ -2312,7 +2298,6 @@ class UpBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
                 )
@@ -2398,7 +2383,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         add_upsample: bool = True,
-        kernel_size_3d: Optional[torch.FloatTensor] = (3, 1, 1),
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
     ):
@@ -2423,7 +2407,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     dropout=dropout,
-                    kernel_size_3d=kernel_size_3d,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
                 )
