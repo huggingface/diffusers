@@ -378,15 +378,8 @@ class TemporalBasicTransformerBlock(nn.Module):
         attention_head_dim: int,
         dropout=0.0,
         cross_attention_dim: Optional[int] = None,
-        activation_fn: str = "geglu",
-        num_embeds_ada_norm: Optional[int] = None,
-        attention_bias: bool = False,
-        upcast_attention: bool = False,
-        norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single'
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
-        attention_type: str = "default",
     ):
         super().__init__()
         self.is_res = dim == time_mix_inner_dim
@@ -400,7 +393,7 @@ class TemporalBasicTransformerBlock(nn.Module):
             dim,
             dim_out=time_mix_inner_dim,
             dropout=dropout,
-            activation_fn=activation_fn,
+            activation_fn="geglu",
             final_dropout=final_dropout,
         )
 
@@ -410,9 +403,7 @@ class TemporalBasicTransformerBlock(nn.Module):
             heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
-            bias=attention_bias,
             cross_attention_dim=None,
-            upcast_attention=upcast_attention,
         )
 
         # 2. Cross-Attn
@@ -427,8 +418,6 @@ class TemporalBasicTransformerBlock(nn.Module):
                 heads=num_attention_heads,
                 dim_head=attention_head_dim,
                 dropout=dropout,
-                bias=attention_bias,
-                upcast_attention=upcast_attention,
             )  # is self-attn if encoder_hidden_states is none
         else:
             self.norm2 = None
@@ -439,7 +428,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         self.ff = FeedForward(
             time_mix_inner_dim,
             dropout=dropout,
-            activation_fn=activation_fn,
+            activation_fn="geglu",
             final_dropout=final_dropout,
         )
 
@@ -459,9 +448,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
-        class_labels: Optional[torch.LongTensor] = None,
     ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
@@ -474,19 +461,12 @@ class TemporalBasicTransformerBlock(nn.Module):
         hidden_states = hidden_states.permute(0, 2, 1, 3)
         hidden_states = hidden_states.reshape(batch_size * seq_length, num_frames, channels)
 
-        # B, S, C = hidden_states.shape
-        # hidden_states = rearrange(
-        #    hidden_states, "(b t) s c -> (b s) t c", t=num_video_frames
-        # )
-
         residual = hidden_states
         hidden_states = self.norm_in(hidden_states)
         hidden_states = self.ff_in(hidden_states)
         if self.is_res:
             hidden_states = hidden_states + residual
 
-        # 1. Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
 
         norm_hidden_states = self.norm1(hidden_states)
@@ -496,10 +476,7 @@ class TemporalBasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
-
         hidden_states = attn_output + hidden_states
-        # if hidden_states.ndim == 4:
-        # hidden_states = hidden_states.squeeze(1)
 
         # 3. Cross-Attention
         if self.attn2 is not None:
@@ -524,29 +501,20 @@ class TemporalBasicTransformerBlock(nn.Module):
 
             num_chunks = norm_hidden_states.shape[self._chunk_dim] // self._chunk_size
             ff_output = torch.cat(
-                [
-                    self.ff(hid_slice, scale=lora_scale)
-                    for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)
-                ],
+                [self.ff(hid_slice) for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)],
                 dim=self._chunk_dim,
             )
         else:
-            ff_output = self.ff(norm_hidden_states, scale=lora_scale)
+            ff_output = self.ff(norm_hidden_states)
 
         if self.is_res:
             hidden_states = ff_output + hidden_states
         else:
             hidden_states = ff_output
-        # if hidden_states.ndim == 4:
-        # hidden_states = hidden_states.squeeze(1)
 
         hidden_states = hidden_states[None, :].reshape(batch_size, seq_length, num_frames, channels)
         hidden_states = hidden_states.permute(0, 2, 1, 3)
         hidden_states = hidden_states.reshape(batch_size * num_frames, seq_length, channels)
-
-        # hidden_states = rearrange(
-        #    hidden_states, "(b s) t c -> (b t) s c", s=S, b=B, t=num_video_frames
-        # )
 
         return hidden_states
 

@@ -18,10 +18,9 @@ import torch
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import USE_PEFT_BACKEND, BaseOutput
+from ..utils import BaseOutput
 from .attention import BasicTransformerBlock, TemporalBasicTransformerBlock
 from .embeddings import TimestepEmbedding, Timesteps
-from .lora import LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 from .resnet import AlphaBlender
 
@@ -252,11 +251,11 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         inner_dim = num_attention_heads * attention_head_dim
         self.inner_dim = inner_dim
 
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        linear_cls = nn.Linear
 
         # 2. Define input layers
         self.in_channels = in_channels
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6)
+        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=norm_eps)
         self.proj_in = linear_cls(in_channels, inner_dim)
 
         # 3. Define transformers blocks
@@ -308,7 +307,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         num_frames: int,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         timestep: Optional[torch.LongTensor] = None,
-        added_cond_kwargs: Dict[str, torch.Tensor] = None,
         class_labels: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -343,9 +341,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                 If `return_dict` is True, an [`~models.transformer_temporal.TransformerTemporalModelOutput`] is
                 returned, otherwise a `tuple` where the first element is the sample tensor.
         """
-        # Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-
         assert (
             encoder_hidden_states.ndim == 3
         ), f"n dims of spatial context should be 3 but are {encoder_hidden_states.ndim}"
@@ -363,9 +358,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         hidden_states = self.norm(hidden_states)
         inner_dim = hidden_states.shape[1]
         hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch_frames, height * width, inner_dim)
-        hidden_states = (
-            self.proj_in(hidden_states, scale=lora_scale) if not USE_PEFT_BACKEND else self.proj_in(hidden_states)
-        )
+        hidden_states = self.proj_in(hidden_states)
 
         num_frames_emb = torch.arange(num_frames, device=hidden_states.device)
         num_frames_emb = num_frames_emb.repeat(batch_size, 1)
@@ -421,9 +414,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
             )
 
         # 3. Output
-        hidden_states = (
-            self.proj_out(hidden_states, scale=lora_scale) if not USE_PEFT_BACKEND else self.proj_out(hidden_states)
-        )
+        hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states.reshape(batch_frames, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
 
         output = hidden_states + residual

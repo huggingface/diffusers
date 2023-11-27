@@ -1856,7 +1856,7 @@ class MidBlockTemporalDecoder(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         image_only_indicator: torch.FloatTensor,
-        temb: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
     ):
         hidden_states = self.resnets[0](
