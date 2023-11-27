@@ -34,12 +34,10 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             Supported tasks
             </th>
             <th class="px-4 py-2 font-medium text-gray-900 text-left">
-            Space
+            🤗 Space
             </th>
-
         </tr>
         </thead>
-
         <tbody class="divide-y divide-gray-200">
         <tr>
             <td class="px-4 py-2 text-gray-700">
@@ -49,7 +47,6 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/stabilityai/stable-diffusion"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./img2img">StableDiffusionImg2Img</a>
@@ -58,7 +55,6 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/huggingface/diffuse-the-rest"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./inpaint">StableDiffusionInpaint</a>
@@ -67,7 +63,6 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/runwayml/stable-diffusion-inpainting"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./depth2img">StableDiffusionDepth2Img</a>
@@ -76,7 +71,6 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/radames/stable-diffusion-depth2img"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./image_variation">StableDiffusionImageVariation</a>
@@ -85,7 +79,6 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/lambdalabs/stable-diffusion-image-variations"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./stable_diffusion_safe">StableDiffusionPipelineSafe</a>
@@ -94,7 +87,6 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/AIML-TUDA/unsafe-vs-safe-stable-diffusion"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./stable_diffusion_2">StableDiffusion2</a>
@@ -103,7 +95,6 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/stabilityai/stable-diffusion"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./stable_diffusion_xl">StableDiffusionXL</a>
@@ -112,7 +103,6 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/RamAnanth1/stable-diffusion-xl"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./latent_upscale">StableDiffusionLatentUpscale</a>
@@ -121,14 +111,12 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/huggingface-projects/stable-diffusion-latent-upscaler"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./upscale">StableDiffusionUpscale</a>
             </td>
             <td class="px-4 py-2 text-gray-700">super-resolution</td>
         </tr>
-
         <tr>
             <td class="px-4 py-2 text-gray-700">
             <a href="./ldm3d_diffusion">StableDiffusionLDM3D</a>

@@ -62,6 +62,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["alt_diffusion"] = ["AltDiffusionImg2ImgPipeline", "AltDiffusionPipeline"]
+    _import_structure["animatediff"] = ["AnimateDiffPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
@@ -109,9 +110,15 @@ else:
         "KandinskyV22PriorEmb2EmbPipeline",
         "KandinskyV22PriorPipeline",
     ]
+    _import_structure["kandinsky3"] = ["Kandinsky3Img2ImgPipeline", "Kandinsky3Pipeline"]
+    _import_structure["latent_consistency_models"] = [
+        "LatentConsistencyModelImg2ImgPipeline",
+        "LatentConsistencyModelPipeline",
+    ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
+    _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
     _import_structure["stable_diffusion"].extend(
@@ -290,6 +297,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
         from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
+        from .animatediff import AnimateDiffPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import AudioLDM2Pipeline, AudioLDM2ProjectionModel, AudioLDM2UNet2DConditionModel
         from .blip_diffusion import BlipDiffusionPipeline
@@ -331,9 +339,15 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
         )
+        from .kandinsky3 import (
+            Kandinsky3Img2ImgPipeline,
+            Kandinsky3Pipeline,
+        )
+        from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
         from .latent_diffusion import LDMTextToImagePipeline
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
+        from .pixart_alpha import PixArtAlphaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_diffusion import (

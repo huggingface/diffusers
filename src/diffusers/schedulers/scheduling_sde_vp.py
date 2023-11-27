@@ -79,9 +79,7 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
 
         # TODO(Patrick) better comments + non-PyTorch
         # postprocess model score
-        log_mean_coeff = (
-            -0.25 * t**2 * (self.config.beta_max - self.config.beta_min) - 0.5 * t * self.config.beta_min
-        )
+        log_mean_coeff = -0.25 * t**2 * (self.config.beta_max - self.config.beta_min) - 0.5 * t * self.config.beta_min
         std = torch.sqrt(1.0 - torch.exp(2.0 * log_mean_coeff))
         std = std.flatten()
         while len(std.shape) < len(score.shape):
