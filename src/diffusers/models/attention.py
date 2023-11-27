@@ -376,7 +376,6 @@ class TemporalBasicTransformerBlock(nn.Module):
         time_mix_inner_dim: int,
         num_attention_heads: int,
         attention_head_dim: int,
-        dropout=0.0,
         cross_attention_dim: Optional[int] = None,
     ):
         super().__init__()
@@ -390,7 +389,6 @@ class TemporalBasicTransformerBlock(nn.Module):
         self.ff_in = FeedForward(
             dim,
             dim_out=time_mix_inner_dim,
-            dropout=dropout,
             activation_fn="geglu",
         )
 
@@ -399,7 +397,6 @@ class TemporalBasicTransformerBlock(nn.Module):
             query_dim=time_mix_inner_dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
-            dropout=dropout,
             cross_attention_dim=None,
         )
 
@@ -414,7 +411,6 @@ class TemporalBasicTransformerBlock(nn.Module):
                 cross_attention_dim=cross_attention_dim,
                 heads=num_attention_heads,
                 dim_head=attention_head_dim,
-                dropout=dropout,
             )  # is self-attn if encoder_hidden_states is none
         else:
             self.norm2 = None
@@ -422,11 +418,7 @@ class TemporalBasicTransformerBlock(nn.Module):
 
         # 3. Feed-forward
         self.norm3 = nn.LayerNorm(time_mix_inner_dim)
-        self.ff = FeedForward(
-            time_mix_inner_dim,
-            dropout=dropout,
-            activation_fn="geglu",
-        )
+        self.ff = FeedForward(time_mix_inner_dim, activation_fn="geglu")
 
         # let chunk size default to None
         self._chunk_size = None

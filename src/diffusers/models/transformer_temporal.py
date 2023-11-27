@@ -222,7 +222,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         in_channels: int = 320,
         out_channels: Optional[int] = None,
         num_layers: int = 1,
-        dropout: float = 0.0,
         cross_attention_dim: Optional[int] = None,
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
@@ -246,7 +245,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                     inner_dim,
                     num_attention_heads,
                     attention_head_dim,
-                    dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
                 )
                 for d in range(num_layers)
@@ -261,7 +259,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
                     time_mix_inner_dim,
                     num_attention_heads,
                     attention_head_dim,
-                    dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
                 )
                 for _ in range(num_layers)
