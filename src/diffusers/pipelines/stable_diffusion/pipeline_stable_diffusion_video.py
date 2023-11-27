@@ -247,7 +247,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_frames, num_channels_latents, height, width, dtype, device, generator, latents=None
     ):

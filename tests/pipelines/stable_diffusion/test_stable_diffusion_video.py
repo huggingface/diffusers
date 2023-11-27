@@ -96,9 +96,7 @@ class StableDiffusionVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             vocab_size=1000,
         )
         text_encoder = CLIPTextModel(text_encoder_config)
-        tokenizer = CLIPTokenizer.from_pretrained(
-            "hf-internal-testing/tiny-random-clip"
-        )
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         components = {
@@ -166,18 +164,14 @@ class StableDiffusionVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             value = inputs[name]
             if name == "prompt":
                 len_prompt = len(value)
-                batched_inputs[name] = [
-                    value[: len_prompt // i] for i in range(1, batch_size + 1)
-                ]
+                batched_inputs[name] = [value[: len_prompt // i] for i in range(1, batch_size + 1)]
                 batched_inputs[name][-1] = 100 * "very long"
 
             else:
                 batched_inputs[name] = batch_size * [value]
 
         if "generator" in inputs:
-            batched_inputs["generator"] = [
-                self.get_generator(i) for i in range(batch_size)
-            ]
+            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
         if "batch_size" in inputs:
             batched_inputs["batch_size"] = batch_size
@@ -193,9 +187,7 @@ class StableDiffusionVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
-    @unittest.skipIf(
-        torch_device != "cuda", reason="CUDA and CPU are required to switch devices"
-    )
+    @unittest.skipIf(torch_device != "cuda", reason="CUDA and CPU are required to switch devices")
     def test_to_device(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -203,9 +195,7 @@ class StableDiffusionVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         pipe.to("cpu")
         model_devices = [
-            component.device.type
-            for component in pipe.components.values()
-            if hasattr(component, "device")
+            component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
         self.assertTrue(all(device == "cpu" for device in model_devices))
 
@@ -214,9 +204,7 @@ class StableDiffusionVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         pipe.to("cuda")
         model_devices = [
-            component.device.type
-            for component in pipe.components.values()
-            if hasattr(component, "device")
+            component.device.type for component in pipe.components.values() if hasattr(component, "device")
         ]
         self.assertTrue(all(device == "cuda" for device in model_devices))
 
@@ -228,19 +216,11 @@ class StableDiffusionVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         pipe = self.pipeline_class(**components)
         pipe.set_progress_bar_config(disable=None)
 
-        model_dtypes = [
-            component.dtype
-            for component in pipe.components.values()
-            if hasattr(component, "dtype")
-        ]
+        model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
         pipe.to(torch_dtype=torch.float16)
-        model_dtypes = [
-            component.dtype
-            for component in pipe.components.values()
-            if hasattr(component, "dtype")
-        ]
+        model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
 
@@ -277,12 +257,5 @@ class StableDiffusionVideoPipelineSlowTests(unittest.TestCase):
         assert image.shape == (num_frames, 576, 1024, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array(
-            [0.8592, 0.8645, 0.8499, 0.8722, 0.8769, 0.8421, 0.8557, 0.8528, 0.8285]
-        )
-        assert (
-            numpy_cosine_similarity_distance(
-                image_slice.flatten(), expected_slice.flatten()
-            )
-            < 1e-3
-        )
+        expected_slice = np.array([0.8592, 0.8645, 0.8499, 0.8722, 0.8769, 0.8421, 0.8557, 0.8528, 0.8285])
+        assert numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice.flatten()) < 1e-3
