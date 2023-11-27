@@ -14,9 +14,9 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Unconditional image generation generates images that look like the training data the model was trained on. The denoising process is not guided by any additional context like text or image, so the image just looks like a random sample from the training data.
+Unconditional image generation generates images that look like a random sample from the training data the model was trained on because the denoising process is not guided by any additional context like text or image.
 
-To get started, load the [anton-l/ddpm-butterflies-128](https://huggingface.co/anton-l/ddpm-butterflies-128) checkpoint with the [`DiffusionPipeline`] to generate images of butterflies. The [`DiffusionPipeline`] downloads and caches all the model components required to generate an image.
+To get started, use the [`DiffusionPipeline`] to load the [anton-l/ddpm-butterflies-128](https://huggingface.co/anton-l/ddpm-butterflies-128) checkpoint to generate images of butterflies. The [`DiffusionPipeline`] downloads and caches all the model components required to generate an image.
 
 ```py
 from diffusers import DiffusionPipeline
@@ -28,7 +28,7 @@ image
 
 <Tip>
 
-Want to generate images of something else? Take a look at the training [guide](../training/unconditional_training) to learn how to generate your own images.
+Want to generate images of something else? Take a look at the training [guide](../training/unconditional_training) to learn how to train a model to generate your own images.
 
 </Tip>
 
@@ -38,14 +38,14 @@ The output image is a [`PIL.Image`](https://pillow.readthedocs.io/en/stable/refe
 image.save("generated_image.png")
 ```
 
-You can also try experimenting with the `num_inference_steps` parameter, which controls the amount of denoising steps. More denoising steps typically produce higher quality images, but it'll take longer to generate.
+You can also try experimenting with the `num_inference_steps` parameter, which controls the number of denoising steps. More denoising steps typically produce higher quality images, but it'll take longer to generate. Feel free to play around with this parameter to see how it affects the image quality.
 
 ```py
 image = generator(num_inference_steps=100).images[0]
 image
 ```
 
-Try out the Spaces below, and feel free to play around with the inference steps parameter to see how it affects the image quality!
+Try out the Space below to generate an image of a butterfly!
 
 <iframe
 	src="https://stevhliu-unconditional-image-generation.hf.space"
