@@ -225,7 +225,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         frames = frames.float()
         return frames
 
-    def check_inputs(self, image, height, width, callback_steps):
+    def check_inputs(self, image, height, width):
         if (
             not isinstance(image, torch.Tensor)
             and not isinstance(image, PIL.Image.Image)
@@ -238,14 +238,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
 
     def prepare_latents(
         self,
@@ -300,8 +292,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -348,12 +338,6 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
-            callback (`Callable`, *optional*):
-                A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function is called. If not specified, the callback is called at
-                every step.
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] or `tuple`:
@@ -381,7 +365,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(image, height, width, callback_steps)
+        self.check_inputs(image, height, width)
 
         # 2. Define call parameters
         if isinstance(image, PIL.Image.Image):
@@ -481,12 +465,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents).prev_sample
 
-                # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         frames = self.decode_latents(latents, num_frames, decoding_t)
 
