@@ -234,12 +234,10 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         inner_dim = num_attention_heads * attention_head_dim
         self.inner_dim = inner_dim
 
-        linear_cls = nn.Linear
-
         # 2. Define input layers
         self.in_channels = in_channels
         self.norm = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6)
-        self.proj_in = linear_cls(in_channels, inner_dim)
+        self.proj_in = nn.Linear(in_channels, inner_dim)
 
         # 3. Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -278,7 +276,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         # 4. Define output layers
         self.out_channels = in_channels if out_channels is None else out_channels
         # TODO: should use out_channels for continuous projections
-        self.proj_out = linear_cls(inner_dim, in_channels)
+        self.proj_out = nn.Linear(inner_dim, in_channels)
 
         self.gradient_checkpointing = False
 
