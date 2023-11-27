@@ -652,8 +652,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
         emb = self.time_embedding(t_emb)
 
-        time_ids = added_time_ids
-        time_embeds = self.add_time_proj(time_ids.flatten())
+        time_embeds = self.add_time_proj(added_time_ids.flatten())
         time_embeds = time_embeds.reshape((batch_size, -1))
         time_embeds = time_embeds.to(emb.dtype)
         aug_emb = self.add_embedding(time_embeds)
