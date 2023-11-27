@@ -13,15 +13,16 @@
 # limitations under the License.
 
 
-from typing import List, Optional, Tuple, Union, Callable
 from math import pi
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
-from PIL import Image
 import torch
+from PIL import Image
 
-from diffusers import DiffusionPipeline, ImagePipelineOutput, DDPMScheduler, UNet2DModel
+from diffusers import DDPMScheduler, DiffusionPipeline, ImagePipelineOutput, UNet2DModel
 from diffusers.utils.torch_utils import randn_tensor
+
 
 class DPSPipeline(DiffusionPipeline):
     r"""
@@ -66,7 +67,7 @@ class DPSPipeline(DiffusionPipeline):
             operator (`torch.nn.Module`, *required*):
                 A 'torch.nn.Module', the operator generating the corrupted image
             loss_fn (`Callable[[torch.Tensor, torch.Tensor], torch.Tensor]`, *required*):
-                A 'Callable[[torch.Tensor, torch.Tensor], torch.Tensor]', the loss function used 
+                A 'Callable[[torch.Tensor, torch.Tensor], torch.Tensor]', the loss function used
                 between the measurements, for most of the cases using RMSE is fine.
             batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
@@ -80,7 +81,7 @@ class DPSPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-            
+
         Example:
 
         ```py
@@ -159,10 +160,9 @@ class DPSPipeline(DiffusionPipeline):
 
 
 if __name__ == '__main__':
-    from torchvision.utils import save_image
-    import torch.nn.functional as F
     import scipy
     from torch import nn
+    from torchvision.utils import save_image
 
     # defining the operators f(.) of y = f(x)
     # super-resolution operator
@@ -393,12 +393,6 @@ if __name__ == '__main__':
                         self.k = k
                         for name, f in self.named_parameters():
                             f.data.copy_(k)
-                    elif self.blur_type == "motion":
-                        k = Kernel(size=(self.kernel_size, self.kernel_size), intensity=self.std).kernelMatrix
-                        k = torch.from_numpy(k)
-                        self.k = k
-                        for name, f in self.named_parameters():
-                            f.data.copy_(k)
 
                 def update_weights(self, k):
                     if not torch.is_tensor(k):
@@ -408,7 +402,7 @@ if __name__ == '__main__':
 
                 def get_kernel(self):
                     return self.k
-                
+
             self.kernel_size = kernel_size
             self.conv = Blurkernel(blur_type='gaussian',
                                 kernel_size=kernel_size,
@@ -451,10 +445,10 @@ if __name__ == '__main__':
 
     # set up model
     model = UNet2DModel.from_pretrained("google/ddpm-celebahq-256").to("cuda")
-    
+
     save_image((src+1.0)/2.0, "dps_src.png")
     save_image((measurement+1.0)/2.0, "dps_mea.png")
-    
+
     # finally, the pipeline
     dpspipe = DPSPipeline(model, scheduler)
     image = dpspipe(
