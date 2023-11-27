@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import glob
 import json
 import os
 import random
@@ -57,7 +56,7 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.pipeline_utils import _get_pipeline_class, variant_compatible_siblings
+from diffusers.pipelines.pipeline_utils import _get_pipeline_class
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
@@ -1137,8 +1136,8 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         ).to(torch_device)
-        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components).to(torch_device)
-        text2img = StableDiffusionPipeline(**inpaint.components).to(torch_device)
+        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components, image_encoder=None).to(torch_device)
+        text2img = StableDiffusionPipeline(**inpaint.components, image_encoder=None).to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
 
@@ -1276,6 +1275,29 @@ class PipelineFastTests(unittest.TestCase):
 
         assert out_image.shape == (1, 64, 64, 3)
         assert np.abs(out_image - out_image_2).max() < 1e-3
+
+    def test_optional_components_is_none(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        items = {
+            "feature_extractor": self.dummy_extractor,
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": bert,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            # we don't add an image encoder
+        }
+
+        pipeline = StableDiffusionPipeline(**items)
+
+        assert sorted(pipeline.components.keys()) == sorted(["image_encoder"] + list(items.keys()))
+        assert pipeline.image_encoder is None
 
     def test_set_scheduler_consistency(self):
         unet = self.dummy_cond_unet()
@@ -1505,28 +1527,15 @@ class PipelineFastTests(unittest.TestCase):
 
             assert sd.name_or_path == tmpdirname
 
-    def test_warning_no_variant_available(self):
+    def test_error_no_variant_available(self):
         variant = "fp16"
-        with self.assertWarns(FutureWarning) as warning_context:
-            cached_folder = StableDiffusionPipeline.download(
+        with self.assertRaises(ValueError) as error_context:
+            _ = StableDiffusionPipeline.download(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
             )
 
-        assert "but no such modeling files are available" in str(warning_context.warning)
-        assert variant in str(warning_context.warning)
-
-        def get_all_filenames(directory):
-            filenames = glob.glob(directory + "/**", recursive=True)
-            filenames = [f for f in filenames if os.path.isfile(f)]
-            return filenames
-
-        filenames = get_all_filenames(str(cached_folder))
-
-        all_model_files, variant_model_files = variant_compatible_siblings(filenames, variant=variant)
-
-        # make sure that none of the model names are variant model names
-        assert len(variant_model_files) == 0
-        assert len(all_model_files) > 0
+        assert "but no such modeling files are available" in str(error_context.exception)
+        assert variant in str(error_context.exception)
 
     def test_pipe_to(self):
         unet = self.dummy_cond_unet()

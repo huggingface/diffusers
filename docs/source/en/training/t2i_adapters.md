@@ -10,67 +10,167 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# T2I-Adapters for Stable Diffusion XL (SDXL)
+# T2I-Adapter
 
-The `train_t2i_adapter_sdxl.py` script (as shown below) shows how to implement the [T2I-Adapter training procedure](https://hf.co/papers/2302.08453) for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952).
+[T2I-Adapter]((https://hf.co/papers/2302.08453)) is a lightweight adapter model that provides an additional conditioning input image (line art, canny, sketch, depth, pose) to better control image generation. It is similar to a ControlNet, but it is a lot smaller (~77M parameters and ~300MB file size) because its only inserts weights into the UNet instead of copying and training it.
 
-## Running locally with PyTorch
+The T2I-Adapter is only available for training with the Stable Diffusion XL (SDXL) model.
 
-### Installing the dependencies
+This guide will explore the [train_t2i_adapter_sdxl.py](https://github.com/huggingface/diffusers/blob/main/examples/t2i_adapter/train_t2i_adapter_sdxl.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
 
-Before running the scripts, make sure to install the library's training dependencies:
-
-**Important**
-
-To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date as we update the example scripts frequently and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
+Before running the script, make sure you install the library from source:
 
 ```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
-pip install -e .
+pip install .
 ```
 
-Then cd in the `examples/t2i_adapter` folder and run
+Then navigate to the example folder containing the training script and install the required dependencies for the script you're using:
+
 ```bash
-pip install -r requirements_sdxl.txt
+cd examples/t2i_adapter
+pip install -r requirements.txt
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+<Tip>
+
+🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
+
+</Tip>
+
+Initialize an 🤗 Accelerate environment:
 
 ```bash
 accelerate config
 ```
 
-Or for a default accelerate configuration without answering questions about your environment
+To setup a default 🤗 Accelerate environment without choosing any configurations:
 
 ```bash
 accelerate config default
 ```
 
-Or if your environment doesn't support an interactive shell (e.g., a notebook)
+Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```python
+```bash
 from accelerate.utils import write_basic_config
+
 write_basic_config()
 ```
 
-When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
-## Circle filling dataset
+<Tip>
 
-The original dataset is hosted in the [ControlNet repo](https://huggingface.co/lllyasviel/ControlNet/blob/main/training/fill50k.zip). We re-uploaded it to be compatible with `datasets` [here](https://huggingface.co/datasets/fusing/fill50k). Note that `datasets` handles dataloading within the training script.
+The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/t2i_adapter/train_t2i_adapter_sdxl.py) and let us know if you have any questions or concerns.
 
-## Training
+</Tip>
 
-Our training examples use two test conditioning images. They can be downloaded by running
+## Script parameters
 
-```sh
+The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L233) function. It provides default values for each parameter, such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
+
+For example, to activate gradient accumulation, add the `--gradient_accumulation_steps` parameter to the training command:
+
+```bash
+accelerate launch train_t2i_adapter_sdxl.py \
+  ----gradient_accumulation_steps=4
+```
+
+Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) training guide, so this guide just focuses on the relevant T2I-Adapter parameters:
+
+- `--pretrained_vae_model_name_or_path`: path to a pretrained VAE; the SDXL VAE is known to suffer from numerical instability, so this parameter allows you to specify a better [VAE](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)
+- `--crops_coords_top_left_h` and `--crops_coords_top_left_w`: height and width coordinates to include in SDXL's crop coordinate embeddings
+- `--conditioning_image_column`: the column of the conditioning images in the dataset
+- `--proportion_empty_prompts`: the proportion of image prompts to replace with empty strings
+
+## Training script
+
+As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) training guide. Instead, this guide takes a look at the T2I-Adapter relevant parts of the script.
+
+The training script begins by preparing the dataset. This incudes [tokenizing](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L674) the prompt and [applying transforms](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L714) to the images and conditioning images.
+
+```py
+conditioning_image_transforms = transforms.Compose(
+    [
+        transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
+        transforms.CenterCrop(args.resolution),
+        transforms.ToTensor(),
+    ]
+)
+```
+
+Within the [`main()`](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L770) function, the T2I-Adapter is either loaded from a pretrained adapter or it is randomly initialized:
+
+```py
+if args.adapter_model_name_or_path:
+    logger.info("Loading existing adapter weights.")
+    t2iadapter = T2IAdapter.from_pretrained(args.adapter_model_name_or_path)
+else:
+    logger.info("Initializing t2iadapter weights.")
+    t2iadapter = T2IAdapter(
+        in_channels=3,
+        channels=(320, 640, 1280, 1280),
+        num_res_blocks=2,
+        downscale_factor=16,
+        adapter_type="full_adapter_xl",
+    )
+```
+
+The [optimizer](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L952) is initialized for the T2I-Adapter parameters:
+
+```py
+params_to_optimize = t2iadapter.parameters()
+optimizer = optimizer_class(
+    params_to_optimize,
+    lr=args.learning_rate,
+    betas=(args.adam_beta1, args.adam_beta2),
+    weight_decay=args.adam_weight_decay,
+    eps=args.adam_epsilon,
+)
+```
+
+Lastly, in the [training loop](https://github.com/huggingface/diffusers/blob/aab6de22c33cc01fb7bc81c0807d6109e2c998c9/examples/t2i_adapter/train_t2i_adapter_sdxl.py#L1086), the adapter conditioning image and the text embeddings are passed to the UNet to predict the noise residual:
+
+```py
+t2iadapter_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+down_block_additional_residuals = t2iadapter(t2iadapter_image)
+down_block_additional_residuals = [
+    sample.to(dtype=weight_dtype) for sample in down_block_additional_residuals
+]
+
+model_pred = unet(
+    inp_noisy_latents,
+    timesteps,
+    encoder_hidden_states=batch["prompt_ids"],
+    added_cond_kwargs=batch["unet_added_conditions"],
+    down_block_additional_residuals=down_block_additional_residuals,
+).sample
+```
+
+If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
+
+## Launch the script
+
+Now you’re ready to launch the training script! 🚀
+
+For this example training, you'll use the [fusing/fill50k](https://huggingface.co/datasets/fusing/fill50k) dataset. You can also create and use your own dataset if you want (see the [Create a dataset for training](https://moon-ci-docs.huggingface.co/docs/diffusers/pr_5512/en/training/create_dataset) guide).
+
+Set the environment variable `MODEL_DIR` to a model id on the Hub or a path to a local model and `OUTPUT_DIR` to where you want to save the model.
+
+Download the following images to condition your training with:
+
+```bash
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_1.png
-
 wget https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet_training/conditioning_image_2.png
 ```
 
-Then run `huggingface-cli login` to log into your Hugging Face account. This is needed to be able to push the trained T2IAdapter parameters to Hugging Face Hub.
+<Tip>
+
+To monitor training progress with Weights & Biases, add the `--report_to=wandb` parameter to the training command. You'll also need to add the `--validation_image`, `--validation_prompt`, and `--validation_steps` to the training command to keep track of results. This can be really useful for debugging the model and viewing intermediate results.
+
+</Tip>
 
 ```bash
 export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
@@ -94,50 +194,34 @@ accelerate launch train_t2i_adapter_sdxl.py \
  --push_to_hub
 ```
 
-To better track our training experiments, we're using the following flags in the command above:
+Once training is complete, you can use your T2I-Adapter for inference:
 
-* `report_to="wandb` will ensure the training runs are tracked on Weights and Biases. To use it, be sure to install `wandb` with `pip install wandb`.
-* `validation_image`, `validation_prompt`, and `validation_steps` to allow the script to do a few validation inference runs. This allows us to qualitatively check if the training is progressing as expected. 
-
-Our experiments were conducted on a single 40GB A100 GPU.
-
-### Inference
-
-Once training is done, we can perform inference like so:
-
-```python
+```py
 from diffusers import StableDiffusionXLAdapterPipeline, T2IAdapter, EulerAncestralDiscreteSchedulerTest
 from diffusers.utils import load_image
 import torch
 
-base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
-adapter_path = "path to adapter"
-
-adapter = T2IAdapter.from_pretrained(adapter_path, torch_dtype=torch.float16)
-pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-    base_model_path, adapter=adapter, torch_dtype=torch.float16
+adapter = T2IAdapter.from_pretrained("path/to/adapter", torch_dtype=torch.float16)
+pipeline = StableDiffusionXLAdapterPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0", adapter=adapter, torch_dtype=torch.float16
 )
 
-# speed up diffusion process with faster scheduler and memory optimization
-pipe.scheduler = EulerAncestralDiscreteSchedulerTest.from_config(pipe.scheduler.config)
-# remove following line if xformers is not installed or when using Torch 2.0.
-pipe.enable_xformers_memory_efficient_attention()
-# memory optimization.
-pipe.enable_model_cpu_offload()
+pipeline.scheduler = EulerAncestralDiscreteSchedulerTest.from_config(pipe.scheduler.config)
+pipeline.enable_xformers_memory_efficient_attention()
+pipeline.enable_model_cpu_offload()
 
 control_image = load_image("./conditioning_image_1.png")
 prompt = "pale golden rod circle with old lace background"
 
-# generate image
 generator = torch.manual_seed(0)
-image = pipe(
-    prompt, num_inference_steps=20, generator=generator, image=control_image
+image = pipeline(
+    prompt, image=control_image, generator=generator
 ).images[0]
 image.save("./output.png")
 ```
 
-## Notes
+## Next steps
 
-### Specifying a better VAE
+Congratulations on training a T2I-Adapter model! 🎉 To learn more:
 
-SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+- Read the [Efficient Controllable Generation for SDXL with T2I-Adapters](https://www.cs.cmu.edu/~custom-diffusion/) blog post to learn more details about the experimental results from the T2I-Adapter team.

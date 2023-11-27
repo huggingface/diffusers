@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
@@ -453,9 +453,7 @@ class StableDiffusionCanvasPipeline(DiffusionPipeline):
                     :,
                     region.latent_row_init : region.latent_row_end,
                     region.latent_col_init : region.latent_col_end,
-                ] += (
-                    noise_pred_region * mask_weights_region
-                )
+                ] += noise_pred_region * mask_weights_region
                 contributors[
                     :,
                     :,

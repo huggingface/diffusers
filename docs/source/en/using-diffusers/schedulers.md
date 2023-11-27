@@ -14,14 +14,14 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Diffusion pipelines are inherently a collection of diffusion models and schedulers that are partly independent from each other. This means that one is able to switch out parts of the pipeline to better customize 
-a pipeline to one's use case. The best example of this is the [Schedulers](../api/schedulers/overview.md).
+Diffusion pipelines are inherently a collection of diffusion models and schedulers that are partly independent from each other. This means that one is able to switch out parts of the pipeline to better customize
+a pipeline to one's use case. The best example of this is the [Schedulers](../api/schedulers/overview).
 
-Whereas diffusion models usually simply define the forward pass from noise to a less noisy sample, 
+Whereas diffusion models usually simply define the forward pass from noise to a less noisy sample,
 schedulers define the whole denoising process, *i.e.*:
 - How many denoising steps?
 - Stochastic or deterministic?
-- What algorithm to use to find the denoised sample
+- What algorithm to use to find the denoised sample?
 
 They can be quite complex and often define a trade-off between **denoising speed** and **denoising quality**.
 It is extremely difficult to measure quantitatively which scheduler works best for a given diffusion pipeline, so it is often recommended to simply try out which works best.
@@ -63,7 +63,7 @@ pipeline.scheduler
 ```
 PNDMScheduler {
   "_class_name": "PNDMScheduler",
-  "_diffusers_version": "0.8.0.dev0",
+  "_diffusers_version": "0.21.4",
   "beta_end": 0.012,
   "beta_schedule": "scaled_linear",
   "beta_start": 0.00085,
@@ -72,11 +72,12 @@ PNDMScheduler {
   "set_alpha_to_one": false,
   "skip_prk_steps": true,
   "steps_offset": 1,
+  "timestep_spacing": "leading",
   "trained_betas": null
 }
 ```
 
-We can see that the scheduler is of type [`PNDMScheduler`]. 
+We can see that the scheduler is of type [`PNDMScheduler`].
 Cool, now let's compare the scheduler in its performance to other schedulers.
 First we define a prompt on which we will test all the different schedulers:
 
@@ -101,7 +102,7 @@ image
 
 ## Changing the scheduler
 
-Now we show how easy it is to change the scheduler of a pipeline. Every scheduler has a property [`SchedulerMixin.compatibles`] 
+Now we show how easy it is to change the scheduler of a pipeline. Every scheduler has a property [`~SchedulerMixin.compatibles`]
 which defines all compatible schedulers. You can take a look at all available, compatible schedulers for the Stable Diffusion pipeline as follows.
 
 ```python
@@ -110,27 +111,40 @@ pipeline.scheduler.compatibles
 
 **Output**:
 ```
-[diffusers.schedulers.scheduling_lms_discrete.LMSDiscreteScheduler,
- diffusers.schedulers.scheduling_ddim.DDIMScheduler,
- diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler,
+[diffusers.utils.dummy_torch_and_torchsde_objects.DPMSolverSDEScheduler,
  diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler,
- diffusers.schedulers.scheduling_pndm.PNDMScheduler,
+ diffusers.schedulers.scheduling_lms_discrete.LMSDiscreteScheduler,
+ diffusers.schedulers.scheduling_ddim.DDIMScheduler,
  diffusers.schedulers.scheduling_ddpm.DDPMScheduler,
- diffusers.schedulers.scheduling_euler_ancestral_discrete.EulerAncestralDiscreteScheduler]
+ diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler,
+ diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler,
+ diffusers.schedulers.scheduling_deis_multistep.DEISMultistepScheduler,
+ diffusers.schedulers.scheduling_pndm.PNDMScheduler,
+ diffusers.schedulers.scheduling_euler_ancestral_discrete.EulerAncestralDiscreteScheduler,
+ diffusers.schedulers.scheduling_unipc_multistep.UniPCMultistepScheduler,
+ diffusers.schedulers.scheduling_k_dpm_2_discrete.KDPM2DiscreteScheduler,
+ diffusers.schedulers.scheduling_dpmsolver_singlestep.DPMSolverSinglestepScheduler,
+ diffusers.schedulers.scheduling_k_dpm_2_ancestral_discrete.KDPM2AncestralDiscreteScheduler]
 ```
 
-Cool, lots of schedulers to look at. Feel free to have a look at their respective class definitions: 
+Cool, lots of schedulers to look at. Feel free to have a look at their respective class definitions:
 
-- [`LMSDiscreteScheduler`], 
-- [`DDIMScheduler`], 
-- [`DPMSolverMultistepScheduler`], 
-- [`EulerDiscreteScheduler`], 
-- [`PNDMScheduler`], 
-- [`DDPMScheduler`], 
-- [`EulerAncestralDiscreteScheduler`].
+- [`EulerDiscreteScheduler`],
+- [`LMSDiscreteScheduler`],
+- [`DDIMScheduler`],
+- [`DDPMScheduler`],
+- [`HeunDiscreteScheduler`],
+- [`DPMSolverMultistepScheduler`],
+- [`DEISMultistepScheduler`],
+- [`PNDMScheduler`],
+- [`EulerAncestralDiscreteScheduler`],
+- [`UniPCMultistepScheduler`],
+- [`KDPM2DiscreteScheduler`],
+- [`DPMSolverSinglestepScheduler`],
+- [`KDPM2AncestralDiscreteScheduler`].
 
-We will now compare the input prompt with all other schedulers. To change the scheduler of the pipeline you can make use of the 
-convenient [`ConfigMixin.config`] property in combination with the [`ConfigMixin.from_config`] function.
+We will now compare the input prompt with all other schedulers. To change the scheduler of the pipeline you can make use of the
+convenient [`~ConfigMixin.config`] property in combination with the [`~ConfigMixin.from_config`] function.
 
 ```python
 pipeline.scheduler.config
@@ -139,7 +153,7 @@ pipeline.scheduler.config
 returns a dictionary of the configuration of the scheduler:
 
 **Output**:
-```
+```py
 FrozenDict([('num_train_timesteps', 1000),
             ('beta_start', 0.00085),
             ('beta_end', 0.012),
@@ -147,14 +161,17 @@ FrozenDict([('num_train_timesteps', 1000),
             ('trained_betas', None),
             ('skip_prk_steps', True),
             ('set_alpha_to_one', False),
+            ('prediction_type', 'epsilon'),
+            ('timestep_spacing', 'leading'),
             ('steps_offset', 1),
+            ('_use_default_values', ['timestep_spacing', 'prediction_type']),
             ('_class_name', 'PNDMScheduler'),
-            ('_diffusers_version', '0.8.0.dev0'),
+            ('_diffusers_version', '0.21.4'),
             ('clip_sample', False)])
 ```
 
 This configuration can then be used to instantiate a scheduler
-of a different class that is compatible with the pipeline. Here, 
+of a different class that is compatible with the pipeline. Here,
 we change the scheduler to the [`DDIMScheduler`].
 
 ```python
@@ -181,8 +198,8 @@ If you are a JAX/Flax user, please check [this section](#changing-the-scheduler-
 
 ## Compare schedulers
 
-So far we have tried running the stable diffusion pipeline with two schedulers: [`PNDMScheduler`] and [`DDIMScheduler`]. 
-A number of better schedulers have been released that can be run with much fewer steps, let's compare them here:
+So far we have tried running the stable diffusion pipeline with two schedulers: [`PNDMScheduler`] and [`DDIMScheduler`].
+A number of better schedulers have been released that can be run with much fewer steps; let's compare them here:
 
 [`LMSDiscreteScheduler`] usually leads to better results:
 
@@ -241,8 +258,7 @@ image
 </p>
 
 
-At the time of writing this doc [`DPMSolverMultistepScheduler`] gives arguably the best speed/quality trade-off and can be run with as little 
-as 20 steps.
+[`DPMSolverMultistepScheduler`] gives a reasonable speed/quality trade-off and can be run with as little as 20 steps.
 
 ```python
 from diffusers import DPMSolverMultistepScheduler
@@ -260,12 +276,12 @@ image
     <br>
 </p>
 
-As you can see most images look very similar and are arguably of very similar quality. It often really depends on the specific use case which scheduler to choose. A good approach is always to run multiple different
+As you can see, most images look very similar and are arguably of very similar quality. It often really depends on the specific use case which scheduler to choose. A good approach is always to run multiple different
 schedulers to compare results.
 
 ## Changing the Scheduler in Flax
 
-If you are a JAX/Flax user, you can also change the default pipeline scheduler. This is a complete example of how to run inference using the Flax Stable Diffusion pipeline and the super-fast [DDPM-Solver++ scheduler](../api/schedulers/multistep_dpm_solver):
+If you are a JAX/Flax user, you can also change the default pipeline scheduler. This is a complete example of how to run inference using the Flax Stable Diffusion pipeline and the super-fast [DPM-Solver++ scheduler](../api/schedulers/multistep_dpm_solver):
 
 ```Python
 import jax

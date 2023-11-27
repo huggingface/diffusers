@@ -15,12 +15,12 @@
 """
 Simple check list from AllenNLP repo: https://github.com/allenai/allennlp/blob/main/setup.py
 
-To create the package for pypi.
+To create the package for PyPI.
 
 1. Run `make pre-release` (or `make pre-patch` for a patch release) then run `make fix-copies` to fix the index of the
    documentation.
 
-   If releasing on a special branch, copy the updated README.md on the main branch for your the commit you will make
+   If releasing on a special branch, copy the updated README.md on the main branch for the commit you will make
    for the post-release and run `make fix-copies` on the main branch as well.
 
 2. Run Tests for Amazon Sagemaker. The documentation is located in `./tests/sagemaker/README.md`, otherwise @philschmid.
@@ -30,29 +30,29 @@ To create the package for pypi.
 4. Checkout the release branch (v<RELEASE>-release, for example v4.19-release), and commit these changes with the
    message: "Release: <RELEASE>" and push.
 
-5. Wait for the tests on main to be completed and be green (otherwise revert and fix bugs)
+5. Wait for the tests on main to be completed and be green (otherwise revert and fix bugs).
 
-6. Add a tag in git to mark the release: "git tag v<RELEASE> -m 'Adds tag v<RELEASE> for pypi' "
+6. Add a tag in git to mark the release: "git tag v<RELEASE> -m 'Adds tag v<RELEASE> for PyPI'"
    Push the tag to git: git push --tags origin v<RELEASE>-release
 
 7. Build both the sources and the wheel. Do not change anything in setup.py between
    creating the wheel and the source distribution (obviously).
 
-   For the wheel, run: "python setup.py bdist_wheel" in the top level directory.
-   (this will build a wheel for the python version you use to build it).
+   For the wheel, run: "python setup.py bdist_wheel" in the top level directory
+   (This will build a wheel for the Python version you use to build it).
 
    For the sources, run: "python setup.py sdist"
    You should now have a /dist directory with both .whl and .tar.gz source versions.
 
-   Long story cut short, you need to run both before you can upload the distribution to the 
-   test pypi and the actual pypi servers: 
-   
+   Long story cut short, you need to run both before you can upload the distribution to the
+   test PyPI and the actual PyPI servers:
+
    python setup.py bdist_wheel && python setup.py sdist
 
-8. Check that everything looks correct by uploading the package to the pypi test server:
+8. Check that everything looks correct by uploading the package to the PyPI test server:
 
    twine upload dist/* -r pypitest
-   (pypi suggest using twine as other methods upload files via plaintext.)
+   (pypi suggests using twine as other methods upload files via plaintext.)
    You may have to specify the repository url, use the following command then:
    twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
 
@@ -64,15 +64,15 @@ To create the package for pypi.
    pip install -i https://testpypi.python.org/pypi diffusers
 
    Check you can run the following commands:
-   python -c "python -c "from diffusers import __version__; print(__version__)"
+   python -c "from diffusers import __version__; print(__version__)"
    python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('fusing/unet-ldm-dummy-update'); pipe()"
    python -c "from diffusers import DiffusionPipeline; pipe = DiffusionPipeline.from_pretrained('hf-internal-testing/tiny-stable-diffusion-pipe', safety_checker=None); pipe('ah suh du')"
    python -c "from diffusers import *"
 
-9. Upload the final version to actual pypi:
+9. Upload the final version to the actual PyPI:
    twine upload dist/* -r pypi
 
-10. Prepare the release notes and publish them on github once everything is looking hunky-dory.
+10. Prepare the release notes and publish them on GitHub once everything is looking hunky-dory.
 
 11. Run `make post-release` (or, for a patch release, `make post-patch`). If you were on a branch for the release,
     you need to go back to main before executing this.
@@ -80,6 +80,7 @@ To create the package for pypi.
 
 import os
 import re
+import sys
 from distutils.core import Command
 
 from setuptools import find_packages, setup
@@ -92,12 +93,11 @@ _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
     "compel==0.1.8",
-    "black~=23.1",
     "datasets",
     "filelock",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.13.2",
+    "huggingface-hub>=0.19.4",
     "requests-mock==1.10.0",
     "importlib_metadata",
     "invisible-watermark>=0.2.0",
@@ -112,11 +112,13 @@ _deps = [
     "numpy",
     "omegaconf",
     "parameterized",
+    "peft>=0.6.0",
     "protobuf>=3.20.3,<4",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
-    "ruff==0.0.280",
+    "python>=3.8.0",
+    "ruff>=0.1.5,<=0.2",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
@@ -142,7 +144,7 @@ deps = {b: a for a, b in (re.findall(r"^(([^!=<>~]+)(?:[!=<>~].*)?$)", x)[0] for
 # anywhere. If you need to quickly access the data from this table in a shell, you can do so easily with:
 #
 # python -c 'import sys; from diffusers.dependency_versions_table import deps; \
-# print(" ".join([ deps[x] for x in sys.argv[1:]]))' tokenizers datasets
+# print(" ".join([deps[x] for x in sys.argv[1:]]))' tokenizers datasets
 #
 # Just pass the desired package names to that script as it's shown with 2 packages above.
 #
@@ -151,7 +153,7 @@ deps = {b: a for a, b in (re.findall(r"^(([^!=<>~]+)(?:[!=<>~].*)?$)", x)[0] for
 # You can then feed this for example to `pip`:
 #
 # pip install -U $(python -c 'import sys; from diffusers.dependency_versions_table import deps; \
-# print(" ".join([ deps[x] for x in sys.argv[1:]]))' tokenizers datasets)
+# print(" ".join([deps[x] for x in sys.argv[1:]]))' tokenizers datasets)
 #
 
 
@@ -168,7 +170,11 @@ class DepsTableUpdateCommand(Command):
     description = "build runtime dependency table"
     user_options = [
         # format: (long option, short option, description).
-        ("dep-table-update", None, "updates src/diffusers/dependency_versions_table.py"),
+        (
+            "dep-table-update",
+            None,
+            "updates src/diffusers/dependency_versions_table.py",
+        ),
     ]
 
     def initialize_options(self):
@@ -182,7 +188,7 @@ class DepsTableUpdateCommand(Command):
         content = [
             "# THIS FILE HAS BEEN AUTOGENERATED. To update:",
             "# 1. modify the `_deps` dict in setup.py",
-            "# 2. run `make deps_table_update``",
+            "# 2. run `make deps_table_update`",
             "deps = {",
             entries,
             "}",
@@ -195,10 +201,7 @@ class DepsTableUpdateCommand(Command):
 
 
 extras = {}
-
-
-extras = {}
-extras["quality"] = deps_list("urllib3", "black", "isort", "ruff", "hf-doc-builder")
+extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
@@ -242,9 +245,11 @@ install_requires = [
     deps["Pillow"],
 ]
 
+version_range_max = max(sys.version_info[1], 10) + 1
+
 setup(
     name="diffusers",
-    version="0.22.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.24.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -268,30 +273,30 @@ setup(
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    ],
+        "Programming Language :: Python :: 3",
+    ]
+    + [f"Programming Language :: Python :: 3.{i}" for i in range(8, version_range_max)],
     cmdclass={"deps_table_update": DepsTableUpdateCommand},
 )
+
 
 # Release checklist
 # 1. Change the version in __init__.py and setup.py.
 # 2. Commit these changes with the message: "Release: Release"
-# 3. Add a tag in git to mark the release: "git tag RELEASE -m 'Adds tag RELEASE for pypi' "
+# 3. Add a tag in git to mark the release: "git tag RELEASE -m 'Adds tag RELEASE for PyPI'"
 #    Push the tag to git: git push --tags origin main
 # 4. Run the following commands in the top-level directory:
 #      python setup.py bdist_wheel
 #      python setup.py sdist
-# 5. Upload the package to the pypi test server first:
+# 5. Upload the package to the PyPI test server first:
 #      twine upload dist/* -r pypitest
 #      twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
 # 6. Check that you can install it in a virtualenv by running:
 #      pip install -i https://testpypi.python.org/pypi diffusers
 #      diffusers env
 #      diffusers test
-# 7. Upload the final version to actual pypi:
+# 7. Upload the final version to the actual PyPI:
 #      twine upload dist/* -r pypi
-# 8. Add release notes to the tag in github once everything is looking hunky-dory.
-# 9. Update the version in __init__.py, setup.py to the new version "-dev" and push to master
+# 8. Add release notes to the tag in GitHub once everything is looking hunky-dory.
+# 9. Update the version in __init__.py, setup.py to the new version "-dev" and push to main.

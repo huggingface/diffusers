@@ -49,6 +49,7 @@ from ..utils import (
     get_class_from_dynamic_module,
     is_accelerate_available,
     is_accelerate_version,
+    is_peft_available,
     is_torch_version,
     is_transformers_available,
     logging,
@@ -158,9 +159,9 @@ def is_safetensors_compatible(filenames, variant=None, passed_components=None) -
             continue
 
         if extension == ".bin":
-            pt_filenames.append(filename)
+            pt_filenames.append(os.path.normpath(filename))
         elif extension == ".safetensors":
-            sf_filenames.add(filename)
+            sf_filenames.add(os.path.normpath(filename))
 
     for filename in pt_filenames:
         #  filename = 'foo/bar/baz.bam' -> path = 'foo/bar', filename = 'baz', extention = '.bam'
@@ -172,9 +173,8 @@ def is_safetensors_compatible(filenames, variant=None, passed_components=None) -
         else:
             filename = filename
 
-        expected_sf_filename = os.path.join(path, filename)
+        expected_sf_filename = os.path.normpath(os.path.join(path, filename))
         expected_sf_filename = f"{expected_sf_filename}.safetensors"
-
         if expected_sf_filename not in sf_filenames:
             logger.warning(f"{expected_sf_filename} not found")
             return False
@@ -271,6 +271,20 @@ def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token,
         )
 
 
+def _unwrap_model(model):
+    """Unwraps a model."""
+    if is_compiled_module(model):
+        model = model._orig_mod
+
+    if is_peft_available():
+        from peft import PeftModel
+
+        if isinstance(model, PeftModel):
+            model = model.base_model.model
+
+    return model
+
+
 def maybe_raise_or_warn(
     library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
 ):
@@ -288,9 +302,8 @@ def maybe_raise_or_warn(
         # Dynamo wraps the original model in a private class.
         # I didn't find a public API to get the original class.
         sub_model = passed_class_obj[name]
-        model_cls = sub_model.__class__
-        if is_compiled_module(sub_model):
-            model_cls = sub_model._orig_mod.__class__
+        unwrapped_sub_model = _unwrap_model(sub_model)
+        model_cls = unwrapped_sub_model.__class__
 
         if not issubclass(model_cls, expected_class_obj):
             raise ValueError(
@@ -353,13 +366,18 @@ def _get_pipeline_class(
         else:
             file_name = CUSTOM_PIPELINE_FILE_NAME
 
+        if repo_id is not None and hub_revision is not None:
+            # if we load the pipeline code from the Hub
+            # make sure to overwrite the `revison`
+            revision = hub_revision
+
         return get_class_from_dynamic_module(
             custom_pipeline,
             module_file=file_name,
             class_name=class_name,
             repo_id=repo_id,
             cache_dir=cache_dir,
-            revision=revision if hub_revision is None else hub_revision,
+            revision=revision,
         )
 
     if class_obj != DiffusionPipeline:
@@ -524,6 +542,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         - **_optional_components** (`List[str]`) -- List of all optional components that don't have to be passed to the
           pipeline to function (should be overridden by subclasses).
     """
+
     config_name = "model_index.json"
     model_cpu_offload_seq = None
     _optional_components = []
@@ -538,14 +557,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for name, module in kwargs.items():
             # retrieve library
-            if module is None:
+            if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
             else:
                 # register the config from the original module, not the dynamo compiled one
-                if is_compiled_module(module):
-                    not_compiled_module = module._orig_mod
-                else:
-                    not_compiled_module = module
+                not_compiled_module = _unwrap_model(module)
 
                 library = not_compiled_module.__module__.split(".")[0]
 
@@ -648,7 +664,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # Dynamo wraps the original model in a private class.
             # I didn't find a public API to get the original class.
             if is_compiled_module(sub_model):
-                sub_model = sub_model._orig_mod
+                sub_model = _unwrap_model(sub_model)
                 model_cls = sub_model.__class__
 
             save_method_name = None
@@ -1669,7 +1685,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             for component in folder_names:
                 module_candidate = config_dict[component][0]
 
-                if module_candidate is None:
+                if module_candidate is None or not isinstance(module_candidate, str):
                     continue
 
                 candidate_file = os.path.join(component, module_candidate + ".py")
@@ -1769,7 +1785,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 )
             ):
                 raise EnvironmentError(
-                    f"Could not found the necessary `safetensors` weights in {model_filenames} (variant={variant})"
+                    f"Could not find the necessary `safetensors` weights in {model_filenames} (variant={variant})"
                 )
             if from_flax:
                 ignore_patterns = ["*.bin", "*.safetensors", "*.onnx", "*.pb"]
@@ -1890,12 +1906,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     " above."
                 ) from model_info_call_error
 
-    @staticmethod
-    def _get_signature_keys(obj):
+    @classmethod
+    def _get_signature_keys(cls, obj):
         parameters = inspect.signature(obj.__init__).parameters
         required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
         expected_modules = set(required_parameters.keys()) - {"self"}
+
+        optional_names = list(optional_parameters)
+        for name in optional_names:
+            if name in cls._optional_components:
+                expected_modules.add(name)
+                optional_parameters.remove(name)
+
         return expected_modules, optional_parameters
 
     @property
