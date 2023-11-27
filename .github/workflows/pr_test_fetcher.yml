@@ -1,4 +1,4 @@
-name: Fast tests for PRs Test Fetcher
+name: Fast tests for PRs - Test Fetcher
 
 on:
   pull_request:
