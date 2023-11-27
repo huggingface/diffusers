@@ -116,7 +116,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
 
 class TextualInversionLoaderMixin:
     r"""
-    Load textual inversion tokens and embeddings to the tokenizer and text encoder.
+    Load Textual Inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
     def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
@@ -276,7 +276,7 @@ class TextualInversionLoaderMixin:
         **kwargs,
     ):
         r"""
-        Load textual inversion embeddings into the text encoder of [`StableDiffusionPipeline`] (both 🤗 Diffusers and
+        Load Textual Inversion embeddings into the text encoder of [`StableDiffusionPipeline`] (both 🤗 Diffusers and
         Automatic1111 formats are supported).
 
         Parameters:
@@ -335,7 +335,7 @@ class TextualInversionLoaderMixin:
 
         Example:
 
-        To load a textual inversion embedding vector in 🤗 Diffusers format:
+        To load a Textual Inversion embedding vector in 🤗 Diffusers format:
 
         ```py
         from diffusers import StableDiffusionPipeline
@@ -352,7 +352,7 @@ class TextualInversionLoaderMixin:
         image.save("cat-backpack.png")
         ```
 
-        To load a textual inversion embedding vector in Automatic1111 format, make sure to download the vector first
+        To load a Textual Inversion embedding vector in Automatic1111 format, make sure to download the vector first
         (for example from [civitAI](https://civitai.com/models/3036?modelVersionId=9857)) and then load the vector
         locally:
 

@@ -92,6 +92,7 @@ class StableDiffusionUpscalePipeline(
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["watermarker", "safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]

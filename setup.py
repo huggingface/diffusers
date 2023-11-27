@@ -44,9 +44,9 @@ To create the package for PyPI.
    For the sources, run: "python setup.py sdist"
    You should now have a /dist directory with both .whl and .tar.gz source versions.
 
-   Long story cut short, you need to run both before you can upload the distribution to the 
-   test PyPI and the actual PyPI servers: 
-   
+   Long story cut short, you need to run both before you can upload the distribution to the
+   test PyPI and the actual PyPI servers:
+
    python setup.py bdist_wheel && python setup.py sdist
 
 8. Check that everything looks correct by uploading the package to the PyPI test server:
@@ -78,9 +78,9 @@ To create the package for PyPI.
     you need to go back to main before executing this.
 """
 
-import sys
 import os
 import re
+import sys
 from distutils.core import Command
 
 from setuptools import find_packages, setup
@@ -93,7 +93,6 @@ _deps = [
     "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
     "compel==0.1.8",
-    "black~=23.1",
     "datasets",
     "filelock",
     "flax>=0.4.1",
@@ -119,7 +118,7 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "python>=3.8.0",
-    "ruff==0.0.280",
+    "ruff>=0.1.5,<=0.2",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
@@ -171,7 +170,11 @@ class DepsTableUpdateCommand(Command):
     description = "build runtime dependency table"
     user_options = [
         # format: (long option, short option, description).
-        ("dep-table-update", None, "updates src/diffusers/dependency_versions_table.py"),
+        (
+            "dep-table-update",
+            None,
+            "updates src/diffusers/dependency_versions_table.py",
+        ),
     ]
 
     def initialize_options(self):
@@ -197,10 +200,8 @@ class DepsTableUpdateCommand(Command):
             f.write("\n".join(content))
 
 
-
-
 extras = {}
-extras["quality"] = deps_list("urllib3", "black", "isort", "ruff", "hf-doc-builder")
+extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
@@ -275,10 +276,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Programming Language :: Python :: 3",
     ]
-    + [
-        f"Programming Language :: Python :: 3.{i}"
-        for i in range(8, version_range_max)
-    ],
+    + [f"Programming Language :: Python :: 3.{i}" for i in range(8, version_range_max)],
     cmdclass={"deps_table_update": DepsTableUpdateCommand},
 )
 
