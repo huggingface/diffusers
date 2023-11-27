@@ -105,6 +105,52 @@ Special VAE used for training: {vae_path}.
         f.write(yaml + model_card)
 
 
+def log_validation(args, accelerator, vae, text_encoder_one, text_encoder_two, unet, weight_dtype, step):
+    logger.info(
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
+    # create pipeline
+    pipeline = StableDiffusionXLPipeline.from_pretrained(
+        args.pretrained_model_name_or_path,
+        vae=vae,
+        text_encoder=accelerator.unwrap_model(text_encoder_one),
+        text_encoder_2=accelerator.unwrap_model(text_encoder_two),
+        unet=accelerator.unwrap_model(unet),
+        revision=args.revision,
+        torch_dtype=weight_dtype,
+    )
+
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    # run inference
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+    pipeline_args = {"prompt": args.validation_prompt}
+
+    with torch.cuda.amp.autocast():
+        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+    if args.save_original_validation_images:
+        for i, image in enumerate(images):
+            image.save(os.path.join(args.output_dir, "validations", f"step-{step}-image-{i}.png"))
+
+    for tracker in accelerator.trackers:
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images("validation", np_images, step, dataformats="NHWC")
+        if tracker.name == "wandb":
+            tracker.log(
+                {
+                    "validation": [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                    ]
+                }
+            )
+
+    del pipeline
+    torch.cuda.empty_cache()
+
+
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
@@ -183,6 +229,9 @@ def parse_args(input_args=None):
         help="The column of the dataset containing a caption or a list of captions.",
     )
     parser.add_argument(
+        "--load_dataset_num_proc", type=int, default=None, help="Count the number of processes for dataset cache"
+    )
+    parser.add_argument(
         "--validation_prompt",
         type=str,
         default=None,
@@ -195,9 +244,18 @@ def parse_args(input_args=None):
         help="Number of images that should be generated during validation with `validation_prompt`.",
     )
     parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=None,
+        help=(
+            "Run fine-tuning validation every X steps. The validation process consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`."
+        ),
+    )
+    parser.add_argument(
         "--validation_epochs",
         type=int,
-        default=1,
+        default=None,
         help=(
             "Run fine-tuning validation every X epochs. The validation process consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`."
@@ -378,6 +436,12 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--save_original_validation_images",
+        default=False,
+        action="store_true",
+        help=("Save original type image files to output_dir/validations"),
+    )
+    parser.add_argument(
         "--report_to",
         type=str,
         default="tensorboard",
@@ -385,6 +449,9 @@ def parse_args(input_args=None):
             'The integration to report the results and logs to. Supported platforms are `"tensorboard"`'
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
         ),
+    )
+    parser.add_argument(
+        "--tracker_project_name", type=str, default="text2image-fine-tune", help="The name of the project to log to."
     )
     parser.add_argument(
         "--mixed_precision",
@@ -529,6 +596,8 @@ def main(args):
     if accelerator.is_main_process:
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+            if args.save_original_validation_images:
+                os.makedirs(os.path.join(args.output_dir, "validations"), exist_ok=True)
 
         if args.push_to_hub:
             repo_id = create_repo(
@@ -930,7 +999,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("text2image-fine-tune", config=vars(args))
+        accelerator.init_trackers(args.tracker_project_name, config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1124,6 +1193,14 @@ def main(args):
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
+                    if (
+                        args.validation_prompt is not None
+                        and args.validation_steps is not None
+                        and global_step % args.validation_steps == 0
+                    ):
+                        log_validation(
+                            args, accelerator, vae, text_encoder_one, text_encoder_two, unet, weight_dtype, global_step
+                        )
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -1132,51 +1209,14 @@ def main(args):
                 break
 
         if accelerator.is_main_process:
-            if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
+            if (
+                args.validation_prompt is not None
+                and args.validation_epochs is not None
+                and epoch % args.validation_epochs == 0
+            ):
+                log_validation(
+                    args, accelerator, vae, text_encoder_one, text_encoder_two, unet, weight_dtype, global_step
                 )
-                # create pipeline
-                pipeline = StableDiffusionXLPipeline.from_pretrained(
-                    args.pretrained_model_name_or_path,
-                    vae=vae,
-                    text_encoder=accelerator.unwrap_model(text_encoder_one),
-                    text_encoder_2=accelerator.unwrap_model(text_encoder_two),
-                    unet=accelerator.unwrap_model(unet),
-                    revision=args.revision,
-                    torch_dtype=weight_dtype,
-                )
-
-                pipeline = pipeline.to(accelerator.device)
-                pipeline.set_progress_bar_config(disable=True)
-
-                # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-                pipeline_args = {"prompt": args.validation_prompt}
-
-                with torch.cuda.amp.autocast():
-                    images = [
-                        pipeline(**pipeline_args, generator=generator).images[0]
-                        for _ in range(args.num_validation_images)
-                    ]
-
-                for tracker in accelerator.trackers:
-                    if tracker.name == "tensorboard":
-                        np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                    if tracker.name == "wandb":
-                        tracker.log(
-                            {
-                                "validation": [
-                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                    for i, image in enumerate(images)
-                                ]
-                            }
-                        )
-
-                del pipeline
-                torch.cuda.empty_cache()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
