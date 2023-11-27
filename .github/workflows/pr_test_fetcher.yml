@@ -43,6 +43,7 @@ jobs:
     - name: Environment
       run: |
         python utils/print_env.py
+        echo $(git --version)
     - name: Fetch Tests
       run: |
         python utils/tests_fetcher.py | tee test_preparation.txt
