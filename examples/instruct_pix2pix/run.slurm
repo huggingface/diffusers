@@ -60,7 +60,7 @@ PROGRAM="train_instruct_pix2pix_sdxl.py \
     --dataset_name=$DATASET_ID \
     --original_image_column=image --edited_image_column=edited_image --edit_prompt_column=instruction \
     --resolution=1024 \
-    --train_batch_size=16 --gradient_accumulation_steps=4 --gradient_checkpointing \
+    --train_batch_size=8 --gradient_accumulation_steps=4 --gradient_checkpointing \
     --dataloader_num_workers=8 \
     --enable_xformers_memory_efficient_attention \
     --max_train_steps=10000 \
