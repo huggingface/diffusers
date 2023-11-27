@@ -157,9 +157,7 @@ class DPSPipeline(DiffusionPipeline):
         return ImagePipelineOutput(images=image)
 
 
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     import scipy
     from torch import nn
     from torchvision.utils import save_image
@@ -167,12 +165,11 @@ if __name__ == '__main__':
     # defining the operators f(.) of y = f(x)
     # super-resolution operator
     class SuperResolutionOperator(nn.Module):
-
         def __init__(self, in_shape, scale_factor):
             super().__init__()
+
             # Resizer local class, do not use outiside the SR operator class
             class Resizer(nn.Module):
-
                 def __init__(self, in_shape, scale_factor=None, output_shape=None, kernel=None, antialiasing=True):
                     super(Resizer, self).__init__()
 
@@ -182,23 +179,26 @@ if __name__ == '__main__':
                     # Choose interpolation method, each method has the matching kernel size
                     def cubic(x):
                         absx = np.abs(x)
-                        absx2 = absx ** 2
-                        absx3 = absx ** 3
-                        return ((1.5 * absx3 - 2.5 * absx2 + 1) * (absx <= 1) +
-                                (-0.5 * absx3 + 2.5 * absx2 - 4 * absx + 2) * ((1 < absx) & (absx <= 2)))
+                        absx2 = absx**2
+                        absx3 = absx**3
+                        return (1.5 * absx3 - 2.5 * absx2 + 1) * (absx <= 1) + (
+                            -0.5 * absx3 + 2.5 * absx2 - 4 * absx + 2
+                        ) * ((1 < absx) & (absx <= 2))
 
                     def lanczos2(x):
-                        return (((np.sin(pi * x) * np.sin(pi * x / 2) + np.finfo(np.float32).eps) /
-                                ((pi ** 2 * x ** 2 / 2) + np.finfo(np.float32).eps))
-                                * (abs(x) < 2))
+                        return (
+                            (np.sin(pi * x) * np.sin(pi * x / 2) + np.finfo(np.float32).eps)
+                            / ((pi**2 * x**2 / 2) + np.finfo(np.float32).eps)
+                        ) * (abs(x) < 2)
 
                     def box(x):
                         return ((-0.5 <= x) & (x < 0.5)) * 1.0
 
                     def lanczos3(x):
-                        return (((np.sin(pi * x) * np.sin(pi * x / 3) + np.finfo(np.float32).eps) /
-                                ((pi ** 2 * x ** 2 / 3) + np.finfo(np.float32).eps))
-                                * (abs(x) < 3))
+                        return (
+                            (np.sin(pi * x) * np.sin(pi * x / 3) + np.finfo(np.float32).eps)
+                            / ((pi**2 * x**2 / 3) + np.finfo(np.float32).eps)
+                        ) * (abs(x) < 3)
 
                     def linear(x):
                         return (x + 1) * ((-1 <= x) & (x < 0)) + (1 - x) * ((0 <= x) & (x <= 1))
@@ -209,11 +209,11 @@ if __name__ == '__main__':
                         "lanczos3": (lanczos3, 6.0),
                         "box": (box, 1.0),
                         "linear": (linear, 2.0),
-                        None: (cubic, 4.0)  # set default interpolation method as cubic
+                        None: (cubic, 4.0),  # set default interpolation method as cubic
                     }.get(kernel)
 
                     # Antialiasing is only used when downscaling
-                    antialiasing *= (np.any(np.array(scale_factor) < 1))
+                    antialiasing *= np.any(np.array(scale_factor) < 1)
 
                     # Sort indices of dimensions according to scale of each dimension. since we are going dim by dim this is efficient
                     sorted_dims = np.argsort(np.array(scale_factor))
@@ -225,8 +225,9 @@ if __name__ == '__main__':
                     for dim in self.sorted_dims:
                         # for each coordinate (along 1 dim), calculate which coordinates in the input image affect its result and the
                         # weights that multiply the values there to get its result.
-                        weights, field_of_view = self.contributions(in_shape[dim], output_shape[dim], scale_factor[dim], method,
-                                                                    kernel_width, antialiasing)
+                        weights, field_of_view = self.contributions(
+                            in_shape[dim], output_shape[dim], scale_factor[dim], method, kernel_width, antialiasing
+                        )
 
                         # convert to torch tensor
                         weights = torch.tensor(weights.T, dtype=torch.float32)
@@ -234,10 +235,16 @@ if __name__ == '__main__':
                         # We add singleton dimensions to the weight matrix so we can multiply it with the big tensor we get for
                         # tmp_im[field_of_view.T], (bsxfun style)
                         weights_list.append(
-                            nn.Parameter(torch.reshape(weights, list(weights.shape) + (len(scale_factor) - 1) * [1]),
-                                        requires_grad=False))
+                            nn.Parameter(
+                                torch.reshape(weights, list(weights.shape) + (len(scale_factor) - 1) * [1]),
+                                requires_grad=False,
+                            )
+                        )
                         field_of_view_list.append(
-                            nn.Parameter(torch.tensor(field_of_view.T.astype(np.int32), dtype=torch.long), requires_grad=False))
+                            nn.Parameter(
+                                torch.tensor(field_of_view.T.astype(np.int32), dtype=torch.long), requires_grad=False
+                            )
+                        )
 
                     self.field_of_view = nn.ParameterList(field_of_view_list)
                     self.weights = nn.ParameterList(weights_list)
@@ -278,7 +285,7 @@ if __name__ == '__main__':
                     # Fixing output-shape (if given): extending it to the size of the input-shape, by assigning the original input-size
                     # to all the unspecified dimensions
                     if output_shape is not None:
-                        output_shape = list(input_shape[len(output_shape):]) + list(np.uint(np.array(output_shape)))
+                        output_shape = list(input_shape[len(output_shape) :]) + list(np.uint(np.array(output_shape)))
 
                     # Dealing with the case of non-give scale-factor, calculating according to output-shape. note that this is
                     # sub-optimal, because there can be different scales to the same output-shape.
@@ -332,7 +339,8 @@ if __name__ == '__main__':
                     # that the pixel in the output image 'sees'. We get a matrix whos horizontal dim is the output pixels (big) and the
                     # vertical dim is the pixels it 'sees' (kernel_size + 2)
                     field_of_view = np.squeeze(
-                        np.int16(np.expand_dims(left_boundary, axis=1) + np.arange(expanded_kernel_width) - 1))
+                        np.int16(np.expand_dims(left_boundary, axis=1) + np.arange(expanded_kernel_width) - 1)
+                    )
 
                     # Assign weight to each pixel in the field of view. A matrix whos horizontal dim is the output pixels and the
                     # vertical dim is a list of weights matching to the pixel in the field of view (that are specified in
@@ -356,10 +364,9 @@ if __name__ == '__main__':
                     # Final products are the relative positions and the matching weights, both are output_size X fixed_kernel_size
                     return weights, field_of_view
 
-            self.down_sample = Resizer(in_shape, 1/scale_factor)
+            self.down_sample = Resizer(in_shape, 1 / scale_factor)
             for param in self.parameters():
-                param.requires_grad=False
-
+                param.requires_grad = False
 
         def forward(self, data, **kwargs):
             return self.down_sample(data)
@@ -370,14 +377,14 @@ if __name__ == '__main__':
             super().__init__()
 
             class Blurkernel(nn.Module):
-                def __init__(self, blur_type='gaussian', kernel_size=31, std=3.0):
+                def __init__(self, blur_type="gaussian", kernel_size=31, std=3.0):
                     super().__init__()
                     self.blur_type = blur_type
                     self.kernel_size = kernel_size
                     self.std = std
                     self.seq = nn.Sequential(
-                        nn.ReflectionPad2d(self.kernel_size//2),
-                        nn.Conv2d(3, 3, self.kernel_size, stride=1, padding=0, bias=False, groups=3)
+                        nn.ReflectionPad2d(self.kernel_size // 2),
+                        nn.Conv2d(3, 3, self.kernel_size, stride=1, padding=0, bias=False, groups=3),
                     )
                     self.weights_init()
 
@@ -387,7 +394,7 @@ if __name__ == '__main__':
                 def weights_init(self):
                     if self.blur_type == "gaussian":
                         n = np.zeros((self.kernel_size, self.kernel_size))
-                        n[self.kernel_size // 2,self.kernel_size // 2] = 1
+                        n[self.kernel_size // 2, self.kernel_size // 2] = 1
                         k = scipy.ndimage.gaussian_filter(n, sigma=self.std)
                         k = torch.from_numpy(k)
                         self.k = k
@@ -404,14 +411,12 @@ if __name__ == '__main__':
                     return self.k
 
             self.kernel_size = kernel_size
-            self.conv = Blurkernel(blur_type='gaussian',
-                                kernel_size=kernel_size,
-                                std=intensity)
+            self.conv = Blurkernel(blur_type="gaussian", kernel_size=kernel_size, std=intensity)
             self.kernel = self.conv.get_kernel()
             self.conv.update_weights(self.kernel.type(torch.float32))
 
             for param in self.parameters():
-                param.requires_grad=False
+                param.requires_grad = False
 
         def forward(self, data, **kwargs):
             return self.conv(data)
@@ -424,12 +429,12 @@ if __name__ == '__main__':
 
     # assuming the forward process y = f(x) is polluted by Gaussian noise, use l2 norm
     def RMSELoss(yhat, y):
-        return torch.sqrt(torch.sum((yhat-y)**2))
+        return torch.sqrt(torch.sum((yhat - y) ** 2))
 
     # set up source image
-    src = Image.open('sample.png')
+    src = Image.open("sample.png")
     # read image into [1,3,H,W]
-    src = torch.from_numpy(np.array(src, dtype=np.float32)).permute(2,0,1)[None]
+    src = torch.from_numpy(np.array(src, dtype=np.float32)).permute(2, 0, 1)[None]
     # normalize image to [-1,1]
     src = (src / 127.5) - 1.0
     src = src.to("cuda")
@@ -446,17 +451,16 @@ if __name__ == '__main__':
     # set up model
     model = UNet2DModel.from_pretrained("google/ddpm-celebahq-256").to("cuda")
 
-    save_image((src+1.0)/2.0, "dps_src.png")
-    save_image((measurement+1.0)/2.0, "dps_mea.png")
+    save_image((src + 1.0) / 2.0, "dps_src.png")
+    save_image((measurement + 1.0) / 2.0, "dps_mea.png")
 
     # finally, the pipeline
     dpspipe = DPSPipeline(model, scheduler)
     image = dpspipe(
-        measurement = measurement,
-        operator = operator,
-        loss_fn = RMSELoss,
-        zeta = 1.0,
+        measurement=measurement,
+        operator=operator,
+        loss_fn=RMSELoss,
+        zeta=1.0,
     ).images[0]
 
     image.save("dps_generated_image.png")
-
