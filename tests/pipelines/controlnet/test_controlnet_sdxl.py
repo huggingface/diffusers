@@ -974,6 +974,6 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
             "feature_extractor": None,
-            "image_encoder": None
+            "image_encoder": None,
         }
         return components
