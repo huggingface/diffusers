@@ -3,13 +3,12 @@ from dataclasses import dataclass
 from typing import Dict, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch import nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
-from .attention_processor import AttentionProcessor, Kandi3AttnProcessor
+from .attention_processor import Attention, AttentionProcessor, AttnProcessor
 from .embeddings import TimestepEmbedding
 from .modeling_utils import ModelMixin
 
@@ -30,7 +29,7 @@ def set_default_item(condition, item_1, item_2=None):
         return item_2
 
 
-# TODO(Yiyi): This class needs to be removed
+# TODO(Yiyi): This class needs to be removed: either layer_1 or nn.identity
 def set_default_layer(condition, layer_1, args_1=[], kwargs_1={}, layer_2=torch.nn.Identity, args_2=[], kwargs_2={}):
     if condition:
         return layer_1(*args_1, **kwargs_1)
@@ -223,7 +222,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        self.set_attn_processor(Kandi3AttnProcessor())
+        self.set_attn_processor(AttnProcessor())
 
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
@@ -412,6 +411,7 @@ class Kandinsky3DownSampleBlock(nn.Module):
         return x
 
 
+# yiyi notes: should not have a seperate class here either
 class Kandinsky3ConditionalGroupNorm(nn.Module):
     def __init__(self, groups, normalized_shape, context_dim):
         super().__init__()
@@ -429,49 +429,6 @@ class Kandinsky3ConditionalGroupNorm(nn.Module):
         scale, shift = context.chunk(2, dim=1)
         x = self.norm(x) * (scale + 1.0) + shift
         return x
-
-
-# TODO(Yiyi): This class should ideally not even exist, it slows everything needlessly down. I'm pretty
-# sure we can delete it and instead just pass an attention_mask
-class Attention(nn.Module):
-    def __init__(self, in_channels, out_channels, context_dim, head_dim=64):
-        super().__init__()
-        assert out_channels % head_dim == 0
-        self.num_heads = out_channels // head_dim
-        self.scale = head_dim**-0.5
-
-        # to_q
-        self.to_q = nn.Linear(in_channels, out_channels, bias=False)
-        # to_k
-        self.to_k = nn.Linear(context_dim, out_channels, bias=False)
-        # to_v
-        self.to_v = nn.Linear(context_dim, out_channels, bias=False)
-        processor = Kandi3AttnProcessor()
-        self.set_processor(processor)
-        # to_out
-        self.to_out = nn.ModuleList([])
-        self.to_out.append(nn.Linear(out_channels, out_channels, bias=False))
-
-    def set_processor(self, processor: "AttnProcessor"):  # noqa: F821
-        # if current processor is in `self._modules` and if passed `processor` is not, we need to
-        # pop `processor` from `self._modules`
-        if (
-            hasattr(self, "processor")
-            and isinstance(self.processor, torch.nn.Module)
-            and not isinstance(processor, torch.nn.Module)
-        ):
-            logger.info(f"You are removing possibly trained weights of {self.processor} with {processor}")
-            self._modules.pop("processor")
-
-        self.processor = processor
-
-    def forward(self, x, context, context_mask=None, image_mask=None):
-        return self.processor(
-            self,
-            x,
-            context=context,
-            context_mask=context_mask,
-        )
 
 
 class Kandinsky3Block(nn.Module):
@@ -546,9 +503,10 @@ class Kandinsky3ResNetBlock(nn.Module):
 class Kandinsky3AttentionPooling(nn.Module):
     def __init__(self, num_channels, context_dim, head_dim=64):
         super().__init__()
-        self.attention = Attention(context_dim, num_channels, context_dim, head_dim)
+        self.attention = Attention(context_dim, context_dim, dim_head=head_dim, out_dim=num_channels, out_bias=False)
 
     def forward(self, x, context, context_mask=None):
+        context_mask = context_mask.unsqueeze(1).to(dtype=context.dtype)
         context = self.attention(context.mean(dim=1, keepdim=True), context, context_mask)
         return x + context.squeeze(1)
 
@@ -557,7 +515,9 @@ class Kandinsky3AttentionBlock(nn.Module):
     def __init__(self, num_channels, time_embed_dim, context_dim=None, norm_groups=32, head_dim=64, expansion_ratio=4):
         super().__init__()
         self.in_norm = Kandinsky3ConditionalGroupNorm(norm_groups, num_channels, time_embed_dim)
-        self.attention = Attention(num_channels, num_channels, context_dim or num_channels, head_dim)
+        self.attention = Attention(
+            num_channels, context_dim or num_channels, dim_head=head_dim, out_dim=num_channels, out_bias=False
+        )
 
         hidden_channels = expansion_ratio * num_channels
         self.out_norm = Kandinsky3ConditionalGroupNorm(norm_groups, num_channels, time_embed_dim)
@@ -572,14 +532,10 @@ class Kandinsky3AttentionBlock(nn.Module):
         out = self.in_norm(x, time_embed)
         out = out.reshape(x.shape[0], -1, height * width).permute(0, 2, 1)
         context = context if context is not None else out
+        if context_mask is not None:
+            context_mask = context_mask.unsqueeze(1).to(dtype=context.dtype)
 
-        if image_mask is not None:
-            mask_height, mask_width = image_mask.shape[-2:]
-            kernel_size = (mask_height // height, mask_width // width)
-            image_mask = F.max_pool2d(image_mask, kernel_size, kernel_size)
-            image_mask = image_mask.reshape(image_mask.shape[0], -1)
-
-        out = self.attention(out, context, context_mask, image_mask)
+        out = self.attention(out, context, context_mask)
         out = out.permute(0, 2, 1).unsqueeze(-1).reshape(out.shape[0], -1, height, width)
         x = x + out
 
