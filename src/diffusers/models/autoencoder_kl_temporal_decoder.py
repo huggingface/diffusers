@@ -284,7 +284,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
         force_upcast: float = True,
-        skip_post_quant_conv: bool = True,
     ):
         super().__init__()
 
@@ -311,7 +310,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         )
 
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
-        self.post_quant_conv = nn.Conv2d(latent_channels, latent_channels, 1)
 
         self.use_slicing = False
         self.use_tiling = False
@@ -485,9 +483,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         batch_size = z.shape[0] // num_frames
         # TODO: dont hardcode this
         image_only_indicator = torch.zeros(batch_size, num_frames, dtype=z.dtype, device=z.device)
-
-        if not self.config.skip_post_quant_conv:
-            z = self.post_quant_conv(z)
         dec = self.decoder(z, num_frames=num_frames, image_only_indicator=image_only_indicator)
 
         if not return_dict:

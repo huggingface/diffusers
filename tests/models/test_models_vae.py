@@ -405,6 +405,7 @@ class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
             "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
             "latent_channels": 4,
             "norm_num_groups": 4,
+            "layers_per_block": 2,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -419,15 +420,12 @@ class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
         assert not model.is_gradient_checkpointing and model.training
 
         out = model(**inputs_dict).sample
-
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
         model.zero_grad()
@@ -436,34 +434,33 @@ class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
         loss = (out - labels).mean()
         loss.backward()
 
-        torch.manual_seed(0)
         # re-instantiate the model now enabling gradient checkpointing
-        model_gc = self.model_class(**init_dict)
+        model_2 = self.model_class(**init_dict)
         # clone model
-        # model_gc.load_state_dict(model.state_dict())
-        model_gc.to(torch_device)
-        model_gc.enable_gradient_checkpointing()
+        model_2.load_state_dict(model.state_dict())
+        model_2.to(torch_device)
+        model_2.enable_gradient_checkpointing()
 
-        assert model_gc.is_gradient_checkpointing and model_gc.training
+        assert model_2.is_gradient_checkpointing and model_2.training
 
-        out_gradient_checkpointing = model_gc(**inputs_dict).sample
+        out_2 = model_2(**inputs_dict).sample
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
-        model_gc.zero_grad()
-        loss_gradient_checkpointing = (out_gradient_checkpointing - labels).mean()
-        loss_gradient_checkpointing.backward()
+        model_2.zero_grad()
+        loss_2 = (out_2 - labels).mean()
+        loss_2.backward()
 
         # compare the output and parameters gradients
-        self.assertTrue((loss - loss_gradient_checkpointing).abs() < 1e-5)
-
+        self.assertTrue((loss - loss_2).abs() < 1e-5)
         named_params = dict(model.named_parameters())
-        named_params_gradient_checkpointing = dict(model_gc.named_parameters())
+        named_params_2 = dict(model_2.named_parameters())
         for name, param in named_params.items():
+            if "post_quant_conv" in name:
+                continue
+
             self.assertTrue(
                 torch_all_close(
-                    param.grad.data,
-                    named_params_gradient_checkpointing[name].grad.data,
-                    atol=5e-5,
+                    param.grad.data, named_params_2[name].grad.data, atol=5e-5
                 )
             )
 
