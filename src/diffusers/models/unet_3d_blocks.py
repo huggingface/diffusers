@@ -140,6 +140,7 @@ def get_down_block(
             temporal_max_seq_length=temporal_max_seq_length,
         )
     elif down_block_type == "DownBlockSpatioTemporal":
+        # added for SDV
         return DownBlockSpatioTemporal(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -152,6 +153,7 @@ def get_down_block(
             merge_strategy=merge_strategy,
         )
     elif down_block_type == "CrossAttnDownBlockSpatioTemporal":
+        # added for SDV
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockSpatioTemporal")
         return CrossAttnDownBlockSpatioTemporal(
@@ -283,6 +285,7 @@ def get_up_block(
             temporal_max_seq_length=temporal_max_seq_length,
         )
     elif up_block_type == "UpBlockSpatioTemporal":
+        # added for SDV
         return UpBlockSpatioTemporal(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -297,6 +300,7 @@ def get_up_block(
             merge_strategy=merge_strategy,
         )
     elif up_block_type == "CrossAttnUpBlockSpatioTemporal":
+        # added for SDV
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockSpatioTemporal")
         return CrossAttnUpBlockSpatioTemporal(
