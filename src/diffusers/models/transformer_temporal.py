@@ -255,7 +255,7 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
 
         # 2. Define input layers
         self.in_channels = in_channels
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6)
+        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=norm_eps)
         self.proj_in = linear_cls(in_channels, inner_dim)
 
         # 3. Define transformers blocks
@@ -309,6 +309,8 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         timestep: Optional[torch.LongTensor] = None,
         class_labels: Optional[torch.LongTensor] = None,
         cross_attention_kwargs: Dict[str, Any] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_attention_mask: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
