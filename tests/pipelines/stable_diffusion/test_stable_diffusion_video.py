@@ -22,7 +22,6 @@ from diffusers.utils import load_image, logging
 from diffusers.utils.testing_utils import (
     floats_tensor,
     numpy_cosine_similarity_distance,
-    print_tensor_test,
     require_torch_gpu,
     slow,
     torch_device,
@@ -278,7 +277,6 @@ class StableDiffusionVideoPipelineSlowTests(unittest.TestCase):
         assert image.shape == (num_frames, 576, 1024, 3)
 
         image_slice = image[0, -3:, -3:, -1]
-        print_tensor_test(image_slice)
         expected_slice = np.array(
             [0.8592, 0.8645, 0.8499, 0.8722, 0.8769, 0.8421, 0.8557, 0.8528, 0.8285]
         )
