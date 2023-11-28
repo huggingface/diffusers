@@ -55,7 +55,7 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
 
 
 @dataclass
-class StableDiffusionVideoPipelineOutput(BaseOutput):
+class StableVideoDiffusionPipelineOutput(BaseOutput):
     r"""
     Output class for zero-shot text-to-video pipeline.
 
@@ -68,7 +68,7 @@ class StableDiffusionVideoPipelineOutput(BaseOutput):
     frames: Union[List[PIL.Image.Image], np.ndarray]
 
 
-class StableDiffusionVideoPipeline(DiffusionPipeline):
+class StableVideoDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline to generate video from an input image using Stable Video Diffusion.
 
@@ -177,15 +177,15 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
     def _get_add_time_ids(
         self,
-        fps_id,
+        fps,
         motion_bucket_id,
-        cond_aug,
+        noise_aug_strength,
         dtype,
         batch_size,
         num_videos_per_prompt,
         do_classifier_free_guidance,
     ):
-        add_time_ids = [fps_id, motion_bucket_id, cond_aug]
+        add_time_ids = [fps, motion_bucket_id, noise_aug_strength]
 
         passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids)
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
@@ -203,17 +203,17 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         return add_time_ids
 
-    def decode_latents(self, latents, num_frames, frames_to_decode_at_once=14):
+    def decode_latents(self, latents, num_frames, decode_chunk_size=14):
         # [batch, frames, channels, height, width] -> [batch*frames, channels, height, width]
         latents = latents.flatten(0, 1)
 
         latents = 1 / self.vae.config.scaling_factor * latents
 
-        # decode frames_to_decode_at_once frames at a time to avoid OOM
+        # decode decode_chunk_size frames at a time to avoid OOM
         frames = []
-        for i in range(0, latents.shape[0], frames_to_decode_at_once):
-            num_frames_in = latents[i : i + frames_to_decode_at_once].shape[0]
-            frame = self.vae.decode(latents[i : i + frames_to_decode_at_once], num_frames_in).sample
+        for i in range(0, latents.shape[0], decode_chunk_size):
+            num_frames_in = latents[i : i + decode_chunk_size].shape[0]
+            frame = self.vae.decode(latents[i : i + decode_chunk_size], num_frames_in).sample
             frames.append(frame)
         frames = torch.cat(frames, dim=0)
 
@@ -278,14 +278,14 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
         height: int = 576,
         width: int = 1024,
-        num_frames: int = 14,
-        num_inference_steps: int = 50,
+        num_frames: Optional[int] = None,
+        num_inference_steps: int = 25,
         min_guidance_scale: float = 1.0,
-        max_guidance_scale: float = 2.5,
-        fps_id: int = 6,
+        max_guidance_scale: float = 3.0,
+        fps: int = 7,
         motion_bucket_id: int = 127,
-        cond_aug: int = 0.02,
-        frames_to_decode_at_once: int = 14,
+        noise_aug_strength: int = 0.02,
+        decode_chunk_size: Optional[int] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -303,23 +303,26 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
-            num_frames (`int`, *optional*, defaults to 14):
-                The number of video frames to generate.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_frames (`int`, *optional*):
+                The number of video frames to generate. Defaults to 14 for `stable-video-diffusion-img2vid` and to 25 for `stable-video-diffusion-img2vid-xt`
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
             min_guidance_scale (`float`, *optional*, defaults to 1.0):
                 The minimum guidance scale. Used for the classifier free guidance with first frame.
-            max_guidance_scale (`float`, *optional*, defaults to 2.5):
+            max_guidance_scale (`float`, *optional*, defaults to 3.0):
                 The maximum guidance scale. Used for the classifier free guidance with last frame.
-            fps_id (`int`, *optional*, defaults to 6):
-                The frame rate ID. Used as conditioning for the generation.
+            fps (`int`, *optional*, defaults to 7):
+                Frames per second. The rate at which the generated images shall be exported to a video after generation.
+                Note that Stable Diffusion Video's UNet was micro-conditioned on fps-1 during training.
             motion_bucket_id (`int`, *optional*, defaults to 127):
                 The motion bucket ID. Used as conditioning for the generation. The higher the number the more motion will be in the video.
-            cond_aug (`int`, *optional*, defaults to 0.02):
+            noise_aug_strength (`int`, *optional*, defaults to 0.02):
                 The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
-            frames_to_decode_at_once (`int`, *optional*, defaults to 14):
-                The number of frames to decode at a time. This is used to avoid OOM errors.
+            decode_chunk_size (`int`, *optional*):
+                The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency
+                between frames, but also the higher the memory consumption. By default, the decoder will decode all frames at once
+                for maximal quality. Reduce `decode_chunk_size` to reduce memory usage.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -336,29 +339,32 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 plain tuple.
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] is returned,
+            [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is a list of list with the generated frames.
 
         Examples:
 
         ```py
-        from diffusers import StableDiffusionVideoPipeline
+        from diffusers import StableVideoDiffusionPipeline
         from diffusers.utils import load_image, export_to_video
 
-        pipe = StableDiffusionVideoPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid", torch_dtype=torch.float16, variant="fp16")
+        pipe = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16")
         pipe.to("cuda")
 
         image = load_image("https://lh3.googleusercontent.com/y-iFOHfLTwkuQSUegpwDdgKmOjRSTvPxat63dQLB25xkTs4lhIbRUFeNBWZzYf370g=s1200")
         image = image.resize((1024, 576))
 
-        frames = pipe(image, num_frames=14, frames_to_decode_at_once=8).frames[0]
+        frames = pipe(image, num_frames=25, decode_chunk_size=8).frames[0]
         export_to_video(frames, "generated.mp4", fps=7)
         ```
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
+
+        num_frames = num_frames if num_frames is not None else self.unet.config.num_frames
+        decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else num_frames
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(image, height, width)
@@ -379,9 +385,14 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # 3. Encode input image
         image_embeddings = self._encode_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
 
+        # NOTE: Stable Diffusion Video was conditioned on fps - 1, which
+        # is why it is reduced here.
+        # See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
+        fps = fps - 1
+
         # 4. Encode input image using VAE
         image = self.image_processor.preprocess(image, height=height, width=width)
-        image = image + cond_aug * torch.randn_like(image)
+        image = image + noise_aug_strength * torch.randn_like(image)
 
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
@@ -400,9 +411,9 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         # 5. Get Added Time IDs
         added_time_ids = self._get_add_time_ids(
-            fps_id,
+            fps,
             motion_bucket_id,
-            cond_aug,
+            noise_aug_strength,
             image_embeddings.dtype,
             batch_size,
             num_videos_per_prompt,
@@ -464,7 +475,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        frames = self.decode_latents(latents, num_frames, frames_to_decode_at_once)
+        frames = self.decode_latents(latents, num_frames, decode_chunk_size)
 
         # cast back to fp16 if needed
         if needs_upcasting:
@@ -480,7 +491,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         if not return_dict:
             return frames
 
-        return StableDiffusionVideoPipelineOutput(frames=frames)
+        return StableVideoDiffusionPipelineOutput(frames=frames)
 
 
 # resizing utils

@@ -310,7 +310,10 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
 
         time_context = encoder_hidden_states
         time_context_first_timestep = time_context[::num_frames]
-        time_context = time_context_first_timestep.repeat(height * width, 1, 1)
+        time_context = time_context_first_timestep[None, :].broadcast_to(
+            height * width, batch_size, 1, time_context.shape[-1]
+        )
+        time_context = time_context.reshape(height * width * batch_size, 1, time_context.shape[-1])
 
         residual = hidden_states
 

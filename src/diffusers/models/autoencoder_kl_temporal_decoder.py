@@ -20,13 +20,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalVAEMixin
 from ..utils import is_torch_version
 from ..utils.accelerate_utils import apply_forward_hook
-from .attention_processor import (
-    ADDED_KV_ATTENTION_PROCESSORS,
-    CROSS_ATTENTION_PROCESSORS,
-    AttentionProcessor,
-    AttnAddedKVProcessor,
-    AttnProcessor,
-)
+from .attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
 from .modeling_utils import ModelMixin
 from .modelling_outputs import AutoencoderKLOutput
 from .unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
@@ -50,8 +44,6 @@ class TemporalDecoder(nn.Module):
             in_channels=block_out_channels[-1],
             out_channels=block_out_channels[-1],
             attention_head_dim=block_out_channels[-1],
-            resnet_eps=1e-6,
-            temporal_resnet_eps=1e-5,
         )
 
         # up
@@ -68,8 +60,6 @@ class TemporalDecoder(nn.Module):
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
                 add_upsample=not is_final_block,
-                resnet_eps=1e-6,
-                temporal_resnet_eps=1e-5,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -346,14 +336,11 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnAddedKVProcessor()
-        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+        if all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnProcessor()
         else:
             raise ValueError(
