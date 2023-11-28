@@ -43,7 +43,8 @@ def pad_or_truncate(t, length: int, random_start: bool = False):
 
 def check_and_resample(audio, audio_sr, target_sr):
     if audio_sr!=target_sr:
-        audio = torchaudio.functional.resample(audio, audio_sr, target_sr)
+        audio = audio.to("cuda" if torch.cuda.is_available() else "cpu")
+        audio = torchaudio.functional.resample(audio, audio_sr, target_sr).to("cpu")
 
     return audio
 
@@ -173,8 +174,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
             if latent_averaging_mode == 0:
                 # Average across all samples (original Tortoise TTS behavior)
                 audio_sample = pad_or_truncate(audio_sample, chunk_size).to("cuda")
-                # spectrogram = self.get_mel_spectrogram(audio_sample[None])
-                spectrogram = torch.load("/home/susnato/PycharmProjects/tortoise/check/mel_spec_dont_change.pth") # use this until the Feature Extractor problem is solved.
+                spectrogram = self.get_mel_spectrogram(audio_sample[None])
                 audio_spectrograms.append(spectrogram)
             else:
                 if latent_averaging_mode == 2:
@@ -182,9 +182,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
                 for chunk in range(math.ceil(audio_sample.shape[1] / chunk_size)):
                     current_chunk = audio_sample[:, chunk * chunk_size : (chunk + 1) * chunk_size]
                     current_chunk = pad_or_truncate(current_chunk, chunk_size).to("cuda")
-                    # chunk_spectrogram = self.get_mel_spectrogram(current_chunk[None])
-                    chunk_spectrogram = torch.load(
-                        "/home/susnato/PycharmProjects/tortoise/check/mel_spec_dont_change.pth")  # use this until the Feature Extractor problem is solved.
+                    chunk_spectrogram = self.get_mel_spectrogram(current_chunk[None])
 
                     if latent_averaging_mode == 1:
                         # Average across all chunks of all samples
@@ -203,7 +201,7 @@ class DiffusionConditioningEncoder(ModelMixin, ConfigMixin):
         # the diffusion model expects the audio to be at 24 kHz so resample it.
         audio = check_and_resample(torch.from_numpy(audio), audio_sr, target_sr)
         audio_spectrograms = self.convert_and_average_audio_samples(audio, latent_averaging_mode, chunk_size)
-        audio_spectrograms = audio_spectrograms[:, 0, 0]
+        audio_spectrograms = audio_spectrograms[:, 0]
 
         audio_embedding = self.contextual_embedder_conv(audio_spectrograms)
         audio_embedding = self.contextual_embedder_attention(audio_embedding.transpose(1, 2))
