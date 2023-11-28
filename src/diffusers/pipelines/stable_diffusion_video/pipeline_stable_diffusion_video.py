@@ -310,7 +310,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 expense of slower inference. This parameter is modulated by `strength`.
             min_guidance_scale (`float`, *optional*, defaults to 1.0):
                 The minimum guidance scale. Used for the classifier free guidance with first frame.
-            max_guidance_scale (`float`, *optional*, defaults to 2.5):
+            max_guidance_scale (`float`, *optional*, defaults to 3.0):
                 The maximum guidance scale. Used for the classifier free guidance with last frame.
             fps (`int`, *optional*, defaults to 7):
                 Frames per second. The rate at which the generated images shall be exported to a video after generation.
