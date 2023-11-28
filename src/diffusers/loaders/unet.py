@@ -29,11 +29,11 @@ from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     delete_adapter_layers,
+    get_adapter_name,
     is_accelerate_available,
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
-    get_adapter_name
 )
 from .utils import AttnProcsLayers
 
@@ -737,14 +737,13 @@ class UNet2DConditionLoadersMixin:
         self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
-    
     def load_lora(self, pretrained_model_name_or_path: str, **kwargs):
         r"""
         Load LoRA checkpoints with PEFT.
         """
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for `load_lora()`.")
-        
+
         from peft import PeftConfig, inject_adapter_in_model, set_peft_model_state_dict
 
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
@@ -791,7 +790,7 @@ class UNet2DConditionLoadersMixin:
                 raise e
             # try loading non-safetensors weights
             pass
-        
+
         if model_file is None:
             model_file = _get_model_file(
                 pretrained_model_name_or_path,
@@ -807,7 +806,7 @@ class UNet2DConditionLoadersMixin:
                 user_agent=user_agent,
             )
             state_dict = torch.load(model_file, map_location="cpu")
-    
+
         rank = {}
         for key, val in state_dict.items():
             if "lora_B" in key:
@@ -832,8 +831,3 @@ class UNet2DConditionLoadersMixin:
                     f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                     f" {unexpected_keys}. "
                 )
-
-        
-
-
-
