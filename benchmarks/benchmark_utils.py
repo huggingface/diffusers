@@ -42,7 +42,7 @@ def flush():
 
 
 def bytes_to_giga_bytes(bytes):
-    return bytes / 1024 / 1024 / 1024
+    return f"{(bytes / 1024 / 1024 / 1024)}:.3f"
 
 
 def benchmark_fn(f, *args, **kwargs):
@@ -67,7 +67,7 @@ def generate_csv_dict(
         "run_compile": args.run_compile,
         "time (secs)": benchmark_info.time,
         "memory (gbs)": benchmark_info.memory,
-        "actual_gpu_memory (gbs)": TOTAL_GPU_MEMORY,
+        "actual_gpu_memory (gbs)": f"{(TOTAL_GPU_MEMORY):.3f}",
         "github_sha": GITHUB_SHA,
     }
     return data_dict
