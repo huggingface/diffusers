@@ -462,7 +462,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                     t,
                     encoder_hidden_states=image_embeddings,
                     added_time_ids=added_time_ids,
-                ).sample
+                    return_dict=False,
+                )[0]
 
                 # perform guidance
                 if do_classifier_free_guidance:
