@@ -1772,6 +1772,7 @@ class MidBlockTemporalDecoder(nn.Module):
                 SpatioTemporalResBlock(
                     in_channels=input_channels,
                     out_channels=out_channels,
+                    temb_channels=None,
                     eps=1e-6,
                     temporal_eps=1e-5,
                     merge_factor=0.0,
@@ -1835,6 +1836,7 @@ class UpBlockTemporalDecoder(nn.Module):
                 SpatioTemporalResBlock(
                     in_channels=input_channels,
                     out_channels=out_channels,
+                    temb_channels=None,
                     eps=1e-6,
                     temporal_eps=1e-5,
                     merge_factor=0.0,

@@ -185,7 +185,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             block_out_channels[-1],
             temb_channels=blocks_time_embed_dim,
             transformer_layers_per_block=transformer_layers_per_block[-1],
-            resnet_eps=1e-5,
             cross_attention_dim=cross_attention_dim[-1],
             num_attention_heads=num_attention_heads[-1],
         )
