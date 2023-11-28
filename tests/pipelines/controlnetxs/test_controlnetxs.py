@@ -139,6 +139,7 @@ class ControlNetXSPipelineFastTests(
             learn_embedding=True,
             size_ratio=0.5,
             conditioning_block_sizes=(16, 32),
+            dim_attention_heads=2,
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
@@ -182,7 +183,6 @@ class ControlNetXSPipelineFastTests(
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "image_encoder": None,
         }
         return components
 
