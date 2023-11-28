@@ -41,6 +41,8 @@ jobs:
         run: |
           python utils/print_env.py
       - name: Stable Diffusion Benchmarking Tests
+        env:
+            HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
           cd benchmarks && mkdir benchmark_outputs && \
             python benchmark_sd.py && \
