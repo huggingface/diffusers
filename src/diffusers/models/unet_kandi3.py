@@ -1,4 +1,3 @@
-import math
 from dataclasses import dataclass
 from typing import Dict, Tuple, Union
 
@@ -9,7 +8,7 @@ from torch import nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, logging
 from .attention_processor import Attention, AttentionProcessor, AttnProcessor
-from .embeddings import TimestepEmbedding
+from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 
 
@@ -19,20 +18,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 @dataclass
 class Kandinsky3UNetOutput(BaseOutput):
     sample: torch.FloatTensor = None
-
-
-# TODO(Yiyi): This class should be removed and be replaced by Timesteps
-class SinusoidalPosEmb(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x, type_tensor=None):
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=x.device) * -emb)
-        emb = x[:, None] * emb[None, :]
-        return torch.cat((emb.sin(), emb.cos()), dim=-1)
 
 
 class Kandinsky3EncoderProj(nn.Module):
@@ -70,9 +55,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
 
         out_channels = in_channels
         init_channels = block_out_channels[0] // 2
-        # TODO(Yiyi): Should be replaced with Timesteps class -> make sure that results are the same
-        # self.time_proj = Timesteps(init_channels, flip_sin_to_cos=False, downscale_freq_shift=1)
-        self.time_proj = SinusoidalPosEmb(init_channels)
+        self.time_proj = Timesteps(init_channels, flip_sin_to_cos=False, downscale_freq_shift=1)
 
         self.time_embedding = TimestepEmbedding(
             init_channels,
