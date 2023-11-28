@@ -196,12 +196,6 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
             module.gradient_checkpointing = value
 
     def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
-        # TODO(Yiyi): Clean up the following variables - these names should not be used
-        # but instead only the ones that we pass to forward
-        x = sample
-        context_mask = encoder_attention_mask
-        context = encoder_hidden_states
-
         if not torch.is_tensor(timestep):
             dtype = torch.float32 if isinstance(timestep, float) else torch.int32
             timestep = torch.tensor([timestep], dtype=dtype, device=sample.device)
@@ -210,33 +204,33 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timestep = timestep.expand(sample.shape[0])
-        time_embed_input = self.time_proj(timestep).to(x.dtype)
+        time_embed_input = self.time_proj(timestep).to(sample.dtype)
         time_embed = self.time_embedding(time_embed_input)
 
-        context = self.encoder_hid_proj(context)
+        encoder_hidden_states = self.encoder_hid_proj(encoder_hidden_states)
 
-        if context is not None:
-            time_embed = self.add_time_condition(time_embed, context, context_mask)
+        if encoder_hidden_states is not None:
+            time_embed = self.add_time_condition(time_embed, encoder_hidden_states, encoder_attention_mask)
 
         hidden_states = []
-        x = self.conv_in(x)
+        sample = self.conv_in(sample)
         for level, down_sample in enumerate(self.down_blocks):
-            x = down_sample(x, time_embed, context, context_mask)
+            sample = down_sample(sample, time_embed, encoder_hidden_states, encoder_attention_mask)
             if level != self.num_levels - 1:
-                hidden_states.append(x)
+                hidden_states.append(sample)
 
         for level, up_sample in enumerate(self.up_blocks):
             if level != 0:
-                x = torch.cat([x, hidden_states.pop()], dim=1)
-            x = up_sample(x, time_embed, context, context_mask)
+                sample = torch.cat([sample, hidden_states.pop()], dim=1)
+            sample = up_sample(sample, time_embed, encoder_hidden_states, encoder_attention_mask)
 
-        x = self.conv_norm_out(x)
-        x = self.conv_act_out(x)
-        x = self.conv_out(x)
+        sample = self.conv_norm_out(sample)
+        sample = self.conv_act_out(sample)
+        sample = self.conv_out(sample)
 
         if not return_dict:
-            return (x,)
-        return Kandinsky3UNetOutput(sample=x)
+            return (sample,)
+        return Kandinsky3UNetOutput(sample=sample)
 
 
 class Kandinsky3UpSampleBlock(nn.Module):
@@ -378,7 +372,6 @@ class Kandinsky3DownSampleBlock(nn.Module):
         return x
 
 
-# yiyi notes: should not have a seperate class here either
 class Kandinsky3ConditionalGroupNorm(nn.Module):
     def __init__(self, groups, normalized_shape, context_dim):
         super().__init__()
