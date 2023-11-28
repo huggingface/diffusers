@@ -59,18 +59,16 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
-# todo umer: understand & adapt
-# -- my understanding is that cnxs can't be compiled because it's not a "full" model. it needs a base model to function. is this correct?
 # Will be run via run_test_in_subprocess
 def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     error = None
     try:
         _ = in_queue.get(timeout=timeout)
 
-        controlnet = ControlNetXSModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+        controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-SD2.1-canny")
 
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+            "stabilityai/stable-diffusion-2-1", safety_checker=None, controlnet=controlnet
         )
         pipe.to("cuda")
         pipe.set_progress_bar_config(disable=None)
@@ -306,40 +304,3 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
     @require_torch_2
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
-
-    # todo umer
-    def test_load_local(self):
-        controlnet = ControlNetXSModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
-        pipe_1 = StableDiffusionControlNetXSPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-
-        controlnet = ControlNetXSModel.from_single_file(
-            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
-        )
-        pipe_2 = StableDiffusionControlNetXSPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
-            safety_checker=None,
-            controlnet=controlnet,
-        )
-        pipes = [pipe_1, pipe_2]
-        images = []
-
-        for pipe in pipes:
-            pipe.enable_model_cpu_offload()
-            pipe.set_progress_bar_config(disable=None)
-
-            generator = torch.Generator(device="cpu").manual_seed(0)
-            prompt = "bird"
-            image = load_image(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-            )
-
-            output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
-            images.append(output.images[0])
-
-            del pipe
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        assert np.abs(images[0] - images[1]).max() < 1e-3

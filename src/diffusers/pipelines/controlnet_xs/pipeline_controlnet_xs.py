@@ -47,7 +47,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionControlNetXSPipeline, ControlNetXSModel, AutoencoderKL
+        >>> from diffusers import StableDiffusionControlNetXSPipeline, ControlNetXSModel
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch

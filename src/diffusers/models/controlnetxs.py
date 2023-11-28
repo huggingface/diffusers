@@ -60,7 +60,6 @@ class ControlNetXSOutput(BaseOutput):
 # todo umer: assert in pipe that conditioning_block_sizes matches vae downblocks
 
 
-# todo umer: add sth like FromOriginalControlnetMixin
 class ControlNetXSModel(ModelMixin, ConfigMixin):
     r"""
     A ControlNet-XS model
@@ -92,10 +91,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             Channel sizes of each subblock of base model. Use `gather_subblock_sizes` on your base model to compute it.
     """
 
-    # to delete later
     @classmethod
-    def create_as_in_paper(cls, base_model: UNet2DConditionModel, sdxl=True):
-        if sdxl:
+    def create_as_in_original_paper(cls, base_model: UNet2DConditionModel, is_sdxl=True):
+        if is_sdxl:
             return ControlNetXSModel.from_unet(
                 base_model,
                 time_embedding_mix=0.95,
@@ -555,11 +553,12 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         """
         self.control_model.set_attention_slice(slice_size)
 
-    # todo umer: understand & either remove or adapt
-    # Copied from diffusers.models.controlnet.ControlNetModel._set_gradient_checkpointing
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D)):
-            module.gradient_checkpointing = value
+        if isinstance(module, (UNet2DConditionModel)):
+            if value:
+                module.enable_gradient_checkpointing()
+            else:
+                module.disable_gradient_checkpointing()
 
     def forward(
         self,
