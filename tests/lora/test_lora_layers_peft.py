@@ -545,6 +545,8 @@ class PeftLoraLoaderMixinTests:
                         unet_lora_layers=unet_state_dict,
                         safe_serialization=False,
                     )
+                
+                print(f"Has UNet: {hasattr(pipe, 'unet')}")
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
                 pipe.unload_lora_weights()
