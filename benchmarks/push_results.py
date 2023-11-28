@@ -19,7 +19,13 @@ def push_to_hf_dataset():
     collate_csv(all_csvs, FINAL_CSV_FILE)
 
     commit_message = f"upload from sha: {GITHUB_SHA}" if GITHUB_SHA is not None else "upload benchmark results"
-    upload_file(repo_id=REPO_ID, path_or_fileobj=FINAL_CSV_FILE, repo_type="dataset", commit_message=commit_message)
+    upload_file(
+        repo_id=REPO_ID,
+        path_in_repo=FINAL_CSV_FILE,
+        path_or_fileobj=FINAL_CSV_FILE,
+        repo_type="dataset",
+        commit_message=commit_message,
+    )
 
 
 if __name__ == "__main__":
