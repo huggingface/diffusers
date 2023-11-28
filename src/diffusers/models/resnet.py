@@ -1204,6 +1204,23 @@ class TemporalResnetBlock(nn.Module):
 
 # VideoResBlock
 class SpatioTemporalResBlock(nn.Module):
+    r"""
+    A SpatioTemporal Resnet block.
+
+    Parameters:
+        in_channels (`int`): The number of channels in the input.
+        out_channels (`int`, *optional*, default to be `None`):
+            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
+        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
+        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the spatial resenet.
+        temporal_eps (`float`, *optional*, defaults to `eps`): The epsilon to use for the temporal resnet.
+        merge_factor (`float`, *optional*, defaults to `0.5`): The merge factor to use for the temporal mixing.
+        merge_strategy (`str`, *optional*, defaults to `learned_with_images`):
+            The merge strategy to use for the temporal mixing.
+        switch_spatial_to_temporal_mix (`bool`, *optional*, defaults to `False`):
+            If `True`, switch the spatial and temporal mixing.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -1271,6 +1288,17 @@ class SpatioTemporalResBlock(nn.Module):
 
 
 class AlphaBlender(nn.Module):
+    r"""
+    A module to blend spatial and temporal features.
+
+    Parameters:
+        alpha (`float`): The initial value of the blending factor.
+        merge_strategy (`str`, *optional*, defaults to `learned_with_images`):
+            The merge strategy to use for the temporal mixing.
+        switch_spatial_to_temporal_mix (`bool`, *optional*, defaults to `False`):
+            If `True`, switch the spatial and temporal mixing.
+    """
+
     strategies = ["learned", "fixed", "learned_with_images"]
 
     def __init__(
