@@ -420,22 +420,13 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             down_block_res_samples += res_samples
 
         # 4. mid
-        if self.mid_block is not None:
-            if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
-                sample = self.mid_block(
-                    hidden_states=sample,
-                    temb=emb,
-                    num_video_frames=num_frames,
-                    encoder_hidden_states=encoder_hidden_states,
-                    image_only_indicator=image_only_indicator,
-                )
-            else:
-                sample = self.mid_block(
-                    sample,
-                    temb=emb,
-                    num_video_frames=num_frames,
-                    image_only_indicator=image_only_indicator,
-                )
+        sample = self.mid_block(
+            hidden_states=sample,
+            temb=emb,
+            num_video_frames=num_frames,
+            encoder_hidden_states=encoder_hidden_states,
+            image_only_indicator=image_only_indicator,
+        )
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
