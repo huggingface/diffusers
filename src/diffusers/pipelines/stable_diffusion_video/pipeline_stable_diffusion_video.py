@@ -303,9 +303,9 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
-            num_frames (`int`, *optional*, defaults to 14):
-                The number of video frames to generate.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_frames (`int`, *optional*):
+                The number of video frames to generate. Defaults to 14 for `stable-video-diffusion-img2vid` and to 25 for `stable-video-diffusion-img2vid-xt`
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter is modulated by `strength`.
             min_guidance_scale (`float`, *optional*, defaults to 1.0):
