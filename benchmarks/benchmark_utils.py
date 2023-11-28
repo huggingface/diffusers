@@ -19,6 +19,7 @@ BENCHMARK_FIELDS = [
     "run_compile",
     "time (secs)",
     "memory (gbs)",
+    "actual_gpu_memory (gbs)",
     "github_sha",
 ]
 PROMPT = "ghibli style, a fantasy landscape with castles"
