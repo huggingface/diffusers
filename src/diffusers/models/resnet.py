@@ -1235,7 +1235,6 @@ class SpatioTemporalResBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: Optional[int] = None,
-        dropout: float = 0.0,
         temb_channels: int = 512,
         eps: float = 1e-6,
         temporal_eps: Optional[float] = None,
@@ -1250,7 +1249,6 @@ class SpatioTemporalResBlock(nn.Module):
             out_channels=out_channels,
             temb_channels=temb_channels,
             eps=eps,
-            dropout=dropout,
         )
 
         self.temporal_res_block = TemporalResnetBlock(
@@ -1258,7 +1256,6 @@ class SpatioTemporalResBlock(nn.Module):
             out_channels=out_channels if out_channels is not None else in_channels,
             temb_channels=temb_channels,
             eps=temporal_eps if temporal_eps is not None else eps,
-            dropout=dropout,
         )
 
         self.time_mixer = AlphaBlender(

@@ -97,7 +97,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         num_attention_heads: Union[int, Tuple[int]] = (5, 10, 10, 20),
-        dropout: float = 0.0,
     ):
         super().__init__()
 
@@ -183,7 +182,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 resnet_eps=1e-5,
                 cross_attention_dim=cross_attention_dim[i],
                 num_attention_heads=num_attention_heads[i],
-                dropout=dropout,
                 resnet_act_fn="silu",
             )
             self.down_blocks.append(down_block)
@@ -196,7 +194,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             resnet_eps=1e-5,
             cross_attention_dim=cross_attention_dim[-1],
             num_attention_heads=num_attention_heads[-1],
-            dropout=dropout,
         )
 
         # count how many layers upsample the images
@@ -237,7 +234,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 resolution_idx=i,
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
-                dropout=dropout,
                 resnet_act_fn="silu",
             )
             self.up_blocks.append(up_block)

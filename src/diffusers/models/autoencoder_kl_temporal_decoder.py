@@ -57,9 +57,6 @@ class TemporalDecoder(nn.Module):
             attention_head_dim=block_out_channels[-1],
             resnet_eps=1e-6,
             temporal_resnet_eps=1e-5,
-            norm_num_groups=32,
-            merge_factor=0.0,
-            merge_strategy="learned",
         )
 
         # up
@@ -78,8 +75,6 @@ class TemporalDecoder(nn.Module):
                 add_upsample=not is_final_block,
                 resnet_eps=1e-6,
                 temporal_resnet_eps=1e-5,
-                merge_factor=0.0,
-                merge_strategy="learned",
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel

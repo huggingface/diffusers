@@ -144,7 +144,6 @@ def get_down_block(
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
-            dropout=dropout,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
         )
@@ -158,7 +157,6 @@ def get_down_block(
             temb_channels=temb_channels,
             num_layers=num_layers,
             transformer_layers_per_block=transformer_layers_per_block,
-            dropout=dropout,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             cross_attention_dim=cross_attention_dim,
@@ -285,7 +283,6 @@ def get_up_block(
             prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
             resolution_idx=resolution_idx,
-            dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
         )
@@ -300,7 +297,6 @@ def get_up_block(
             temb_channels=temb_channels,
             num_layers=num_layers,
             transformer_layers_per_block=transformer_layers_per_block,
-            dropout=dropout,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             cross_attention_dim=cross_attention_dim,
@@ -1768,16 +1764,11 @@ class MidBlockTemporalDecoder(nn.Module):
         in_channels: int,
         out_channels: int,
         attention_head_dim: int = 512,
-        dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         temporal_resnet_eps: Optional[float] = None,
         temb_channels: Optional[int] = None,
-        norm_num_groups: int = 32,
         upcast_attention: bool = False,
-        merge_factor: float = 0.0,
-        merge_strategy: str = "learned",
-        switch_spatial_to_temporal_mix: bool = True,
     ):
         super().__init__()
 
@@ -1792,10 +1783,9 @@ class MidBlockTemporalDecoder(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     temporal_eps=temporal_resnet_eps,
-                    dropout=dropout,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
-                    switch_spatial_to_temporal_mix=switch_spatial_to_temporal_mix,
+                    merge_factor=0.0,
+                    merge_strategy="learned",
+                    switch_spatial_to_temporal_mix=True,
                 )
             )
 
@@ -1806,7 +1796,7 @@ class MidBlockTemporalDecoder(nn.Module):
                 dim_head=attention_head_dim,
                 eps=resnet_eps,
                 upcast_attention=upcast_attention,
-                norm_num_groups=norm_num_groups,
+                norm_num_groups=32,
                 bias=True,
                 residual_connection=True,
             )
@@ -1842,15 +1832,11 @@ class UpBlockTemporalDecoder(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         temporal_resnet_eps: Optional[float] = None,
         add_upsample: bool = True,
         temb_channels: Optional[int] = None,
-        merge_factor: float = 0.0,
-        merge_strategy: str = "learned",
-        switch_spatial_to_temporal_mix: bool = True,
     ):
         super().__init__()
         resnets = []
@@ -1864,10 +1850,9 @@ class UpBlockTemporalDecoder(nn.Module):
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     temporal_eps=temporal_resnet_eps,
-                    dropout=dropout,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
-                    switch_spatial_to_temporal_mix=switch_spatial_to_temporal_mix,
+                    merge_factor=0.0,
+                    merge_strategy="learned",
+                    switch_spatial_to_temporal_mix=True,
                 )
             )
         self.resnets = nn.ModuleList(resnets)
@@ -1902,16 +1887,10 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         self,
         in_channels: int,
         temb_channels: int,
-        dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",
-        resnet_act_fn: str = "swish",
-        resnet_groups: int = 32,
-        resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
-        output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
         merge_factor: float = 0.5,
         merge_strategy: str = "learned_with_images",
@@ -1920,7 +1899,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # support for variable transformer layers per block
         if isinstance(transformer_layers_per_block, int):
@@ -1933,7 +1911,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                 out_channels=in_channels,
                 temb_channels=temb_channels,
                 eps=resnet_eps,
-                dropout=dropout,
                 merge_factor=merge_factor,
                 merge_strategy=merge_strategy,
             )
@@ -1957,7 +1934,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     out_channels=in_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    dropout=dropout,
                     merge_factor=merge_factor,
                     merge_strategy=merge_strategy,
                 )
@@ -2033,7 +2009,6 @@ class DownBlockSpatioTemporal(nn.Module):
         in_channels: int,
         out_channels: int,
         temb_channels: int,
-        dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         add_downsample: bool = True,
@@ -2049,7 +2024,6 @@ class DownBlockSpatioTemporal(nn.Module):
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    dropout=dropout,
                 )
             )
 
@@ -2130,7 +2104,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         in_channels: int,
         out_channels: int,
         temb_channels: int,
-        dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         resnet_eps: float = 1e-6,
@@ -2155,7 +2128,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    dropout=dropout,
                 )
             )
             attentions.append(
@@ -2257,7 +2229,6 @@ class UpBlockSpatioTemporal(nn.Module):
         out_channels: int,
         temb_channels: int,
         resolution_idx: Optional[int] = None,
-        dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         add_upsample: bool = True,
@@ -2275,7 +2246,6 @@ class UpBlockSpatioTemporal(nn.Module):
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    dropout=dropout,
                 )
             )
 
@@ -2352,7 +2322,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         prev_output_channel: int,
         temb_channels: int,
         resolution_idx: Optional[int] = None,
-        dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         resnet_eps: float = 1e-6,
@@ -2380,7 +2349,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    dropout=dropout,
                 )
             )
             attentions.append(
