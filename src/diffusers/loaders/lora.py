@@ -956,6 +956,7 @@ class LoraLoaderMixin:
                 if hasattr(module, "set_lora_layer"):
                     module.set_lora_layer(None)
         else:
+            assert hasattr(self, "unet"), "UNet not present?"
             recurse_remove_peft_layers(self.unet)
             if hasattr(self.unet, "peft_config"):
                 del self.unet.peft_config
