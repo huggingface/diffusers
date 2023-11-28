@@ -33,6 +33,7 @@ from ..utils import (
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
+    get_adapter_name
 )
 from .utils import AttnProcsLayers
 
@@ -49,6 +50,10 @@ UNET_NAME = "unet"
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
+
+PEFT_WEIGHT_NAME = "adapter_model.bin"
+PEFT_WEIGHT_NAME_SAFE = "adapter_model.safetensors"
+PEFT_CONFIG_NAME = "adapter_config.json"
 
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
@@ -732,4 +737,103 @@ class UNet2DConditionLoadersMixin:
         self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
-    delete_adapter_layers
+    
+    def load_lora(self, pretrained_model_name_or_path: str, **kwargs):
+        r"""
+        Load LoRA checkpoints with PEFT.
+        """
+        if not USE_PEFT_BACKEND:
+            raise ValueError("PEFT backend is required for `load_lora()`.")
+        
+        from peft import PeftConfig, inject_adapter_in_model, set_peft_model_state_dict
+
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+        weight_name = kwargs.pop("weight_name", None)
+        adapter_name = kwargs.pop("adapter_name", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        allow_pickle = False
+
+        if use_safetensors is None:
+            use_safetensors = True
+            allow_pickle = True
+
+        user_agent = {
+            "file_type": "load_lora_peft",
+            "framework": "pytorch",
+        }
+
+        # Load the state dict.
+        model_file = None
+        try:
+            model_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=weight_name or PEFT_WEIGHT_NAME_SAFE,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+            )
+            state_dict = safetensors.torch.load_file(model_file, device="cpu")
+        except IOError as e:
+            if not allow_pickle:
+                raise e
+            # try loading non-safetensors weights
+            pass
+        
+        if model_file is None:
+            model_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=weight_name or PEFT_WEIGHT_NAME,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+            )
+            state_dict = torch.load(model_file, map_location="cpu")
+    
+        rank = {}
+        for key, val in state_dict.items():
+            if "lora_B" in key:
+                rank[key] = val.shape[1]
+
+        # Load the PEFT config.
+        lora_config = PeftConfig.from_pretrained(pretrained_model_name_or_path)
+
+        # adapter_name
+        if adapter_name is None:
+            adapter_name = get_adapter_name(self)
+
+        # Adapter injection
+        inject_adapter_in_model(lora_config, self, adapter_name=adapter_name)
+        incompatible_keys = set_peft_model_state_dict(self, state_dict, adapter_name)
+
+        if incompatible_keys is not None:
+            # check only for unexpected keys
+            unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+            if unexpected_keys:
+                logger.warning(
+                    f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                    f" {unexpected_keys}. "
+                )
+
+        
+
+
+
