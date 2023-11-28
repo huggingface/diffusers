@@ -140,6 +140,8 @@ class PeftLoraLoaderMixinTests:
                 "tokenizer": tokenizer,
                 "text_encoder_2": text_encoder_2,
                 "tokenizer_2": tokenizer_2,
+                "image_encoder": None,
+                "feature_extractor": None,
             }
         else:
             pipeline_components = {
@@ -150,6 +152,7 @@ class PeftLoraLoaderMixinTests:
                 "tokenizer": tokenizer,
                 "safety_checker": None,
                 "feature_extractor": None,
+                "image_encoder": None,
             }
         lora_components = {
             "unet_lora_layers": unet_lora_layers,

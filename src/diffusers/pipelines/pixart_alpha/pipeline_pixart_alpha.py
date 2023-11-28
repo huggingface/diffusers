@@ -97,6 +97,42 @@ ASPECT_RATIO_1024_BIN = {
     "4.0": [2048.0, 512.0],
 }
 
+ASPECT_RATIO_512_BIN = {
+    "0.25": [256.0, 1024.0],
+    "0.28": [256.0, 928.0],
+    "0.32": [288.0, 896.0],
+    "0.33": [288.0, 864.0],
+    "0.35": [288.0, 832.0],
+    "0.4": [320.0, 800.0],
+    "0.42": [320.0, 768.0],
+    "0.48": [352.0, 736.0],
+    "0.5": [352.0, 704.0],
+    "0.52": [352.0, 672.0],
+    "0.57": [384.0, 672.0],
+    "0.6": [384.0, 640.0],
+    "0.68": [416.0, 608.0],
+    "0.72": [416.0, 576.0],
+    "0.78": [448.0, 576.0],
+    "0.82": [448.0, 544.0],
+    "0.88": [480.0, 544.0],
+    "0.94": [480.0, 512.0],
+    "1.0": [512.0, 512.0],
+    "1.07": [512.0, 480.0],
+    "1.13": [544.0, 480.0],
+    "1.21": [544.0, 448.0],
+    "1.29": [576.0, 448.0],
+    "1.38": [576.0, 416.0],
+    "1.46": [608.0, 416.0],
+    "1.67": [640.0, 384.0],
+    "1.75": [672.0, 384.0],
+    "2.0": [704.0, 352.0],
+    "2.09": [736.0, 352.0],
+    "2.4": [768.0, 320.0],
+    "2.5": [800.0, 320.0],
+    "3.0": [864.0, 288.0],
+    "4.0": [1024.0, 256.0],
+}
+
 
 class PixArtAlphaPipeline(DiffusionPipeline):
     r"""
@@ -120,8 +156,21 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
+
     bad_punct_regex = re.compile(
-        r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
+        r"["
+        + "#®•©™&@·º½¾¿¡§~"
+        + r"\)"
+        + r"\("
+        + r"\]"
+        + r"\["
+        + r"\}"
+        + r"\{"
+        + r"\|"
+        + "\\"
+        + r"\/"
+        + r"\*"
+        + r"]{1,}"
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder"]
@@ -678,8 +727,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
         if use_resolution_binning:
+            aspect_ratio_bin = (
+                ASPECT_RATIO_1024_BIN if self.transformer.config.sample_size == 128 else ASPECT_RATIO_512_BIN
+            )
             orig_height, orig_width = height, width
-            height, width = self.classify_height_width_bin(height, width, ratios=ASPECT_RATIO_1024_BIN)
+            height, width = self.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
 
         self.check_inputs(
             prompt,

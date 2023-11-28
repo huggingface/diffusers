@@ -116,7 +116,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
 
 class TextualInversionLoaderMixin:
     r"""
-    Load textual inversion tokens and embeddings to the tokenizer and text encoder.
+    Load Textual Inversion tokens and embeddings to the tokenizer and text encoder.
     """
 
     def maybe_convert_prompt(self, prompt: Union[str, List[str]], tokenizer: "PreTrainedTokenizer"):  # noqa: F821
@@ -189,7 +189,7 @@ class TextualInversionLoaderMixin:
                 f" `{self.load_textual_inversion.__name__}`"
             )
 
-        if len(pretrained_model_name_or_paths) != len(tokens):
+        if len(pretrained_model_name_or_paths) > 1 and len(pretrained_model_name_or_paths) != len(tokens):
             raise ValueError(
                 f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)} "
                 f"Make sure both lists have the same length."
@@ -276,7 +276,7 @@ class TextualInversionLoaderMixin:
         **kwargs,
     ):
         r"""
-        Load textual inversion embeddings into the text encoder of [`StableDiffusionPipeline`] (both 🤗 Diffusers and
+        Load Textual Inversion embeddings into the text encoder of [`StableDiffusionPipeline`] (both 🤗 Diffusers and
         Automatic1111 formats are supported).
 
         Parameters:
@@ -335,7 +335,7 @@ class TextualInversionLoaderMixin:
 
         Example:
 
-        To load a textual inversion embedding vector in 🤗 Diffusers format:
+        To load a Textual Inversion embedding vector in 🤗 Diffusers format:
 
         ```py
         from diffusers import StableDiffusionPipeline
@@ -352,7 +352,7 @@ class TextualInversionLoaderMixin:
         image.save("cat-backpack.png")
         ```
 
-        To load a textual inversion embedding vector in Automatic1111 format, make sure to download the vector first
+        To load a Textual Inversion embedding vector in Automatic1111 format, make sure to download the vector first
         (for example from [civitAI](https://civitai.com/models/3036?modelVersionId=9857)) and then load the vector
         locally:
 
@@ -382,13 +382,25 @@ class TextualInversionLoaderMixin:
             if not isinstance(pretrained_model_name_or_path, list)
             else pretrained_model_name_or_path
         )
-        tokens = len(pretrained_model_name_or_paths) * [token] if (isinstance(token, str) or token is None) else token
+        tokens = [token] if not isinstance(token, list) else token
+        if tokens[0] is None:
+            tokens = tokens * len(pretrained_model_name_or_paths)
 
         # 3. Check inputs
         self._check_text_inv_inputs(tokenizer, text_encoder, pretrained_model_name_or_paths, tokens)
 
         # 4. Load state dicts of textual embeddings
         state_dicts = load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
+
+        # 4.1 Handle the special case when state_dict is a tensor that contains n embeddings for n tokens
+        if len(tokens) > 1 and len(state_dicts) == 1:
+            if isinstance(state_dicts[0], torch.Tensor):
+                state_dicts = list(state_dicts[0])
+                if len(tokens) != len(state_dicts):
+                    raise ValueError(
+                        f"You have passed a state_dict contains {len(state_dicts)} embeddings, and list of tokens of length {len(tokens)} "
+                        f"Make sure both have the same length."
+                    )
 
         # 4. Retrieve tokens and embeddings
         tokens, embeddings = self._retrieve_tokens_and_embeddings(tokens, state_dicts, tokenizer)
