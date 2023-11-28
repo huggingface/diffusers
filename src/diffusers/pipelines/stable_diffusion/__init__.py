@@ -47,7 +47,6 @@ else:
     _import_structure["pipeline_stable_diffusion_paradigms"] = ["StableDiffusionParadigmsPipeline"]
     _import_structure["pipeline_stable_diffusion_sag"] = ["StableDiffusionSAGPipeline"]
     _import_structure["pipeline_stable_diffusion_upscale"] = ["StableDiffusionUpscalePipeline"]
-    _import_structure["pipeline_stable_diffusion_video"] = ["StableDiffusionVideoPipeline"]
     _import_structure["pipeline_stable_unclip"] = ["StableUnCLIPPipeline"]
     _import_structure["pipeline_stable_unclip_img2img"] = ["StableUnCLIPImg2ImgPipeline"]
     _import_structure["safety_checker"] = ["StableDiffusionSafetyChecker"]
@@ -56,7 +55,9 @@ try:
     if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ...utils.dummy_torch_and_transformers_objects import StableDiffusionImageVariationPipeline
+    from ...utils.dummy_torch_and_transformers_objects import (
+        StableDiffusionImageVariationPipeline,
+    )
 
     _dummy_objects.update({"StableDiffusionImageVariationPipeline": StableDiffusionImageVariationPipeline})
 else:
@@ -91,7 +92,9 @@ try:
     ):
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
-    from ...utils import dummy_torch_and_transformers_and_k_diffusion_objects  # noqa F403
+    from ...utils import (
+        dummy_torch_and_transformers_and_k_diffusion_objects,
+    )
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
 else:
@@ -138,21 +141,34 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionPipelineOutput,
             StableDiffusionSafetyChecker,
         )
-        from .pipeline_stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
+        from .pipeline_stable_diffusion_attend_and_excite import (
+            StableDiffusionAttendAndExcitePipeline,
+        )
         from .pipeline_stable_diffusion_gligen import StableDiffusionGLIGENPipeline
-        from .pipeline_stable_diffusion_gligen_text_image import StableDiffusionGLIGENTextImagePipeline
+        from .pipeline_stable_diffusion_gligen_text_image import (
+            StableDiffusionGLIGENTextImagePipeline,
+        )
         from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
         from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
-        from .pipeline_stable_diffusion_inpaint_legacy import StableDiffusionInpaintPipelineLegacy
-        from .pipeline_stable_diffusion_instruct_pix2pix import StableDiffusionInstructPix2PixPipeline
-        from .pipeline_stable_diffusion_latent_upscale import StableDiffusionLatentUpscalePipeline
+        from .pipeline_stable_diffusion_inpaint_legacy import (
+            StableDiffusionInpaintPipelineLegacy,
+        )
+        from .pipeline_stable_diffusion_instruct_pix2pix import (
+            StableDiffusionInstructPix2PixPipeline,
+        )
+        from .pipeline_stable_diffusion_latent_upscale import (
+            StableDiffusionLatentUpscalePipeline,
+        )
         from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
-        from .pipeline_stable_diffusion_model_editing import StableDiffusionModelEditingPipeline
+        from .pipeline_stable_diffusion_model_editing import (
+            StableDiffusionModelEditingPipeline,
+        )
         from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
-        from .pipeline_stable_diffusion_paradigms import StableDiffusionParadigmsPipeline
+        from .pipeline_stable_diffusion_paradigms import (
+            StableDiffusionParadigmsPipeline,
+        )
         from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
         from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
-        from .pipeline_stable_diffusion_video import StableDiffusionVideoPipeline
         from .pipeline_stable_unclip import StableUnCLIPPipeline
         from .pipeline_stable_unclip_img2img import StableUnCLIPImg2ImgPipeline
         from .safety_checker import StableDiffusionSafetyChecker
@@ -162,9 +178,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.25.0")):
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_objects import StableDiffusionImageVariationPipeline
+        from ...utils.dummy_torch_and_transformers_objects import (
+            StableDiffusionImageVariationPipeline,
+        )
     else:
-        from .pipeline_stable_diffusion_image_variation import StableDiffusionImageVariationPipeline
+        from .pipeline_stable_diffusion_image_variation import (
+            StableDiffusionImageVariationPipeline,
+        )
 
     try:
         if not (is_transformers_available() and is_torch_available() and is_transformers_version(">=", "4.26.0")):
@@ -176,9 +196,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionPix2PixZeroPipeline,
         )
     else:
-        from .pipeline_stable_diffusion_depth2img import StableDiffusionDepth2ImgPipeline
+        from .pipeline_stable_diffusion_depth2img import (
+            StableDiffusionDepth2ImgPipeline,
+        )
         from .pipeline_stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
-        from .pipeline_stable_diffusion_pix2pix_zero import StableDiffusionPix2PixZeroPipeline
+        from .pipeline_stable_diffusion_pix2pix_zero import (
+            StableDiffusionPix2PixZeroPipeline,
+        )
 
     try:
         if not (
@@ -191,7 +215,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
     else:
-        from .pipeline_stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
+        from .pipeline_stable_diffusion_k_diffusion import (
+            StableDiffusionKDiffusionPipeline,
+        )
 
     try:
         if not (is_transformers_available() and is_onnx_available()):
@@ -199,11 +225,22 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_onnx_objects import *
     else:
-        from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
-        from .pipeline_onnx_stable_diffusion_img2img import OnnxStableDiffusionImg2ImgPipeline
-        from .pipeline_onnx_stable_diffusion_inpaint import OnnxStableDiffusionInpaintPipeline
-        from .pipeline_onnx_stable_diffusion_inpaint_legacy import OnnxStableDiffusionInpaintPipelineLegacy
-        from .pipeline_onnx_stable_diffusion_upscale import OnnxStableDiffusionUpscalePipeline
+        from .pipeline_onnx_stable_diffusion import (
+            OnnxStableDiffusionPipeline,
+            StableDiffusionOnnxPipeline,
+        )
+        from .pipeline_onnx_stable_diffusion_img2img import (
+            OnnxStableDiffusionImg2ImgPipeline,
+        )
+        from .pipeline_onnx_stable_diffusion_inpaint import (
+            OnnxStableDiffusionInpaintPipeline,
+        )
+        from .pipeline_onnx_stable_diffusion_inpaint_legacy import (
+            OnnxStableDiffusionInpaintPipelineLegacy,
+        )
+        from .pipeline_onnx_stable_diffusion_upscale import (
+            OnnxStableDiffusionUpscalePipeline,
+        )
 
     try:
         if not (is_transformers_available() and is_flax_available()):
@@ -212,8 +249,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_flax_objects import *
     else:
         from .pipeline_flax_stable_diffusion import FlaxStableDiffusionPipeline
-        from .pipeline_flax_stable_diffusion_img2img import FlaxStableDiffusionImg2ImgPipeline
-        from .pipeline_flax_stable_diffusion_inpaint import FlaxStableDiffusionInpaintPipeline
+        from .pipeline_flax_stable_diffusion_img2img import (
+            FlaxStableDiffusionImg2ImgPipeline,
+        )
+        from .pipeline_flax_stable_diffusion_inpaint import (
+            FlaxStableDiffusionInpaintPipeline,
+        )
         from .pipeline_output import FlaxStableDiffusionPipelineOutput
         from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 

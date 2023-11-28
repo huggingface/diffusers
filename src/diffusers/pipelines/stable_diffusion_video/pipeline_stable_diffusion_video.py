@@ -494,7 +494,10 @@ def _resize_with_antialiasing(input, size, interpolation="bicubic", align_corner
 
     # First, we have to determine sigma
     # Taken from skimage: https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/transform/_warps.py#L171
-    sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
+    sigmas = (
+        max((factors[0] - 1.0) / 2.0, 0.001),
+        max((factors[1] - 1.0) / 2.0, 0.001),
+    )
 
     # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
     # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
