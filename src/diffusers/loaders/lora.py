@@ -22,6 +22,7 @@ from huggingface_hub import model_info
 from packaging import version
 from torch import nn
 
+from .lora_conversion_utils import _maybe_map_sgm_blocks_to_diffusers
 from .. import __version__
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
@@ -287,7 +288,7 @@ class LoraLoaderMixin:
             # Map SDXL blocks correctly.
             if unet_config is not None:
                 # use unet config to remap block numbers
-                state_dict = cls._maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
+                state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
             state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
