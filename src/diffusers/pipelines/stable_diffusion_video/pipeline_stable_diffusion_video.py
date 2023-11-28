@@ -177,7 +177,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
     def _get_add_time_ids(
         self,
-        fps_id,
+        fps,
         motion_bucket_id,
         cond_aug,
         dtype,
@@ -185,7 +185,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         num_videos_per_prompt,
         do_classifier_free_guidance,
     ):
-        add_time_ids = [fps_id, motion_bucket_id, cond_aug]
+        add_time_ids = [fps, motion_bucket_id, cond_aug]
 
         passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids)
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
@@ -282,7 +282,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         min_guidance_scale: float = 1.0,
         max_guidance_scale: float = 2.5,
-        fps_id: int = 6,
+        fps: int = 6,
         motion_bucket_id: int = 127,
         cond_aug: int = 0.02,
         decode_chunk_size: int = 14,
@@ -312,7 +312,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 The minimum guidance scale. Used for the classifier free guidance with first frame.
             max_guidance_scale (`float`, *optional*, defaults to 2.5):
                 The maximum guidance scale. Used for the classifier free guidance with last frame.
-            fps_id (`int`, *optional*, defaults to 6):
+            fps (`int`, *optional*, defaults to 6):
                 The frame rate ID. Used as conditioning for the generation.
             motion_bucket_id (`int`, *optional*, defaults to 127):
                 The motion bucket ID. Used as conditioning for the generation. The higher the number the more motion will be in the video.
@@ -400,7 +400,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         # 5. Get Added Time IDs
         added_time_ids = self._get_add_time_ids(
-            fps_id,
+            fps,
             motion_bucket_id,
             cond_aug,
             image_embeddings.dtype,

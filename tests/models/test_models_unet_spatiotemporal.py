@@ -65,7 +65,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         return (4, 32, 32)
 
     @property
-    def fps_id(self):
+    def fps(self):
         return 6
 
     @property
