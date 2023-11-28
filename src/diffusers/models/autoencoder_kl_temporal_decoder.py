@@ -32,7 +32,7 @@ class TemporalDecoder(nn.Module):
         self,
         in_channels: int = 4,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
+        block_out_channels: Tuple[int] = (128, 256, 512, 512),
         layers_per_block: int = 2,
     ):
         super().__init__()
