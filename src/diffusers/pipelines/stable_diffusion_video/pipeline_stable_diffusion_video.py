@@ -55,7 +55,7 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
 
 
 @dataclass
-class StableDiffusionVideoPipelineOutput(BaseOutput):
+class StableVideoDiffusionPipelineOutput(BaseOutput):
     r"""
     Output class for zero-shot text-to-video pipeline.
 
@@ -68,7 +68,7 @@ class StableDiffusionVideoPipelineOutput(BaseOutput):
     frames: Union[List[PIL.Image.Image], np.ndarray]
 
 
-class StableDiffusionVideoPipeline(DiffusionPipeline):
+class StableVideoDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline to generate video from an input image using Stable Video Diffusion.
 
@@ -339,17 +339,17 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 plain tuple.
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] is returned,
+            [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is a list of list with the generated frames.
 
         Examples:
 
         ```py
-        from diffusers import StableDiffusionVideoPipeline
+        from diffusers import StableVideoDiffusionPipeline
         from diffusers.utils import load_image, export_to_video
 
-        pipe = StableDiffusionVideoPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16")
+        pipe = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16")
         pipe.to("cuda")
 
         image = load_image("https://lh3.googleusercontent.com/y-iFOHfLTwkuQSUegpwDdgKmOjRSTvPxat63dQLB25xkTs4lhIbRUFeNBWZzYf370g=s1200")
@@ -491,7 +491,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         if not return_dict:
             return frames
 
-        return StableDiffusionVideoPipelineOutput(frames=frames)
+        return StableVideoDiffusionPipelineOutput(frames=frames)
 
 
 # resizing utils
