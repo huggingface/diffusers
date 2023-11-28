@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Latent Consistency Distillation
 
-[Latent Consistency Models (LCMs)](https://hf.co/paper/2310.04378) are able to generate high-quality images in just a few steps, which is a big leap forward because many pipelines require at least 25+ steps. To get an LCM, you can use the latent consistency distillation method to distill any Stable Diffusion model for few-step inference. This method works by applying *one-stage guided distillation* to the latent space, and incorporating a *skipping-step* method to consistently skip timesteps to accelerate the distillation process (refer to section 4.1, 4.2, and 4.3 of the paper for more details).
+[Latent Consistency Models (LCMs)](https://hf.co/papers/2310.04378) are able to generate high-quality images in just a few steps, representing a big leap forward because many pipelines require at least 25+ steps. LCMs are produced by applying the latent consistency distillation method to any Stable Diffusion model. This method works by applying *one-stage guided distillation* to the latent space, and incorporating a *skipping-step* method to consistently skip timesteps to accelerate the distillation process (refer to section 4.1, 4.2, and 4.3 of the paper for more details).
 
 If you're training on a GPU with limited vRAM, try enabling `gradient_checkpointing`, `gradient_accumulation_steps`, and `mixed_precision` to reduce memory-usage and speedup training. You can reduce your memory-usage even more by enabling memory-efficient attention with [xFormers](../optimization/xformers) and [bitsandbytes'](https://github.com/TimDettmers/bitsandbytes) 8-bit optimizer.
 
@@ -39,7 +39,7 @@ pip install -r requirements.txt
 
 </Tip>
 
-Initialize an 🤗 Accelerate environment (try enabling `torch.compile` mode to significantly speedup training):
+Initialize an 🤗 Accelerate environment (try enabling `torch.compile` to significantly speedup training):
 
 ```bash
 accelerate config
@@ -65,7 +65,7 @@ Lastly, if you want to train a model on your own dataset, take a look at the [Cr
 
 <Tip>
 
-The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_sdxl.py) and let us know if you have any questions or concerns.
+The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/consistency_distillation/train_lcm_distill_sd_wds.py) and let us know if you have any questions or concerns.
 
 </Tip>
 
@@ -81,11 +81,11 @@ accelerate launch train_lcm_distill_sd_wds.py \
 Most of the parameters are identical to the parameters in the [Text-to-image](text2image#script-parameters) training guide, so you'll focus on the parameters that are relevant to latent consistency distillation in this guide.
 
 - `--pretrained_teacher_model`: the path to a pretrained latent diffusion model to use as the teacher model
-- `--pretrained_vae_model_name_or_path`: path to a pretrained VAE; the SDXL VAE is known to suffer from numerical instability, so this parameter allows you to specify a better [VAE](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix) (only applicable if you're distilling a SDXL model)
+- `--pretrained_vae_model_name_or_path`: path to a pretrained VAE; the SDXL VAE is known to suffer from numerical instability, so this parameter allows you to specify an alternative VAE (like this [VAE]((https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)) by madebyollin which works in fp16)
 - `--w_min` and `--w_max`: the minimum and maximum guidance scale values for guidance scale sampling
 - `--num_ddim_timesteps`: the number of timesteps for DDIM sampling
-- `--loss_type`: the type of loss (L2 or Huber) to calculate for latent consistency distillation
-- `--huber_c`: the Huber loss parameter if you're using Huber loss
+- `--loss_type`: the type of loss (L2 or Huber) to calculate for latent consistency distillation; Huber loss is generally preferred because it's more robust to outliers
+- `--huber_c`: the Huber loss parameter
 
 ## Training script
 
@@ -105,7 +105,7 @@ def transform(example):
     return example
 ```
 
-For improved performance on reading and writing large datasets stored in the cloud, this script uses the [WebDataset](https://github.com/webdataset/webdataset) format to create a preprocessing pipeline to apply transforms and create a dataset and dataloader for training.
+For improved performance on reading and writing large datasets stored in the cloud, this script uses the [WebDataset](https://github.com/webdataset/webdataset) format to create a preprocessing pipeline to apply transforms and create a dataset and dataloader for training. Images are processed and fed to the training loop without having to download the full dataset first.
 
 ```py
 processing_pipeline = [
@@ -190,7 +190,7 @@ If you want to learn more about how the training loop works, check out the [Unde
 
 Now you're ready to launch the training script and start distilling!
 
-For this guide, you'll use the `--train_shards_path_or_url` to specify the path to the LAION-A6+ dataset which is stored in the cloud. Set the `MODEL_DIR` environment variable to the name of the teacher model and `OUTPUT_DIR` to where you want to save the model.
+For this guide, you'll use the `--train_shards_path_or_url` to specify the path to the [Conceptual Captions 12M](https://github.com/google-research-datasets/conceptual-12m) dataset stored on the Hub [here](https://huggingface.co/datasets/laion/conceptual-captions-12m-webdataset). Set the `MODEL_DIR` environment variable to the name of the teacher model and `OUTPUT_DIR` to where you want to save the model.
 
 ```bash
 export MODEL_DIR="runwayml/stable-diffusion-v1-5"
@@ -205,7 +205,7 @@ accelerate launch train_lcm_distill_sd_wds.py \
     --max_train_steps=1000 \
     --max_train_samples=4000000 \
     --dataloader_num_workers=8 \
-    --train_shards_path_or_url='pipe:aws s3 cp s3://muse-datasets/laion-aesthetic6plus-min512-data/{00000..01210}.tar -' \
+    --train_shards_path_or_url="pipe:curl -L -s https://huggingface.co/datasets/laion/conceptual-captions-12m-webdataset/resolve/main/data/{00000..01099}.tar?download=true" \
     --validation_steps=200 \
     --checkpointing_steps=200 --checkpoints_total_limit=10 \
     --train_batch_size=12 \
@@ -215,7 +215,7 @@ accelerate launch train_lcm_distill_sd_wds.py \
     --resume_from_checkpoint=latest \
     --report_to=wandb \
     --seed=453645634 \
-    --push_to_hub \
+    --push_to_hub
 ```
 
 Once training is complete, you can use your new LCM for inference.
@@ -252,4 +252,4 @@ The SDXL training script is discussed in more detail in the [SDXL training](sdxl
 Congratulations on distilling a LCM model! To learn more about LCM, the following may be helpful:
 
 - Learn how to use [LCMs for inference](../using-diffusers/lcm) for text-to-image, image-to-image, and with LoRA checkpoints.
-- Read the [SDXL in 4 steps with Latent Consistency LoRAs](https://huggingface.co/blog/lcm_lora) blog post to learn more about SDXL LCM-LoRA's for super fast inference, quality comparisons, benchmarks, and more. 
+- Read the [SDXL in 4 steps with Latent Consistency LoRAs](https://huggingface.co/blog/lcm_lora) blog post to learn more about SDXL LCM-LoRA's for super fast inference, quality comparisons, benchmarks, and more.
