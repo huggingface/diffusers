@@ -90,7 +90,7 @@ class ControlNetXSModel(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
- 
+
 
 class Kandinsky3UNet(metaclass=DummyObject):
     _backends = ["torch"]

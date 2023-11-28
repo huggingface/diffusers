@@ -13,7 +13,6 @@
 # limitations under the License.
 import math
 from dataclasses import dataclass
-from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -39,6 +38,7 @@ from .unet_2d_blocks import (
     Upsample2D,
 )
 from .unet_2d_condition import UNet2DConditionModel
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -287,19 +287,18 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             channels = []
             for i, (_, subblock_out_channels) in enumerate(subblock_channels):
                 # first subblock is the conv_in
-                if i==0:
+                if i == 0:
                     continue
                 # every block consists of `layers_per_block` resnet/attention subblocks and a down sample subblock
-                if i %(layers_per_block+1)==0:
+                if i % (layers_per_block + 1) == 0:
                     channels.append(subblock_out_channels)
                 # the last block doesn't have a down conv, so is handled separately
-                if i==len(subblock_channels)-1:
+                if i == len(subblock_channels) - 1:
                     channels.append(subblock_out_channels)
             return channels
 
         base_block_out_channels = compute_block_out_channels(
-            subblock_channels=base_model_channel_sizes["down"],
-            layers_per_block=layers_per_block
+            subblock_channels=base_model_channel_sizes["down"], layers_per_block=layers_per_block
         )
 
         extra_channels = list(
@@ -438,7 +437,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # - attention heads
         def attn_heads_match_channel_sizes(attn_heads, channel_sizes):
             if isinstance(attn_heads, (tuple, list)):
-                return all(c % a == 0 for a,c in zip(attn_heads,channel_sizes))
+                return all(c % a == 0 for a, c in zip(attn_heads, channel_sizes))
             else:
                 return all(c % attn_heads == 0 for c in channel_sizes)
 
@@ -738,8 +737,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         h_ctrl = self.control_model.conv_in(h_ctrl)
         if guided_hint is not None:
             h_ctrl += guided_hint
-        h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)   # D - add ctrl -> base
-        
+        h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)  # D - add ctrl -> base
+
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
 
@@ -748,7 +747,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
             h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # B - apply base subblock
             h_ctrl = m_ctrl(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # C - apply ctrl subblock
-            h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)   # D - add ctrl -> base
+            h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)  # D - add ctrl -> base
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
 
@@ -758,7 +757,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # B - apply base subblock
             h_ctrl = m_ctrl(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # C - apply ctrl subblock
         h_base = h_base + self.middle_block_out(h_ctrl) * next(scales)  # D - add ctrl -> base
-        
+
         # 3 - up
         for i, m_base in enumerate(base_up_subblocks):
             h_base = h_base + next(it_up_convs_out)(hs_ctrl.pop()) * next(scales)  # add info from ctrl encoder
@@ -912,11 +911,11 @@ def increase_block_input_in_mid_resnet(unet: UNet2DConditionModel, by):
     unet.mid_block.resnets[0].in_channels += by  # surgery done here
 
 
-def adjust_group_norms(unet: UNet2DConditionModel, max_num_group:int=32):
+def adjust_group_norms(unet: UNet2DConditionModel, max_num_group: int = 32):
     def find_denominator(number, start):
         if start >= number:
             return number
-        while (start != 0):
+        while start != 0:
             residual = number % start
             if residual == 0:
                 return start
@@ -926,16 +925,17 @@ def adjust_group_norms(unet: UNet2DConditionModel, max_num_group:int=32):
         # resnets
         for r in block.resnets:
             if r.norm1.num_groups < max_num_group:
-                r.norm1.num_groups = find_denominator(r.norm1.num_channels ,start=32)
-            
+                r.norm1.num_groups = find_denominator(r.norm1.num_channels, start=32)
+
             if r.norm2.num_groups < max_num_group:
-                r.norm2.num_groups = find_denominator(r.norm2.num_channels ,start=32)
+                r.norm2.num_groups = find_denominator(r.norm2.num_channels, start=32)
 
         # transformers
-        if hasattr(block, 'attentions'):
+        if hasattr(block, "attentions"):
             for a in block.attentions:
                 if a.norm.num_groups < max_num_group:
-                    a.norm.num_groups = find_denominator(a.norm.num_channels ,start=32)
+                    a.norm.num_groups = find_denominator(a.norm.num_channels, start=32)
+
 
 def is_iterable(o):
     if isinstance(o, str):
@@ -956,16 +956,16 @@ def to_sub_blocks(blocks):
     for b in blocks:
         if hasattr(b, "resnets"):
             if hasattr(b, "attentions") and b.attentions is not None:
-                for r,a in zip(b.resnets, b.attentions):
-                    sub_blocks.append([r,a])
+                for r, a in zip(b.resnets, b.attentions):
+                    sub_blocks.append([r, a])
 
                 num_resnets = len(b.resnets)
                 num_attns = len(b.attentions)
-                
+
                 if num_resnets > num_attns:
                     # we can have more resnets than attentions, so add each resnet as separate subblock
                     for i in range(num_attns, num_resnets):
-                        sub_blocks.append([b.resnets[i]])                
+                        sub_blocks.append([b.resnets[i]])
             else:
                 for r in b.resnets:
                     sub_blocks.append([r])
@@ -974,7 +974,7 @@ def to_sub_blocks(blocks):
         if hasattr(b, "upsamplers") and b.upsamplers is not None:
             for u in b.upsamplers:
                 sub_blocks[-1].extend([u])
-                
+
         # downsamplers are own subblock
         if hasattr(b, "downsamplers") and b.downsamplers is not None:
             for d in b.downsamplers:

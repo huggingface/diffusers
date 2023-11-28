@@ -702,7 +702,7 @@ class ResnetBlock2D(nn.Module):
             hidden_states = self.norm1(hidden_states, temb)
         else:
             hidden_states = self.norm1(hidden_states)
-   
+
         hidden_states = self.nonlinearity(hidden_states)
 
         if self.upsample is not None:

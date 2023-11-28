@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import tempfile
 import traceback
 import unittest
 
@@ -26,7 +25,6 @@ from diffusers import (
     AutoencoderKL,
     ControlNetXSModel,
     DDIMScheduler,
-    EulerDiscreteScheduler,
     LCMScheduler,
     StableDiffusionControlNetXSPipeline,
     UNet2DConditionModel,
@@ -276,7 +274,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert image.shape == (768, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array([0.1274, 0.1401, 0.147 , 0.1185, 0.1555, 0.1492, 0.1565, 0.1474, 0.1701])
+        expected_image = np.array([0.1274, 0.1401, 0.147, 0.1185, 0.1555, 0.1492, 0.1565, 0.1474, 0.1701])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_depth(self):
