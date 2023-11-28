@@ -119,7 +119,7 @@ about it!
 * Is it something you worked on and think could benefit the community?
 Awesome! Tell us what problem it solved for you.
 2. Write a *full paragraph* describing the feature;
-3. Provide a **code snippet** that demonstrates its future use;
+3. Provide a **code snippet** that demonstrates it's future use;
 4. In case this is related to a paper, please attach a link;
 5. Attach any additional information (drawings, screenshots, etc.) you think may help.
 
@@ -144,7 +144,7 @@ You can open an issue about a technical question [here](https://github.com/huggi
 If the diffusion model community released a new model, pipeline, or scheduler that you would like to see in the Diffusers library, please provide the following information:
 
 * Short description of the diffusion pipeline, model, or scheduler and link to the paper or public release.
-* Link to any of its open-source implementation.
+* Link to any of it's open-source implementation.
 * Link to the model weights if they are available.
 
 If you are willing to contribute to the model yourself, let us know so we can best guide you. Also, don't forget
@@ -325,7 +325,7 @@ If you are unsure or stuck in the PR, don't hesitate to leave a message to ask f
 1. Be a chameleon. Understand existing design patterns and syntax and make sure your code additions flow seamlessly into the existing code base. Pull requests that significantly diverge from existing design patterns or user interfaces will not be merged.
 2. Be laser focused. A pull request should solve one problem and one problem only. Make sure to not fall into the trap of "also fixing another problem while we're adding it". It is much more difficult to review pull requests that solve multiple, unrelated problems at once.
 3. If helpful, try to add a code snippet that displays an example of how your addition can be used.
-4. The title of your pull request should be a summary of its contribution.
+4. The title of your pull request should be a summary of it's contribution.
 5. If your pull request addresses an issue, please mention the issue number in
 the pull request description to make sure they are linked (and people
 consulting the issue know you are working on it);
@@ -410,7 +410,7 @@ Diffusers has grown a lot. Here is the command for it:
  $ make test
  ```
 
-🧨 Diffusers relies on `ruff` and `isort` to format its source code
+🧨 Diffusers relies on `ruff` and `isort` to format it's source code
 consistently. After you make changes, apply automatic style corrections and code verifications
 that can't be automated in one go with:
 
