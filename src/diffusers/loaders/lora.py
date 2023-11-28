@@ -1560,6 +1560,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
+        assert hasattr(cls, "unet"), "UNet not present?"
         state_dict = {}
 
         def pack_weights(layers, prefix):
