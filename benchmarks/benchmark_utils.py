@@ -42,7 +42,7 @@ def flush():
 
 
 def bytes_to_giga_bytes(bytes):
-    return f"{(bytes / 1024 / 1024 / 1024)}:.3f"
+    return f"{(bytes / 1024 / 1024 / 1024):.3f}"
 
 
 def benchmark_fn(f, *args, **kwargs):
