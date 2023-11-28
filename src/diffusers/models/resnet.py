@@ -1145,19 +1145,13 @@ class TemporalResnetBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: Optional[int] = None,
-        conv_shortcut: bool = False,
-        dropout: float = 0.0,
         temb_channels: int = 512,
         eps: float = 1e-6,
-        use_in_shortcut: Optional[bool] = None,
-        conv_shortcut_bias: bool = True,
-        conv_2d_out_channels: Optional[int] = None,
     ):
         super().__init__()
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
 
         kernel_size = (3, 1, 1)
         padding = [k // 2 for k in kernel_size]
@@ -1178,11 +1172,10 @@ class TemporalResnetBlock(nn.Module):
 
         self.norm2 = torch.nn.GroupNorm(num_groups=32, num_channels=out_channels, eps=eps, affine=True)
 
-        self.dropout = torch.nn.Dropout(dropout)
-        conv_2d_out_channels = conv_2d_out_channels or out_channels
+        self.dropout = torch.nn.Dropout(0.0)
         self.conv2 = nn.Conv3d(
             out_channels,
-            conv_2d_out_channels,
+            out_channels,
             kernel_size=kernel_size,
             stride=1,
             padding=padding,
@@ -1190,17 +1183,16 @@ class TemporalResnetBlock(nn.Module):
 
         self.nonlinearity = get_activation("silu")
 
-        self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
+        self.use_in_shortcut = self.in_channels != out_channels
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
             self.conv_shortcut = nn.Conv3d(
                 in_channels,
-                conv_2d_out_channels,
+                out_channels,
                 kernel_size=1,
                 stride=1,
                 padding=0,
-                bias=conv_shortcut_bias,
             )
 
     def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
