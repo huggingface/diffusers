@@ -436,14 +436,12 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
-                    num_video_frames=num_frames,
                     image_only_indicator=image_only_indicator,
                 )
             else:
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
-                    num_video_frames=num_frames,
                     image_only_indicator=image_only_indicator,
                 )
 
@@ -453,7 +451,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         sample = self.mid_block(
             hidden_states=sample,
             temb=emb,
-            num_video_frames=num_frames,
             encoder_hidden_states=encoder_hidden_states,
             image_only_indicator=image_only_indicator,
         )
@@ -469,7 +466,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
-                    num_video_frames=num_frames,
                     image_only_indicator=image_only_indicator,
                 )
             else:
@@ -477,7 +473,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
-                    num_video_frames=num_frames,
                     image_only_indicator=image_only_indicator,
                 )
 

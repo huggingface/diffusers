@@ -110,7 +110,6 @@ class TemporalDecoder(nn.Module):
                     create_custom_forward(self.mid_block),
                     sample,
                     image_only_indicator,
-                    num_frames,
                     use_reentrant=False,
                 )
                 sample = sample.to(upscale_dtype)
@@ -121,7 +120,6 @@ class TemporalDecoder(nn.Module):
                         create_custom_forward(up_block),
                         sample,
                         image_only_indicator,
-                        num_frames,
                         use_reentrant=False,
                     )
             else:
@@ -130,7 +128,6 @@ class TemporalDecoder(nn.Module):
                     create_custom_forward(self.mid_block),
                     sample,
                     image_only_indicator,
-                    num_frames,
                 )
                 sample = sample.to(upscale_dtype)
 
@@ -140,24 +137,15 @@ class TemporalDecoder(nn.Module):
                         create_custom_forward(up_block),
                         sample,
                         image_only_indicator,
-                        num_frames,
                     )
         else:
             # middle
-            sample = self.mid_block(
-                sample,
-                num_frames=num_frames,
-                image_only_indicator=image_only_indicator,
-            )
+            sample = self.mid_block(sample, image_only_indicator=image_only_indicator)
             sample = sample.to(upscale_dtype)
 
             # up
             for up_block in self.up_blocks:
-                sample = up_block(
-                    sample,
-                    num_frames=num_frames,
-                    image_only_indicator=image_only_indicator,
-                )
+                sample = up_block(sample, image_only_indicator=image_only_indicator)
 
         # post-process
         sample = self.conv_norm_out(sample)

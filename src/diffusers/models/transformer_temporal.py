@@ -199,7 +199,7 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         return TransformerTemporalModelOutput(sample=output)
 
 
-class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
+class TransformerSpatioTemporalModel(nn.Module):
     """
     A Transformer model for video-like data.
 
@@ -214,7 +214,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
     """
 
-    @register_to_config
     def __init__(
         self,
         num_attention_heads: int = 16,
@@ -309,7 +308,9 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         batch_size = batch_frames // num_frames
 
         time_context = encoder_hidden_states
-        time_context_first_timestep = time_context[None, :].reshape(batch_size, num_frames, -1)[:, 0]
+        time_context_first_timestep = time_context[None, :].reshape(
+            batch_size, num_frames, -1, time_context.shape[-1]
+        )[:, 0]
         time_context = time_context_first_timestep[None, :].broadcast_to(
             height * width, batch_size, 1, time_context.shape[-1]
         )

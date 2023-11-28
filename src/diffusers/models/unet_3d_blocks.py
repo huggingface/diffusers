@@ -1801,18 +1801,15 @@ class MidBlockTemporalDecoder(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         image_only_indicator: torch.FloatTensor,
-        num_frames: int = 1,
     ):
         hidden_states = self.resnets[0](
             hidden_states,
-            num_frames=num_frames,
             image_only_indicator=image_only_indicator,
         )
         for resnet, attn in zip(self.resnets[1:], self.attentions):
             hidden_states = attn(hidden_states)
             hidden_states = resnet(
                 hidden_states,
-                num_frames=num_frames,
                 image_only_indicator=image_only_indicator,
             )
 
@@ -1855,12 +1852,10 @@ class UpBlockTemporalDecoder(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         image_only_indicator: torch.FloatTensor,
-        num_frames: int = 1,
     ) -> torch.FloatTensor:
         for resnet in self.resnets:
             hidden_states = resnet(
                 hidden_states,
-                num_frames=num_frames,
                 image_only_indicator=image_only_indicator,
             )
 
@@ -1929,7 +1924,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        num_video_frames: int,
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
@@ -1937,7 +1931,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         hidden_states = self.resnets[0](
             hidden_states,
             temb,
-            num_frames=num_video_frames,
             image_only_indicator=image_only_indicator,
         )
 
@@ -1956,7 +1949,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
                 hidden_states = attn(
                     hidden_states,
-                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
                     return_dict=False,
@@ -1965,14 +1957,12 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    num_video_frames,
                     image_only_indicator,
                     **ckpt_kwargs,
                 )
             else:
                 hidden_states = attn(
                     hidden_states,
-                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
                     return_dict=False,
@@ -1980,7 +1970,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                 )
 
@@ -2031,7 +2020,6 @@ class DownBlockSpatioTemporal(nn.Module):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        num_video_frames: int,
         temb: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
@@ -2050,7 +2038,6 @@ class DownBlockSpatioTemporal(nn.Module):
                         create_custom_forward(resnet),
                         hidden_states,
                         temb,
-                        num_video_frames,
                         image_only_indicator,
                         use_reentrant=False,
                     )
@@ -2059,14 +2046,12 @@ class DownBlockSpatioTemporal(nn.Module):
                         create_custom_forward(resnet),
                         hidden_states,
                         temb,
-                        num_video_frames,
                         image_only_indicator,
                     )
             else:
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                 )
 
@@ -2145,7 +2130,6 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        num_video_frames: int,
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
@@ -2153,7 +2137,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         output_states = ()
 
         blocks = list(zip(self.resnets, self.attentions))
-        for i, (resnet, attn) in enumerate(blocks):
+        for resnet, attn in blocks:
             if self.training and self.gradient_checkpointing:  # TODO
 
                 def create_custom_forward(module, return_dict=None):
@@ -2170,14 +2154,12 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    num_video_frames,
                     image_only_indicator,
                     **ckpt_kwargs,
                 )
 
                 hidden_states = attn(
                     hidden_states,
-                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
                     return_dict=False,
@@ -2186,12 +2168,10 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                 )
                 hidden_states = attn(
                     hidden_states,
-                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
                     return_dict=False,
@@ -2250,7 +2230,6 @@ class UpBlockSpatioTemporal(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        num_video_frames: int,
         temb: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
@@ -2274,7 +2253,6 @@ class UpBlockSpatioTemporal(nn.Module):
                         create_custom_forward(resnet),
                         hidden_states,
                         temb,
-                        num_video_frames,
                         image_only_indicator,
                         use_reentrant=False,
                     )
@@ -2283,14 +2261,12 @@ class UpBlockSpatioTemporal(nn.Module):
                         create_custom_forward(resnet),
                         hidden_states,
                         temb,
-                        num_video_frames,
                         image_only_indicator,
                     )
             else:
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                 )
 
@@ -2363,7 +2339,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        num_video_frames: int,
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
@@ -2391,13 +2366,11 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    num_video_frames,
                     image_only_indicator,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(
                     hidden_states,
-                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
                     return_dict=False,
@@ -2406,12 +2379,10 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                 hidden_states = resnet(
                     hidden_states,
                     temb,
-                    num_frames=num_video_frames,
                     image_only_indicator=image_only_indicator,
                 )
                 hidden_states = attn(
                     hidden_states,
-                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
                     return_dict=False,
