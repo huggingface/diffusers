@@ -1434,6 +1434,11 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_model.bin")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_config.json")))
 
+            # Replicate training.
+            state_dict = torch.load(os.path.join(tmpdirname, "adapter_model.bin"), map_location="cpu")
+            state_dict = {k: torch.randn_like(v) for k, v in state_dict.items()}
+            torch.save(state_dict, os.path.join(tmpdirname, "adapter_model.bin"))
+
             unet, _ = self.get_dummy_components()
             unet.load_lora(tmpdirname)
 
