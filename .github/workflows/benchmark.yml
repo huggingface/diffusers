@@ -48,7 +48,8 @@ jobs:
             python benchmark_sd.py && \
             python benchmark_sd.py --batch_size 4 && \
             python benchmark_sd.py --run_compile && \
-            python benchmark_sd.py --batch_size 4 --run_compile 
+            python benchmark_sd.py --batch_size 4 --run_compile && \
+            python push_results.py
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
