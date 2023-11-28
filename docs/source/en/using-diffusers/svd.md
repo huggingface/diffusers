@@ -73,6 +73,7 @@ You can achieve a 20-25% speed-up at the expense of slightly increased memory by
 - pipe.enable_model_cpu_offload()
 + pipe.to("cuda")
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
 ### Micro-conditioning
 
 Along with conditioning image Stable Diffusion Video also allows providing micro-conditioning that allows more control over the generated video.
