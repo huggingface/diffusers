@@ -47,7 +47,7 @@ pipe.
 image = load_image("https://i.imgur.com/9fCwJ2v.png")
 image = image.resize((1024, 576))
 
-frames = pipe(image, num_frames=25, frames_to_decode_at_once=8).frames[0]
+frames = pipe(image, num_frames=25, decode_num_frames=8).frames[0]
 
 export_to_video(frames, "generated.mp4", fps=7)
 ```
