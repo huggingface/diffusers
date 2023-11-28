@@ -1302,7 +1302,8 @@ class AlphaBlender(nn.Module):
         self.merge_strategy = merge_strategy
         self.switch_spatial_to_temporal_mix = switch_spatial_to_temporal_mix  # For TemporalVAE
 
-        assert merge_strategy in self.strategies, f"merge_strategy needs to be in {self.strategies}"
+        if merge_strategy not in self.strategies:
+            raise ValueError(f"merge_strategy needs to be in {self.strategies}")
 
         if self.merge_strategy == "fixed":
             self.register_buffer("mix_factor", torch.Tensor([alpha]))
@@ -1319,9 +1320,9 @@ class AlphaBlender(nn.Module):
             alpha = torch.sigmoid(self.mix_factor)
 
         elif self.merge_strategy == "learned_with_images":
-            assert (
-                image_only_indicator is not None
-            ), "Please provide image_only_indicator to use learned_with_images merge strategy"
+            if image_only_indicator is None:
+                raise ValueError("Please provide image_only_indicator to use learned_with_images merge strategy")
+
             alpha = torch.where(
                 image_only_indicator.bool(),
                 torch.ones(1, 1, device=image_only_indicator.device),

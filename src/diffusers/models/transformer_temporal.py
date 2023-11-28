@@ -211,7 +211,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         out_channels (`int`, *optional*):
             The number of channels in the output (specify if the input is **continuous**).
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
     """
 
