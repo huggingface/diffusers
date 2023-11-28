@@ -88,7 +88,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
                 "CrossAttnUpBlockSpatioTemporal",
             ),
             "cross_attention_dim": 32,
-            "attention_head_dim": 8,
+            "num_attention_heads": 8,
             "out_channels": 4,
             "in_channels": 4,
             "layers_per_block": 2,
@@ -153,10 +153,10 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         for name, param in named_params.items():
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
-    def test_model_with_attention_head_dim_tuple(self):
+    def test_model_with_num_attention_heads_tuple(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["attention_head_dim"] = (8, 16)
+        init_dict["num_attention_heads"] = (8, 16)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -262,7 +262,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
     def test_model_attention_slicing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["attention_head_dim"] = (8, 16)
+        init_dict["num_attention_heads"] = (8, 16)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -286,7 +286,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
     def test_model_sliceable_head_dim(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["attention_head_dim"] = (8, 16)
+        init_dict["num_attention_heads"] = (8, 16)
 
         model = self.model_class(**init_dict)
 
@@ -304,7 +304,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
     def test_gradient_checkpointing_is_applied(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["attention_head_dim"] = (8, 16)
+        init_dict["num_attention_heads"] = (8, 16)
 
         model_class_copy = copy.copy(self.model_class)
 
@@ -341,7 +341,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["attention_head_dim"] = (8, 16)
+        init_dict["num_attention_heads"] = (8, 16)
 
         model = self.model_class(**init_dict)
         model.to(torch_device)

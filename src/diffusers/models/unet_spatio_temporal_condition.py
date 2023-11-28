@@ -99,26 +99,11 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         dropout: float = 0.0,
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
-        attention_head_dim: Union[int, Tuple[int]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
-        time_embedding_dim: Optional[int] = None,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = [5, 10, 10, 20],
     ):
         super().__init__()
 
         self.sample_size = sample_size
-
-        if num_attention_heads is not None:
-            raise ValueError(
-                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
-            )
-
-        # If `num_attention_heads` is not defined (which is the case for most models)
-        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
-        # The reason for this behavior is to correct for incorrectly named variables that were introduced
-        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
-        # which is why we correct for the naming here.
-        num_attention_heads = num_attention_heads or attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -134,11 +119,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
             raise ValueError(
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
-            )
-
-        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
-            raise ValueError(
-                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
 
         if isinstance(cross_attention_dim, list) and len(cross_attention_dim) != len(down_block_types):
@@ -160,7 +140,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         )
 
         # time
-        time_embed_dim = time_embedding_dim or block_out_channels[0] * 4
+        time_embed_dim = block_out_channels[0] * 4
 
         self.time_proj = Timesteps(block_out_channels[0], True, downscale_freq_shift=0)
         timestep_input_dim = block_out_channels[0]
