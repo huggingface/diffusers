@@ -138,6 +138,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         )
         self.decoder_scheduler = ConsistencyDecoderScheduler()
         self.register_to_config(block_out_channels=encoder_block_out_channels)
+        self.register_to_config(force_upcast=False)
         self.register_buffer(
             "means",
             torch.tensor([0.38862467, 0.02253063, 0.07381133, -0.0171294])[None, :, None, None],
