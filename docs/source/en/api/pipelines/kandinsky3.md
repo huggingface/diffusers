@@ -9,11 +9,31 @@ specific language governing permissions and limitations under the License.
 
 # Kandinsky 3
 
-Kandinsky 3 is created by [Arkhipkin Vladimir](https://github.com/oriBetelgeuse), [Igor Pavlov](https://github.com/boomb0om), [Andrei Filatov](https://github.com/anvilarth), [Zein Shaheen](https://github.com/zeinsh).
+Kandinsky 3 is created by [Vladimir Arkhipkin](https://github.com/oriBetelgeuse),[Anastasia Maltseva](https://github.com/NastyaMittseva),[Igor Pavlov](https://github.com/boomb0om),[Andrei Filatov](https://github.com/anvilarth),[Arseniy Shakhmatov](https://github.com/cene555),[Andrey Kuznetsov](https://github.com/kuznetsoffandrey),[Denis Dimitrov](https://github.com/denndimitrov), [Zein Shaheen](https://github.com/zeinsh)[Julia Agafonova]().
 
 The description from it's Github page: 
 
-*Kandinsky 3.0 is an open-source text-to-image diffusion model built upon the Kandinsky2-x model family. In comparison to its predecessors, Kandinsky 3.0 incorporates more data and specifically related to Russian culture, which allows to generate pictures related to Russin culture. Furthermore, enhancements have been made to the text understanding and visual quality of the model, achieved by increasing the size of the text encoder and Diffusion U-Net models, respectively.*
+*Kandinsky 3.0 is an open-source text-to-image diffusion model built upon the Kandinsky2-x model family. In comparison to its predecessors, enhancements have been made to the text understanding and visual quality of the model, achieved by increasing the size of the text encoder and Diffusion U-Net models, respectively.*
+
+## Components
+
+### FLAN-UL2
+
+- Language Encoder-Decoder model. [FLAN-UL2](https://huggingface.co/google/flan-ul2)
+- Utilizes only the Encoder for text encoding, constituting half of the architecture's parameters.
+- Subjected to pretraining on a text corpus and further pretrained in the SFT style on a language problems corpus, enhancing picture generation.
+- During picture model training, the language model is entirely frozen.
+
+### U-Net
+
+- Employs an architecture featuring BigGAN-deep blocks.
+- Doubles the depth compared to diffusions with conventional BigGAN blocks, maintaining parameter count.
+
+### Sber-MoVQGAN
+
+- Used as an autoencoder, proven effective in previous versions.
+- Incorporates the largest model version with 270 million parameters, demonstrating superior results in image restoration.
+
 
 The original codebase can be found at [ai-forever/Kandinsky-3](https://github.com/ai-forever/Kandinsky-3).
 
