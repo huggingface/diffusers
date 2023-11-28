@@ -782,7 +782,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # Alternativy, we could set the vae to eval mode.
         in_size = condition_downscale_factor * 2
 
-        rand_tensor = torch.rand((1, 3, in_size, in_size)).to(vae.device)
+        rand_tensor = torch.rand((1, 3, in_size, in_size)).to(vae.device, dtype=vae.dtype)
 
         encoded_tensor = vae.encode(rand_tensor)
         if hasattr(encoded_tensor, "latent_dist"):
