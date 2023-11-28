@@ -24,11 +24,10 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure.update(
         {
-            "pipeline_stable_diffusion_video": [
+            "pipeline_stable_video_diffusion": [
                 "StableVideoDiffusionPipeline",
                 "StableVideoDiffusionPipelineOutput",
             ],
-            "safety_checker": ["StableDiffusionSafetyChecker"],
         }
     )
 
@@ -40,11 +39,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_stable_diffusion_video import (
+        from .pipeline_stable_video_diffusion import (
             StableVideoDiffusionPipeline,
             StableVideoDiffusionPipelineOutput,
         )
-        from .safety_checker import StableDiffusionSafetyChecker
 
 else:
     import sys
