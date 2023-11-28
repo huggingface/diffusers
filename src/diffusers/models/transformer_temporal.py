@@ -278,7 +278,6 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        num_frames: int,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
         return_dict: bool = True,
@@ -306,10 +305,11 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         """
         # 1. Input
         batch_frames, _, height, width = hidden_states.shape
+        num_frames = image_only_indicator.shape[-1]
         batch_size = batch_frames // num_frames
 
         time_context = encoder_hidden_states
-        time_context_first_timestep = time_context[::num_frames]
+        time_context_first_timestep = time_context[None, :].reshape(batch_size, num_frames, -1)[:, 0]
         time_context = time_context_first_timestep[None, :].broadcast_to(
             height * width, batch_size, 1, time_context.shape[-1]
         )
