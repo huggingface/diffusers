@@ -22,7 +22,7 @@ from ..utils import is_torch_version
 from ..utils.accelerate_utils import apply_forward_hook
 from .attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
 from .modeling_utils import ModelMixin
-from .modelling_outputs import AutoencoderKLOutput
+from .modeling_outputs import AutoencoderKLOutput
 from .unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
 
