@@ -110,6 +110,7 @@ else:
         "KandinskyV22PriorEmb2EmbPipeline",
         "KandinskyV22PriorPipeline",
     ]
+    _import_structure["kandinsky3"] = ["Kandinsky3Img2ImgPipeline", "Kandinsky3Pipeline"]
     _import_structure["latent_consistency_models"] = [
         "LatentConsistencyModelImg2ImgPipeline",
         "LatentConsistencyModelPipeline",
@@ -337,6 +338,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             KandinskyV22Pipeline,
             KandinskyV22PriorEmb2EmbPipeline,
             KandinskyV22PriorPipeline,
+        )
+        from .kandinsky3 import (
+            Kandinsky3Img2ImgPipeline,
+            Kandinsky3Pipeline,
         )
         from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
         from .latent_diffusion import LDMTextToImagePipeline
