@@ -1408,7 +1408,7 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**unet_kwargs)
         unet_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=True
         )
         return unet, unet_lora_config
 
