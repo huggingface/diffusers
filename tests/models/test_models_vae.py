@@ -196,16 +196,10 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         named_params = dict(model.named_parameters())
         named_params_2 = dict(model_2.named_parameters())
         for name, param in named_params.items():
-            self.assertTrue(
-                torch_all_close(
-                    param.grad.data, named_params_2[name].grad.data, atol=5e-5
-                )
-            )
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
     def test_from_pretrained_hub(self):
-        model, loading_info = AutoencoderKL.from_pretrained(
-            "fusing/autoencoder-kl-dummy", output_loading_info=True
-        )
+        model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -285,9 +279,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
 
 
-class AsymmetricAutoencoderKLTests(
-    ModelTesterMixin, UNetTesterMixin, unittest.TestCase
-):
+class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AsymmetricAutoencoderKL
     main_input_name = "sample"
     base_precision = 1e-2
@@ -365,9 +357,7 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
         generator = torch.Generator("cpu")
         if seed is not None:
             generator.manual_seed(0)
-        image = randn_tensor(
-            (4, 3, 32, 32), generator=generator, device=torch.device(torch_device)
-        )
+        image = randn_tensor((4, 3, 32, 32), generator=generator, device=torch.device(torch_device))
 
         return {"sample": image, "generator": generator}
 
@@ -480,11 +470,7 @@ class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
             if "post_quant_conv" in name:
                 continue
 
-            self.assertTrue(
-                torch_all_close(
-                    param.grad.data, named_params_2[name].grad.data, atol=5e-5
-                )
-            )
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
 
 @slow
@@ -500,16 +486,10 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        image = (
-            torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape)))
-            .to(torch_device)
-            .to(dtype)
-        )
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
-    def get_sd_vae_model(
-        self, model_id="hf-internal-testing/taesd-diffusers", fp16=False
-    ):
+    def get_sd_vae_model(self, model_id="hf-internal-testing/taesd-diffusers", fp16=False):
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = AutoencoderTiny.from_pretrained(model_id, torch_dtype=torch_dtype)
@@ -543,9 +523,7 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor(
-            [0.0093, 0.6385, -0.1274, 0.1631, -0.1762, 0.5232, -0.3108, -0.0382]
-        )
+        expected_output_slice = torch.tensor([0.0093, 0.6385, -0.1274, 0.1631, -0.1762, 0.5232, -0.3108, -0.0382])
 
         assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
@@ -585,11 +563,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        image = (
-            torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape)))
-            .to(torch_device)
-            .to(dtype)
-        )
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
     def get_sd_vae_model(self, model_id="CompVis/stable-diffusion-v1-4", fp16=False):
@@ -638,9 +612,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor(
-            expected_slice_mps if torch_device == "mps" else expected_slice
-        )
+        expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
@@ -694,9 +666,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor(
-            expected_slice_mps if torch_device == "mps" else expected_slice
-        )
+        expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
@@ -805,9 +775,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             dist = model.encode(image).latent_dist
             sample = dist.sample(generator=generator)
 
-        assert list(sample.shape) == [image.shape[0], 4] + [
-            i // 8 for i in image.shape[2:]
-        ]
+        assert list(sample.shape) == [image.shape[0], 4] + [i // 8 for i in image.shape[2:]]
 
         output_slice = sample[0, -1, -3:, -3:].flatten().cpu()
         expected_output_slice = torch.tensor(expected_slice)
@@ -848,16 +816,10 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        image = (
-            torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape)))
-            .to(torch_device)
-            .to(dtype)
-        )
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
-    def get_sd_vae_model(
-        self, model_id="cross-attention/asymmetric-autoencoder-kl-x-1-5", fp16=False
-    ):
+    def get_sd_vae_model(self, model_id="cross-attention/asymmetric-autoencoder-kl-x-1-5", fp16=False):
         revision = "main"
         torch_dtype = torch.float32
 
@@ -902,9 +864,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor(
-            expected_slice_mps if torch_device == "mps" else expected_slice
-        )
+        expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
 
@@ -934,9 +894,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         assert sample.shape == image.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
-        expected_output_slice = torch.tensor(
-            expected_slice_mps if torch_device == "mps" else expected_slice
-        )
+        expected_output_slice = torch.tensor(expected_slice_mps if torch_device == "mps" else expected_slice)
 
         assert torch_all_close(output_slice, expected_output_slice, atol=3e-3)
 
@@ -1001,9 +959,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
             dist = model.encode(image).latent_dist
             sample = dist.sample(generator=generator)
 
-        assert list(sample.shape) == [image.shape[0], 4] + [
-            i // 8 for i in image.shape[2:]
-        ]
+        assert list(sample.shape) == [image.shape[0], 4] + [i // 8 for i in image.shape[2:]]
 
         output_slice = sample[0, -1, -3:, -3:].flatten().cpu()
         expected_output_slice = torch.tensor(expected_slice)
@@ -1022,39 +978,29 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
     @torch.no_grad()
     def test_encode_decode(self):
-        vae = ConsistencyDecoderVAE.from_pretrained(
-            "openai/consistency-decoder"
-        )  # TODO - update
+        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
         vae.to(torch_device)
 
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         ).resize((256, 256))
-        image = torch.from_numpy(
-            np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1
-        )[None, :, :, :].cuda()
+        image = torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[
+            None, :, :, :
+        ].cuda()
 
         latent = vae.encode(image).latent_dist.mean
 
-        sample = vae.decode(
-            latent, generator=torch.Generator("cpu").manual_seed(0)
-        ).sample
+        sample = vae.decode(latent, generator=torch.Generator("cpu").manual_seed(0)).sample
 
         actual_output = sample[0, :2, :2, :2].flatten().cpu()
-        expected_output = torch.tensor(
-            [-0.0141, -0.0014, 0.0115, 0.0086, 0.1051, 0.1053, 0.1031, 0.1024]
-        )
+        expected_output = torch.tensor([-0.0141, -0.0014, 0.0115, 0.0086, 0.1051, 0.1053, 0.1031, 0.1024])
 
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
 
     def test_sd(self):
-        vae = ConsistencyDecoderVAE.from_pretrained(
-            "openai/consistency-decoder"
-        )  # TODO - update
-        pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None
-        )
+        vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", vae=vae, safety_checker=None)
         pipe.to(torch_device)
 
         out = pipe(
@@ -1065,9 +1011,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         ).images[0]
 
         actual_output = out[:2, :2, :2].flatten().cpu()
-        expected_output = torch.tensor(
-            [0.7686, 0.8228, 0.6489, 0.7455, 0.8661, 0.8797, 0.8241, 0.8759]
-        )
+        expected_output = torch.tensor([0.7686, 0.8228, 0.6489, 0.7455, 0.8661, 0.8797, 0.8241, 0.8759])
 
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
 
@@ -1082,18 +1026,14 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "/img2img/sketch-mountains-input.jpg"
         ).resize((256, 256))
         image = (
-            torch.from_numpy(
-                np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1
-            )[None, :, :, :]
+            torch.from_numpy(np.array(image).transpose(2, 0, 1).astype(np.float32) / 127.5 - 1)[None, :, :, :]
             .half()
             .cuda()
         )
 
         latent = vae.encode(image).latent_dist.mean
 
-        sample = vae.decode(
-            latent, generator=torch.Generator("cpu").manual_seed(0)
-        ).sample
+        sample = vae.decode(latent, generator=torch.Generator("cpu").manual_seed(0)).sample
 
         actual_output = sample[0, :2, :2, :2].flatten().cpu()
         expected_output = torch.tensor(
