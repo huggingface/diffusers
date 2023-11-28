@@ -21,22 +21,6 @@ class Kandinsky3UNetOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
-# TODO(Yiyi): This class needs to be removed
-def set_default_item(condition, item_1, item_2=None):
-    if condition:
-        return item_1
-    else:
-        return item_2
-
-
-# TODO(Yiyi): This class needs to be removed: either layer_1 or nn.identity
-def set_default_layer(condition, layer_1, args_1=[], kwargs_1={}, layer_2=torch.nn.Identity, args_2=[], kwargs_2={}):
-    if condition:
-        return layer_1(*args_1, **kwargs_1)
-    else:
-        return layer_2(*args_2, **kwargs_2)
-
-
 # TODO(Yiyi): This class should be removed and be replaced by Timesteps
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
@@ -105,7 +89,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
 
         hidden_dims = [init_channels] + list(block_out_channels)
         in_out_dims = list(zip(hidden_dims[:-1], hidden_dims[1:]))
-        text_dims = [set_default_item(is_exist, cross_attention_dim) for is_exist in add_cross_attention]
+        text_dims = [cross_attention_dim if is_exist else None for is_exist in add_cross_attention]
         num_blocks = len(block_out_channels) * [layers_per_block]
         layer_params = [num_blocks, text_dims, add_self_attention]
         rev_layer_params = map(reversed, layer_params)
@@ -117,7 +101,7 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
             zip(in_out_dims, *layer_params)
         ):
             down_sample = level != (self.num_levels - 1)
-            cat_dims.append(set_default_item(level != (self.num_levels - 1), out_dim, 0))
+            cat_dims.append(out_dim if level != (self.num_levels - 1) else 0)
             self.down_blocks.append(
                 Kandinsky3DownSampleBlock(
                     in_dim,
@@ -289,7 +273,7 @@ class Kandinsky3UpSampleBlock(nn.Module):
         self_attention=True,
     ):
         super().__init__()
-        up_resolutions = [[None, set_default_item(up_sample, True), None, None]] + [[None] * 4] * (num_blocks - 1)
+        up_resolutions = [[None, True if up_sample else None, None, None]] + [[None] * 4] * (num_blocks - 1)
         hidden_channels = (
             [(in_channels + cat_dim, in_channels)]
             + [(in_channels, in_channels)] * (num_blocks - 2)
@@ -302,27 +286,27 @@ class Kandinsky3UpSampleBlock(nn.Module):
         self.self_attention = self_attention
         self.context_dim = context_dim
 
-        attentions.append(
-            set_default_layer(
-                self_attention,
-                Kandinsky3AttentionBlock,
-                (out_channels, time_embed_dim, None, groups, head_dim, expansion_ratio),
-                layer_2=nn.Identity,
+        if self_attention:
+            attentions.append(
+                Kandinsky3AttentionBlock(out_channels, time_embed_dim, None, groups, head_dim, expansion_ratio)
             )
-        )
+        else:
+            attentions.append(nn.Identity())
 
         for (in_channel, out_channel), up_resolution in zip(hidden_channels, up_resolutions):
             resnets_in.append(
                 Kandinsky3ResNetBlock(in_channel, in_channel, time_embed_dim, groups, compression_ratio, up_resolution)
             )
-            attentions.append(
-                set_default_layer(
-                    context_dim is not None,
-                    Kandinsky3AttentionBlock,
-                    (in_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
-                    layer_2=nn.Identity,
+
+            if context_dim is not None:
+                attentions.append(
+                    Kandinsky3AttentionBlock(
+                        in_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio
+                    )
                 )
-            )
+            else:
+                attentions.append(nn.Identity())
+
             resnets_out.append(
                 Kandinsky3ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio)
             )
@@ -366,29 +350,29 @@ class Kandinsky3DownSampleBlock(nn.Module):
         self.self_attention = self_attention
         self.context_dim = context_dim
 
-        attentions.append(
-            set_default_layer(
-                self_attention,
-                Kandinsky3AttentionBlock,
-                (in_channels, time_embed_dim, None, groups, head_dim, expansion_ratio),
-                layer_2=nn.Identity,
+        if self_attention:
+            attentions.append(
+                Kandinsky3AttentionBlock(in_channels, time_embed_dim, None, groups, head_dim, expansion_ratio)
             )
-        )
+        else:
+            attentions.append(nn.Identity())
 
-        up_resolutions = [[None] * 4] * (num_blocks - 1) + [[None, None, set_default_item(down_sample, False), None]]
+        up_resolutions = [[None] * 4] * (num_blocks - 1) + [[None, None, False if down_sample else None, None]]
         hidden_channels = [(in_channels, out_channels)] + [(out_channels, out_channels)] * (num_blocks - 1)
         for (in_channel, out_channel), up_resolution in zip(hidden_channels, up_resolutions):
             resnets_in.append(
                 Kandinsky3ResNetBlock(in_channel, out_channel, time_embed_dim, groups, compression_ratio)
             )
-            attentions.append(
-                set_default_layer(
-                    context_dim is not None,
-                    Kandinsky3AttentionBlock,
-                    (out_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio),
-                    layer_2=nn.Identity,
+
+            if context_dim is not None:
+                attentions.append(
+                    Kandinsky3AttentionBlock(
+                        out_channel, time_embed_dim, context_dim, groups, head_dim, expansion_ratio
+                    )
                 )
-            )
+            else:
+                attentions.append(nn.Identity())
+
             resnets_out.append(
                 Kandinsky3ResNetBlock(
                     out_channel, out_channel, time_embed_dim, groups, compression_ratio, up_resolution
@@ -436,20 +420,18 @@ class Kandinsky3Block(nn.Module):
         super().__init__()
         self.group_norm = Kandinsky3ConditionalGroupNorm(norm_groups, in_channels, time_embed_dim)
         self.activation = nn.SiLU()
-        self.up_sample = set_default_layer(
-            up_resolution is not None and up_resolution,
-            nn.ConvTranspose2d,
-            (in_channels, in_channels),
-            {"kernel_size": 2, "stride": 2},
-        )
+        if up_resolution is not None and up_resolution:
+            self.up_sample = nn.ConvTranspose2d(in_channels, in_channels, kernel_size=2, stride=2)
+        else:
+            self.up_sample = nn.Identity()
+
         padding = int(kernel_size > 1)
         self.projection = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding)
-        self.down_sample = set_default_layer(
-            up_resolution is not None and not up_resolution,
-            nn.Conv2d,
-            (out_channels, out_channels),
-            {"kernel_size": 2, "stride": 2},
-        )
+
+        if up_resolution is not None and not up_resolution:
+            self.down_sample = nn.Conv2d(out_channels, out_channels, kernel_size=2, stride=2)
+        else:
+            self.down_sample = nn.Identity()
 
     def forward(self, x, time_embed):
         x = self.group_norm(x, time_embed)
@@ -478,14 +460,18 @@ class Kandinsky3ResNetBlock(nn.Module):
                 )
             ]
         )
-        self.shortcut_up_sample = set_default_layer(
-            True in up_resolutions, nn.ConvTranspose2d, (in_channels, in_channels), {"kernel_size": 2, "stride": 2}
+        self.shortcut_up_sample = (
+            nn.ConvTranspose2d(in_channels, in_channels, kernel_size=2, stride=2)
+            if True in up_resolutions
+            else nn.Identity()
         )
-        self.shortcut_projection = set_default_layer(
-            in_channels != out_channels, nn.Conv2d, (in_channels, out_channels), {"kernel_size": 1}
+        self.shortcut_projection = (
+            nn.Conv2d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else nn.Identity()
         )
-        self.shortcut_down_sample = set_default_layer(
-            False in up_resolutions, nn.Conv2d, (out_channels, out_channels), {"kernel_size": 2, "stride": 2}
+        self.shortcut_down_sample = (
+            nn.Conv2d(out_channels, out_channels, kernel_size=2, stride=2)
+            if False in up_resolutions
+            else nn.Identity()
         )
 
     def forward(self, x, time_embed):
