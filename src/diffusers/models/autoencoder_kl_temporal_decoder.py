@@ -27,8 +27,8 @@ from .attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .autoencoder_kl import AutoencoderKLOutput
 from .modeling_utils import ModelMixin
+from .modelling_outputs import AutoencoderKLOutput
 from .unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
 
@@ -252,9 +252,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
 
         self.use_slicing = False
-
-        # only relevant if vae tiling is enabled
-        self.tile_sample_min_size = self.config.sample_size
         sample_size = (
             self.config.sample_size[0]
             if isinstance(self.config.sample_size, (list, tuple))
