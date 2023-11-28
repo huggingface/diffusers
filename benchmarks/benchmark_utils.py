@@ -3,7 +3,7 @@ import csv
 import gc
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Dict, List, Union
 
 import torch
 import torch.utils.benchmark as benchmark
@@ -56,7 +56,7 @@ def benchmark_fn(f, *args, **kwargs):
 
 def generate_csv_dict(
     pipeline_cls: str, ckpt: str, args: argparse.Namespace, benchmark_info: BenchmarkInfo
-) -> Dict[str, Any]:
+) -> Dict[str, Union[str, bool, float]]:
     """Packs benchmarking data into a dictionary for latter serialization."""
     data_dict = {
         "pipeline_cls": pipeline_cls,
@@ -73,7 +73,7 @@ def generate_csv_dict(
     return data_dict
 
 
-def write_to_csv(file_name: str, data_dict: Dict[str, Any]):
+def write_to_csv(file_name: str, data_dict: Dict[str, Union[str, bool, float]]):
     """Serializes a dictionary into a CSV file."""
     with open(file_name, mode="w", newline="") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=BENCHMARK_FIELDS)
