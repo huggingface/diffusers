@@ -50,7 +50,9 @@ def main(args) -> dict:
     memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
     benchmark_info = BenchmarkInfo(time=time, memory=memory)
 
-    csv_dict = generate_csv_dict(pipeline=CKPT, args=args, benchmark_info=benchmark_info)
+    csv_dict = generate_csv_dict(
+        pipeline_cls=str(pipeline.__class__.__name__), ckpt=CKPT, args=args, benchmark_info=benchmark_info
+    )
     return csv_dict
 
 

@@ -11,7 +11,8 @@ import torch.utils.benchmark as benchmark
 
 GITHUB_SHA = os.getenv("GITHUB_SHA", None)
 BENCHMARK_FIELDS = [
-    "pipeline",
+    "pipeline_cls",
+    "ckpt_id",
     "batch_size",
     "num_inference_steps",
     "model_cpu_offload",
@@ -20,9 +21,9 @@ BENCHMARK_FIELDS = [
     "memory (gbs)",
     "github_sha",
 ]
-
 PROMPT = "ghibli style, a fantasy landscape with castles"
 BASE_PATH = "benchmark_outputs"
+TOTAL_GPU_MEMORY = torch.cuda.get_device_properties(0).total_memory / (1024**3)
 
 
 @dataclass
@@ -52,16 +53,20 @@ def benchmark_fn(f, *args, **kwargs):
     return f"{(t0.blocked_autorange().mean):.3f}"
 
 
-def generate_csv_dict(pipeline: str, args: argparse.Namespace, benchmark_info: BenchmarkInfo) -> Dict[str, Any]:
+def generate_csv_dict(
+    pipeline_cls: str, ckpt: str, args: argparse.Namespace, benchmark_info: BenchmarkInfo
+) -> Dict[str, Any]:
     """Packs benchmarking data into a dictionary for latter serialization."""
     data_dict = {
-        "pipeline": pipeline,
+        "pipeline_cls": pipeline_cls,
+        "ckpt_id": ckpt,
         "batch_size": args.batch_size,
         "num_inference_steps": args.num_inference_steps,
         "model_cpu_offload": args.model_cpu_offload,
         "run_compile": args.run_compile,
         "time (secs)": benchmark_info.time,
         "memory (gbs)": benchmark_info.memory,
+        "actual_gpu_memory (gbs)": TOTAL_GPU_MEMORY,
         "github_sha": GITHUB_SHA,
     }
     return data_dict
