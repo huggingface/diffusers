@@ -1408,11 +1408,11 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**unet_kwargs)
         unet_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=True
+            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
         return unet, unet_lora_config
 
-    def get_dummy_input(self):
+    def get_dummy_inputs(self):
         batch_size = 2
         num_channels = 4
         sizes = (32, 32)
@@ -1426,7 +1426,7 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
     def test_inference(self):
         unet, unet_lora_config = self.get_dummy_components()
         unet = get_peft_model(unet, unet_lora_config)
-        inputs = self.get_dummy_input()
+        inputs = self.get_dummy_inputs()
         outputs = unet(**inputs).sample
 
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -1436,6 +1436,9 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
 
             unet, _ = self.get_dummy_components()
             unet.load_lora(tmpdirname)
+
+            has_peft_layer = any(isinstance(unet_module, BaseTunerLayer) for unet_module in unet.modules())
+            assert has_peft_layer, "No PEFT layer found"
 
             outputs_with_lora = unet(**inputs).sample
 
