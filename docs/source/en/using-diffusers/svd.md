@@ -75,6 +75,25 @@ You can achieve a 20-25% speed-up at the expense of slightly increased memory by
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
+### Low-memory
+
+Video generation is very memory intensive as we have to essentially generate `num_frames` all at once. The mechanism is very comparable to text-to-image generation with a high batch size. To reduce the memory requirement you have multiple options. The following options trade inference speed against lower memory requirement:
+- enable model offloading: Each component of the pipeline is offloaded to CPU once it's not needed anymore.
+- enable feed-forward chunking: The feed-forward layer runs in a loop instead of running with a single huge feed-forward batch size
+- reduce `decode_chunk_size`: This means that the VAE decodes frames in chunks instead of decoding them all together. **Note**: In addition to leading to a small slowdown, this method also slightly leads to video quality deterioration
+
+ You can enable them as follows:
+ ```diff
+-pipe.enable_model_cpu_offload()
+-frames = pipe(image, decode_chunk_size=8, generator=generator).frames[0]
++pipe.enable_model_cpu_offload()
++pipe.unet.enable_forward_chunking()
++frames = pipe(image, decode_chunk_size=2, generator=generator, num_frames=25).frames[0]
+```
+
+
+Including all these tricks should lower the memory requirement to less than 8GB VRAM.
+
 ### Micro-conditioning
 
 Along with conditioning image Stable Diffusion Video also allows providing micro-conditioning that allows more control over the generated video.
