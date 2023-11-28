@@ -42,23 +42,25 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
 
     @property
     def dummy_input(self):
-        batch_size = 4
+        batch_size = 2
+        num_frames = 2
         num_channels = 4
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        noise = floats_tensor((batch_size, num_frames, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 1, 32)).to(torch_device)
 
         return {
             "sample": noise,
             "timestep": time_step,
             "encoder_hidden_states": encoder_hidden_states,
+            "added_time_ids": self._get_add_time_ids(),
         }
 
     @property
     def input_shape(self):
-        return (4, 32, 32)
+        return (2, 2, 4, 32, 32)
 
     @property
     def output_shape(self):
@@ -75,6 +77,10 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
     @property
     def noise_aug_strength(self):
         return 0.02
+
+    @property
+    def addition_time_embed_dim(self):
+        return 32
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
@@ -93,9 +99,49 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
             "in_channels": 4,
             "layers_per_block": 2,
             "sample_size": 32,
+            "projection_class_embeddings_input_dim": self.addition_time_embed_dim * 3,
+            "addition_time_embed_dim": self.addition_time_embed_dim,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+
+    def _get_add_time_ids(self, do_classifier_free_guidance=True):
+        add_time_ids = [self.fps, self.motion_bucket_id, self.noise_aug_strength]
+
+        passed_add_embed_dim = self.addition_time_embed_dim * len(add_time_ids)
+        expected_add_embed_dim = self.addition_time_embed_dim * 3
+
+        if expected_add_embed_dim != passed_add_embed_dim:
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
+            )
+
+        add_time_ids = torch.tensor([add_time_ids], device=torch_device)
+        add_time_ids = add_time_ids.repeat(1, 1)
+        if do_classifier_free_guidance:
+            add_time_ids = torch.cat([add_time_ids, add_time_ids])
+
+        return add_time_ids
+
+    @unittest.skip("Number of Norm Groups is not configurable")
+    def test_forward_with_norm_groups(self):
+        pass
+
+    @unittest.skip("Deprecated functionality")
+    def test_model_attention_slicing(self):
+        pass
+
+    @unittest.skip("Not supported")
+    def test_model_with_use_linear_projection(self):
+        pass
+
+    @unittest.skip("Not supported")
+    def test_model_with_simple_projection(self):
+        pass
+
+    @unittest.skip("Not supported")
+    def test_model_with_class_embeddings_concat(self):
+        pass
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -157,26 +203,6 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["num_attention_heads"] = (8, 16)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-            if isinstance(output, dict):
-                output = output.sample
-
-        self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_model_with_use_linear_projection(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["use_linear_projection"] = True
-
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
@@ -210,97 +236,6 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
-    def test_model_with_simple_projection(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        batch_size, _, _, sample_size = inputs_dict["sample"].shape
-
-        init_dict["class_embed_type"] = "simple_projection"
-        init_dict["projection_class_embeddings_input_dim"] = sample_size
-
-        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-            if isinstance(output, dict):
-                output = output.sample
-
-        self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_model_with_class_embeddings_concat(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        batch_size, _, _, sample_size = inputs_dict["sample"].shape
-
-        init_dict["class_embed_type"] = "simple_projection"
-        init_dict["projection_class_embeddings_input_dim"] = sample_size
-        init_dict["class_embeddings_concat"] = True
-
-        inputs_dict["class_labels"] = floats_tensor((batch_size, sample_size)).to(torch_device)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-            if isinstance(output, dict):
-                output = output.sample
-
-        self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_model_attention_slicing(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["num_attention_heads"] = (8, 16)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        model.set_attention_slice("auto")
-        with torch.no_grad():
-            output = model(**inputs_dict)
-        assert output is not None
-
-        model.set_attention_slice("max")
-        with torch.no_grad():
-            output = model(**inputs_dict)
-        assert output is not None
-
-        model.set_attention_slice(2)
-        with torch.no_grad():
-            output = model(**inputs_dict)
-        assert output is not None
-
-    def test_model_sliceable_head_dim(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["num_attention_heads"] = (8, 16)
-
-        model = self.model_class(**init_dict)
-
-        def check_sliceable_dim_attr(module: torch.nn.Module):
-            if hasattr(module, "set_attention_slice"):
-                assert isinstance(module.sliceable_head_dim, int)
-
-            for child in module.children():
-                check_sliceable_dim_attr(child)
-
-        # retrieve number of attention layers
-        for module in model.children():
-            check_sliceable_dim_attr(module)
-
     def test_gradient_checkpointing_is_applied(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -326,12 +261,12 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         model.enable_gradient_checkpointing()
 
         EXPECTED_SET = {
-            "CrossAttnUpBlock2D",
-            "CrossAttnDownBlock2D",
-            "UNetMidBlock2DCrossAttn",
-            "UpBlock2D",
-            "Transformer2DModel",
-            "DownBlock2D",
+            "TransformerSpatioTemporalModel",
+            "CrossAttnDownBlockSpatioTemporal",
+            "DownBlockSpatioTemporal",
+            "UpBlockSpatioTemporal",
+            "CrossAttnUpBlockSpatioTemporal",
+            "UNetMidBlockSpatioTemporal",
         }
 
         assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET

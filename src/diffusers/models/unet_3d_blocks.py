@@ -1965,6 +1965,8 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
+                    num_video_frames,
+                    image_only_indicator,
                     **ckpt_kwargs,
                 )
             else:
@@ -2168,11 +2170,16 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
+                    num_video_frames,
+                    image_only_indicator,
                     **ckpt_kwargs,
                 )
+
                 hidden_states = attn(
                     hidden_states,
+                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
+                    image_only_indicator=image_only_indicator,
                     return_dict=False,
                 )[0]
             else:
@@ -2384,11 +2391,15 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
+                    num_video_frames,
+                    image_only_indicator,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(
                     hidden_states,
+                    num_frames=num_video_frames,
                     encoder_hidden_states=encoder_hidden_states,
+                    image_only_indicator=image_only_indicator,
                     return_dict=False,
                 )[0]
             else:
