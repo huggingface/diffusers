@@ -21,13 +21,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalVAEMixin
 from ..utils import BaseOutput, is_torch_version
 from ..utils.accelerate_utils import apply_forward_hook
-from .attention_processor import (
-    ADDED_KV_ATTENTION_PROCESSORS,
-    CROSS_ATTENTION_PROCESSORS,
-    AttentionProcessor,
-    AttnAddedKVProcessor,
-    AttnProcessor,
-)
+from .attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
 from .modeling_utils import ModelMixin
 from .unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
@@ -38,12 +32,7 @@ class TemporalDecoder(nn.Module):
         self,
         in_channels: int = 4,
         out_channels: int = 3,
-        block_out_channels: Tuple[int, ...] = (
-            128,
-            256,
-            512,
-            512,
-        ),
+        block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         layers_per_block: int = 2,
     ):
         super().__init__()
@@ -379,14 +368,11 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
         """
-        if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnAddedKVProcessor()
-        elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
+        if all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnProcessor()
         else:
             raise ValueError(
