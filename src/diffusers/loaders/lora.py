@@ -22,7 +22,7 @@ from huggingface_hub import model_info
 from packaging import version
 from torch import nn
 
-from .lora_conversion_utils import _maybe_map_sgm_blocks_to_diffusers
+from .lora_conversion_utils import _maybe_map_sgm_blocks_to_diffusers, _convert_kohya_lora_to_diffusers
 from .. import __version__
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
@@ -289,7 +289,7 @@ class LoraLoaderMixin:
             if unet_config is not None:
                 # use unet config to remap block numbers
                 state_dict = _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config)
-            state_dict, network_alphas = cls._convert_kohya_lora_to_diffusers(state_dict)
+            state_dict, network_alphas = _convert_kohya_lora_to_diffusers(state_dict)
 
         return state_dict, network_alphas
 
@@ -972,170 +972,170 @@ class LoraLoaderMixin:
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
-    @classmethod
-    def _convert_kohya_lora_to_diffusers(cls, state_dict):
-        unet_state_dict = {}
-        te_state_dict = {}
-        te2_state_dict = {}
-        network_alphas = {}
+    # @classmethod
+    # def _convert_kohya_lora_to_diffusers(cls, state_dict):
+    #     unet_state_dict = {}
+    #     te_state_dict = {}
+    #     te2_state_dict = {}
+    #     network_alphas = {}
 
-        # every down weight has a corresponding up weight and potentially an alpha weight
-        lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
-        for key in lora_keys:
-            lora_name = key.split(".")[0]
-            lora_name_up = lora_name + ".lora_up.weight"
-            lora_name_alpha = lora_name + ".alpha"
+    #     # every down weight has a corresponding up weight and potentially an alpha weight
+    #     lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
+    #     for key in lora_keys:
+    #         lora_name = key.split(".")[0]
+    #         lora_name_up = lora_name + ".lora_up.weight"
+    #         lora_name_alpha = lora_name + ".alpha"
 
-            if lora_name.startswith("lora_unet_"):
-                diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
+    #         if lora_name.startswith("lora_unet_"):
+    #             diffusers_name = key.replace("lora_unet_", "").replace("_", ".")
 
-                if "input.blocks" in diffusers_name:
-                    diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
-                else:
-                    diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
+    #             if "input.blocks" in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("input.blocks", "down_blocks")
+    #             else:
+    #                 diffusers_name = diffusers_name.replace("down.blocks", "down_blocks")
 
-                if "middle.block" in diffusers_name:
-                    diffusers_name = diffusers_name.replace("middle.block", "mid_block")
-                else:
-                    diffusers_name = diffusers_name.replace("mid.block", "mid_block")
-                if "output.blocks" in diffusers_name:
-                    diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
-                else:
-                    diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
+    #             if "middle.block" in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("middle.block", "mid_block")
+    #             else:
+    #                 diffusers_name = diffusers_name.replace("mid.block", "mid_block")
+    #             if "output.blocks" in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("output.blocks", "up_blocks")
+    #             else:
+    #                 diffusers_name = diffusers_name.replace("up.blocks", "up_blocks")
 
-                diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
-                diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
-                diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
-                diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
-                diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
-                diffusers_name = diffusers_name.replace("proj.in", "proj_in")
-                diffusers_name = diffusers_name.replace("proj.out", "proj_out")
-                diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
+    #             diffusers_name = diffusers_name.replace("transformer.blocks", "transformer_blocks")
+    #             diffusers_name = diffusers_name.replace("to.q.lora", "to_q_lora")
+    #             diffusers_name = diffusers_name.replace("to.k.lora", "to_k_lora")
+    #             diffusers_name = diffusers_name.replace("to.v.lora", "to_v_lora")
+    #             diffusers_name = diffusers_name.replace("to.out.0.lora", "to_out_lora")
+    #             diffusers_name = diffusers_name.replace("proj.in", "proj_in")
+    #             diffusers_name = diffusers_name.replace("proj.out", "proj_out")
+    #             diffusers_name = diffusers_name.replace("emb.layers", "time_emb_proj")
 
-                # SDXL specificity.
-                if "emb" in diffusers_name and "time.emb.proj" not in diffusers_name:
-                    pattern = r"\.\d+(?=\D*$)"
-                    diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
-                if ".in." in diffusers_name:
-                    diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
-                if ".out." in diffusers_name:
-                    diffusers_name = diffusers_name.replace("out.layers.3", "conv2")
-                if "downsamplers" in diffusers_name or "upsamplers" in diffusers_name:
-                    diffusers_name = diffusers_name.replace("op", "conv")
-                if "skip" in diffusers_name:
-                    diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
+    #             # SDXL specificity.
+    #             if "emb" in diffusers_name and "time.emb.proj" not in diffusers_name:
+    #                 pattern = r"\.\d+(?=\D*$)"
+    #                 diffusers_name = re.sub(pattern, "", diffusers_name, count=1)
+    #             if ".in." in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("in.layers.2", "conv1")
+    #             if ".out." in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("out.layers.3", "conv2")
+    #             if "downsamplers" in diffusers_name or "upsamplers" in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("op", "conv")
+    #             if "skip" in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("skip.connection", "conv_shortcut")
 
-                # LyCORIS specificity.
-                if "time.emb.proj" in diffusers_name:
-                    diffusers_name = diffusers_name.replace("time.emb.proj", "time_emb_proj")
-                if "conv.shortcut" in diffusers_name:
-                    diffusers_name = diffusers_name.replace("conv.shortcut", "conv_shortcut")
+    #             # LyCORIS specificity.
+    #             if "time.emb.proj" in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("time.emb.proj", "time_emb_proj")
+    #             if "conv.shortcut" in diffusers_name:
+    #                 diffusers_name = diffusers_name.replace("conv.shortcut", "conv_shortcut")
 
-                # General coverage.
-                if "transformer_blocks" in diffusers_name:
-                    if "attn1" in diffusers_name or "attn2" in diffusers_name:
-                        diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
-                        diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
-                        unet_state_dict[diffusers_name] = state_dict.pop(key)
-                        unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-                    elif "ff" in diffusers_name:
-                        unet_state_dict[diffusers_name] = state_dict.pop(key)
-                        unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-                elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
-                    unet_state_dict[diffusers_name] = state_dict.pop(key)
-                    unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-                else:
-                    unet_state_dict[diffusers_name] = state_dict.pop(key)
-                    unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #             # General coverage.
+    #             if "transformer_blocks" in diffusers_name:
+    #                 if "attn1" in diffusers_name or "attn2" in diffusers_name:
+    #                     diffusers_name = diffusers_name.replace("attn1", "attn1.processor")
+    #                     diffusers_name = diffusers_name.replace("attn2", "attn2.processor")
+    #                     unet_state_dict[diffusers_name] = state_dict.pop(key)
+    #                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #                 elif "ff" in diffusers_name:
+    #                     unet_state_dict[diffusers_name] = state_dict.pop(key)
+    #                     unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #             elif any(key in diffusers_name for key in ("proj_in", "proj_out")):
+    #                 unet_state_dict[diffusers_name] = state_dict.pop(key)
+    #                 unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #             else:
+    #                 unet_state_dict[diffusers_name] = state_dict.pop(key)
+    #                 unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-            elif lora_name.startswith("lora_te_"):
-                diffusers_name = key.replace("lora_te_", "").replace("_", ".")
-                diffusers_name = diffusers_name.replace("text.model", "text_model")
-                diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-                diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-                diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-                diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-                diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-                if "self_attn" in diffusers_name:
-                    te_state_dict[diffusers_name] = state_dict.pop(key)
-                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-                elif "mlp" in diffusers_name:
-                    # Be aware that this is the new diffusers convention and the rest of the code might
-                    # not utilize it yet.
-                    diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
-                    te_state_dict[diffusers_name] = state_dict.pop(key)
-                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #         elif lora_name.startswith("lora_te_"):
+    #             diffusers_name = key.replace("lora_te_", "").replace("_", ".")
+    #             diffusers_name = diffusers_name.replace("text.model", "text_model")
+    #             diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+    #             diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+    #             diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+    #             diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+    #             diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+    #             if "self_attn" in diffusers_name:
+    #                 te_state_dict[diffusers_name] = state_dict.pop(key)
+    #                 te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #             elif "mlp" in diffusers_name:
+    #                 # Be aware that this is the new diffusers convention and the rest of the code might
+    #                 # not utilize it yet.
+    #                 diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+    #                 te_state_dict[diffusers_name] = state_dict.pop(key)
+    #                 te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-            # (sayakpaul): Duplicate code. Needs to be cleaned.
-            elif lora_name.startswith("lora_te1_"):
-                diffusers_name = key.replace("lora_te1_", "").replace("_", ".")
-                diffusers_name = diffusers_name.replace("text.model", "text_model")
-                diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-                diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-                diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-                diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-                diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-                if "self_attn" in diffusers_name:
-                    te_state_dict[diffusers_name] = state_dict.pop(key)
-                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-                elif "mlp" in diffusers_name:
-                    # Be aware that this is the new diffusers convention and the rest of the code might
-                    # not utilize it yet.
-                    diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
-                    te_state_dict[diffusers_name] = state_dict.pop(key)
-                    te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #         # (sayakpaul): Duplicate code. Needs to be cleaned.
+    #         elif lora_name.startswith("lora_te1_"):
+    #             diffusers_name = key.replace("lora_te1_", "").replace("_", ".")
+    #             diffusers_name = diffusers_name.replace("text.model", "text_model")
+    #             diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+    #             diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+    #             diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+    #             diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+    #             diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+    #             if "self_attn" in diffusers_name:
+    #                 te_state_dict[diffusers_name] = state_dict.pop(key)
+    #                 te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #             elif "mlp" in diffusers_name:
+    #                 # Be aware that this is the new diffusers convention and the rest of the code might
+    #                 # not utilize it yet.
+    #                 diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+    #                 te_state_dict[diffusers_name] = state_dict.pop(key)
+    #                 te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-            # (sayakpaul): Duplicate code. Needs to be cleaned.
-            elif lora_name.startswith("lora_te2_"):
-                diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
-                diffusers_name = diffusers_name.replace("text.model", "text_model")
-                diffusers_name = diffusers_name.replace("self.attn", "self_attn")
-                diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
-                diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
-                diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
-                diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
-                if "self_attn" in diffusers_name:
-                    te2_state_dict[diffusers_name] = state_dict.pop(key)
-                    te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
-                elif "mlp" in diffusers_name:
-                    # Be aware that this is the new diffusers convention and the rest of the code might
-                    # not utilize it yet.
-                    diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
-                    te2_state_dict[diffusers_name] = state_dict.pop(key)
-                    te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #         # (sayakpaul): Duplicate code. Needs to be cleaned.
+    #         elif lora_name.startswith("lora_te2_"):
+    #             diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
+    #             diffusers_name = diffusers_name.replace("text.model", "text_model")
+    #             diffusers_name = diffusers_name.replace("self.attn", "self_attn")
+    #             diffusers_name = diffusers_name.replace("q.proj.lora", "to_q_lora")
+    #             diffusers_name = diffusers_name.replace("k.proj.lora", "to_k_lora")
+    #             diffusers_name = diffusers_name.replace("v.proj.lora", "to_v_lora")
+    #             diffusers_name = diffusers_name.replace("out.proj.lora", "to_out_lora")
+    #             if "self_attn" in diffusers_name:
+    #                 te2_state_dict[diffusers_name] = state_dict.pop(key)
+    #                 te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+    #             elif "mlp" in diffusers_name:
+    #                 # Be aware that this is the new diffusers convention and the rest of the code might
+    #                 # not utilize it yet.
+    #                 diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
+    #                 te2_state_dict[diffusers_name] = state_dict.pop(key)
+    #                 te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
-            # Rename the alphas so that they can be mapped appropriately.
-            if lora_name_alpha in state_dict:
-                alpha = state_dict.pop(lora_name_alpha).item()
-                if lora_name_alpha.startswith("lora_unet_"):
-                    prefix = "unet."
-                elif lora_name_alpha.startswith(("lora_te_", "lora_te1_")):
-                    prefix = "text_encoder."
-                else:
-                    prefix = "text_encoder_2."
-                new_name = prefix + diffusers_name.split(".lora.")[0] + ".alpha"
-                network_alphas.update({new_name: alpha})
+    #         # Rename the alphas so that they can be mapped appropriately.
+    #         if lora_name_alpha in state_dict:
+    #             alpha = state_dict.pop(lora_name_alpha).item()
+    #             if lora_name_alpha.startswith("lora_unet_"):
+    #                 prefix = "unet."
+    #             elif lora_name_alpha.startswith(("lora_te_", "lora_te1_")):
+    #                 prefix = "text_encoder."
+    #             else:
+    #                 prefix = "text_encoder_2."
+    #             new_name = prefix + diffusers_name.split(".lora.")[0] + ".alpha"
+    #             network_alphas.update({new_name: alpha})
 
-        if len(state_dict) > 0:
-            raise ValueError(
-                f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
-            )
+    #     if len(state_dict) > 0:
+    #         raise ValueError(
+    #             f"The following keys have not been correctly be renamed: \n\n {', '.join(state_dict.keys())}"
+    #         )
 
-        logger.info("Kohya-style checkpoint detected.")
-        unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
-        te_state_dict = {
-            f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()
-        }
-        te2_state_dict = (
-            {f"text_encoder_2.{module_name}": params for module_name, params in te2_state_dict.items()}
-            if len(te2_state_dict) > 0
-            else None
-        )
-        if te2_state_dict is not None:
-            te_state_dict.update(te2_state_dict)
+    #     logger.info("Kohya-style checkpoint detected.")
+    #     unet_state_dict = {f"{cls.unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
+    #     te_state_dict = {
+    #         f"{cls.text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()
+    #     }
+    #     te2_state_dict = (
+    #         {f"text_encoder_2.{module_name}": params for module_name, params in te2_state_dict.items()}
+    #         if len(te2_state_dict) > 0
+    #         else None
+    #     )
+    #     if te2_state_dict is not None:
+    #         te_state_dict.update(te2_state_dict)
 
-        new_state_dict = {**unet_state_dict, **te_state_dict}
-        return new_state_dict, network_alphas
+    #     new_state_dict = {**unet_state_dict, **te_state_dict}
+    #     return new_state_dict, network_alphas
 
     def unload_lora_weights(self):
         """

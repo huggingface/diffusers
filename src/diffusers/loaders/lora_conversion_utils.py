@@ -123,7 +123,7 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
     return new_state_dict
 
 
-def _convert_kohya_lora_to_diffusers(state_dict, unet_name, text_encoder_name):
+def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_name="text_encoder"):
     unet_state_dict = {}
     te_state_dict = {}
     te2_state_dict = {}
@@ -258,11 +258,11 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name, text_encoder_name):
         if lora_name_alpha in state_dict:
             alpha = state_dict.pop(lora_name_alpha).item()
             if lora_name_alpha.startswith("lora_unet_"):
-                prefix = f"{unet_name}."
+                prefix = "unet."
             elif lora_name_alpha.startswith(("lora_te_", "lora_te1_")):
-                prefix = f"{text_encoder_name}."
+                prefix = "text_encoder."
             else:
-                prefix = f"{text_encoder_name}_2."
+                prefix = "text_encoder_2."
             new_name = prefix + diffusers_name.split(".lora.")[0] + ".alpha"
             network_alphas.update({new_name: alpha})
 
@@ -273,7 +273,7 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name, text_encoder_name):
     unet_state_dict = {f"{unet_name}.{module_name}": params for module_name, params in unet_state_dict.items()}
     te_state_dict = {f"{text_encoder_name}.{module_name}": params for module_name, params in te_state_dict.items()}
     te2_state_dict = (
-        {f"{text_encoder_name}_2.{module_name}": params for module_name, params in te2_state_dict.items()}
+        {f"text_encoder_2.{module_name}": params for module_name, params in te2_state_dict.items()}
         if len(te2_state_dict) > 0
         else None
     )
