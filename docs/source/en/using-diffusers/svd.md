@@ -89,9 +89,11 @@ Video generation is very memory intensive as we have to essentially generate `nu
 +pipe.enable_model_cpu_offload()
 +pipe.unet.enable_forward_chunking()
 +frames = pipe(image, decode_chunk_size=2, generator=generator, num_frames=25).frames[0]
+```
 
 
 Including all these tricks should lower the memory requirement to less than 8GB VRAM.
+
 ### Micro-conditioning
 
 Along with conditioning image Stable Diffusion Video also allows providing micro-conditioning that allows more control over the generated video.
