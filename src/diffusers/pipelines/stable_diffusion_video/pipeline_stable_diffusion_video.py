@@ -282,7 +282,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         min_guidance_scale: float = 1.0,
         max_guidance_scale: float = 2.5,
-        fps: int = 6,
+        fps: int = 7,
         motion_bucket_id: int = 127,
         noise_aug_strength: int = 0.02,
         decode_chunk_size: int = 14,
@@ -312,8 +312,9 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 The minimum guidance scale. Used for the classifier free guidance with first frame.
             max_guidance_scale (`float`, *optional*, defaults to 2.5):
                 The maximum guidance scale. Used for the classifier free guidance with last frame.
-            fps (`int`, *optional*, defaults to 6):
-                The frame rate ID. Used as conditioning for the generation.
+            fps (`int`, *optional*, defaults to 7):
+                Frames per second. The rate at which the generated images shall be exported to a video after generation.
+                Note that Stable Diffusion Video's UNet was micro-conditioned on fps-1 during training.
             motion_bucket_id (`int`, *optional*, defaults to 127):
                 The motion bucket ID. Used as conditioning for the generation. The higher the number the more motion will be in the video.
             noise_aug_strength (`int`, *optional*, defaults to 0.02):
@@ -378,6 +379,11 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         # 3. Encode input image
         image_embeddings = self._encode_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
+
+        # NOTE: Stable Diffusion Video was conditioned on fps - 1, which 
+        # is why it is reduced here.
+        # See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
+        fps = fps - 1
 
         # 4. Encode input image using VAE
         image = self.image_processor.preprocess(image, height=height, width=width)
