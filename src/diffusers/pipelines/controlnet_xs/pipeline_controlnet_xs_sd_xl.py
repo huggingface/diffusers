@@ -152,6 +152,12 @@ class StableDiffusionXLControlNetXSPipeline(
     ):
         super().__init__()
 
+        num_vae_down_blocks = len(vae.encoder.down_blocks)
+        num_controlnet_conditioning_down_blocks = len(controlnet.config.conditioning_block_sizes)
+        if num_vae_down_blocks != num_controlnet_conditioning_down_blocks:
+            raise ValueError(f"The number of down blocks in the VAE ({num_vae_down_blocks}) and the conditioning part of ControlNetXS model {num_controlnet_conditioning_down_blocks} need to be equal. Consider building the ControlNetXS model with different `conditioning_block_sizes`.")
+
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -606,7 +612,6 @@ class StableDiffusionXLControlNetXSPipeline(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_image(
         self,
         image,
@@ -617,7 +622,6 @@ class StableDiffusionXLControlNetXSPipeline(
         device,
         dtype,
         do_classifier_free_guidance=False,
-        guess_mode=False,
     ):
         image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
@@ -632,7 +636,7 @@ class StableDiffusionXLControlNetXSPipeline(
 
         image = image.to(device=device, dtype=dtype)
 
-        if do_classifier_free_guidance and not guess_mode:
+        if do_classifier_free_guidance:
             image = torch.cat([image] * 2)
 
         return image
@@ -749,7 +753,6 @@ class StableDiffusionXLControlNetXSPipeline(
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
-        guess_mode: bool = False,
         control_guidance_start: float = 0.0,
         control_guidance_end: float = 1.0,
         original_size: Tuple[int, int] = None,
@@ -839,9 +842,6 @@ class StableDiffusionXLControlNetXSPipeline(
             controlnet_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
                 The outputs of the ControlNet are multiplied by `controlnet_conditioning_scale` before they are added
                 to the residual in the original `unet`.
-            guess_mode (`bool`, *optional*, defaults to `False`):
-                The ControlNet encoder tries to recognize the content of the input image even if you remove all
-                prompts. A `guidance_scale` value between 3.0 and 5.0 is recommended.
             control_guidance_start (`float`, *optional*, defaults to 0.0):
                 The percentage of total steps at which the ControlNet starts applying.
             control_guidance_end (`float`, *optional*, defaults to 1.0):
@@ -955,7 +955,6 @@ class StableDiffusionXLControlNetXSPipeline(
                 device=device,
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=do_classifier_free_guidance,
-                guess_mode=guess_mode,
             )
             height, width = image.shape[-2:]
         else:
