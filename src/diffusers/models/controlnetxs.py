@@ -25,6 +25,7 @@ from ..utils import BaseOutput, logging
 from .attention_processor import (
     AttentionProcessor,
 )
+from .autoencoder_kl import AutoencoderKL
 from .lora import LoRACompatibleConv
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
@@ -55,9 +56,6 @@ class ControlNetXSOutput(BaseOutput):
     """
 
     sample: torch.FloatTensor = None
-
-
-# todo umer: assert in pipe that conditioning_block_sizes matches vae downblocks
 
 
 class ControlNetXSModel(ModelMixin, ConfigMixin):
@@ -573,7 +571,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
-        guess_mode: bool = False,  # todo umer: understand and implement if required
         return_dict: bool = True,
     ) -> Union[ControlNetXSOutput, Tuple]:
         """
@@ -606,8 +603,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 Additional conditions for the Stable Diffusion XL UNet.
             cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
-            # guess_mode (`bool`, defaults to `False`):
-                # todo umer
             return_dict (`bool`, defaults to `True`):
                 Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
 
@@ -778,6 +773,32 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         self.out_channels = out_channels or in_channels
 
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
+
+    @torch.no_grad()
+    def _check_if_vae_compatible(self, vae: AutoencoderKL):
+        condition_downscale_factor = 2 ** (len(self.config.conditioning_block_sizes) - 1)
+
+        # Multiply by 2, as otherwise we have channel with sizes = 1 after vae encoding, which confuses PyTorch.
+        # Alternativy, we could set the vae to eval mode.
+        in_size = condition_downscale_factor * 2
+
+        rand_tensor = torch.rand((1, 3, in_size, in_size)).to(vae.device)
+
+        encoded_tensor = vae.encode(rand_tensor)
+        if hasattr(encoded_tensor, "latent_dist"):
+            encoded_tensor = encoded_tensor.latent_dist.sample()
+        elif hasattr(encoded_tensor, "latents"):
+            encoded_tensor = encoded_tensor.latents
+        else:
+            raise ValueError(f"Output of {type(vae)} has neither `latents` nor `latent_dist` as attribute.")
+
+        out_size = encoded_tensor.shape[-1]
+
+        vae_downscale_factor = in_size / out_size
+
+        compatible = condition_downscale_factor == vae_downscale_factor
+
+        return compatible, condition_downscale_factor, vae_downscale_factor
 
 
 class EmbedSequential(nn.ModuleList):

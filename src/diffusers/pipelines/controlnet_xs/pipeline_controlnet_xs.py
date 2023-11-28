@@ -156,11 +156,12 @@ class StableDiffusionControlNetXSPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        num_vae_down_blocks = len(vae.encoder.down_blocks)
-        num_controlnet_conditioning_down_blocks = len(controlnet.config.conditioning_block_sizes)
-        if num_vae_down_blocks != num_controlnet_conditioning_down_blocks:
+        vae_compatible, cnxs_condition_downsample_factor, vae_downsample_factor = controlnet._check_if_vae_compatible(
+            vae
+        )
+        if not vae_compatible:
             raise ValueError(
-                f"The number of down blocks in the VAE ({num_vae_down_blocks}) and the conditioning part of ControlNetXS model {num_controlnet_conditioning_down_blocks} need to be equal. Consider building the ControlNetXS model with different `conditioning_block_sizes`."
+                f"The downsampling factors of the VAE ({vae_downsample_factor}) and the conditioning part of ControlNetXS model {cnxs_condition_downsample_factor} need to be equal. Consider building the ControlNetXS model with different `conditioning_block_sizes`."
             )
 
         self.register_modules(
