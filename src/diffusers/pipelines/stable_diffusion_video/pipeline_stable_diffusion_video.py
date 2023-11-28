@@ -320,8 +320,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
             noise_aug_strength (`int`, *optional*, defaults to 0.02):
                 The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
             decode_chunk_size (`int`, *optional*):
-                The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency 
-                between frames, but also the higher the memory consumption. By default, the decoder will decode all frames at once 
+                The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency
+                between frames, but also the higher the memory consumption. By default, the decoder will decode all frames at once
                 for maximal quality. Reduce `decode_chunk_size` to reduce memory usage.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
@@ -385,7 +385,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # 3. Encode input image
         image_embeddings = self._encode_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
 
-        # NOTE: Stable Diffusion Video was conditioned on fps - 1, which 
+        # NOTE: Stable Diffusion Video was conditioned on fps - 1, which
         # is why it is reduced here.
         # See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
         fps = fps - 1
