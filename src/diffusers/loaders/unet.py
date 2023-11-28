@@ -350,7 +350,7 @@ class UNet2DConditionLoadersMixin:
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
-        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `lora_lora_weights_into_unet`
+        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `load_lora_weights_into_unet`
         if not USE_PEFT_BACKEND:
             if _pipeline is not None:
                 for _, component in _pipeline.components.items():
@@ -806,6 +806,8 @@ class UNet2DConditionLoadersMixin:
                 user_agent=user_agent,
             )
             state_dict = torch.load(model_file, map_location="cpu")
+
+        state_dict = {k.replace("base_model.model.", ""): v for k, v in state_dict.items()}
 
         rank = {}
         for key, val in state_dict.items():

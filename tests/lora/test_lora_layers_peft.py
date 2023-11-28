@@ -57,7 +57,7 @@ if is_accelerate_available():
     from accelerate.utils import release_memory
 
 if is_peft_available():
-    from peft import LoraConfig
+    from peft import LoraConfig, get_peft_model
     from peft.tuners.tuners_utils import BaseTunerLayer
     from peft.utils import get_peft_model_state_dict
 
@@ -1390,6 +1390,61 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "latent_channels": 4,
         "sample_size": 128,
     }
+
+
+class UNet2DConditionModelLoRATests(unittest.TestCase):
+    def get_dummy_components(self):
+        unet_kwargs = {
+            "block_out_channels": (32, 64),
+            "layers_per_block": 2,
+            "sample_size": 32,
+            "in_channels": 4,
+            "out_channels": 4,
+            "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+            "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+            "attention_head_dim": (2, 4),
+            "use_linear_projection": True,
+            "addition_embed_type": "text_time",
+            "addition_time_embed_dim": 8,
+            "transformer_layers_per_block": (1, 2),
+            "projection_class_embeddings_input_dim": 80,  # 6 * 8 + 32
+            "cross_attention_dim": 64,
+        }
+        torch.manual_seed(0)
+        unet = UNet2DConditionModel(**unet_kwargs)
+        unet_lora_config = LoraConfig(
+            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+        )
+        return unet, unet_lora_config
+
+    def get_dummy_input(self):
+        batch_size = 2
+        num_channels = 4
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor([10]).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+
+        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
+
+    def test_inference(self):
+        unet, unet_lora_config = self.get_dummy_components()
+        unet = get_peft_model(unet, unet_lora_config)
+        inputs = self.get_dummy_input()
+        outputs = unet(**inputs).sample
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            unet.save_pretrained(tmpdirname)
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_model.bin")))
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_config.json")))
+
+            unet, _ = self.get_dummy_components()
+            unet.load_lora(tmpdirname)
+
+            outputs_with_lora = unet(**inputs).sample
+
+        self.assertFalse(np.allclose(outputs, outputs_with_lora, atol=1e-3, rtol=1e-3))
 
 
 @slow
