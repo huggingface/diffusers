@@ -15,7 +15,7 @@ import diffusers
 from diffusers import (
     AutoencoderKLTemporalDecoder,
     DDIMScheduler,
-    StableDiffusionVideoPipeline,
+    StableVideoDiffusionPipeline,
     UNetSpatioTemporalConditionModel,
 )
 from diffusers.utils import load_image, logging
@@ -38,8 +38,8 @@ def to_np(tensor):
     return tensor
 
 
-class StableDiffusionVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = StableDiffusionVideoPipeline
+class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableVideoDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     required_optional_params = frozenset(
@@ -227,7 +227,7 @@ class StableDiffusionVideoPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
 @slow
 @require_torch_gpu
-class StableDiffusionVideoPipelineSlowTests(unittest.TestCase):
+class StableVideoDiffusionPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -235,7 +235,7 @@ class StableDiffusionVideoPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_sd_video(self):
-        pipe = StableDiffusionVideoPipeline.from_pretrained("diffusers/svd-test")
+        pipe = StableVideoDiffusionPipeline.from_pretrained("diffusers/svd-test")
         pipe = pipe.to(torch_device)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)

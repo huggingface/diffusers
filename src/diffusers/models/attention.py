@@ -411,10 +411,25 @@ class TemporalBasicTransformerBlock(nn.Module):
         self._chunk_size = None
         self._chunk_dim = 0
 
-    def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int):
+    def set_temporal_chunk_feed_forward(self, chunk_size: Optional[int], dim: int):
         # Sets chunk feed-forward
         self._chunk_size = chunk_size
         self._chunk_dim = dim
+
+    def chunked_feed_forward(self, ff: nn.Module, hidden_states: torch.Tensor) -> torch.Tensor:
+        # "feed_forward_chunk_size" can be used to save memory
+        if hidden_states.shape[self._chunk_dim] % self._chunk_size != 0:
+            raise ValueError(
+                f"`hidden_states` dimension to be chunked: {hidden_states.shape[self._chunk_dim]} has to be divisible by chunk size: {self._chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
+            )
+
+        num_chunks = hidden_states.shape[self._chunk_dim] // self._chunk_size
+        ff_output = torch.cat(
+            [ff(hid_slice) for hid_slice in hidden_states.chunk(num_chunks, dim=self._chunk_dim)],
+            dim=self._chunk_dim,
+        )
+
+        return ff_output
 
     def forward(
         self,
@@ -435,7 +450,12 @@ class TemporalBasicTransformerBlock(nn.Module):
 
         residual = hidden_states
         hidden_states = self.norm_in(hidden_states)
-        hidden_states = self.ff_in(hidden_states)
+
+        if self._chunk_size is not None:
+            hidden_states = self.chunked_feed_forward(self.ff_in, hidden_states)
+        else:
+            hidden_states = self.ff_in(hidden_states)
+
         if self.is_res:
             hidden_states = hidden_states + residual
 
@@ -453,17 +473,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         norm_hidden_states = self.norm3(hidden_states)
 
         if self._chunk_size is not None:
-            # "feed_forward_chunk_size" can be used to save memory
-            if norm_hidden_states.shape[self._chunk_dim] % self._chunk_size != 0:
-                raise ValueError(
-                    f"`hidden_states` dimension to be chunked: {norm_hidden_states.shape[self._chunk_dim]} has to be divisible by chunk size: {self._chunk_size}. Make sure to set an appropriate `chunk_size` when calling `unet.enable_forward_chunking`."
-                )
-
-            num_chunks = norm_hidden_states.shape[self._chunk_dim] // self._chunk_size
-            ff_output = torch.cat(
-                [self.ff(hid_slice) for hid_slice in norm_hidden_states.chunk(num_chunks, dim=self._chunk_dim)],
-                dim=self._chunk_dim,
-            )
+            ff_output = self.chunked_feed_forward(self.ff, norm_hidden_states)
         else:
             ff_output = self.ff(norm_hidden_states)
 

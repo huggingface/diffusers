@@ -165,7 +165,7 @@ else:
         ]
     )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
-    _import_structure["stable_diffusion_video"] = ["StableDiffusionVideoPipeline"]
+    _import_structure["stable_diffusion_video"] = ["StableVideoDiffusionPipeline"]
     _import_structure["stable_diffusion_xl"].extend(
         [
             "StableDiffusionXLImg2ImgPipeline",
@@ -415,7 +415,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableUnCLIPPipeline,
         )
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
-        from .stable_diffusion_video import StableDiffusionVideoPipeline
+        from .stable_diffusion_video import StableVideoDiffusionPipeline
         from .stable_diffusion_xl import (
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,

@@ -55,7 +55,7 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
 
 
 @dataclass
-class StableDiffusionVideoPipelineOutput(BaseOutput):
+class StableVideoDiffusionPipelineOutput(BaseOutput):
     r"""
     Output class for zero-shot text-to-video pipeline.
 
@@ -68,7 +68,7 @@ class StableDiffusionVideoPipelineOutput(BaseOutput):
     frames: Union[List[PIL.Image.Image], np.ndarray]
 
 
-class StableDiffusionVideoPipeline(DiffusionPipeline):
+class StableVideoDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline to generate video from an input image using Stable Video Diffusion.
 
@@ -310,7 +310,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 expense of slower inference. This parameter is modulated by `strength`.
             min_guidance_scale (`float`, *optional*, defaults to 1.0):
                 The minimum guidance scale. Used for the classifier free guidance with first frame.
-            max_guidance_scale (`float`, *optional*, defaults to 2.5):
+            max_guidance_scale (`float`, *optional*, defaults to 3.0):
                 The maximum guidance scale. Used for the classifier free guidance with last frame.
             fps (`int`, *optional*, defaults to 7):
                 Frames per second. The rate at which the generated images shall be exported to a video after generation.
@@ -320,8 +320,8 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
             noise_aug_strength (`int`, *optional*, defaults to 0.02):
                 The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
             decode_chunk_size (`int`, *optional*):
-                The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency 
-                between frames, but also the higher the memory consumption. By default, the decoder will decode all frames at once 
+                The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency
+                between frames, but also the higher the memory consumption. By default, the decoder will decode all frames at once
                 for maximal quality. Reduce `decode_chunk_size` to reduce memory usage.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
@@ -339,17 +339,17 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 plain tuple.
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionVideoPipelineOutput`] is returned,
+            [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is a list of list with the generated frames.
 
         Examples:
 
         ```py
-        from diffusers import StableDiffusionVideoPipeline
+        from diffusers import StableVideoDiffusionPipeline
         from diffusers.utils import load_image, export_to_video
 
-        pipe = StableDiffusionVideoPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16")
+        pipe = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16")
         pipe.to("cuda")
 
         image = load_image("https://lh3.googleusercontent.com/y-iFOHfLTwkuQSUegpwDdgKmOjRSTvPxat63dQLB25xkTs4lhIbRUFeNBWZzYf370g=s1200")
@@ -385,7 +385,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         # 3. Encode input image
         image_embeddings = self._encode_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
 
-        # NOTE: Stable Diffusion Video was conditioned on fps - 1, which 
+        # NOTE: Stable Diffusion Video was conditioned on fps - 1, which
         # is why it is reduced here.
         # See: https://github.com/Stability-AI/generative-models/blob/ed0997173f98eaf8f4edf7ba5fe8f15c6b877fd3/scripts/sampling/simple_video_sample.py#L188
         fps = fps - 1
@@ -492,7 +492,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         if not return_dict:
             return frames
 
-        return StableDiffusionVideoPipelineOutput(frames=frames)
+        return StableVideoDiffusionPipelineOutput(frames=frames)
 
 
 # resizing utils

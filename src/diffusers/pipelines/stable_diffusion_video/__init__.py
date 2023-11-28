@@ -25,8 +25,8 @@ else:
     _import_structure.update(
         {
             "pipeline_stable_diffusion_video": [
-                "StableDiffusionVideoPipeline",
-                "StableDiffusionVideoPipelineOutput",
+                "StableVideoDiffusionPipeline",
+                "StableVideoDiffusionPipelineOutput",
             ],
             "safety_checker": ["StableDiffusionSafetyChecker"],
         }
@@ -41,8 +41,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_stable_diffusion_video import (
-            StableDiffusionVideoPipeline,
-            StableDiffusionVideoPipelineOutput,
+            StableVideoDiffusionPipeline,
+            StableVideoDiffusionPipelineOutput,
         )
         from .safety_checker import StableDiffusionSafetyChecker
 
