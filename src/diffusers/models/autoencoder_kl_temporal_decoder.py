@@ -252,7 +252,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
 
         self.use_slicing = False
-        self.use_tiling = False
 
         # only relevant if vae tiling is enabled
         self.tile_sample_min_size = self.config.sample_size
@@ -267,21 +266,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (Encoder, TemporalDecoder)):
             module.gradient_checkpointing = value
-
-    def enable_tiling(self, use_tiling: bool = True):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.use_tiling = use_tiling
-
-    def disable_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.enable_tiling(False)
 
     def enable_slicing(self):
         r"""
@@ -397,9 +381,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        if self.use_tiling and (x.shape[-1] > self.tile_sample_min_size or x.shape[-2] > self.tile_sample_min_size):
-            return self.tiled_encode(x, return_dict=return_dict)
-
         if self.use_slicing and x.shape[0] > 1:
             encoded_slices = [self.encoder(x_slice) for x_slice in x.split(1)]
             h = torch.cat(encoded_slices)
@@ -417,9 +398,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
     def _decode(
         self, z: torch.FloatTensor, num_frames: int, return_dict: bool = True
     ) -> Union[DecoderOutput, torch.FloatTensor]:
-        if self.use_tiling and (z.shape[-1] > self.tile_latent_min_size or z.shape[-2] > self.tile_latent_min_size):
-            return self.tiled_decode(z, return_dict=return_dict)
-
         batch_size = z.shape[0] // num_frames
         # TODO: dont hardcode this
         image_only_indicator = torch.zeros(batch_size, num_frames, dtype=z.dtype, device=z.device)
