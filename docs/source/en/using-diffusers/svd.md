@@ -40,7 +40,7 @@ from diffusers.utils import load_image, export_to_video
 
 pipe = StableVideoDiffusionPipeline.from_pretrained(
     "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipe.enable_model_cpu_offload()
 
 # Load the conditioning image
@@ -84,7 +84,7 @@ from diffusers.utils import load_image, export_to_video
 
 pipe = StableVideoDiffusionPipeline.from_pretrained(
     "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
-).to("cuda")
+)
 pipe.enable_model_cpu_offload()
 
 # Load the conditioning image
