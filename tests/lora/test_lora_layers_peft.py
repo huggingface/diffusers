@@ -1439,7 +1439,7 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
 
             outputs_with_lora = unet(**inputs).sample
 
-        self.assertFalse(np.allclose(outputs, outputs_with_lora, atol=1e-3, rtol=1e-3))
+        self.assertFalse(torch.allclose(outputs, outputs_with_lora, atol=1e-3, rtol=1e-3))
 
 
 @slow
