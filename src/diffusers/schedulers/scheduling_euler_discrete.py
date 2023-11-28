@@ -275,10 +275,16 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.config.timestep_type == "continuous":
             timesteps = np.array([self.get_scalings(sigma)[-1] for sigma in sigmas])
 
+        # set c_skip and c_out
+        self.c_skips = np.array([self.get_scalings(sigma)[0] for sigma in sigmas])
+        self.c_outs = np.array([self.get_scalings(sigma)[1] for sigma in sigmas])
+
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
 
         self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        self.c_skips = torch.from_numpy(self.c_skips).to(device=device)
+        self.c_outs = torch.from_numpy(self.c_outs).to(device=device)
         self._step_index = None
 
     def _sigma_to_t(self, sigma, log_sigmas):
@@ -437,7 +443,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
-        c_skip, c_out, _, _ = self.get_scalings()
+        c_skip = self.c_skips[self.step_index]
+        c_out = self.c_outs[self.step_index]
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
