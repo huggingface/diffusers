@@ -7,7 +7,13 @@ import PIL
 import torch
 import torch.nn.functional as F
 from torch.nn.functional import grid_sample
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipeline
@@ -335,19 +341,23 @@ class TextToVideoZeroSDXLPipeline(StableDiffusionXLPipeline):
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
+        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: CLIPImageProcessor = None,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
     ):
         super().__init__(
-            vae,
-            text_encoder,
-            text_encoder_2,
-            tokenizer,
-            tokenizer_2,
-            unet,
-            scheduler,
-            force_zeros_for_empty_prompt,
-            add_watermarker,
+            vae=vae,
+            text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
+            tokenizer=tokenizer,
+            tokenizer_2=tokenizer_2,
+            unet=unet,
+            scheduler=scheduler,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
+            force_zeros_for_empty_prompt=force_zeros_for_empty_prompt,
+            add_watermarker=add_watermarker,
         )
         processor = (
             CrossFrameAttnProcessor2_0(batch_size=2)

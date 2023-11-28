@@ -126,6 +126,8 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             "tokenizer": tokenizer,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
         return components
 
@@ -179,11 +181,10 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
     def test_cfg(self):
         sig = inspect.signature(self.pipeline_class.__call__)
-
         if "guidance_scale" not in sig.parameters:
             return
-
         components = self.get_dummy_components()
+
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
