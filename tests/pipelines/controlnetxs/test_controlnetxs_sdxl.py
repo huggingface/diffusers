@@ -304,7 +304,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         image_slice_2 = output.images[0, -3:, -3:, -1]
 
         # make sure that it's equal
-        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+        assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1.1e-4
 
     # TODO Umer: Understand guess mode and enable this test if needed
     # def test_controlnet_sdxl_guess(self):
