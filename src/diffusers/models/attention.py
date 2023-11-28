@@ -351,6 +351,7 @@ class TemporalBasicTransformerBlock(nn.Module):
 
     Parameters:
         dim (`int`): The number of channels in the input and output.
+        time_mix_inner_dim (`int`): The number of channels for temporal attention.
         num_attention_heads (`int`): The number of heads to use for multi-head attention.
         attention_head_dim (`int`): The number of channels in each head.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.

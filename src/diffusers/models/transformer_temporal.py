@@ -208,6 +208,8 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
         attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
         in_channels (`int`, *optional*):
             The number of channels in the input and output (specify if the input is **continuous**).
+        out_channels (`int`, *optional*):
+            The number of channels in the output (specify if the input is **continuous**).
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (`int`, *optional*): The number of `encoder_hidden_states` dimensions to use.
@@ -284,15 +286,18 @@ class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
     ):
         """
         Args:
-            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
+            hidden_states (`torch.FloatTensor` of shape `(batch size, channel, height, width)`):
                 Input hidden_states.
             num_frames (`int`):
                 The number of frames to be processed per batch. This is used to reshape the hidden states.
             encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, encoder_hidden_states dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
+            image_only_indicator (`torch.LongTensor` of shape `(batch size, num_frames)`, *optional*):
+                A tensor indicating whether the input contains only images. 1 indicates that the input contains only
+                images, 0 indicates that the input contains video frames.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.transformer_temporal.TransformerTemporalModelOutput`] instead of a plain
                 tuple.
 
         Returns:

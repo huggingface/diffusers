@@ -349,24 +349,23 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         return_dict: bool = True,
     ) -> Union[UNetSpatioTemporalConditionOutput, Tuple]:
         r"""
-        The [`UNet2DConditionModel`] forward method.
+        The [`UNetSpatioTemporalConditionModel`] forward method.
 
         Args:
             sample (`torch.FloatTensor`):
-                The noisy input tensor with the following shape `(batch, channel, height, width)`.
+                The noisy input tensor with the following shape `(batch, num_frames, channel, height, width)`.
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.FloatTensor`):
-            added_cond_kwargs: (`dict`):
-                A kwargs dictionary containing additional embeddings that if specified are added to the embeddings that
-                are passed along to the UNet blocks.
+                The encoder hidden states with shape `(batch, sequence_length, cross_attention_dim)`.
+            added_time_ids: (`torch.FloatTensor`):
+                The additional time ids with shape `(batch, num_additional_ids)`. These are encoded with sinusoidal
+                embeddings and added to the time embeddings.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unet_slatio_temporal.UNetSpatioTemporalConditionOutput`] instead of a plain
                 tuple.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
         Returns:
-            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
+            [`~models.unet_slatio_temporal.UNetSpatioTemporalConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unet_slatio_temporal.UNetSpatioTemporalConditionOutput`] is returned, otherwise
                 a `tuple` is returned where the first element is the sample tensor.
         """
         # 1. time
