@@ -65,7 +65,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         return (4, 32, 32)
 
     @property
-    def fps_id(self):
+    def fps(self):
         return 6
 
     @property
@@ -73,7 +73,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         return 127
 
     @property
-    def cond_aug(self):
+    def noise_aug_strength(self):
         return 0.02
 
     def prepare_init_args_and_inputs_for_common(self):
