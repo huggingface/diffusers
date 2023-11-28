@@ -21,8 +21,8 @@ from ..loaders import FromOriginalVAEMixin
 from ..utils import is_torch_version
 from ..utils.accelerate_utils import apply_forward_hook
 from .attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
+from .modeling_outputs import AutoencoderKLOutput
 from .modeling_utils import ModelMixin
-from .autoencoder_kl import AutoencoderKLOutput
 from .unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
 
@@ -279,11 +279,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(
-            name: str,
-            module: torch.nn.Module,
-            processors: Dict[str, AttentionProcessor],
-        ):
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor(return_deprecated_lora=True)
 
@@ -299,9 +295,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(
-        self,
-        processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]],
-        _remove_lora=False,
+        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
     ):
         r"""
         Sets the attention processor to use to compute attention.

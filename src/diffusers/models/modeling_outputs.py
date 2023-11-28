@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
 from ..utils import BaseOutput
-from .vae import DiagonalGaussianDistribution
 
 
 @dataclass
@@ -15,4 +14,4 @@ class AutoencoderKLOutput(BaseOutput):
             `DiagonalGaussianDistribution` allows for sampling latents from the distribution.
     """
 
-    latent_dist: "DiagonalGaussianDistribution"
+    latent_dist: "DiagonalGaussianDistribution"  # noqa: F821
