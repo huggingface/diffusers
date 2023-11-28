@@ -30,7 +30,7 @@ The are two variants of SVD. [SVD](https://huggingface.co/stabilityai/stable-vid
 and [SVD-XT](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt). The svd checkpoint is trained to generate 14 frames and the svd-xt checkpoint is further 
 finetuned to generate 25 frames.
 
-We will use the svd-xt checkpoint for this guide.
+We will use the `svd-xt` checkpoint for this guide.
 
 ```python
 import torch
@@ -41,15 +41,23 @@ from diffusers.utils import load_image, export_to_video
 pipe = StableDiffusionVideoPipeline.from_pretrained(
     "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
-pipe.
+pipe.enable_model_cpu_offload()
 
 # Load the conditioning image
-image = load_image("https://i.imgur.com/9fCwJ2v.png")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png?download=true")
 image = image.resize((1024, 576))
 
-frames = pipe(image, num_frames=25, frames_to_decode_at_once=8).frames[0]
+generator = torch.manual_seed(42)
+frames = pipe(image, num_frames=25, frames_to_decode_at_once=8, generator=generator).frames[0]
 
 export_to_video(frames, "generated.mp4", fps=7)
 ```
 
+<video width="1024" height="576" controls>
+  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.mp4?download=true" type="video/mp4">
+</video>
+
+Since generating videos is more memory intensive we can use the `frames_to_decode_at_once` argument to control how many frames are decoded at once. This will reduce the memory usage. It's recommended to tweak this value based on your GPU memory.
+
+Additionally, we also use [model cpu offloading](../../optimization/memory#model-offloading) to reduce the memory usage.
 
