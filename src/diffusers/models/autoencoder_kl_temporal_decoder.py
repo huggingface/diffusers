@@ -241,7 +241,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
         self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
 
-        self.use_slicing = False
         sample_size = (
             self.config.sample_size[0]
             if isinstance(self.config.sample_size, (list, tuple))
@@ -253,20 +252,6 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (Encoder, TemporalDecoder)):
             module.gradient_checkpointing = value
-
-    def enable_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.use_slicing = True
-
-    def disable_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
-        decoding in one step.
-        """
-        self.use_slicing = False
 
     @property
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -359,12 +344,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
                 The latent representations of the encoded images. If `return_dict` is True, a
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
-        if self.use_slicing and x.shape[0] > 1:
-            encoded_slices = [self.encoder(x_slice) for x_slice in x.split(1)]
-            h = torch.cat(encoded_slices)
-        else:
-            h = self.encoder(x)
-
+        h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
 
@@ -373,26 +353,12 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def _decode(
-        self, z: torch.FloatTensor, num_frames: int, return_dict: bool = True
-    ) -> Union[DecoderOutput, torch.FloatTensor]:
-        batch_size = z.shape[0] // num_frames
-        # TODO: dont hardcode this
-        image_only_indicator = torch.zeros(batch_size, num_frames, dtype=z.dtype, device=z.device)
-        dec = self.decoder(z, num_frames=num_frames, image_only_indicator=image_only_indicator)
-
-        if not return_dict:
-            return (dec,)
-
-        return DecoderOutput(sample=dec)
-
     @apply_forward_hook
     def decode(
         self,
         z: torch.FloatTensor,
         num_frames: int,
         return_dict: bool = True,
-        generator=None,
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         """
         Decode a batch of images.
@@ -408,11 +374,9 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin
                 returned.
 
         """
-        if self.use_slicing and z.shape[0] > 1:
-            decoded_slices = [self._decode(z_slice, num_frames // 2).sample for z_slice in z.split(1)]
-            decoded = torch.cat(decoded_slices)
-        else:
-            decoded = self._decode(z, num_frames).sample
+        batch_size = z.shape[0] // num_frames
+        image_only_indicator = torch.zeros(batch_size, num_frames, dtype=z.dtype, device=z.device)
+        decoded = self.decoder(z, num_frames=num_frames, image_only_indicator=image_only_indicator)
 
         if not return_dict:
             return (decoded,)

@@ -424,7 +424,7 @@ class TemporalBasicTransformerBlock(nn.Module):
 
         # let chunk size default to None
         self._chunk_size = None
-        self._chunk_dim = 0
+        self._chunk_dim = None
 
     def set_chunk_feed_forward(self, chunk_size: Optional[int], **kwargs):
         # Sets chunk feed-forward
