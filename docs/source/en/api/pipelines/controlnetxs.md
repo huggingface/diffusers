@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# ControlNet with Stable Diffusion XL
+# ControlNet with Stable Diffusion
 
 ControlNet-XS was introduced in [ControlNet-XS](https://vislearn.github.io/ControlNet-XS/) by Denis Zavadski and Carsten Rother. It is based on the observation that the control model in the [original ControlNet](https://huggingface.co/papers/2302.05543) can be made much smaller and still produces good results.
 
@@ -18,22 +18,14 @@ As with the original ControlNet model, you can provide an additional control ima
 
 This model was contributed by [UmerHA](https://twitter.com/UmerHAdil). ❤️
 
-<Tip warning={true}>
-
-🧪 Many of the SDXL ControlNet checkpoints are experimental, and there is a lot of room for improvement. Feel free to open an [Issue](https://github.com/huggingface/diffusers/issues/new/choose) and leave us feedback on how we can improve!
-
-</Tip>
-
-If you don't see a checkpoint you're interested in, you can train your own SDXL ControlNet with our [training script](../../../../../examples/controlnet/README_sdxl).
-
 <Tip>
 
 Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 </Tip>
 
-## StableDiffusionXLControlNetXSPipeline
-[[autodoc]] StableDiffusionXLControlNetXSPipeline
+## StableDiffusionControlNetXSPipeline
+[[autodoc]] StableDiffusionControlNetXSPipeline
 	- all
 	- __call__
 

@@ -43,12 +43,11 @@ from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# TODO umer
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionControlNetXSPipeline, ControlNetXSModel, UniPCMultistepScheduler
+        >>> from diffusers import StableDiffusionControlNetXSPipeline, ControlNetXSModel, AutoencoderKL
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch
@@ -56,35 +55,33 @@ EXAMPLE_DOC_STRING = """
         >>> import cv2
         >>> from PIL import Image
 
+        >>> prompt = "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
+        >>> negative_prompt = "low quality, bad quality, sketches"
+
         >>> # download an image
         >>> image = load_image(
-        ...     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
+        ...    "https://hf.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
         ... )
-        >>> image = np.array(image)
+
+        >>> # initialize the models and pipeline
+        >>> controlnet_conditioning_scale = 0.5
+        >>> controlnet = ControlNetXSModel.from_pretrained(
+        ...     "UmerHA/ConrolNetXS-SD2.1-canny", torch_dtype=torch.float32
+        ... )
+        >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-2-1", controlnet=controlnet, torch_dtype=torch.float32
+        ... )
+        >>> pipe.enable_model_cpu_offload()
 
         >>> # get canny image
+        >>> image = np.array(image)
         >>> image = cv2.Canny(image, 100, 200)
         >>> image = image[:, :, None]
         >>> image = np.concatenate([image, image, image], axis=2)
         >>> canny_image = Image.fromarray(image)
-
-        >>> # load control net and stable diffusion v1-5
-        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
-        ... )
-
-        >>> # speed up diffusion process with faster scheduler and memory optimization
-        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-        >>> # remove following line if xformers is not installed
-        >>> pipe.enable_xformers_memory_efficient_attention()
-
-        >>> pipe.enable_model_cpu_offload()
-
         >>> # generate image
-        >>> generator = torch.manual_seed(0)
         >>> image = pipe(
-        ...     "futuristic-looking woman", num_inference_steps=20, generator=generator, image=canny_image
+        ...     prompt, controlnet_conditioning_scale=controlnet_conditioning_scale, image=canny_image
         ... ).images[0]
         ```
 """
