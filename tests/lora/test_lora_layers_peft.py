@@ -1426,9 +1426,11 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
 
     def test_inference(self):
         unet, unet_lora_config = self.get_dummy_components()
-        unet = get_peft_model(unet, unet_lora_config)
         inputs = self.get_dummy_inputs()
         outputs = unet(**inputs).sample
+
+        unet = get_peft_model(unet, unet_lora_config)
+        outputs_with_lora = unet(**inputs).sample
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             unet.save_pretrained(tmpdirname)
@@ -1436,9 +1438,9 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_config.json")))
 
             # Replicate training.
-            state_dict = torch.load(os.path.join(tmpdirname, "adapter_model.bin"), map_location="cpu")
-            state_dict = {k: torch.randn_like(v) for k, v in state_dict.items()}
-            torch.save(state_dict, os.path.join(tmpdirname, "adapter_model.bin"))
+            # state_dict = torch.load(os.path.join(tmpdirname, "adapter_model.bin"), map_location="cpu")
+            # state_dict = {k: torch.randn_like(v) for k, v in state_dict.items()}
+            # torch.save(state_dict, os.path.join(tmpdirname, "adapter_model.bin"))
 
             unet, _ = self.get_dummy_components()
             unet.load_lora(tmpdirname)
@@ -1446,9 +1448,14 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
             has_peft_layer = any(isinstance(unet_module, BaseTunerLayer) for unet_module in unet.modules())
             assert has_peft_layer, "No PEFT layer found"
 
-            outputs_with_lora = unet(**inputs).sample
+            outputs_with_lora_loaded = unet(**inputs).sample
 
-        self.assertFalse(torch.allclose(outputs, outputs_with_lora, atol=1e-3, rtol=1e-3))
+        assert not torch.allclose(
+            outputs, outputs_with_lora, atol=1e-3, rtol=1e-3
+        ), "LoRA layers should affect the outputs."
+        assert torch.allclose(
+            outputs_with_lora_loaded, outputs_with_lora, atol=1e-3, rtol=1e-3
+        ), "Loaded LoRA layers should match the outputs."
 
 
 @slow
