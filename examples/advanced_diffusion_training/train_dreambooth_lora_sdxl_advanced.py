@@ -1629,27 +1629,10 @@ def main(args):
             if epoch == num_train_epochs_text_encoder:
                 print("PIVOT HALFWAY", epoch)
                 # stopping optimization of text_encoder params
-                params_to_optimize = params_to_optimize[:1]
-                # reinitializing the optimizer to optimize only on unet params
-                if args.optimizer.lower() == "prodigy":
-                    optimizer = optimizer_class(
-                        params_to_optimize,
-                        lr=args.learning_rate,
-                        betas=(args.adam_beta1, args.adam_beta2),
-                        beta3=args.prodigy_beta3,
-                        weight_decay=args.adam_weight_decay,
-                        eps=args.adam_epsilon,
-                        decouple=args.prodigy_decouple,
-                        use_bias_correction=args.prodigy_use_bias_correction,
-                        safeguard_warmup=args.prodigy_safeguard_warmup,
-                    )
-                else:  # AdamW or 8-bit-AdamW
-                    optimizer = optimizer_class(
-                        params_to_optimize,
-                        betas=(args.adam_beta1, args.adam_beta2),
-                        weight_decay=args.adam_weight_decay,
-                        eps=args.adam_epsilon,
-                    )
+                # re setting the optimizer to optimize only on unet params
+                optimizer.param_groups[1]["lr"] = 0.0
+                optimizer.param_groups[2]["lr"] = 0.0
+
             else:
                 # still optimizng the text encoder
                 text_encoder_one.train()
