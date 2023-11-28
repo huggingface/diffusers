@@ -1392,6 +1392,7 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     }
 
 
+@require_peft_backend
 class UNet2DConditionModelLoRATests(unittest.TestCase):
     def get_dummy_components(self):
         unet_kwargs = {
