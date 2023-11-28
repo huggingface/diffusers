@@ -28,7 +28,7 @@ class UNetSpatioTemporalConditionOutput(BaseOutput):
     The output of [`UNetSpatioTemporalConditionModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`torch.FloatTensor` of shape `(batch_size, num_frames, num_channels, height, width)`):
             The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
@@ -37,7 +37,7 @@ class UNetSpatioTemporalConditionOutput(BaseOutput):
 
 class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
-    A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
+    A conditional Spatio-Temporal UNet model that takes a noisy video frames, conditional state, and a timestep and returns a sample
     shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
@@ -48,28 +48,26 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             Height and width of input/output sample.
         in_channels (`int`, *optional*, defaults to 8): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): Number of channels in the output.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockSpatioTemporal", "CrossAttnDownBlockSpatioTemporal", "CrossAttnDownBlockSpatioTemporal", "DownBlockSpatioTemporal")`):
             The tuple of downsample blocks to use.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")`):
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal")`):
             The tuple of upsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
+        addition_time_embed_dim: (`int`, defaults to 256):
+            Dimension to to encode the additional time ids.
+        projection_class_embeddings_input_dim (`int`, defaults to 768):
+            The dimension of the projection of encoded `added_time_ids`.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
         transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple]` , *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
-            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
-            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
-        num_attention_heads (`int`, *optional*):
-            The number of attention heads. If not defined, defaults to `attention_head_dim`
-        addition_time_embed_dim: (`int`, *optional*, defaults to `None`):
-            Dimension for the timestep embeddings.
-        time_embedding_dim (`int`, *optional*, defaults to `None`):
-            An optional override for the dimension of the projected time embedding.
+            [`~models.unet_3d_blocks.CrossAttnDownBlockSpatioTemporal`], [`~models.unet_3d_blocks.CrossAttnUpBlockSpatioTemporal`],
+            [`~models.unet_3d_blocks.UNetMidBlockSpatioTemporal`].
+        num_attention_heads (`int`, `Tuple[int]`, defaults to `(5, 10, 10, 20)`):
+            The number of attention heads.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
     """
 
     _supports_gradient_checkpointing = True
@@ -93,13 +91,13 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             "CrossAttnUpBlockSpatioTemporal",
         ),
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
-        projection_class_embeddings_input_dim: int = 768,
         addition_time_embed_dim: int = 256,
+        projection_class_embeddings_input_dim: int = 768,
         layers_per_block: Union[int, Tuple[int]] = 2,
-        dropout: float = 0.0,
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = [5, 10, 10, 20],
+        num_attention_heads: Union[int, Tuple[int]] = (5, 10, 10, 20),
+        dropout: float = 0.0,
     ):
         super().__init__()
 
@@ -155,9 +153,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)
-
-        if isinstance(attention_head_dim, int):
-            attention_head_dim = (attention_head_dim,) * len(down_block_types)
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
