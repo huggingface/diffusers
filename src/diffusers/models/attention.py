@@ -25,7 +25,9 @@ from .lora import LoRACompatibleLinear
 from .normalization import AdaLayerNorm, AdaLayerNormZero
 
 
-def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int, lora_scale: Optional[float] = None):
+def _chunked_feed_forward(
+    ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int, lora_scale: Optional[float] = None
+):
     # "feed_forward_chunk_size" can be used to save memory
     if hidden_states.shape[chunk_dim] % chunk_size != 0:
         raise ValueError(
@@ -339,7 +341,9 @@ class BasicTransformerBlock(nn.Module):
 
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
-            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size, lora_scale=lora_scale)
+            ff_output = _chunked_feed_forward(
+                self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size, lora_scale=lora_scale
+            )
         else:
             ff_output = self.ff(norm_hidden_states, scale=lora_scale)
 
@@ -427,7 +431,6 @@ class TemporalBasicTransformerBlock(nn.Module):
         self._chunk_size = chunk_size
         # chunk dim should be hardcoded to 1 to have better speed vs. memory trade-off
         self._chunk_dim = 1
-
 
     def forward(
         self,
