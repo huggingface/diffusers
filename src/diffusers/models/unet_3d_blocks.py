@@ -1948,8 +1948,6 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     in_channels=in_channels,
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
-                    merge_factor=merge_factor,
-                    merge_strategy=merge_strategy,
                 )
             )
 

@@ -199,7 +199,6 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         return TransformerTemporalModelOutput(sample=output)
 
 
-# VideoBlock
 class TransformerSpatioTemporalModel(ModelMixin, ConfigMixin):
     """
     A Transformer model for video-like data.
