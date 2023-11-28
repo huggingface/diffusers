@@ -437,7 +437,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # check that attention heads and group norms match channel sizes
         # - attention heads
         def attn_heads_match_channel_sizes(attn_heads, channel_sizes):
-            if isinstance(attn_heads, list):
+            if isinstance(attn_heads, (tuple, list)):
                 return all(c % a == 0 for a,c in zip(attn_heads,channel_sizes))
             else:
                 return all(c % attn_heads == 0 for c in channel_sizes)
