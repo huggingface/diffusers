@@ -306,6 +306,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1.1e-4
 
+
 @slow
 @require_torch_gpu
 class ControlNetSDXLPipelineXSSlowTests(unittest.TestCase):

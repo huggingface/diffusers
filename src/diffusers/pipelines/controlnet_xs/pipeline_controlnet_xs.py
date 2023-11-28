@@ -159,7 +159,9 @@ class StableDiffusionControlNetXSPipeline(
         num_vae_down_blocks = len(vae.encoder.down_blocks)
         num_controlnet_conditioning_down_blocks = len(controlnet.config.conditioning_block_sizes)
         if num_vae_down_blocks != num_controlnet_conditioning_down_blocks:
-            raise ValueError(f"The number of down blocks in the VAE ({num_vae_down_blocks}) and the conditioning part of ControlNetXS model {num_controlnet_conditioning_down_blocks} need to be equal. Consider building the ControlNetXS model with different `conditioning_block_sizes`.")
+            raise ValueError(
+                f"The number of down blocks in the VAE ({num_vae_down_blocks}) and the conditioning part of ControlNetXS model {num_controlnet_conditioning_down_blocks} need to be equal. Consider building the ControlNetXS model with different `conditioning_block_sizes`."
+            )
 
         self.register_modules(
             vae=vae,
