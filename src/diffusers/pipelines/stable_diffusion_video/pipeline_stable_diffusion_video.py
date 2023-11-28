@@ -203,17 +203,17 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         return add_time_ids
 
-    def decode_latents(self, latents, num_frames, decoding_t=14):
+    def decode_latents(self, latents, num_frames, frames_to_decode_at_once=14):
         # [batch, frames, channels, height, width] -> [batch*frames, channels, height, width]
         latents = latents.flatten(0, 1)
 
         latents = 1 / self.vae.config.scaling_factor * latents
 
-        # decode decoding_t frames at a time to avoid OOM
+        # decode frames_to_decode_at_once frames at a time to avoid OOM
         frames = []
-        for i in range(0, latents.shape[0], decoding_t):
-            num_frames_in = latents[i : i + decoding_t].shape[0]
-            frame = self.vae.decode(latents[i : i + decoding_t], num_frames_in).sample
+        for i in range(0, latents.shape[0], frames_to_decode_at_once):
+            num_frames_in = latents[i : i + frames_to_decode_at_once].shape[0]
+            frame = self.vae.decode(latents[i : i + frames_to_decode_at_once], num_frames_in).sample
             frames.append(frame)
         frames = torch.cat(frames, dim=0)
 
@@ -285,7 +285,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         fps_id: int = 6,
         motion_bucket_id: int = 127,
         cond_aug: int = 0.02,
-        decoding_t: int = 14,
+        frames_to_decode_at_once: int = 14,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -318,13 +318,10 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 The motion bucket ID. Used as conditioning for the generation. The higher the number the more motion will be in the video.
             cond_aug (`int`, *optional*, defaults to 0.02):
                 The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
-            decoding_t (`int`, *optional*, defaults to 14):
+            frames_to_decode_at_once (`int`, *optional*, defaults to 14):
                 The number of frames to decode at a time. This is used to avoid OOM errors.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) from the [DDIM](https://arxiv.org/abs/2010.02502) paper. Only applies
-                to the [`~schedulers.DDIMScheduler`], and is ignored in other schedulers.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
@@ -355,7 +352,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         image = load_image("https://lh3.googleusercontent.com/y-iFOHfLTwkuQSUegpwDdgKmOjRSTvPxat63dQLB25xkTs4lhIbRUFeNBWZzYf370g=s1200")
         image = image.resize((1024, 576))
 
-        frames = pipe(image, num_frames=14, decoding_t=8).frames[0]
+        frames = pipe(image, num_frames=14, frames_to_decode_at_once=8).frames[0]
         export_to_video(frames, "generated.mp4", fps=7)
         ```
         """
@@ -467,7 +464,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
-        frames = self.decode_latents(latents, num_frames, decoding_t)
+        frames = self.decode_latents(latents, num_frames, frames_to_decode_at_once)
 
         # cast back to fp16 if needed
         if needs_upcasting:
