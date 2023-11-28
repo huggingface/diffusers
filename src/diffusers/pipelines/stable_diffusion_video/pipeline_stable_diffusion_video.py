@@ -179,13 +179,13 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         self,
         fps,
         motion_bucket_id,
-        cond_aug,
+        noise_aug_strength,
         dtype,
         batch_size,
         num_videos_per_prompt,
         do_classifier_free_guidance,
     ):
-        add_time_ids = [fps, motion_bucket_id, cond_aug]
+        add_time_ids = [fps, motion_bucket_id, noise_aug_strength]
 
         passed_add_embed_dim = self.unet.config.addition_time_embed_dim * len(add_time_ids)
         expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
@@ -284,7 +284,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         max_guidance_scale: float = 2.5,
         fps: int = 6,
         motion_bucket_id: int = 127,
-        cond_aug: int = 0.02,
+        noise_aug_strength: int = 0.02,
         decode_chunk_size: int = 14,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -316,7 +316,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
                 The frame rate ID. Used as conditioning for the generation.
             motion_bucket_id (`int`, *optional*, defaults to 127):
                 The motion bucket ID. Used as conditioning for the generation. The higher the number the more motion will be in the video.
-            cond_aug (`int`, *optional*, defaults to 0.02):
+            noise_aug_strength (`int`, *optional*, defaults to 0.02):
                 The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
             decode_chunk_size (`int`, *optional*, defaults to 14):
                 The number of frames to decode at a time. This is used to avoid OOM errors.
@@ -381,7 +381,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
 
         # 4. Encode input image using VAE
         image = self.image_processor.preprocess(image, height=height, width=width)
-        image = image + cond_aug * torch.randn_like(image)
+        image = image + noise_aug_strength * torch.randn_like(image)
 
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
@@ -402,7 +402,7 @@ class StableDiffusionVideoPipeline(DiffusionPipeline):
         added_time_ids = self._get_add_time_ids(
             fps,
             motion_bucket_id,
-            cond_aug,
+            noise_aug_strength,
             image_embeddings.dtype,
             batch_size,
             num_videos_per_prompt,

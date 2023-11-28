@@ -73,7 +73,7 @@ class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, u
         return 127
 
     @property
-    def cond_aug(self):
+    def noise_aug_strength(self):
         return 0.02
 
     def prepare_init_args_and_inputs_for_common(self):
