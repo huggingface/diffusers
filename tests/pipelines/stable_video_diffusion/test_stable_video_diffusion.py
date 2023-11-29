@@ -19,8 +19,11 @@ from diffusers import (
     UNetSpatioTemporalConditionModel,
 )
 from diffusers.utils import is_accelerate_available, is_accelerate_version, load_image, logging
+from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    disable_full_determinism,
+    enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
@@ -140,7 +143,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     @unittest.skip("Deprecated functionality")
     def test_attention_slicing_forward_pass(self):
         pass
-    
+
     @unittest.skip("Batched inference works and outputs look correct, but the test is failing")
     def test_inference_batch_single_identical(
         self,
@@ -439,6 +442,44 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
             f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
         )
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        disable_full_determinism()
+
+        expected_max_diff = 9e-4
+
+        if not self.test_xformers_attention:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_without_offload = pipe(**inputs).frames[0]
+        output_without_offload = (
+            output_without_offload.cpu() if torch.is_tensor(output_without_offload) else output_without_offload
+        )
+
+        pipe.enable_xformers_memory_efficient_attention()
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_offload = pipe(**inputs).frames[0]
+        output_with_offload = (
+            output_with_offload.cpu() if torch.is_tensor(output_with_offload) else output_without_offload
+        )
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
+        self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
+
+        enable_full_determinism()
 
 
 @slow
