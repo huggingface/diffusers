@@ -899,11 +899,12 @@ def main():
                 generator = torch.Generator(device=accelerator.device)
                 if args.seed is not None:
                     generator = generator.manual_seed(args.seed)
-                images = []
-                for _ in range(args.num_validation_images):
-                    images.append(
-                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
-                    )
+                with torch.cuda.amp.autocast():
+                    images = []
+                    for _ in range(args.num_validation_images):
+                        images.append(
+                            pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                        )
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
