@@ -501,7 +501,7 @@ class StableVideoDiffusionPipelineSlowTests(unittest.TestCase):
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
         image = load_image(
-            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png?download=true"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
         )
 
         generator = torch.Generator("cpu").manual_seed(0)
