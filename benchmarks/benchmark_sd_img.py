@@ -3,7 +3,7 @@ import sys
 
 
 sys.path.append(".")
-from benchmarks.base_classes import TextToImagePipeline  # noqa: E402
+from benchmarks.base_classes import ImageToImagePipeline  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -14,9 +14,8 @@ if __name__ == "__main__":
         default="runwayml/stable-diffusion-v1-5",
         choices=[
             "runwayml/stable-diffusion-v1-5",
-            "segmind/SSD-1B",
             "stabilityai/stable-diffusion-2-1",
-            "stabilityai/stable-diffusion-xl-base-1.0",
+            "stabilityai/stable-diffusion-xl-refiner-1.0",
         ],
     )
     parser.add_argument("--batch_size", type=int, default=1)
@@ -25,5 +24,5 @@ if __name__ == "__main__":
     parser.add_argument("--run_compile", action="store_true")
     args = parser.parse_args()
 
-    benchmark_pipe = TextToImagePipeline(args)
+    benchmark_pipe = ImageToImagePipeline(args)
     benchmark_pipe.benchmark()
