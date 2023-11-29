@@ -59,6 +59,15 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
     test_xformers_attention = False
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "num_images_per_prompt",
+            "generator",
+            "output_type",
+            "return_dict",
+        ]
+    )
 
     @property
     def dummy_movq_kwargs(self):
