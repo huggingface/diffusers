@@ -156,6 +156,9 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs(torch_device)
 
+        # Reset generator in case it is has been used in self.get_dummy_inputs
+        inputs["generator"] = self.get_generator(0)
+
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
 
