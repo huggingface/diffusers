@@ -90,6 +90,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "image_encoder->unet->vae"
+    _callback_tensor_inputs = ["latents"]
 
     def __init__(
         self,
@@ -291,6 +292,10 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
 
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
     @torch.no_grad()
     def __call__(
         self,
@@ -480,6 +485,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
