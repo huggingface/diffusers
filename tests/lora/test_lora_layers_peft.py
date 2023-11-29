@@ -1434,6 +1434,8 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             unet.save_pretrained(tmpdirname)
+            print("Printing directory contents:")
+            print(os.listdir(tmpdirname))
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_model.safetensors")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_config.json")))
 
