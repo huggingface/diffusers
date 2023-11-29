@@ -50,7 +50,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        for model in [self.text_encoder, self.unet]:
+        for model in [self.text_encoder, self.unet, self.movq]:
             if model is not None:
                 remove_hook_from_module(model, recurse=True)
 
@@ -445,6 +445,8 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
 
             if output_type == "pil":
                 image = self.numpy_to_pil(image)
+
+            self.maybe_free_model_hooks()
 
             if not return_dict:
                 return (image,)

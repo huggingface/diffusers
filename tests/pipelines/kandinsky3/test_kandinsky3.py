@@ -165,10 +165,6 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         pass
 
-    def test_model_cpu_offload_forward_pass(self):
-        # TODO(Yiyi) - this test should work, skipped for time reasons for now
-        pass
-
 
 @slow
 @require_torch_gpu
