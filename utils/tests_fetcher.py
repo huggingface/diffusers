@@ -84,7 +84,8 @@ IMPORTANT_PIPELINES = [
 MODULES_TO_IGNORE = ["fixtures", "lora"]
 
 repo = Repo(PATH_TO_REPO)
-print("Refs: ", repo.refs)
+print(type(repo.refs))
+print("Main is at: ", repo.refs.main.commit)
 
 @contextmanager
 def checkout_commit(repo: Repo, commit_id: str):
@@ -978,6 +979,7 @@ def infer_tests_to_run(
 
 
 def filter_tests(output_file: str, filters: List[str]):
+
     """
     Reads the content of the output file and filters out all the tests in a list of given folders.
 
@@ -985,6 +987,9 @@ def filter_tests(output_file: str, filters: List[str]):
         output_file (`str` or `os.PathLike`): The path to the output file of the tests fetcher.
         filters (`List[str]`): A list of folders to filter.
     """
+    print("Filtering Tests")
+    print("----------------")
+
     if not os.path.isfile(output_file):
         print("No test file found.")
         return
