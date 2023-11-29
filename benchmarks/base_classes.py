@@ -3,7 +3,7 @@ import sys
 
 import torch
 
-from diffusers import AutoPipelineForImage2Image, AutoPipelineForText2Image, AutoPipelineForInpainting
+from diffusers import AutoPipelineForImage2Image, AutoPipelineForInpainting, AutoPipelineForText2Image
 from diffusers.utils import load_image
 
 
@@ -27,7 +27,20 @@ RESOLUTION_MAPPING = {
 }
 
 
-class TextToImagePipeline:
+class BaseBenchmak:
+    pipeline_class = None
+
+    def __init__(self, args):
+        super().__init__()
+
+    def run_inference(self, args):
+        raise NotImplementedError
+
+    def benchmark(self, args):
+        raise NotImplementedError
+
+
+class TextToImageBenchmark(BaseBenchmak):
     pipeline_class = AutoPipelineForText2Image
 
     def __init__(self, args):
@@ -66,7 +79,7 @@ class TextToImagePipeline:
         print(f"Logs written to: {filepath}")
 
 
-class ImageToImagePipeline(TextToImagePipeline):
+class ImageToImageBenchmark(TextToImageBenchmark):
     pipeline_class = AutoPipelineForImage2Image
     url = "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/1665_Girl_with_a_Pearl_Earring.jpg/800px-1665_Girl_with_a_Pearl_Earring.jpg"
     image = load_image(url).convert("RGB")
@@ -82,11 +95,11 @@ class ImageToImagePipeline(TextToImagePipeline):
         )
 
 
-class InpatingPipeline(ImageToImagePipeline):
+class InpatingBenchmark(ImageToImageBenchmark):
     pipeline_class = AutoPipelineForInpainting
     mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
     mask = load_image(mask_url).convert("RGB")
-    
+
     def run_inference(self, pipe, args):
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
         self.mask = self.mask.resize(RESOLUTION_MAPPING[args.ckpt])

@@ -3,7 +3,7 @@ import sys
 
 
 sys.path.append(".")
-from benchmarks.base_classes import ImageToImagePipeline  # noqa: E402
+from benchmarks.base_classes import ImageToImageBenchmark  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -24,5 +24,5 @@ if __name__ == "__main__":
     parser.add_argument("--run_compile", action="store_true")
     args = parser.parse_args()
 
-    benchmark_pipe = ImageToImagePipeline(args)
+    benchmark_pipe = ImageToImageBenchmark(args)
     benchmark_pipe.benchmark()
