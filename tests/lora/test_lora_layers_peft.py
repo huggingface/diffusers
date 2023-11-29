@@ -1434,9 +1434,12 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             unet.save_pretrained(tmpdirname)
-            print("Printing directory contents:")
-            print(os.listdir(tmpdirname))
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_model.safetensors")))
+            # `peft` stable release doesn't default to safetensors yet.
+            # we run checks both with `peft` main and stable release.
+            try:
+                self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_model.safetensors")))
+            except:
+                self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_model.bin")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_config.json")))
 
             unet, _ = self.get_dummy_components()
