@@ -48,7 +48,8 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
 |   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
 |   Latent Consistency Interpolation Pipeline                                                                                                    | Interpolate the latent space of Latent Consistency Models with multiple prompts                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Interpolation Pipeline](#latent-consistency-interpolation-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pK3NrLWJSiJsBynLns1K1-IDTW9zbPvl?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
-
+| LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
+|
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -2344,6 +2345,47 @@ images = pipe(
 assert len(images) == (len(prompts) - 1) * num_interpolation_steps
 ```
 
+###  StableDiffusionUpscaleLDM3D Pipeline
+[LDM3D-VR](https://arxiv.org/pdf/2311.03226.pdf) is an extended version of LDM3D. 
+
+The abstract from the paper is:
+*Latent diffusion models have proven to be state-of-the-art in the creation and manipulation of visual outputs. However, as far as we know, the generation of depth maps jointly with RGB is still limited. We introduce LDM3D-VR, a suite of diffusion models targeting virtual reality development that includes LDM3D-pano and LDM3D-SR. These models enable the generation of panoramic RGBD based on textual prompts and the upscaling of low-resolution inputs to high-resolution RGBD, respectively. Our models are fine-tuned from existing pretrained models on datasets containing panoramic/high-resolution RGB images, depth maps and captions. Both models are evaluated in comparison to existing related methods*
+
+Two checkpoints are available for use:
+- [ldm3d-pano](https://huggingface.co/Intel/ldm3d-pano). This checkpoint enables the generation of panoramic images and requires the StableDiffusionLDM3DPipeline pipeline to be used.
+- [ldm3d-sr](https://huggingface.co/Intel/ldm3d-sr). This checkpoint enables the upscaling of RGB and depth images. Can be used in cascade after the original LDM3D pipeline using the StableDiffusionUpscaleLDM3DPipeline pipeline.
+
+'''py
+from PIL import Image
+import os
+import torch
+from diffusers import StableDiffusionLDM3DPipeline, DiffusionPipeline
+
+#Generate a rgb/depth output from LDM3D
+pipe_ldm3d = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d-4c")
+pipe_ldm3d.to("cuda")
+
+prompt =f"A picture of some lemons on a table"
+output = pipe_ldm3d(prompt)
+rgb_image, depth_image = output.rgb, output.depth
+rgb_image[0].save(f"lemons_ldm3d_rgb.jpg")
+depth_image[0].save(f"lemons_ldm3d_depth.png")
+
+
+#Upscale the previous output to a resolution of (1024, 1024)
+pipe_ldm3d_upscale = DiffusionPipeline.from_pretrained("Intel/ldm3d-sr", custom_pipeline="pipeline_stable_diffusion_upscale_ldm3d")
+
+pipe_ldm3d_upscale.to("cuda")
+
+low_res_img = Image.open(f"lemons_ldm3d_rgb.jpg").convert("RGB")
+low_res_depth = Image.open(f"lemons_ldm3d_depth.png").convert("L")
+outputs = pipe_ldm3d_upscale(prompt="high quality high resolution uhd 4k image", rgb=low_res_img, depth=low_res_depth, num_inference_steps=50, target_res=[1024, 1024])
+
+upscaled_rgb, upscaled_depth =outputs.rgb[0], outputs.depth[0]
+upscaled_rgb.save(f"upscaled_lemons_rgb.png")
+upscaled_depth.save(f"upscaled_lemons_depth.png")
+'''
+
 ### ControlNet + T2I Adapter Pipeline
 This pipelines combines both ControlNet and T2IAdapter into a single pipeline, where the forward pass is executed once. 
 It receives `control_image` and `adapter_image`, as well as `controlnet_conditioning_scale` and `adapter_conditioning_scale`, for the ControlNet and Adapter modules, respectively. Whenever `adapter_conditioning_scale = 0` or `controlnet_conditioning_scale = 0`, it will act as a full ControlNet module or as a full T2IAdapter module, respectively. 
@@ -2481,3 +2523,145 @@ images = pipe(
 images[0].save("controlnet_and_adapter_inpaint.png")
 
 ```
+
+## Diffusion Posterior Sampling Pipeline
+* Reference paper
+    ```
+    @article{chung2022diffusion,
+    title={Diffusion posterior sampling for general noisy inverse problems},
+    author={Chung, Hyungjin and Kim, Jeongsol and Mccann, Michael T and Klasky, Marc L and Ye, Jong Chul},
+    journal={arXiv preprint arXiv:2209.14687},
+    year={2022}
+    }
+    ```
+* This pipeline allows zero-shot conditional sampling from the posterior distribution $p(x|y)$, given observation on $y$, unconditional generative model $p(x)$ and differentiable operator $y=f(x)$.
+* For example, $f(.)$ can be downsample operator, then $y$ is a downsampled image, and the pipeline becomes a super-resolution pipeline.
+* To use this pipeline, you need to know your operator $f(.)$ and corrupted image $y$, and pass them during the call. For example, as in the main function of dps_pipeline.py, you need to first define the Gaussian blurring operator $f(.)$. The operator should be a callable nn.Module, with all the parameter gradient disabled:
+    ```python
+    import torch.nn.functional as F
+    import scipy
+    from torch import nn
+
+    # define the Gaussian blurring operator first
+    class GaussialBlurOperator(nn.Module):
+        def __init__(self, kernel_size, intensity):
+            super().__init__()
+
+            class Blurkernel(nn.Module):
+                def __init__(self, blur_type='gaussian', kernel_size=31, std=3.0):
+                    super().__init__()
+                    self.blur_type = blur_type
+                    self.kernel_size = kernel_size
+                    self.std = std
+                    self.seq = nn.Sequential(
+                        nn.ReflectionPad2d(self.kernel_size//2),
+                        nn.Conv2d(3, 3, self.kernel_size, stride=1, padding=0, bias=False, groups=3)
+                    )
+                    self.weights_init()
+
+                def forward(self, x):
+                    return self.seq(x)
+
+                def weights_init(self):
+                    if self.blur_type == "gaussian":
+                        n = np.zeros((self.kernel_size, self.kernel_size))
+                        n[self.kernel_size // 2,self.kernel_size // 2] = 1
+                        k = scipy.ndimage.gaussian_filter(n, sigma=self.std)
+                        k = torch.from_numpy(k)
+                        self.k = k
+                        for name, f in self.named_parameters():
+                            f.data.copy_(k)
+                    elif self.blur_type == "motion":
+                        k = Kernel(size=(self.kernel_size, self.kernel_size), intensity=self.std).kernelMatrix
+                        k = torch.from_numpy(k)
+                        self.k = k
+                        for name, f in self.named_parameters():
+                            f.data.copy_(k)
+
+                def update_weights(self, k):
+                    if not torch.is_tensor(k):
+                        k = torch.from_numpy(k)
+                    for name, f in self.named_parameters():
+                        f.data.copy_(k)
+
+                def get_kernel(self):
+                    return self.k
+                
+            self.kernel_size = kernel_size
+            self.conv = Blurkernel(blur_type='gaussian',
+                                kernel_size=kernel_size,
+                                std=intensity)
+            self.kernel = self.conv.get_kernel()
+            self.conv.update_weights(self.kernel.type(torch.float32))
+
+            for param in self.parameters():
+                param.requires_grad=False
+
+        def forward(self, data, **kwargs):
+            return self.conv(data)
+
+        def transpose(self, data, **kwargs):
+            return data
+
+        def get_kernel(self):
+            return self.kernel.view(1, 1, self.kernel_size, self.kernel_size)
+    ```
+* Next, you should obtain the corrupted image $y$ by the operator. In this example, we generate $y$ from the source image $x$. However in practice, having the operator $f(.)$ and corrupted image $y$ is enough:
+    ```python
+    # set up source image
+    src = Image.open('sample.png')
+    # read image into [1,3,H,W]
+    src = torch.from_numpy(np.array(src, dtype=np.float32)).permute(2,0,1)[None]
+    # normalize image to [-1,1]
+    src = (src / 127.5) - 1.0
+    src = src.to("cuda")
+
+    # set up operator and measurement
+    operator = GaussialBlurOperator(kernel_size=61, intensity=3.0).to("cuda")
+    measurement = operator(src)
+
+    # save the source and corrupted images
+    save_image((src+1.0)/2.0, "dps_src.png")
+    save_image((measurement+1.0)/2.0, "dps_mea.png")
+    ```
+* We provide an example pair of saved source and corrupted images, using the Gaussian blur operator above
+    * Source image:
+    * ![sample](https://github.com/tongdaxu/Images/assets/22267548/4d2a1216-08d1-4aeb-9ce3-7a2d87561d65)
+    * Gaussian blurred image:
+    * ![ddpm_generated_image](https://github.com/tongdaxu/Images/assets/22267548/65076258-344b-4ed8-b704-a04edaade8ae)
+    * You can download those image to run the example on your own.
+* Next, we need to define a loss function used for diffusion posterior sample. For most of the cases, the RMSE is fine:
+    ```python
+    def RMSELoss(yhat, y):
+        return torch.sqrt(torch.sum((yhat-y)**2))
+    ```
+* And next, as any other diffusion models, we need the score estimator and scheduler. As we are working with $256x256$ face images, we use ddmp-celebahq-256:
+    ```python
+    # set up scheduler
+    scheduler = DDPMScheduler.from_pretrained("google/ddpm-celebahq-256")
+    scheduler.set_timesteps(1000)
+
+    # set up model
+    model = UNet2DModel.from_pretrained("google/ddpm-celebahq-256").to("cuda")
+    ```
+* And finally, run the pipeline:
+    ```python
+    # finally, the pipeline
+    dpspipe = DPSPipeline(model, scheduler)
+    image = dpspipe(
+        measurement = measurement,
+        operator = operator,
+        loss_fn = RMSELoss,
+        zeta = 1.0,
+    ).images[0]
+    image.save("dps_generated_image.png")
+    ```
+* The zeta is a hyperparameter that is in range of $[0,1]$. It need to be tuned for best effect. By setting zeta=1, you should be able to have the reconstructed result:
+    * Reconstructed image:
+    * ![sample](https://github.com/tongdaxu/Images/assets/22267548/0ceb5575-d42e-4f0b-99c0-50e69c982209)
+* The reconstruction is perceptually similar to the source image, but different in details.
+* In dps_pipeline.py, we also provide a super-resolution example, which should produce:
+    * Downsampled image: 
+    * ![dps_mea](https://github.com/tongdaxu/Images/assets/22267548/ff6a33d6-26f0-42aa-88ce-f8a76ba45a13)
+    * Reconstructed image:
+    * ![dps_generated_image](https://github.com/tongdaxu/Images/assets/22267548/b74f084d-93f4-4845-83d8-44c0fa758a5f)

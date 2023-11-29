@@ -25,4 +25,4 @@ The abstract from the paper is:
 </Tip>
 
 ## ScoreSdeVpScheduler
-[[autodoc]] schedulers.scheduling_sde_vp.ScoreSdeVpScheduler
+[[autodoc]] schedulers.deprecated.scheduling_sde_vp.ScoreSdeVpScheduler

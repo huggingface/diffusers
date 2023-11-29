@@ -18,4 +18,4 @@ specific language governing permissions and limitations under the License.
 [[autodoc]] KarrasVeScheduler
 
 ## KarrasVeOutput
-[[autodoc]] schedulers.scheduling_karras_ve.KarrasVeOutput
+[[autodoc]] schedulers.deprecated.scheduling_karras_ve.KarrasVeOutput
