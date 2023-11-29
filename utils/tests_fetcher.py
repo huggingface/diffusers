@@ -84,7 +84,6 @@ IMPORTANT_PIPELINES = [
 MODULES_TO_IGNORE = ["fixtures", "lora"]
 
 repo = Repo(PATH_TO_REPO)
-print("Active Branch: ", repo.active_branch)
 print("Refs: ", repo.refs)
 
 @contextmanager
