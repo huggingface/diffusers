@@ -84,6 +84,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             trained_betas=None,
             use_karras_sigmas=True,
         )
+
         torch.manual_seed(0)
         vae = AutoencoderKLTemporalDecoder(
             block_out_channels=[32, 64],
@@ -92,6 +93,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             latent_channels=4,
         )
+
         torch.manual_seed(0)
         config = CLIPVisionConfig(
             hidden_size=32,
@@ -103,6 +105,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             patch_size=1,
         )
         image_encoder = CLIPVisionModelWithProjection(config)
+
+        torch.manual_seed(0)
         feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
         components = {
             "unet": unet,
@@ -117,9 +121,9 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+            generator = torch.Generator(device="cpu").manual_seed(seed)
 
-        image = floats_tensor((1, 3, 32, 32), rng=random.Random(seed)).to(device)
+        image = floats_tensor((1, 3, 32, 32), rng=random.Random(0)).to(device)
         inputs = {
             "generator": generator,
             "image": image,
@@ -133,7 +137,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         }
         return inputs
 
-    @unittest.skip("Attention slicing is not enabled in this pipeline")
+    @unittest.skip("Deprecated functionality")
     def test_attention_slicing_forward_pass(self):
         pass
 
@@ -141,18 +145,16 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         self,
         batch_size=2,
         expected_max_diff=1e-4,
-        additional_params_copy_to_batched_inputs=["num_inference_steps"],
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for components in pipe.components.values():
             if hasattr(components, "set_default_attn_processor"):
                 components.set_default_attn_processor()
+        pipe.to(torch_device)
 
         pipe.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs(torch_device)
-        # Reset generator in case it is has been used in self.get_dummy_inputs
-        inputs["generator"] = self.get_generator(0)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
@@ -161,20 +163,8 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         batched_inputs = {}
         batched_inputs.update(inputs)
 
-        for name in self.batch_params:
-            if name not in inputs:
-                continue
-
-            value = inputs[name]
-            batched_inputs[name] = batch_size * [value]
-
-        if "generator" in inputs:
-            batched_inputs["generator"] = [self.get_generator(i) for i in range(batch_size)]
-
-        for arg in additional_params_copy_to_batched_inputs:
-            batched_inputs[arg] = inputs[arg]
-
-        batched_inputs["image"] = torch.cat(batched_inputs["image"], dim=0)
+        batched_inputs["generator"] = [torch.Generator("cpu").manual_seed(i) for i in range(batch_size)]
+        batched_inputs["image"] = torch.cat([inputs["image"]] * batch_size, dim=0)
 
         output = pipe(**inputs).frames
         output_batch = pipe(**batched_inputs).frames
@@ -184,45 +174,9 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         max_diff = np.abs(to_np(output_batch[0]) - to_np(output[0])).max()
         assert max_diff < expected_max_diff
 
+    @unittest.skip("Test is similar to test_inference_batch_single_identical")
     def test_inference_batch_consistent(self):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        inputs["generator"] = self.get_generator(0)
-
-        logger = logging.get_logger(pipe.__module__)
-        logger.setLevel(level=diffusers.logging.FATAL)
-
-        batch_sizes = [2]
-
-        # prepare batched inputs
-        batched_inputs = []
-        for batch_size in batch_sizes:
-            batched_input = {}
-            batched_input.update(inputs)
-
-            for name in self.batch_params:
-                if name not in inputs:
-                    continue
-
-                value = inputs[name]
-                batched_input[name] = batch_size * [value]
-
-            if "image" in inputs:
-                batched_input["image"] = torch.cat(batched_input["image"], dim=0)
-
-            if "generator" in inputs:
-                batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
-
-            batched_inputs.append(batched_input)
-
-        logger.setLevel(level=diffusers.logging.WARNING)
-        for batch_size, batched_input in zip(batch_sizes, batched_inputs):
-            output = pipe(**batched_input).frames
-            assert len(output) == batch_size
+        pass
 
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
@@ -262,17 +216,9 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         pipe_fp16.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
-        # Reset generator in case it is used inside dummy inputs
-        if "generator" in inputs:
-            inputs["generator"] = self.get_generator(0)
-
         output = pipe(**inputs).frames[0]
 
         fp16_inputs = self.get_dummy_inputs(torch_device)
-        # Reset generator in case it is used inside dummy inputs
-        if "generator" in fp16_inputs:
-            fp16_inputs["generator"] = self.get_generator(0)
-
         output_fp16 = pipe_fp16(**fp16_inputs).frames[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_fp16)).max()
