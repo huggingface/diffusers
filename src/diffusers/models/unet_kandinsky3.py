@@ -210,6 +210,11 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
             module.gradient_checkpointing = value
 
     def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
+        
+        if encoder_attention_mask is not None:
+            encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
+            encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
+        
         if not torch.is_tensor(timestep):
             dtype = torch.float32 if isinstance(timestep, float) else torch.int32
             timestep = torch.tensor([timestep], dtype=dtype, device=sample.device)
@@ -485,11 +490,10 @@ class Kandinsky3AttentionPooling(nn.Module):
             dim_head=head_dim,
             out_dim=num_channels,
             out_bias=False,
-            scale_mask_factor=-60000.0,
         )
 
     def forward(self, x, context, context_mask=None):
-        context_mask = context_mask.unsqueeze(1).to(dtype=context.dtype)
+        context_mask = context_mask.to(dtype=context.dtype)
         context = self.attention(context.mean(dim=1, keepdim=True), context, context_mask)
         return x + context.squeeze(1)
 
@@ -504,7 +508,6 @@ class Kandinsky3AttentionBlock(nn.Module):
             dim_head=head_dim,
             out_dim=num_channels,
             out_bias=False,
-            scale_mask_factor=-60000.0,
         )
 
         hidden_channels = expansion_ratio * num_channels
@@ -521,7 +524,7 @@ class Kandinsky3AttentionBlock(nn.Module):
         out = out.reshape(x.shape[0], -1, height * width).permute(0, 2, 1)
         context = context if context is not None else out
         if context_mask is not None:
-            context_mask = context_mask.unsqueeze(1).to(dtype=context.dtype)
+            context_mask = context_mask.to(dtype=context.dtype)
 
         out = self.attention(out, context, context_mask)
         out = out.permute(0, 2, 1).unsqueeze(-1).reshape(out.shape[0], -1, height, width)

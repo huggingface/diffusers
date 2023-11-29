@@ -109,7 +109,6 @@ class Attention(nn.Module):
         residual_connection: bool = False,
         _from_deprecated_attn_block: bool = False,
         processor: Optional["AttnProcessor"] = None,
-        scale_mask_factor: float = 1.0,
         out_dim: int = None,
     ):
         super().__init__()
@@ -121,7 +120,6 @@ class Attention(nn.Module):
         self.residual_connection = residual_connection
         self.dropout = dropout
         self.out_dim = out_dim if out_dim is not None else query_dim
-        self.scale_mask_factor = scale_mask_factor
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
@@ -597,7 +595,7 @@ class Attention(nn.Module):
             beta = 0
         else:
             baddbmm_input = attention_mask
-            beta = self.scale_mask_factor
+            beta = 1
 
         attention_scores = torch.baddbmm(
             baddbmm_input,
