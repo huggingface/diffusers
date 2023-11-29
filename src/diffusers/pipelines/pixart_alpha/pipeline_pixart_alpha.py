@@ -670,7 +670,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]] = None,
         negative_prompt: str = "",
         num_inference_steps: int = 20,
-        original_inference_steps: int = None,
         timesteps: List[int] = None,
         guidance_scale: float = 4.5,
         num_images_per_prompt: Optional[int] = 1,
@@ -829,9 +828,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(
-            self.scheduler, num_inference_steps, device, timesteps, original_inference_steps=original_inference_steps
-        )
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
