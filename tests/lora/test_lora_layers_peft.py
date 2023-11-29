@@ -523,7 +523,6 @@ class PeftLoraLoaderMixinTests:
                 )
 
             images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            print(f"Has UNet: {hasattr(pipe, 'unet')}")
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
@@ -545,8 +544,6 @@ class PeftLoraLoaderMixinTests:
                         unet_lora_layers=unet_state_dict,
                         safe_serialization=False,
                     )
-
-                print(f"Has UNet: {hasattr(pipe, 'unet')}")
 
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
                 pipe.unload_lora_weights()
