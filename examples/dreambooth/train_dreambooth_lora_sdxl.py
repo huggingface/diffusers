@@ -1684,7 +1684,6 @@ def main(args):
         del unet,text_encoder_one, text_encoder_two
         del optimizer
         torch.cuda.empty_cache()
-        
         # Final inference
         # Load previous pipeline
         vae = AutoencoderKL.from_pretrained(
