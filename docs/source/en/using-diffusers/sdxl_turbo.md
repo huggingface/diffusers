@@ -101,4 +101,16 @@ make_image_grid([init_image, image], rows=1, cols=2)
 
 ## Speed-up SDXL Turbo even more
 
-TODO
+- Compile the UNet if you are using PyTorch version 2 or better. The first inference run will be very slow, but subsequent ones will be much faster.
+
+```py
+pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+```
+
+- When using the default VAE, keep it in `float32` to avoid costly `dtype` conversions before and after each generation. You only need to do this one before your first generation:
+
+```py
+pipe.upcast_vae()
+```
+
+As an alternative, you can also use a [16-bit VAE](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix) created by community member [`@madebyollin`](https://huggingface.co/madebyollin) that does not need to be upcasted to `float32`.
