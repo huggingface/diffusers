@@ -6,7 +6,7 @@ from huggingface_hub import upload_file
 
 
 sys.path.append(".")
-from benchmark_utils import BASE_PATH, collate_csv  # noqa: E402
+from benchmarks.utils import BASE_PATH, collate_csv  # noqa: E402
 
 
 FINAL_CSV_FILE = "collated_results.csv"
