@@ -167,13 +167,32 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
-        self.sigmas = torch.from_numpy(sigmas)
+        timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
+
+        if use_karras_sigmas:
+            sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_train_timesteps)
+            log_sigmas = np.log(sigmas)
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
+
+        sigmas = torch.from_numpy(sigmas[::-1].copy()).to(dtype=torch.float32)
+        timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
+
+        # Set scaling parameters for each timestep
+        self.c_skips = torch.Tensor([self.get_scalings(sigma)[0] for sigma in sigmas])
+        self.c_outs = torch.Tensor([self.get_scalings(sigma)[1] for sigma in sigmas])
+        self.c_noise = torch.Tensor([self.get_scalings(sigma)[3] for sigma in sigmas])
+
+        self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 
         # setable values
         self.num_inference_steps = None
-        timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
-        self.timesteps = torch.from_numpy(timesteps)
+        if timestep_type == "discrete":
+            self.timesteps = timesteps
+        elif timestep_type == "continuous":
+            self.timesteps = self.c_noise
+        else:
+            raise ValueError(f"timestep_type given as {timestep_type} must be one of `discrete`, or `continuous`")
+
         self.is_scale_input_called = False
         self.use_karras_sigmas = use_karras_sigmas
 
@@ -273,17 +292,17 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
         # Set scaling parameters for each timestep
-        self.c_skips = torch.Tensor([self.get_scalings(sigma)[0] for sigma in sigmas])
-        self.c_outs = torch.Tensor([self.get_scalings(sigma)[1] for sigma in sigmas])
-        self.c_noise = torch.Tensor([self.get_scalings(sigma)[3] for sigma in sigmas])
+        self.c_skips = torch.Tensor([self.get_scalings(sigma)[0] for sigma in sigmas]).to(device=device)
+        self.c_outs = torch.Tensor([self.get_scalings(sigma)[1] for sigma in sigmas]).to(device=device)
+        self.c_noise = torch.Tensor([self.get_scalings(sigma)[3] for sigma in sigmas]).to(device=device)
 
         # when timestep_type is continuous, we need to convert the timesteps to continuous values using c_noise
         if self.config.timestep_type == "continuous":
             self.timesteps = self.c_noise
         else:
-            self.timesteps = torch.from_numpy(timesteps).to(device=device)
+            self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
 
-        self.sigmas = torch.cat([sigmas, torch.zeros(1)])
+        self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
         self._step_index = None
 
     def _sigma_to_t(self, sigma, log_sigmas):
