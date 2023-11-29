@@ -392,7 +392,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         # 4. Encode input image using VAE
         image = self.image_processor.preprocess(image, height=height, width=width)
-        image = image + noise_aug_strength * torch.randn_like(image)
+        noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
+        image = image + noise_aug_strength * noise
 
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
