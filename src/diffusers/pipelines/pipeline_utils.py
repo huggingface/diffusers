@@ -1688,7 +1688,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if module_candidate is None or not isinstance(module_candidate, str):
                     continue
 
-                candidate_file = os.path.join(component, module_candidate + ".py")
+                # We compute candidate file path on the Hub. Do not use `os.path.join`.
+                candidate_file = f"{component}/{module_candidate}.py"
 
                 if candidate_file in filenames:
                     custom_components[component] = module_candidate
