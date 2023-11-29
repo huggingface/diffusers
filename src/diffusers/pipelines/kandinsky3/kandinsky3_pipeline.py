@@ -10,12 +10,30 @@ from ...utils import (
     deprecate,
     is_accelerate_available,
     logging,
+    replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import AutoPipelineForText2Image
+        >>> import torch
+
+        >>> pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."
+
+        >>> generator = torch.Generator(device="cpu").manual_seed(0)
+        >>> image = pipe(prompt, num_inference_steps=25, generator=generator).images[0]
+        ```
+
+"""
 
 
 def downscale_height_and_width(height, width, scale_factor=8):
@@ -289,6 +307,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         return self._num_timesteps
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -369,6 +388,12 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+
+        Examples:
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`
+
         """
 
         callback = kwargs.pop("callback", None)
