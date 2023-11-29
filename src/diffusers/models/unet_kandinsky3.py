@@ -210,11 +210,10 @@ class Kandinsky3UNet(ModelMixin, ConfigMixin):
             module.gradient_checkpointing = value
 
     def forward(self, sample, timestep, encoder_hidden_states=None, encoder_attention_mask=None, return_dict=True):
-        
         if encoder_attention_mask is not None:
             encoder_attention_mask = (1 - encoder_attention_mask.to(sample.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
-        
+
         if not torch.is_tensor(timestep):
             dtype = torch.float32 if isinstance(timestep, float) else torch.int32
             timestep = torch.tensor([timestep], dtype=dtype, device=sample.device)
