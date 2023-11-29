@@ -72,6 +72,8 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
+    - local: using-diffusers/sdxl_turbo
+      title: SDXL Turbo
     - local: using-diffusers/kandinsky
       title: Kandinsky
     - local: using-diffusers/controlnet
@@ -333,6 +335,8 @@
         title: Stable Diffusion 2
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
         title: Stable Diffusion XL
+      - local: api/pipelines/stable_diffusion/sdxl_turbo
+        title: SDXL Turbo
       - local: api/pipelines/stable_diffusion/latent_upscale
         title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
