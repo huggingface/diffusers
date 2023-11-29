@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # SDXL Turbo
 
-Stable Diffusion XL (SDXL) Turbo was proposed in [Adversarial Diffusion Distillation](https://stability.ai/research/adversarial-diffusion-distillation) by Axel Sauer Dominik Lorenz Andreas Blattmann Robin Rombach.
+Stable Diffusion XL (SDXL) Turbo was proposed in [Adversarial Diffusion Distillation](https://stability.ai/research/adversarial-diffusion-distillation) by Axel Sauer, Dominik Lorenz, Andreas Blattmann, and Robin Rombach.
 
 The abstract from the paper is:
 

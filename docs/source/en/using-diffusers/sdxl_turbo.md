@@ -45,16 +45,16 @@ from diffusers import StableDiffusionXLPipeline
 import torch
 
 pipeline = StableDiffusionXLPipeline.from_single_file(
-    "https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors", torch_dtype=torch.float16, variant="fp16")
+    "https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors", torch_dtype=torch.float16)
 pipeline = pipeline.to("cuda")
 ```
 
 ## Text-to-image
 
-For text-to-image, pass a text prompt. By default, SDXL Turbo generates a 512x512 image for the best results. You can try setting the `height` and `width` parameters to 768x768 or 1024x1024, but should expect quality degradations when doing so.
+For text-to-image, pass a text prompt. By default, SDXL Turbo generates a 512x512 image, and that resolution gives the best results. You can try setting the `height` and `width` parameters to 768x768 or 1024x1024, but you should expect quality degradations when doing so.
 
-Make sure to set `guidance_scale` to 0.0 to disable. A single inference step is enough to generate high quality images. 
-Increasing the step size to 2, 3 or 4 should improve image quality.
+Make sure to set `guidance_scale` to 0.0 to disable, as the model was trained without it. A single inference step is enough to generate high quality images. 
+Increasing the number of steps to 2, 3 or 4 should improve image quality.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -70,7 +70,7 @@ image
 ```
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-turbo-text2img.png" alt="generated image of an astronaut in a jungle"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/sdxl-turbo-text2img.png" alt="generated image of a racoon in a robe"/>
 </div>
 
 ## Image-to-image
@@ -96,7 +96,7 @@ make_image_grid([init_image, image], rows=1, cols=2)
 ```
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl-turbo-img2img.png" alt="generated image of a dog catching a frisbee in a jungle"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/sdxl-turbo-img2img.png" alt="Image-to-image generation sample using SDXL Turbo"/>
 </div>
 
 ## Speed-up SDXL Turbo even more
