@@ -30,7 +30,6 @@ You should start by creating a `one_step_unet.py` file for your community pipeli
 from diffusers import DiffusionPipeline
 import torch
 
-
 class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
     def __init__(self, unet, scheduler):
         super().__init__()
@@ -49,7 +48,7 @@ To ensure your pipeline and its components (`unet` and `scheduler`) can be saved
 +         self.register_modules(unet=unet, scheduler=scheduler)
 ```
 
-Cool, the `__init__` step is done and you can move to the forward pass now! 🔥 
+Cool, the `__init__` step is done and you can move to the forward pass now! 🔥
 
 ## Define the forward pass
 
@@ -58,7 +57,6 @@ In the forward pass, which we recommend defining as `__call__`, you have complet
 ```diff
   from diffusers import DiffusionPipeline
   import torch
-
 
   class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
       def __init__(self, unet, scheduler):
@@ -150,12 +148,12 @@ Sometimes you can't load all the pipeline components weights from an official re
 
 ```python
 from diffusers import DiffusionPipeline
-from transformers import CLIPFeatureExtractor, CLIPModel
+from transformers import CLIPImageProcessor, CLIPModel
 
 model_id = "CompVis/stable-diffusion-v1-4"
 clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
-feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
+feature_extractor = CLIPImageProcessor.from_pretrained(clip_model_id)
 clip_model = CLIPModel.from_pretrained(clip_model_id, torch_dtype=torch.float16)
 
 pipeline = DiffusionPipeline.from_pretrained(
@@ -172,7 +170,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 The magic behind community pipelines is contained in the following code. It allows the community pipeline to be loaded from GitHub or the Hub, and it'll be available to all 🧨 Diffusers packages.
 
 ```python
-# 2. Load the pipeline class, if using custom module then load it from the hub
+# 2. Load the pipeline class, if using custom module then load it from the Hub
 # if we load from explicit class, let's use it
 if custom_pipeline is not None:
     pipeline_class = get_class_from_dynamic_module(

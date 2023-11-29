@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import glob
 import json
 import os
 import random
@@ -57,7 +56,7 @@ from diffusers import (
     UniPCMultistepScheduler,
     logging,
 )
-from diffusers.pipelines.pipeline_utils import _get_pipeline_class, variant_compatible_siblings
+from diffusers.pipelines.pipeline_utils import _get_pipeline_class
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import (
     CONFIG_NAME,
@@ -793,6 +792,54 @@ class DownloadTests(unittest.TestCase):
         out = pipe(prompt, num_inference_steps=1, output_type="numpy").images
         assert out.shape == (1, 128, 128, 3)
 
+    def test_text_inversion_multi_tokens(self):
+        pipe1 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe1 = pipe1.to(torch_device)
+
+        token1, token2 = "<*>", "<**>"
+        ten1 = torch.ones((32,))
+        ten2 = torch.ones((32,)) * 2
+
+        num_tokens = len(pipe1.tokenizer)
+
+        pipe1.load_textual_inversion(ten1, token=token1)
+        pipe1.load_textual_inversion(ten2, token=token2)
+        emb1 = pipe1.text_encoder.get_input_embeddings().weight
+
+        pipe2 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe2 = pipe2.to(torch_device)
+        pipe2.load_textual_inversion([ten1, ten2], token=[token1, token2])
+        emb2 = pipe2.text_encoder.get_input_embeddings().weight
+
+        pipe3 = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe3 = pipe3.to(torch_device)
+        pipe3.load_textual_inversion(torch.stack([ten1, ten2], dim=0), token=[token1, token2])
+        emb3 = pipe3.text_encoder.get_input_embeddings().weight
+
+        assert len(pipe1.tokenizer) == len(pipe2.tokenizer) == len(pipe3.tokenizer) == num_tokens + 2
+        assert (
+            pipe1.tokenizer.convert_tokens_to_ids(token1)
+            == pipe2.tokenizer.convert_tokens_to_ids(token1)
+            == pipe3.tokenizer.convert_tokens_to_ids(token1)
+            == num_tokens
+        )
+        assert (
+            pipe1.tokenizer.convert_tokens_to_ids(token2)
+            == pipe2.tokenizer.convert_tokens_to_ids(token2)
+            == pipe3.tokenizer.convert_tokens_to_ids(token2)
+            == num_tokens + 1
+        )
+        assert emb1[num_tokens].sum().item() == emb2[num_tokens].sum().item() == emb3[num_tokens].sum().item()
+        assert (
+            emb1[num_tokens + 1].sum().item() == emb2[num_tokens + 1].sum().item() == emb3[num_tokens + 1].sum().item()
+        )
+
     def test_download_ignore_files(self):
         # Check https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe-ignore-files/blob/72f58636e5508a218c6b3f60550dc96445547817/model_index.json#L4
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -1137,8 +1184,8 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         ).to(torch_device)
-        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components).to(torch_device)
-        text2img = StableDiffusionPipeline(**inpaint.components).to(torch_device)
+        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components, image_encoder=None).to(torch_device)
+        text2img = StableDiffusionPipeline(**inpaint.components, image_encoder=None).to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
 
@@ -1276,6 +1323,29 @@ class PipelineFastTests(unittest.TestCase):
 
         assert out_image.shape == (1, 64, 64, 3)
         assert np.abs(out_image - out_image_2).max() < 1e-3
+
+    def test_optional_components_is_none(self):
+        unet = self.dummy_cond_unet()
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        items = {
+            "feature_extractor": self.dummy_extractor,
+            "unet": unet,
+            "scheduler": scheduler,
+            "vae": vae,
+            "text_encoder": bert,
+            "tokenizer": tokenizer,
+            "safety_checker": None,
+            # we don't add an image encoder
+        }
+
+        pipeline = StableDiffusionPipeline(**items)
+
+        assert sorted(pipeline.components.keys()) == sorted(["image_encoder"] + list(items.keys()))
+        assert pipeline.image_encoder is None
 
     def test_set_scheduler_consistency(self):
         unet = self.dummy_cond_unet()
@@ -1505,28 +1575,15 @@ class PipelineFastTests(unittest.TestCase):
 
             assert sd.name_or_path == tmpdirname
 
-    def test_warning_no_variant_available(self):
+    def test_error_no_variant_available(self):
         variant = "fp16"
-        with self.assertWarns(FutureWarning) as warning_context:
-            cached_folder = StableDiffusionPipeline.download(
+        with self.assertRaises(ValueError) as error_context:
+            _ = StableDiffusionPipeline.download(
                 "hf-internal-testing/diffusers-stable-diffusion-tiny-all", variant=variant
             )
 
-        assert "but no such modeling files are available" in str(warning_context.warning)
-        assert variant in str(warning_context.warning)
-
-        def get_all_filenames(directory):
-            filenames = glob.glob(directory + "/**", recursive=True)
-            filenames = [f for f in filenames if os.path.isfile(f)]
-            return filenames
-
-        filenames = get_all_filenames(str(cached_folder))
-
-        all_model_files, variant_model_files = variant_compatible_siblings(filenames, variant=variant)
-
-        # make sure that none of the model names are variant model names
-        assert len(variant_model_files) == 0
-        assert len(all_model_files) > 0
+        assert "but no such modeling files are available" in str(error_context.exception)
+        assert variant in str(error_context.exception)
 
     def test_pipe_to(self):
         unet = self.dummy_cond_unet()

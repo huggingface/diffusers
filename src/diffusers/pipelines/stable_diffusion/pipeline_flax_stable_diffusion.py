@@ -410,13 +410,13 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
             images_uint8_casted = np.asarray(images_uint8_casted).reshape(num_devices * batch_size, height, width, 3)
             images_uint8_casted, has_nsfw_concept = self._run_safety_checker(images_uint8_casted, safety_params, jit)
-            images = np.asarray(images)
+            images = np.asarray(images).copy()
 
             # block images
             if any(has_nsfw_concept):
                 for i, is_nsfw in enumerate(has_nsfw_concept):
                     if is_nsfw:
-                        images[i] = np.asarray(images_uint8_casted[i])
+                        images[i, 0] = np.asarray(images_uint8_casted[i])
 
             images = images.reshape(num_devices, batch_size, height, width, 3)
         else:

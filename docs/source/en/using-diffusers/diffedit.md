@@ -26,7 +26,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install diffusers transformers accelerate safetensors
+#!pip install -q diffusers transformers accelerate
 ```
 
 The [`StableDiffusionDiffEditPipeline`] requires an image mask and a set of partially inverted latents. The image mask is generated from the [`~StableDiffusionDiffEditPipeline.generate_mask`] function, and includes two parameters, `source_prompt` and `target_prompt`. These parameters determine what to edit in the image. For example, if you want to change a bowl of *fruits* to a bowl of *pears*, then:
@@ -59,15 +59,18 @@ pipeline.enable_vae_slicing()
 Load the image to edit:
 
 ```py
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
-raw_image = load_image(img_url).convert("RGB").resize((768, 768))
+raw_image = load_image(img_url).resize((768, 768))
+raw_image
 ```
 
 Use the [`~StableDiffusionDiffEditPipeline.generate_mask`] function to generate the image mask. You'll need to pass it the `source_prompt` and `target_prompt` to specify what to edit in the image:
 
 ```py
+from PIL import Image
+
 source_prompt = "a bowl of fruits"
 target_prompt = "a basket of pears"
 mask_image = pipeline.generate_mask(
@@ -75,6 +78,7 @@ mask_image = pipeline.generate_mask(
     source_prompt=source_prompt,
     target_prompt=target_prompt,
 )
+Image.fromarray((mask_image.squeeze()*255).astype("uint8"), "L").resize((768, 768))
 ```
 
 Next, create the inverted latents and pass it a caption describing the image:
@@ -86,13 +90,14 @@ inv_latents = pipeline.invert(prompt=source_prompt, image=raw_image).latents
 Finally, pass the image mask and inverted latents to the pipeline. The `target_prompt` becomes the `prompt` now, and the `source_prompt` is used as the `negative_prompt`:
 
 ```py
-image = pipeline(
+output_image = pipeline(
     prompt=target_prompt,
     mask_image=mask_image,
     image_latents=inv_latents,
     negative_prompt=source_prompt,
 ).images[0]
-image.save("edited_image.png")
+mask_image = Image.fromarray((mask_image.squeeze()*255).astype("uint8"), "L").resize((768, 768))
+make_image_grid([raw_image, mask_image, output_image], rows=1, cols=3)
 ```
 
 <div class="flex gap-4">
@@ -116,8 +121,8 @@ Load the Flan-T5 model and tokenizer from the 🤗 Transformers library:
 import torch
 from transformers import AutoTokenizer, T5ForConditionalGeneration
 
-tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-xl")
-model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xl", device_map="auto", torch_dtype=torch.float16)
+tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-large")
+model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-large", device_map="auto", torch_dtype=torch.float16)
 ```
 
 Provide some initial text to prompt the model to generate the source and target prompts.
@@ -136,7 +141,7 @@ target_text = f"Provide a caption for images containing a {target_concept}. "
 Next, create a utility function to generate the prompts:
 
 ```py
-@torch.no_grad
+@torch.no_grad()
 def generate_prompts(input_prompt):
     input_ids = tokenizer(input_prompt, return_tensors="pt").input_ids.to("cuda")
 
@@ -160,12 +165,12 @@ Check out the [generation strategy](https://huggingface.co/docs/transformers/mai
 Load the text encoder model used by the [`StableDiffusionDiffEditPipeline`] to encode the text. You'll use the text encoder to compute the text embeddings:
 
 ```py
-import torch 
-from diffusers import StableDiffusionDiffEditPipeline 
+import torch
+from diffusers import StableDiffusionDiffEditPipeline
 
 pipeline = StableDiffusionDiffEditPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-1", torch_dtype=torch.float16, use_safetensors=True
-).to("cuda")
+)
 pipeline.enable_model_cpu_offload()
 pipeline.enable_vae_slicing()
 
@@ -193,33 +198,39 @@ Finally, pass the embeddings to the [`~StableDiffusionDiffEditPipeline.generate_
 
 ```diff
   from diffusers import DDIMInverseScheduler, DDIMScheduler
-  from diffusers.utils import load_image
+  from diffusers.utils import load_image, make_image_grid
+  from PIL import Image
 
   pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
   pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler.config)
 
   img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
-  raw_image = load_image(img_url).convert("RGB").resize((768, 768))
-
+  raw_image = load_image(img_url).resize((768, 768))
 
   mask_image = pipeline.generate_mask(
       image=raw_image,
+-     source_prompt=source_prompt,
+-     target_prompt=target_prompt,
 +     source_prompt_embeds=source_embeds,
 +     target_prompt_embeds=target_embeds,
   )
 
   inv_latents = pipeline.invert(
+-     prompt=source_prompt,
 +     prompt_embeds=source_embeds,
       image=raw_image,
   ).latents
 
-  images = pipeline(
+  output_image = pipeline(
       mask_image=mask_image,
       image_latents=inv_latents,
+-     prompt=target_prompt,
+-     negative_prompt=source_prompt,
 +     prompt_embeds=target_embeds,
 +     negative_prompt_embeds=source_embeds,
-  ).images
-  images[0].save("edited_image.png")
+  ).images[0]
+  mask_image = Image.fromarray((mask_image.squeeze()*255).astype("uint8"), "L")
+  make_image_grid([raw_image, mask_image, output_image], rows=1, cols=3)
 ```
 
 ## Generate a caption for inversion
@@ -260,7 +271,7 @@ Load an input image and generate a caption for it using the `generate_caption` f
 from diffusers.utils import load_image
 
 img_url = "https://github.com/Xiang-cd/DiffEdit-stable-diffusion/raw/main/assets/origin.png"
-raw_image = load_image(img_url).convert("RGB").resize((768, 768))
+raw_image = load_image(img_url).resize((768, 768))
 caption = generate_caption(raw_image, model, processor)
 ```
 

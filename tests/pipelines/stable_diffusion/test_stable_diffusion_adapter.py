@@ -25,6 +25,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 import diffusers
 from diffusers import (
     AutoencoderKL,
+    LCMScheduler,
     MultiAdapter,
     PNDMScheduler,
     StableDiffusionAdapterPipeline,
@@ -56,7 +57,7 @@ class AdapterTests:
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
 
-    def get_dummy_components(self, adapter_type):
+    def get_dummy_components(self, adapter_type, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -67,6 +68,7 @@ class AdapterTests:
             down_block_types=("CrossAttnDownBlock2D", "DownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
+            time_cond_proj_dim=time_cond_proj_dim,
         )
         scheduler = PNDMScheduler(skip_prk_steps=True)
         torch.manual_seed(0)
@@ -264,13 +266,13 @@ class AdapterTests:
     @parameterized.expand(
         [
             # (dim=264) The internal feature map will be 33x33 after initial pixel unshuffling (downscaled x8).
-            ((4 * 8 + 1) * 8),
+            (((4 * 8 + 1) * 8),),
             # (dim=272) The internal feature map will be 17x17 after the first T2I down block (downscaled x16).
-            ((4 * 4 + 1) * 16),
+            (((4 * 4 + 1) * 16),),
             # (dim=288) The internal feature map will be 9x9 after the second T2I down block (downscaled x32).
-            ((4 * 2 + 1) * 32),
+            (((4 * 2 + 1) * 32),),
             # (dim=320) The internal feature map will be 5x5 after the third T2I down block (downscaled x64).
-            ((4 * 1 + 1) * 64),
+            (((4 * 1 + 1) * 64),),
         ]
     )
     def test_multiple_image_dimensions(self, dim):
@@ -292,10 +294,52 @@ class AdapterTests:
 
         assert image.shape == (1, dim, dim, 3)
 
+    def test_adapter_lcm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionAdapterPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.4535, 0.5493, 0.4359, 0.5452, 0.6086, 0.4441, 0.5544, 0.501, 0.4859])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_adapter_lcm_custom_timesteps(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionAdapterPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        del inputs["num_inference_steps"]
+        inputs["timesteps"] = [999, 499]
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.4535, 0.5493, 0.4359, 0.5452, 0.6086, 0.4441, 0.5544, 0.501, 0.4859])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
 
 class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
-    def get_dummy_components(self):
-        return super().get_dummy_components("full_adapter")
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        return super().get_dummy_components("full_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
     def get_dummy_components_with_full_downscaling(self):
         return super().get_dummy_components_with_full_downscaling("full_adapter")
@@ -317,8 +361,8 @@ class StableDiffusionFullAdapterPipelineFastTests(AdapterTests, PipelineTesterMi
 
 
 class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
-    def get_dummy_components(self):
-        return super().get_dummy_components("light_adapter")
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        return super().get_dummy_components("light_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
     def get_dummy_components_with_full_downscaling(self):
         return super().get_dummy_components_with_full_downscaling("light_adapter")
@@ -340,8 +384,8 @@ class StableDiffusionLightAdapterPipelineFastTests(AdapterTests, PipelineTesterM
 
 
 class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterMixin, unittest.TestCase):
-    def get_dummy_components(self):
-        return super().get_dummy_components("multi_adapter")
+    def get_dummy_components(self, time_cond_proj_dim=None):
+        return super().get_dummy_components("multi_adapter", time_cond_proj_dim=time_cond_proj_dim)
 
     def get_dummy_components_with_full_downscaling(self):
         return super().get_dummy_components_with_full_downscaling("multi_adapter")

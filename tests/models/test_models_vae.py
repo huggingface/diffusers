@@ -46,6 +46,82 @@ from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 enable_full_determinism()
 
 
+def get_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
+    block_out_channels = block_out_channels or [32, 64]
+    norm_num_groups = norm_num_groups or 32
+    init_dict = {
+        "block_out_channels": block_out_channels,
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D"] * len(block_out_channels),
+        "up_block_types": ["UpDecoderBlock2D"] * len(block_out_channels),
+        "latent_channels": 4,
+        "norm_num_groups": norm_num_groups,
+    }
+    return init_dict
+
+
+def get_asym_autoencoder_kl_config(block_out_channels=None, norm_num_groups=None):
+    block_out_channels = block_out_channels or [32, 64]
+    norm_num_groups = norm_num_groups or 32
+    init_dict = {
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D"] * len(block_out_channels),
+        "down_block_out_channels": block_out_channels,
+        "layers_per_down_block": 1,
+        "up_block_types": ["UpDecoderBlock2D"] * len(block_out_channels),
+        "up_block_out_channels": block_out_channels,
+        "layers_per_up_block": 1,
+        "act_fn": "silu",
+        "latent_channels": 4,
+        "norm_num_groups": norm_num_groups,
+        "sample_size": 32,
+        "scaling_factor": 0.18215,
+    }
+    return init_dict
+
+
+def get_autoencoder_tiny_config(block_out_channels=None):
+    block_out_channels = (len(block_out_channels) * [32]) if block_out_channels is not None else [32, 32]
+    init_dict = {
+        "in_channels": 3,
+        "out_channels": 3,
+        "encoder_block_out_channels": block_out_channels,
+        "decoder_block_out_channels": block_out_channels,
+        "num_encoder_blocks": [b // min(block_out_channels) for b in block_out_channels],
+        "num_decoder_blocks": [b // min(block_out_channels) for b in reversed(block_out_channels)],
+    }
+    return init_dict
+
+
+def get_consistency_vae_config(block_out_channels=None, norm_num_groups=None):
+    block_out_channels = block_out_channels or [32, 64]
+    norm_num_groups = norm_num_groups or 32
+    return {
+        "encoder_block_out_channels": block_out_channels,
+        "encoder_in_channels": 3,
+        "encoder_out_channels": 4,
+        "encoder_down_block_types": ["DownEncoderBlock2D"] * len(block_out_channels),
+        "decoder_add_attention": False,
+        "decoder_block_out_channels": block_out_channels,
+        "decoder_down_block_types": ["ResnetDownsampleBlock2D"] * len(block_out_channels),
+        "decoder_downsample_padding": 1,
+        "decoder_in_channels": 7,
+        "decoder_layers_per_block": 1,
+        "decoder_norm_eps": 1e-05,
+        "decoder_norm_num_groups": norm_num_groups,
+        "encoder_norm_num_groups": norm_num_groups,
+        "decoder_num_train_timesteps": 1024,
+        "decoder_out_channels": 6,
+        "decoder_resnet_time_scale_shift": "scale_shift",
+        "decoder_time_embedding_type": "learned",
+        "decoder_up_block_types": ["ResnetUpsampleBlock2D"] * len(block_out_channels),
+        "scaling_factor": 1,
+        "latent_channels": 4,
+    }
+
+
 class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
     main_input_name = "sample"
@@ -70,14 +146,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "block_out_channels": [32, 64],
-            "in_channels": 3,
-            "out_channels": 3,
-            "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            "latent_channels": 4,
-        }
+        init_dict = get_autoencoder_kl_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
@@ -214,21 +283,7 @@ class AsymmetricAutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.T
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "in_channels": 3,
-            "out_channels": 3,
-            "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            "down_block_out_channels": [32, 64],
-            "layers_per_down_block": 1,
-            "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            "up_block_out_channels": [32, 64],
-            "layers_per_up_block": 1,
-            "act_fn": "silu",
-            "latent_channels": 4,
-            "norm_num_groups": 32,
-            "sample_size": 32,
-            "scaling_factor": 0.18215,
-        }
+        init_dict = get_asym_autoencoder_kl_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
@@ -263,14 +318,7 @@ class AutoencoderTinyTests(ModelTesterMixin, unittest.TestCase):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "in_channels": 3,
-            "out_channels": 3,
-            "encoder_block_out_channels": (32, 32),
-            "decoder_block_out_channels": (32, 32),
-            "num_encoder_blocks": (1, 2),
-            "num_decoder_blocks": (2, 1),
-        }
+        init_dict = get_autoencoder_tiny_config()
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
@@ -302,33 +350,7 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def init_dict(self):
-        return {
-            "encoder_block_out_channels": [32, 64],
-            "encoder_in_channels": 3,
-            "encoder_out_channels": 4,
-            "encoder_down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            "decoder_add_attention": False,
-            "decoder_block_out_channels": [32, 64],
-            "decoder_down_block_types": [
-                "ResnetDownsampleBlock2D",
-                "ResnetDownsampleBlock2D",
-            ],
-            "decoder_downsample_padding": 1,
-            "decoder_in_channels": 7,
-            "decoder_layers_per_block": 1,
-            "decoder_norm_eps": 1e-05,
-            "decoder_norm_num_groups": 32,
-            "decoder_num_train_timesteps": 1024,
-            "decoder_out_channels": 6,
-            "decoder_resnet_time_scale_shift": "scale_shift",
-            "decoder_time_embedding_type": "learned",
-            "decoder_up_block_types": [
-                "ResnetUpsampleBlock2D",
-                "ResnetUpsampleBlock2D",
-            ],
-            "scaling_factor": 1,
-            "latent_channels": 4,
-        }
+        return get_consistency_vae_config()
 
     def prepare_init_args_and_inputs_for_common(self):
         return self.init_dict, self.inputs_dict()
@@ -457,8 +479,16 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
     @parameterized.expand(
         [
             # fmt: off
-            [33, [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824], [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824]],
-            [47, [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089], [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131]],
+            [
+                33,
+                [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
+                [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824],
+            ],
+            [
+                47,
+                [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089],
+                [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131],
+            ],
             # fmt: on
         ]
     )
@@ -504,8 +534,16 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
     @parameterized.expand(
         [
             # fmt: off
-            [33, [-0.1609, 0.9866, -0.0487, -0.0777, -0.2716, 0.8368, -0.2055, -0.0814], [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824]],
-            [47, [-0.2377, 0.1147, 0.1333, -0.4841, -0.2506, -0.0805, -0.0491, -0.4085], [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131]],
+            [
+                33,
+                [-0.1609, 0.9866, -0.0487, -0.0777, -0.2716, 0.8368, -0.2055, -0.0814],
+                [-0.2395, 0.0098, 0.0102, -0.0709, -0.2840, -0.0274, -0.0718, -0.1824],
+            ],
+            [
+                47,
+                [-0.2377, 0.1147, 0.1333, -0.4841, -0.2506, -0.0805, -0.0491, -0.4085],
+                [0.0350, 0.0847, 0.0467, 0.0344, -0.0842, -0.0547, -0.0633, -0.1131],
+            ],
             # fmt: on
         ]
     )
@@ -687,8 +725,16 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
     @parameterized.expand(
         [
             # fmt: off
-            [33, [-0.0344, 0.2912, 0.1687, -0.0137, -0.3462, 0.3552, -0.1337, 0.1078], [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824]],
-            [47, [0.4400, 0.0543, 0.2873, 0.2946, 0.0553, 0.0839, -0.1585, 0.2529], [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089]],
+            [
+                33,
+                [-0.0344, 0.2912, 0.1687, -0.0137, -0.3462, 0.3552, -0.1337, 0.1078],
+                [-0.1603, 0.9878, -0.0495, -0.0790, -0.2709, 0.8375, -0.2060, -0.0824],
+            ],
+            [
+                47,
+                [0.4400, 0.0543, 0.2873, 0.2946, 0.0553, 0.0839, -0.1585, 0.2529],
+                [-0.2376, 0.1168, 0.1332, -0.4840, -0.2508, -0.0791, -0.0493, -0.4089],
+            ],
             # fmt: on
         ]
     )
@@ -710,8 +756,16 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
     @parameterized.expand(
         [
             # fmt: off
-            [33, [-0.0340, 0.2870, 0.1698, -0.0105, -0.3448, 0.3529, -0.1321, 0.1097], [-0.0344, 0.2912, 0.1687, -0.0137, -0.3462, 0.3552, -0.1337, 0.1078]],
-            [47, [0.4397, 0.0550, 0.2873, 0.2946, 0.0567, 0.0855, -0.1580, 0.2531], [0.4397, 0.0550, 0.2873, 0.2946, 0.0567, 0.0855, -0.1580, 0.2531]],
+            [
+                33,
+                [-0.0340, 0.2870, 0.1698, -0.0105, -0.3448, 0.3529, -0.1321, 0.1097],
+                [-0.0344, 0.2912, 0.1687, -0.0137, -0.3462, 0.3552, -0.1337, 0.1078],
+            ],
+            [
+                47,
+                [0.4397, 0.0550, 0.2873, 0.2946, 0.0567, 0.0855, -0.1580, 0.2531],
+                [0.4397, 0.0550, 0.2873, 0.2946, 0.0567, 0.0855, -0.1580, 0.2531],
+            ],
             # fmt: on
         ]
     )
@@ -732,7 +786,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
     @parameterized.expand(
         [
             # fmt: off
-            [13, [-0.0521, -0.2939,  0.1540, -0.1855, -0.5936, -0.3138, -0.4579, -0.2275]],
+            [13, [-0.0521, -0.2939, 0.1540, -0.1855, -0.5936, -0.3138, -0.4579, -0.2275]],
             [37, [-0.1820, -0.4345, -0.0455, -0.2923, -0.8035, -0.5089, -0.4795, -0.3106]],
             # fmt: on
         ]
@@ -804,6 +858,7 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
+    @torch.no_grad()
     def test_encode_decode(self):
         vae = ConsistencyDecoderVAE.from_pretrained("openai/consistency-decoder")  # TODO - update
         vae.to(torch_device)
