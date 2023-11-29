@@ -54,7 +54,7 @@ export_to_video(frames, "generated.mp4", fps=7)
 ```
 
 <video width="1024" height="576" controls>
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.mp4?download=true" type="video/mp4">
+  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.mp4" type="video/mp4">
 </video>
 
 <Tip>
@@ -82,8 +82,9 @@ Video generation is very memory intensive as we have to essentially generate `nu
 - enable feed-forward chunking: The feed-forward layer runs in a loop instead of running with a single huge feed-forward batch size
 - reduce `decode_chunk_size`: This means that the VAE decodes frames in chunks instead of decoding them all together. **Note**: In addition to leading to a small slowdown, this method also slightly leads to video quality deterioration
 
- You can enable them as follows:
- ```diff
+You can enable them as follows:
+
+```diff
 -pipe.enable_model_cpu_offload()
 -frames = pipe(image, decode_chunk_size=8, generator=generator).frames[0]
 +pipe.enable_model_cpu_offload()
@@ -105,6 +106,7 @@ It accepts the following arguments:
 
 Here is an example of using micro-conditioning to generate a video with more motion.
 
+
 ```python
 import torch
 
@@ -112,7 +114,7 @@ from diffusers import StableVideoDiffusionPipeline
 from diffusers.utils import load_image, export_to_video
 
 pipe = StableVideoDiffusionPipeline.from_pretrained(
-    "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
+  "stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16"
 )
 pipe.enable_model_cpu_offload()
 
@@ -126,6 +128,6 @@ export_to_video(frames, "generated.mp4", fps=7)
 ```
 
 <video width="1024" height="576" controls>
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated_motion.mp4?download=true" type="video/mp4">
+  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated_motion.mp4" type="video/mp4">
 </video>
 
