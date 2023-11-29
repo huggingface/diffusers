@@ -3,7 +3,7 @@ import sys
 
 import torch
 
-from diffusers import AutoPipelineForImage2Image, AutoPipelineForText2Image
+from diffusers import AutoPipelineForImage2Image, AutoPipelineForText2Image, AutoPipelineForInpainting
 from diffusers.utils import load_image
 
 
@@ -77,6 +77,24 @@ class ImageToImagePipeline(TextToImagePipeline):
         _ = pipe(
             prompt=PROMPT,
             image=self.image,
+            num_inference_steps=args.num_inference_steps,
+            num_images_per_prompt=args.batch_size,
+        )
+
+
+class InpatingPipeline(ImageToImagePipeline):
+    pipeline_class = AutoPipelineForInpainting
+    mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+    mask = load_image(mask_url).convert("RGB")
+    
+    def run_inference(self, pipe, args):
+        self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
+        self.mask = self.mask.resize(RESOLUTION_MAPPING[args.ckpt])
+
+        _ = pipe(
+            prompt=PROMPT,
+            image=self.image,
+            mask_image=self.mask,
             num_inference_steps=args.num_inference_steps,
             num_images_per_prompt=args.batch_size,
         )
