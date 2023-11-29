@@ -1438,7 +1438,7 @@ class UNet2DConditionModelLoRATests(unittest.TestCase):
             # we run checks both with `peft` main and stable release.
             try:
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_model.safetensors")))
-            except:
+            except Exception:
                 self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_model.bin")))
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "adapter_config.json")))
 
