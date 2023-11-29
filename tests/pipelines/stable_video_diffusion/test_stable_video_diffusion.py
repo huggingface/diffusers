@@ -157,7 +157,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         inputs = self.get_dummy_inputs(torch_device)
 
         # Reset generator in case it is has been used in self.get_dummy_inputs
-        inputs["generator"] = self.get_generator(0)
+        inputs["generator"] = torch.Generator("cpu").manual_seed(0)
 
         logger = logging.get_logger(pipe.__module__)
         logger.setLevel(level=diffusers.logging.FATAL)
@@ -166,7 +166,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         batched_inputs = {}
         batched_inputs.update(inputs)
 
-        batched_inputs["generator"] = [torch.Generator("cpu").manual_seed(i) for i in range(batch_size)]
+        batched_inputs["generator"] = [torch.Generator("cpu").manual_seed(0) for i in range(batch_size)]
         batched_inputs["image"] = torch.cat([inputs["image"]] * batch_size, dim=0)
 
         output = pipe(**inputs).frames
