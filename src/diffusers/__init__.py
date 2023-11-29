@@ -76,6 +76,7 @@ else:
         [
             "AsymmetricAutoencoderKL",
             "AutoencoderKL",
+            "AutoencoderKLTemporalDecoder",
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
@@ -92,6 +93,7 @@ else:
             "UNet2DModel",
             "UNet3DConditionModel",
             "UNetMotionModel",
+            "UNetSpatioTemporalConditionModel",
             "VQModel",
         ]
     )
@@ -277,6 +279,7 @@ else:
             "StableDiffusionXLPipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
+            "StableVideoDiffusionPipeline",
             "TextToVideoSDPipeline",
             "TextToVideoZeroPipeline",
             "TextToVideoZeroSDXLPipeline",
@@ -447,6 +450,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
+            AutoencoderKLTemporalDecoder,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             ControlNetModel,
@@ -463,6 +467,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet2DModel,
             UNet3DConditionModel,
             UNetMotionModel,
+            UNetSpatioTemporalConditionModel,
             VQModel,
         )
         from .optimization import (
@@ -627,6 +632,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPipeline,
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
+            StableVideoDiffusionPipeline,
             TextToVideoSDPipeline,
             TextToVideoZeroPipeline,
             TextToVideoZeroSDXLPipeline,
