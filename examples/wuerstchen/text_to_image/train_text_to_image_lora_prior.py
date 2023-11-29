@@ -526,7 +526,9 @@ def main():
     prior.to(accelerator.device, dtype=weight_dtype)
 
     # lora attn processor
-    prior_lora_config = LoraConfig(r=args.rank, target_modules=["to_k", "to_q", "to_v", "add_k_proj", "add_v_proj"])
+    prior_lora_config = LoraConfig(
+        r=args.rank, target_modules=["to_k", "to_q", "to_v", "to_out.0", "add_k_proj", "add_v_proj"]
+    )
     prior.add_adapter(prior_lora_config)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
