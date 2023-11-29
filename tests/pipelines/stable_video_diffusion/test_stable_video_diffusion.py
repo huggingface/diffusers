@@ -492,12 +492,16 @@ class StableVideoDiffusionPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_sd_video(self):
-        pipe = StableVideoDiffusionPipeline.from_pretrained("diffusers/svd-test")
+        pipe = StableVideoDiffusionPipeline.from_pretrained(
+            "stabilityai/stable-video-diffusion-img2vid",
+            variant="fp16",
+            torch_dtype=torch.float16,
+        )
         pipe = pipe.to(torch_device)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
         image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png?download=true"
         )
 
         generator = torch.Generator("cpu").manual_seed(0)
