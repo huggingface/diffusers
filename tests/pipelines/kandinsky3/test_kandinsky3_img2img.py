@@ -42,6 +42,8 @@ from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -54,6 +56,8 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
+    image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
     test_xformers_attention = False
 
     @property
