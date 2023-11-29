@@ -465,7 +465,14 @@ class Kandinsky3ResNetBlock(nn.Module):
 class Kandinsky3AttentionPooling(nn.Module):
     def __init__(self, num_channels, context_dim, head_dim=64):
         super().__init__()
-        self.attention = Attention(context_dim, context_dim, dim_head=head_dim, out_dim=num_channels, out_bias=False)
+        self.attention = Attention(
+            context_dim,
+            context_dim,
+            dim_head=head_dim,
+            out_dim=num_channels,
+            out_bias=False,
+            scale_mask_factor=-60000.0,
+        )
 
     def forward(self, x, context, context_mask=None):
         context_mask = context_mask.unsqueeze(1).to(dtype=context.dtype)
@@ -478,7 +485,12 @@ class Kandinsky3AttentionBlock(nn.Module):
         super().__init__()
         self.in_norm = Kandinsky3ConditionalGroupNorm(norm_groups, num_channels, time_embed_dim)
         self.attention = Attention(
-            num_channels, context_dim or num_channels, dim_head=head_dim, out_dim=num_channels, out_bias=False
+            num_channels,
+            context_dim or num_channels,
+            dim_head=head_dim,
+            out_dim=num_channels,
+            out_bias=False,
+            scale_mask_factor=-60000.0,
         )
 
         hidden_channels = expansion_ratio * num_channels

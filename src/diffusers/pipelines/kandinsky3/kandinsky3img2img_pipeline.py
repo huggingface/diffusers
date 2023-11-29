@@ -452,6 +452,8 @@ class Kandinsky3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
             if output_type == "pil":
                 image = self.numpy_to_pil(image)
 
+            self.maybe_free_model_hooks()
+
             if not return_dict:
                 return (image,)
 
