@@ -1,7 +1,7 @@
 import gc
 import random
-import unittest
 import tempfile
+import unittest
 
 import numpy as np
 import torch
@@ -15,19 +15,18 @@ import diffusers
 from diffusers import (
     AutoencoderKLTemporalDecoder,
     EulerDiscreteScheduler,
+    StableVideoDiffusionPipeline,
     UNetSpatioTemporalConditionModel,
-    StableVideoDiffusionPipeline
 )
-from diffusers.utils import load_image, logging
+from diffusers.utils import is_accelerate_available, is_accelerate_version, load_image, logging
 from diffusers.utils.testing_utils import (
+    CaptureLogger,
     floats_tensor,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
-    CaptureLogger,
 )
-from diffusers.utils import is_accelerate_available, is_accelerate_version, is_xformers_available
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -75,15 +74,15 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             beta_end=0.012,
             beta_schedule="scaled_linear",
             interpolation_type="linear",
-            num_train_timesteps= 1000,
-            prediction_type= "v_prediction",
-            sigma_max= 700.0,
-            sigma_min= 0.002,
-            steps_offset= 1,
+            num_train_timesteps=1000,
+            prediction_type="v_prediction",
+            sigma_max=700.0,
+            sigma_min=0.002,
+            steps_offset=1,
             timestep_spacing="leading",
             timestep_type="continuous",
             trained_betas=None,
-            use_karras_sigmas=True
+            use_karras_sigmas=True,
         )
         torch.manual_seed(0)
         vae = AutoencoderKLTemporalDecoder(
@@ -490,7 +489,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
             f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
         )
-
 
 
 @slow
