@@ -83,6 +83,9 @@ IMPORTANT_PIPELINES = [
 # Ignore lora since they are always tested
 MODULES_TO_IGNORE = ["fixtures", "lora"]
 
+repo = Repo(PATH_TO_REPO)
+print("Active Branch: ", repo.active_branch)
+print("Refs: ", repo.refs)
 
 @contextmanager
 def checkout_commit(repo: Repo, commit_id: str):
