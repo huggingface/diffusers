@@ -54,7 +54,7 @@ export_to_video(frames, "generated.mp4", fps=7)
 ```
 
 <video width="1024" height="576" controls>
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.mp4" type="video/mp4">
+  <source src="https://i.imgur.com/jJzVDKw.mp4" type="video/mp4">
 </video>
 
 <Tip>
