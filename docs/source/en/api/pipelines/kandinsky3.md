@@ -20,20 +20,6 @@ Its architecture includes 3 main components:
 2. New U-Net architecture featuring BigGAN-deep blocks doubles depth while maintaining the same number of parameters.
 3. Sber-MoVQGAN is a decoder proven to have superior results in image restoration.
 
-- Language Encoder-Decoder model. [FLAN-UL2](https://huggingface.co/google/flan-ul2)
-- Utilizes only the Encoder for text encoding, constituting half of the architecture's parameters.
-- Subjected to pretraining on a text corpus and further pretrained in the SFT style on a language problems corpus, enhancing picture generation.
-- During picture model training, the language model is entirely frozen.
-
-### U-Net
-
-- Employs an architecture featuring BigGAN-deep blocks.
-- Doubles the depth compared to diffusions with conventional BigGAN blocks, maintaining parameter count.
-
-### Sber-MoVQGAN
-
-- Used as an autoencoder, proven effective in previous versions.
-- Incorporates the largest model version with 270 million parameters, demonstrating superior results in image restoration.
 
 
 The original codebase can be found at [ai-forever/Kandinsky-3](https://github.com/ai-forever/Kandinsky-3).
