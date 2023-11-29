@@ -48,7 +48,8 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
 |   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
 |   Latent Consistency Interpolation Pipeline                                                                                                    | Interpolate the latent space of Latent Consistency Models with multiple prompts                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Interpolation Pipeline](#latent-consistency-interpolation-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pK3NrLWJSiJsBynLns1K1-IDTW9zbPvl?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
-
+| LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
+|
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -2343,6 +2344,47 @@ images = pipe(
 
 assert len(images) == (len(prompts) - 1) * num_interpolation_steps
 ```
+
+###  StableDiffusionUpscaleLDM3D Pipeline
+[LDM3D-VR](https://arxiv.org/pdf/2311.03226.pdf) is an extended version of LDM3D. 
+
+The abstract from the paper is:
+*Latent diffusion models have proven to be state-of-the-art in the creation and manipulation of visual outputs. However, as far as we know, the generation of depth maps jointly with RGB is still limited. We introduce LDM3D-VR, a suite of diffusion models targeting virtual reality development that includes LDM3D-pano and LDM3D-SR. These models enable the generation of panoramic RGBD based on textual prompts and the upscaling of low-resolution inputs to high-resolution RGBD, respectively. Our models are fine-tuned from existing pretrained models on datasets containing panoramic/high-resolution RGB images, depth maps and captions. Both models are evaluated in comparison to existing related methods*
+
+Two checkpoints are available for use:
+- [ldm3d-pano](https://huggingface.co/Intel/ldm3d-pano). This checkpoint enables the generation of panoramic images and requires the StableDiffusionLDM3DPipeline pipeline to be used.
+- [ldm3d-sr](https://huggingface.co/Intel/ldm3d-sr). This checkpoint enables the upscaling of RGB and depth images. Can be used in cascade after the original LDM3D pipeline using the StableDiffusionUpscaleLDM3DPipeline pipeline.
+
+'''py
+from PIL import Image
+import os
+import torch
+from diffusers import StableDiffusionLDM3DPipeline, DiffusionPipeline
+
+#Generate a rgb/depth output from LDM3D
+pipe_ldm3d = StableDiffusionLDM3DPipeline.from_pretrained("Intel/ldm3d-4c")
+pipe_ldm3d.to("cuda")
+
+prompt =f"A picture of some lemons on a table"
+output = pipe_ldm3d(prompt)
+rgb_image, depth_image = output.rgb, output.depth
+rgb_image[0].save(f"lemons_ldm3d_rgb.jpg")
+depth_image[0].save(f"lemons_ldm3d_depth.png")
+
+
+#Upscale the previous output to a resolution of (1024, 1024)
+pipe_ldm3d_upscale = DiffusionPipeline.from_pretrained("Intel/ldm3d-sr", custom_pipeline="pipeline_stable_diffusion_upscale_ldm3d")
+
+pipe_ldm3d_upscale.to("cuda")
+
+low_res_img = Image.open(f"lemons_ldm3d_rgb.jpg").convert("RGB")
+low_res_depth = Image.open(f"lemons_ldm3d_depth.png").convert("L")
+outputs = pipe_ldm3d_upscale(prompt="high quality high resolution uhd 4k image", rgb=low_res_img, depth=low_res_depth, num_inference_steps=50, target_res=[1024, 1024])
+
+upscaled_rgb, upscaled_depth =outputs.rgb[0], outputs.depth[0]
+upscaled_rgb.save(f"upscaled_lemons_rgb.png")
+upscaled_depth.save(f"upscaled_lemons_depth.png")
+'''
 
 ### ControlNet + T2I Adapter Pipeline
 This pipelines combines both ControlNet and T2IAdapter into a single pipeline, where the forward pass is executed once. 
