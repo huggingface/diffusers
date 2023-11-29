@@ -67,7 +67,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             ),
             up_block_types=("UpBlockSpatioTemporal", "CrossAttnUpBlockSpatioTemporal"),
             cross_attention_dim=32,
-            norm_num_groups=2,
             num_attention_heads=8,
         )
         scheduler = DDIMScheduler(
