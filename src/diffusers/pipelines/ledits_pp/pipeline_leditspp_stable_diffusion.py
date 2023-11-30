@@ -75,7 +75,7 @@ class LEditsPPPipelineStableDiffusion(DiffusionPipeline):
             text_encoder: CLIPTextModel,
             tokenizer: CLIPTokenizer,
             unet: UNet2DConditionModel,
-            scheduler: Union[DDIMScheduler,DPMSolverMultistepScheduler],
+            scheduler: Union[DDIMScheduler, DPMSolverMultistepScheduler],
             safety_checker: StableDiffusionSafetyChecker,
             feature_extractor: CLIPImageProcessor,
             requires_safety_checker: bool = True,
@@ -501,8 +501,13 @@ class LEditsPPPipelineStableDiffusion(DiffusionPipeline):
             assert (len(timesteps) == zs.shape[0])
 
         if use_cross_attn_mask:
-            self.attention_store = AttentionStore(average=store_averaged_over_steps, batch_size=batch_size)
+            self.attention_store = AttentionStore(average=store_averaged_over_steps, batch_size=batch_size,
+                                                  max_size=(latents.shape[-2] / 4.0) * (latents.shape[-1] / 4.0),
+                                                  max_resolution=None
+                                                  )
             self.prepare_unet(self.attention_store, PnP=False)
+            resolution = latents.shape[-2:]
+            att_res = (int(resolution[0] / 4), int(resolution[1] / 4))
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
@@ -637,7 +642,7 @@ class LEditsPPPipelineStableDiffusion(DiffusionPipeline):
                         out = self.attention_store.aggregate_attention(
                             attention_maps=self.attention_store.step_store,
                             prompts=self.text_cross_attention_maps,
-                            res=16,
+                            res = att_res,
                             from_where=["up", "down"],
                             is_cross=True,
                             select=self.text_cross_attention_maps.index(editing_prompt[c]),
@@ -654,7 +659,7 @@ class LEditsPPPipelineStableDiffusion(DiffusionPipeline):
 
                         # create binary mask
                         tmp = torch.quantile(attn_map.flatten(start_dim=1), edit_threshold_c, dim=1)
-                        attn_mask = torch.where(attn_map >= tmp.unsqueeze(1).unsqueeze(1).repeat(1,16,16), 1.0, 0.0)
+                        attn_mask = torch.where(attn_map >= tmp.unsqueeze(1).unsqueeze(1).repeat(1,*att_res), 1.0, 0.0)
 
                         # resolution must match latent space dimension
                         attn_mask = F.interpolate(
@@ -861,10 +866,7 @@ class LEditsPPPipelineStableDiffusion(DiffusionPipeline):
         # 3. find zs and xts
         variance_noise_shape = (
             num_inversion_steps,
-            self.batch_size,
-            self.unet.config.in_channels,
-            self.unet.sample_size,
-            self.unet.sample_size)
+            *x0.shape)
 
         # intermediate latents
         t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
