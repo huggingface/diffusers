@@ -1172,6 +1172,7 @@ def main(args):
                 unet.disable_adapters() 
                 params_to_optimize_after_disable = filter(lambda p: p.requires_grad, unet.parameters())
                 print("Any difference in trainable params after disable:")
+                print(len(list(params_to_optimize_after_disable)))
                 print(set(list(params_to_optimize)).difference(set(list(params_to_optimize_after_disable))))
                 params_to_optimize_named_after_disable = [n for n, p in unet.named_parameters() if p.requires_grad]
                 print(set(params_to_optimize_named).difference(set(params_to_optimize_named_after_disable)))
