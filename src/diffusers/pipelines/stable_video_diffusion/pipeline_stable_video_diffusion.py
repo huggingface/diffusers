@@ -458,7 +458,10 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         # 4. Encode input image using VAE
         image = self.image_processor.preprocess(image, height=height, width=width)
-        noise = randn_tensor(image.shape, generator=generator, device=image.device, dtype=image.dtype)
+        image = image.to(self.device)
+        init_image = image
+
+        noise = randn_tensor(image.shape, generator=generator, device=self.device, dtype=image.dtype)
         image = image + noise_aug_strength * noise
 
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
@@ -468,6 +471,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         image_latents = self._encode_vae_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
         image_latents = image_latents.to(image_embeddings.dtype)
 
+        init_image_latents = self._encode_vae_image(init_image, device, num_videos_per_prompt, False)
+        init_image_latents = init_image_latents.to(image_embeddings.dtype)
+
         # cast back to fp16 if needed
         if needs_upcasting:
             self.vae.to(dtype=torch.float16)
@@ -475,6 +481,10 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         # Repeat the image latents for each frame so we can concatenate them with the noise
         # image_latents [batch, channels, height, width] ->[batch, num_frames, channels, height, width]
         image_latents = image_latents.unsqueeze(1).repeat(1, num_frames, 1, 1, 1)
+        init_image_latents = init_image_latents.unsqueeze(1).repeat(1, num_frames, 1, 1, 1)
+
+        # for inpainting
+        mask_noise = randn_tensor(init_image_latents.shape, generator=generator, device=self.device, dtype=image_latents.dtype)
 
         # 5. Get Added Time IDs
         added_time_ids = self._get_add_time_ids(
@@ -525,7 +535,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             latents.dtype,
             device,
             generator,
-            self.do_classifier_free_guidance,
+            do_classifier_free_guidance,
         )
 
         # 8. Denoising loop
@@ -557,19 +567,20 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents).prev_sample
 
-                init_latents_proper = image_latents
-                if self.do_classifier_free_guidance:
+                if do_classifier_free_guidance:
                     init_mask, _ = mask.chunk(2)
+                    init_mask = init_mask[None, :]
+                    mask_noise = mask_noise[:1]
                 else:
-                    init_mask = mask
+                    init_mask = mask[None, :]
 
+                # let's make sure init latents correspond all to the first frame
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
                     init_latents_proper = self.scheduler.add_noise(
-                        init_latents_proper, noise, torch.tensor([noise_timestep])
+                        image_latents, mask_noise, torch.tensor([noise_timestep])
                     )
 
-                    import ipdb; ipdb.set_trace()
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if callback_on_step_end is not None:
