@@ -84,10 +84,6 @@ class Attention(nn.Module):
         processor (`AttnProcessor`, *optional*, defaults to `None`):
             The attention processor to use. If `None`, defaults to `AttnProcessor2_0` if `torch 2.x` is used and
             `AttnProcessor` otherwise.
-        query_layer_norm (`bool`, defaults to `False`):
-            Set to `True` to use layer norm for the query.
-        concat_kv_input (`bool`, defaults to `False`):
-            Set to `True` to concatenate the hidden_states and encoder_hidden_states for kv inputs.
     """
 
     def __init__(
@@ -113,8 +109,6 @@ class Attention(nn.Module):
         residual_connection: bool = False,
         _from_deprecated_attn_block: bool = False,
         processor: Optional["AttnProcessor"] = None,
-        query_layer_norm: bool = False,
-        concat_kv_input: bool = False,
     ):
         super().__init__()
         self.inner_dim = dim_head * heads
@@ -124,7 +118,6 @@ class Attention(nn.Module):
         self.rescale_output_factor = rescale_output_factor
         self.residual_connection = residual_connection
         self.dropout = dropout
-        self.concat_kv_input = concat_kv_input
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
@@ -156,11 +149,6 @@ class Attention(nn.Module):
             self.spatial_norm = SpatialNorm(f_channels=query_dim, zq_channels=spatial_norm_dim)
         else:
             self.spatial_norm = None
-
-        if query_layer_norm:
-            self.layer_norm = nn.LayerNorm(query_dim)
-        else:
-            self.layer_norm = None
 
         if cross_attention_norm is None:
             self.norm_cross = None
@@ -738,18 +726,12 @@ class AttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        if attn.layer_norm is not None:
-            hidden_states = attn.layer_norm(hidden_states)
-
         query = attn.to_q(hidden_states, *args)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        if attn.concat_kv_input:
-            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
@@ -1145,18 +1127,12 @@ class XFormersAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        if attn.layer_norm is not None:
-            hidden_states = attn.layer_norm(hidden_states)
-
         query = attn.to_q(hidden_states, *args)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        if attn.concat_kv_input:
-            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
@@ -1231,9 +1207,6 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        if attn.layer_norm is not None:
-            hidden_states = attn.layer_norm(hidden_states)
-
         args = () if USE_PEFT_BACKEND else (scale,)
         query = attn.to_q(hidden_states, *args)
 
@@ -1241,9 +1214,6 @@ class AttnProcessor2_0:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        if attn.concat_kv_input:
-            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
@@ -1547,9 +1517,6 @@ class SlicedAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        if attn.layer_norm is not None:
-            hidden_states = attn.layer_norm(hidden_states)
-
         query = attn.to_q(hidden_states)
         dim = query.shape[-1]
         query = attn.head_to_batch_dim(query)
@@ -1558,9 +1525,6 @@ class SlicedAttnProcessor:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        if attn.concat_kv_input:
-            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -2067,18 +2031,12 @@ class IPAdapterAttnProcessor(nn.Module):
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        if attn.layer_norm is not None:
-            hidden_states = attn.layer_norm(hidden_states)
-
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        if attn.concat_kv_input:
-            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         # split hidden states
         end_pos = encoder_hidden_states.shape[1] - self.num_tokens
@@ -2193,18 +2151,12 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        if attn.layer_norm is not None:
-            hidden_states = attn.layer_norm(hidden_states)
-
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        if attn.concat_kv_input:
-            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         # split hidden states
         end_pos = encoder_hidden_states.shape[1] - self.num_tokens

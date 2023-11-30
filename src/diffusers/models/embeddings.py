@@ -835,15 +835,13 @@ class Resampler(nn.Module):
             self.layers.append(
                 nn.ModuleList(
                     [
+                        nn.LayerNorm(hidden_dims),
+                        nn.LayerNorm(hidden_dims),
                         Attention(
                             query_dim=hidden_dims,
                             dim_head=dim_head,
                             heads=heads,
-                            query_layer_norm=True,
-                            cross_attention_norm="layer_norm",
-                            residual_connection=True,
                             out_bias=False,
-                            concat_kv_input=True,
                         ),
                         self._get_ffn(embed_dims=hidden_dims, ffn_ratio=ffn_ratio),
                     ]
@@ -875,8 +873,13 @@ class Resampler(nn.Module):
 
         x = self.proj_in(x)
 
-        for attn, ff in self.layers:
-            latents = attn(latents, x)
+        for ln0, ln1, attn, ff in self.layers:
+            residual = latents
+
+            encoder_hidden_states = ln0(x)
+            latents = ln1(latents)
+            encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
+            latents = attn(latents, encoder_hidden_states) + residual
             latents = ff(latents) + latents
 
         latents = self.proj_out(latents)

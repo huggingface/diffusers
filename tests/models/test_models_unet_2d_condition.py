@@ -134,6 +134,31 @@ def create_ip_adapter_plus_state_dict(model):
 
     ip_image_projection_state_dict = OrderedDict()
     for k, v in image_projection.state_dict().items():
+        if "2.to" in k:
+            k = k.replace("2.to", "0.to")
+        elif "3.0.weight" in k:
+            k = k.replace("3.0.weight", "1.0.weight")
+        elif "3.0.bias" in k:
+            k = k.replace("3.0.bias", "1.0.bias")
+        elif "3.0.weight" in k:
+            k = k.replace("3.0.weight", "1.0.weight")
+        elif "3.1.weight" in k:
+            k = k.replace("3.1.weight", "1.1.weight")
+        elif "3.3.weight" in k:
+            k = k.replace("3.3.weight", "1.3.weight")
+        elif "layers.0.0" in k:
+            k = k.replace("layers.0.0", "layers.0.0.norm1")
+        elif "layers.0.1" in k:
+            k = k.replace("layers.0.1", "layers.0.0.norm2")
+        elif "layers.1.0" in k:
+            k = k.replace("layers.1.0", "layers.1.0.norm1")
+        elif "layers.1.1" in k:
+            k = k.replace("layers.1.1", "layers.1.0.norm2")
+        elif "layers.2.0" in k:
+            k = k.replace("layers.2.0", "layers.2.0.norm1")
+        elif "layers.2.1" in k:
+            k = k.replace("layers.2.1", "layers.2.0.norm2")
+
         if "norm_cross" in k:
             ip_image_projection_state_dict[k.replace("norm_cross", "norm1")] = v
         elif "layer_norm" in k:
