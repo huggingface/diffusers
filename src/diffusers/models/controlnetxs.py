@@ -286,34 +286,20 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         adjust_time_dims(self.control_model, time_embedding_input_dim, time_embedding_dim)
 
         # 2.2 - Allow for information infusion from base model
-        layers_per_block = 2  # Currently, ControlNet-XS only supports SD or SDXL, for which `layers_per_block` is always 2 
-        def compute_block_out_channels(subblock_channels, layers_per_block):
-            channels = []
-            for i, (_, subblock_out_channels) in enumerate(subblock_channels):
-                # first subblock is the conv_in
-                if i == 0:
-                    continue
-                # every block consists of `layers_per_block` resnet/attention subblocks and a down sample subblock
-                if i % (layers_per_block + 1) == 0:
-                    channels.append(subblock_out_channels)
-                # the last block doesn't have a down conv, so is handled separately
-                if i == len(subblock_channels) - 1:
-                    channels.append(subblock_out_channels)
-            return channels
 
-        base_block_out_channels = compute_block_out_channels(
-            subblock_channels=base_model_channel_sizes["down"], layers_per_block=layers_per_block
-        )
+        # We concat the output of each base encoder subblocks to the input of the next control encoder subblock
+        # (We ignore the 1st element, as it represents the `conv_in`.)
+        extra_input_channels = [input_channels for input_channels, _ in base_model_channel_sizes["down"][1:]]
+        it_extra_input_channels = iter(extra_input_channels)
 
-        extra_channels = list(
-            zip(base_block_out_channels[0:1] + base_block_out_channels[:-1], base_block_out_channels)
-        )
-        for i, (e1, e2) in enumerate(extra_channels):
-            increase_block_input_in_encoder_resnet(self.control_model, block_no=i, resnet_idx=0, by=e1)
-            increase_block_input_in_encoder_resnet(self.control_model, block_no=i, resnet_idx=1, by=e2)
-            if self.control_model.down_blocks[i].downsamplers:
-                increase_block_input_in_encoder_downsampler(self.control_model, block_no=i, by=e2)
-        increase_block_input_in_mid_resnet(self.control_model, by=base_block_out_channels[-1])
+        for b, block in enumerate(self.control_model.down_blocks):
+            for r in range(len(block.resnets)):
+                increase_block_input_in_encoder_resnet(self.control_model, block_no=b, resnet_idx=r, by=next(it_extra_input_channels))
+            
+            if block.downsamplers:
+                increase_block_input_in_encoder_downsampler(self.control_model, block_no=b, by=next(it_extra_input_channels))
+
+        increase_block_input_in_mid_resnet(self.control_model, by=extra_input_channels[-1])
 
         # 2.3 - Make group norms work with modified channel sizes
         adjust_group_norms(self.control_model)
