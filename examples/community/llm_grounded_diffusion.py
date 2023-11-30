@@ -275,7 +275,8 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
         requires_safety_checker: bool = True,
     ):
         super().__init__(
-            vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
+            vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor,
+            requires_safety_checker=requires_safety_checker
         )
 
         self.register_attn_hooks(unet)
