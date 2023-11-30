@@ -1,4 +1,4 @@
-name: Fast tests for PRs
+name: Fast tests for PRs - Test Fetcher
 
 on:
   pull_request:
@@ -13,6 +13,10 @@ env:
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   setup_pr_tests:
