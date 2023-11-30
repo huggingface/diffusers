@@ -1205,31 +1205,15 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
 
-        controlnet = (
-            self.controlnet._orig_mod
-            if is_compiled_module(self.controlnet)
-            else self.controlnet
-        )
+        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
         # align format for control guidance
-        if not isinstance(control_guidance_start, list) and isinstance(
-            control_guidance_end, list
-        ):
-            control_guidance_start = len(control_guidance_end) * [
-                control_guidance_start
-            ]
-        elif not isinstance(control_guidance_end, list) and isinstance(
-            control_guidance_start, list
-        ):
+        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
+            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
+        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
-        elif not isinstance(control_guidance_start, list) and not isinstance(
-            control_guidance_end, list
-        ):
-            mult = (
-                len(controlnet.nets)
-                if isinstance(controlnet, MultiControlNetModel)
-                else 1
-            )
+        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
+            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
             control_guidance_start, control_guidance_end = (
                 mult * [control_guidance_start],
                 mult * [control_guidance_end],
