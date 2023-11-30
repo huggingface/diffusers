@@ -134,7 +134,7 @@ class ControlNetXSPipelineFastTests(
             time_embedding_mix=0.95,
             learn_embedding=True,
             size_ratio=0.5,
-            conditioning_block_sizes=(16, 32),
+            conditioning_embedding_out_channels=(16, 32),
             dim_attention_heads=2,
         )
         torch.manual_seed(0)

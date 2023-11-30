@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from torch import nn
+from torch.nn import functional as F
 from torch.nn.modules.normalization import GroupNorm
 
 from ..configuration_utils import ConfigMixin, register_to_config
@@ -56,6 +57,7 @@ class ControlNetXSOutput(BaseOutput):
     """
 
     sample: torch.FloatTensor = None
+
 
 # copied from diffusers.models.controlnet.ControlNetConditioningEmbedding
 class ControlNetConditioningEmbedding(nn.Module):
@@ -138,7 +140,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
     def init_original(cls, base_model: UNet2DConditionModel, is_sdxl=True):
         """
         Create a ControlNetXS model with the same parameters as in the original paper (https://github.com/vislearn/ControlNet-XS).
-        
+
         Parameters:
             base_model (`UNet2DConditionModel`):
                 Base unet model. Needs to be either StableDiffusion or StableDiffusion-XL.
@@ -166,7 +168,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
     @classmethod
     def _gather_subblock_sizes(cls, unet: UNet2DConditionModel, base_or_control: str):
-        """To create correctly sized connections between base and control model, we need to know 
+        """To create correctly sized connections between base and control model, we need to know
         the input and output channels of each subblock.
 
         Parameters:
@@ -294,10 +296,14 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
         for b, block in enumerate(self.control_model.down_blocks):
             for r in range(len(block.resnets)):
-                increase_block_input_in_encoder_resnet(self.control_model, block_no=b, resnet_idx=r, by=next(it_extra_input_channels))
-            
+                increase_block_input_in_encoder_resnet(
+                    self.control_model, block_no=b, resnet_idx=r, by=next(it_extra_input_channels)
+                )
+
             if block.downsamplers:
-                increase_block_input_in_encoder_downsampler(self.control_model, block_no=b, by=next(it_extra_input_channels))
+                increase_block_input_in_encoder_downsampler(
+                    self.control_model, block_no=b, by=next(it_extra_input_channels)
+                )
 
         increase_block_input_in_mid_resnet(self.control_model, by=extra_input_channels[-1])
 
@@ -323,7 +329,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 self._make_zero_conv(self.ch_inout_ctrl["down"][i][1], self.ch_inout_base["down"][i][1])
             )
 
-        self.middle_block_out = self._make_zero_conv(self.ch_inout_ctrl["mid"][-1][1], self.ch_inout_base["mid"][-1][1])
+        self.middle_block_out = self._make_zero_conv(
+            self.ch_inout_ctrl["mid"][-1][1], self.ch_inout_base["mid"][-1][1]
+        )
 
         self.up_zero_convs_out.append(
             self._make_zero_conv(self.ch_inout_ctrl["down"][-1][1], self.ch_inout_base["mid"][-1][1])
@@ -451,17 +459,17 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         #    (ii)  it's not used for the time embedding (as time embedding of control model is never used), and
         #    (iii) it's not set further below anyway
         to_keep = [
-            'attention_head_dim',
-            'cross_attention_dim',
-            'down_block_types',
-            'sample_size',
-            'transformer_layers_per_block',
-            'up_block_types',
-            'upcast_attention',
-            'use_linear_projection',
-            'num_attention_heads'
+            "attention_head_dim",
+            "cross_attention_dim",
+            "down_block_types",
+            "sample_size",
+            "transformer_layers_per_block",
+            "up_block_types",
+            "upcast_attention",
+            "use_linear_projection",
+            "num_attention_heads",
         ]
-        kwargs = {k:v for k,v in dict(unet.config).items() if k in to_keep}
+        kwargs = {k: v for k, v in dict(unet.config).items() if k in to_keep}
         kwargs.update(block_out_channels=block_out_channels)
         if num_attention_heads is not None:
             kwargs.update(attention_head_dim=attention_head_dim)
@@ -761,9 +769,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
 
 class SubBlock(nn.ModuleList):
-    """A SubBlock is the largest piece of either base or control model, that is executed independently of the other model respectively. 
+    """A SubBlock is the largest piece of either base or control model, that is executed independently of the other model respectively.
     Before each subblock, information is concatted from base to control. And after each subblock, information is added from control to base.
-      """
+    """
 
     def __init__(self, ms, *args, **kwargs):
         if not is_iterable(ms):
