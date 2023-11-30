@@ -100,6 +100,8 @@ image
 </hfoption>
 <hfoption id="Kandinsky 3">
 
+Kandinsky 3 doesn't require a prior model so you can directly load the [`Kandinsky3Pipeline`] and pass a prompt to generate an image:
+
 ```py
 from diffusers import Kandinsky3Pipeline
 import torch
@@ -183,6 +185,20 @@ pipeline = KandinskyV22Img2ImgPipeline.from_pretrained("kandinsky-community/kand
 ```
 
 </hfoption>
+<hfoption id="Kandinsky 3">
+
+Kandinsky 3 doesn't require a prior model so you can directly load the image-to-image pipeline:
+
+```py
+from diffusers import Kandinsky3Img2ImgPipeline
+from diffusers.utils import load_image
+import torch
+
+pipeline = Kandinsky3Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+pipeline.enable_model_cpu_offload()
+```
+
+</hfoption>
 </hfoptions>
 
 Download an image to condition on:
@@ -243,17 +259,7 @@ make_image_grid([original_image.resize((512, 512)), image.resize((512, 512))], r
 <hfoption id="Kandinsky 3">
 
 ```py
-from diffusers import Kandinsky3Img2ImgPipeline
-from diffusers.utils import load_image
-import torch
-
-pipeline = Kandinsky3Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
-pipeline.enable_model_cpu_offload()
-        
-prompt = "A fantasy landscape, Cinematic lighting"
-image = load_image("https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg")
-
-image = pipeline(prompt, image=image, strength=0.75, num_inference_steps=25).images[0]
+image = pipeline(prompt, negative_prompt=negative_prompt, image=image, strength=0.75, num_inference_steps=25).images[0]
 image
 ```
 
