@@ -59,6 +59,7 @@ from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import CustomStableDiffusionXLPipelineOutput
 
+
 if is_invisible_watermark_available():
     from .watermark import StableDiffusionXLWatermarker
 
@@ -1407,7 +1408,7 @@ class StableDiffusionXLImg2ImgPipeline(
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-            
+
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
             # cast back to fp16 if needed
