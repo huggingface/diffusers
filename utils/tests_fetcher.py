@@ -1032,6 +1032,7 @@ def parse_commit_message(commit_message: str) -> Dict[str, bool]:
         `Dict[str, bool]`: A dictionary of strings to bools with keys the following keys: `"skip"`,
         `"test_all_models"` and `"test_all"`.
     """
+    import ipdb; ipdb.set_trace()
     if commit_message is None:
         return {"skip": False, "no_filter": False, "test_all": False}
 
