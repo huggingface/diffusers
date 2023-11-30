@@ -930,10 +930,12 @@ def infer_tests_to_run(
     print(f"\n### IMPACTED FILES ###\n{_print_list(impacted_files)}")
 
     # Grab the corresponding test files:
+    """
     if any(x in modified_files for x in ["setup.py"]):
         test_files_to_run = ["tests", "examples"]
+    """
     # in order to trigger pipeline tests even if no code change at all
-    elif "tests/utils/tiny_model_summary.json" in modified_files:
+    if "tests/utils/tiny_model_summary.json" in modified_files:
         test_files_to_run = ["tests"]
         any(f.split(os.path.sep)[0] == "utils" for f in modified_files)
     else:
