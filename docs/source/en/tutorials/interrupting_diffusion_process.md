@@ -23,7 +23,7 @@ The following Pipelines support interrupting the diffusion process via callback
 
 This is particularly useful when building UIs that work with Diffusers as it allows users to stop the generation process if they are unhappy with the intermediate results.
 
-Callback functions take the following arguments: `pipe`, `i`, `t`, `callback_kwargs` and must return `callback_kwargs`. Interrupt the diffusion process by setting `pipe._interrupt = True` inside the callback function. You are free to implement custom stopping logic inside the callback.
+This callback function should take the following arguments: `pipe`, `i`, `t`, and `callback_kwargs` (this must be returned). Set the pipeline's `_interrupt` attribute to `True` to stop the diffusion process after a certain number of steps. You are also free to implement your own custom stopping logic inside the callback.
 
 In the example below, we stop the diffusion process after 10 steps.
 
