@@ -806,6 +806,9 @@ def create_module_to_test_map(
 
     # Build the test map
     test_map = {module: [f for f in deps if is_test(f)] for module, deps in reverse_map.items()}
+    tests_to_run = {module: (filter_tests(tests) if has_many_pipelines(tests) else tests) for module, tests in test_map.items()}
+
+    import ipdb; ipdb.set_trace()
 
     if not filter_models:
         return test_map
@@ -822,7 +825,6 @@ def create_module_to_test_map(
         return [t for t in tests if not t.startswith("tests/pipelines/") or Path(t).parts[2] in IMPORTANT_PIPELINES]
 
     tests_to_run = {module: (filter_tests(tests) if has_many_pipelines(tests) else tests) for module, tests in test_map.items()}
-    import ipdb; ipdb.set_trace()
 
     return tests_to_run
 
