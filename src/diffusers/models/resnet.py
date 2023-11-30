@@ -764,7 +764,9 @@ class ResnetBlock2D(nn.Module):
                 self.conv_shortcut(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv_shortcut(input_tensor)
             )
 
-        return (input_tensor + hidden_states) / self.output_scale_factor
+        output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
+
+        return output_tensor
 
 
 # unet_rl.py
