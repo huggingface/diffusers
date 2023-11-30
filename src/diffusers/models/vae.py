@@ -22,7 +22,12 @@ from ..utils import BaseOutput, is_torch_version
 from ..utils.torch_utils import randn_tensor
 from .activations import get_activation
 from .attention_processor import SpatialNorm
-from .unet_2d_blocks import AutoencoderTinyBlock, UNetMidBlock2D, get_down_block, get_up_block
+from .unet_2d_blocks import (
+    AutoencoderTinyBlock,
+    UNetMidBlock2D,
+    get_down_block,
+    get_up_block,
+)
 
 
 @dataclass
@@ -274,7 +279,9 @@ class Decoder(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, sample: torch.FloatTensor, latent_embeds: Optional[torch.FloatTensor] = None
+        self,
+        sample: torch.FloatTensor,
+        latent_embeds: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         r"""The forward method of the `Decoder` class."""
 
@@ -292,14 +299,20 @@ class Decoder(nn.Module):
             if is_torch_version(">=", "1.11.0"):
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block), sample, latent_embeds, use_reentrant=False
+                    create_custom_forward(self.mid_block),
+                    sample,
+                    latent_embeds,
+                    use_reentrant=False,
                 )
                 sample = sample.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
                     sample = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(up_block), sample, latent_embeds, use_reentrant=False
+                        create_custom_forward(up_block),
+                        sample,
+                        latent_embeds,
+                        use_reentrant=False,
                     )
             else:
                 # middle
@@ -540,7 +553,10 @@ class MaskConditionDecoder(nn.Module):
             if is_torch_version(">=", "1.11.0"):
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block), sample, latent_embeds, use_reentrant=False
+                    create_custom_forward(self.mid_block),
+                    sample,
+                    latent_embeds,
+                    use_reentrant=False,
                 )
                 sample = sample.to(upscale_dtype)
 
@@ -548,7 +564,10 @@ class MaskConditionDecoder(nn.Module):
                 if image is not None and mask is not None:
                     masked_image = (1 - mask) * image
                     im_x = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.condition_encoder), masked_image, mask, use_reentrant=False
+                        create_custom_forward(self.condition_encoder),
+                        masked_image,
+                        mask,
+                        use_reentrant=False,
                     )
 
                 # up
@@ -558,7 +577,10 @@ class MaskConditionDecoder(nn.Module):
                         mask_ = nn.functional.interpolate(mask, size=sample.shape[-2:], mode="nearest")
                         sample = sample * mask_ + sample_ * (1 - mask_)
                     sample = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(up_block), sample, latent_embeds, use_reentrant=False
+                        create_custom_forward(up_block),
+                        sample,
+                        latent_embeds,
+                        use_reentrant=False,
                     )
                 if image is not None and mask is not None:
                     sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
@@ -573,7 +595,9 @@ class MaskConditionDecoder(nn.Module):
                 if image is not None and mask is not None:
                     masked_image = (1 - mask) * image
                     im_x = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.condition_encoder), masked_image, mask
+                        create_custom_forward(self.condition_encoder),
+                        masked_image,
+                        mask,
                     )
 
                 # up
@@ -754,7 +778,10 @@ class DiagonalGaussianDistribution(object):
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
         # make sure sample is on the same device as the parameters and has same dtype
         sample = randn_tensor(
-            self.mean.shape, generator=generator, device=self.parameters.device, dtype=self.parameters.dtype
+            self.mean.shape,
+            generator=generator,
+            device=self.parameters.device,
+            dtype=self.parameters.dtype,
         )
         x = self.mean + self.std * sample
         return x
@@ -764,7 +791,10 @@ class DiagonalGaussianDistribution(object):
             return torch.Tensor([0.0])
         else:
             if other is None:
-                return 0.5 * torch.sum(torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar, dim=[1, 2, 3])
+                return 0.5 * torch.sum(
+                    torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
+                    dim=[1, 2, 3],
+                )
             else:
                 return 0.5 * torch.sum(
                     torch.pow(self.mean - other.mean, 2) / other.var
@@ -779,7 +809,10 @@ class DiagonalGaussianDistribution(object):
         if self.deterministic:
             return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
-        return 0.5 * torch.sum(logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var, dim=dims)
+        return 0.5 * torch.sum(
+            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
+            dim=dims,
+        )
 
     def mode(self) -> torch.Tensor:
         return self.mean
@@ -820,7 +853,16 @@ class EncoderTiny(nn.Module):
             if i == 0:
                 layers.append(nn.Conv2d(in_channels, num_channels, kernel_size=3, padding=1))
             else:
-                layers.append(nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False))
+                layers.append(
+                    nn.Conv2d(
+                        num_channels,
+                        num_channels,
+                        kernel_size=3,
+                        padding=1,
+                        stride=2,
+                        bias=False,
+                    )
+                )
 
             for _ in range(num_block):
                 layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
@@ -899,7 +941,15 @@ class DecoderTiny(nn.Module):
                 layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor))
 
             conv_out_channel = num_channels if not is_final_block else out_channels
-            layers.append(nn.Conv2d(num_channels, conv_out_channel, kernel_size=3, padding=1, bias=is_final_block))
+            layers.append(
+                nn.Conv2d(
+                    num_channels,
+                    conv_out_channel,
+                    kernel_size=3,
+                    padding=1,
+                    bias=is_final_block,
+                )
+            )
 
         self.layers = nn.Sequential(*layers)
         self.gradient_checkpointing = False
