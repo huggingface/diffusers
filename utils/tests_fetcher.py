@@ -85,6 +85,7 @@ MODULES_TO_IGNORE = ["fixtures", "lora"]
 
 repo = Repo(PATH_TO_REPO)
 print(type(repo.refs))
+print(repo.refs)
 print("Main is at: ", repo.refs.main.commit)
 
 @contextmanager
