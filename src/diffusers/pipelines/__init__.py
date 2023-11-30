@@ -75,6 +75,7 @@ else:
         "AltDiffusionPipeline",
     ]
     _import_structure["animatediff"] = ["AnimateDiffPipeline"]
+    _import_structure["animatediff"] = ["AnimateDiffPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
         "AudioLDM2Pipeline",
@@ -131,6 +132,13 @@ else:
         "LatentConsistencyModelPipeline",
     ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
+    _import_structure["ledits_pp"].extend(
+        [
+            "LEditsPPPipelineIF",
+            "LEditsPPPipelineStableDiffusion",
+            "LEditsPPPipelineStableDiffusionXL",
+        ]
+    )
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline"]
@@ -385,6 +393,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelPipeline,
         )
         from .latent_diffusion import LDMTextToImagePipeline
+        from .ledits_pp import (
+            LEditsPPPipelineIF,
+            LEditsPPPipelineStableDiffusion,
+            LEditsPPPipelineStableDiffusionXL
+        )
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pixart_alpha import PixArtAlphaPipeline
