@@ -1171,7 +1171,7 @@ def main(args):
                 params_to_optimize_after_disable = filter(lambda p: p.requires_grad, unet.parameters())
                 print("Any difference in trainable params after disable:")
                 print(set(list(params_to_optimize)).difference(set(list(params_to_optimize_after_disable))))
-                params_to_optimize_named = [n for n, p in unet.parameters() if p.requires_grad]
+                params_to_optimize_named = [n for n, p in unet.named_parameters() if p.requires_grad]
                 print(f"Optimizing parameters: {params_to_optimize_named}")
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
