@@ -189,7 +189,7 @@ class TextualInversionLoaderMixin:
                 f" `{self.load_textual_inversion.__name__}`"
             )
 
-        if len(pretrained_model_name_or_paths) != len(tokens):
+        if len(pretrained_model_name_or_paths) > 1 and len(pretrained_model_name_or_paths) != len(tokens):
             raise ValueError(
                 f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)} "
                 f"Make sure both lists have the same length."
@@ -382,13 +382,25 @@ class TextualInversionLoaderMixin:
             if not isinstance(pretrained_model_name_or_path, list)
             else pretrained_model_name_or_path
         )
-        tokens = len(pretrained_model_name_or_paths) * [token] if (isinstance(token, str) or token is None) else token
+        tokens = [token] if not isinstance(token, list) else token
+        if tokens[0] is None:
+            tokens = tokens * len(pretrained_model_name_or_paths)
 
         # 3. Check inputs
         self._check_text_inv_inputs(tokenizer, text_encoder, pretrained_model_name_or_paths, tokens)
 
         # 4. Load state dicts of textual embeddings
         state_dicts = load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
+
+        # 4.1 Handle the special case when state_dict is a tensor that contains n embeddings for n tokens
+        if len(tokens) > 1 and len(state_dicts) == 1:
+            if isinstance(state_dicts[0], torch.Tensor):
+                state_dicts = list(state_dicts[0])
+                if len(tokens) != len(state_dicts):
+                    raise ValueError(
+                        f"You have passed a state_dict contains {len(state_dicts)} embeddings, and list of tokens of length {len(tokens)} "
+                        f"Make sure both have the same length."
+                    )
 
         # 4. Retrieve tokens and embeddings
         tokens, embeddings = self._retrieve_tokens_and_embeddings(tokens, state_dicts, tokenizer)

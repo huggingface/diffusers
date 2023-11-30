@@ -259,7 +259,7 @@ def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token,
     comp_model_filenames, _ = variant_compatible_siblings(filenames, variant=revision)
     comp_model_filenames = [".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames]
 
-    if set(comp_model_filenames) == set(model_filenames):
+    if set(model_filenames).issubset(set(comp_model_filenames)):
         warnings.warn(
             f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{revision}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
             FutureWarning,
@@ -1688,7 +1688,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if module_candidate is None or not isinstance(module_candidate, str):
                     continue
 
-                candidate_file = os.path.join(component, module_candidate + ".py")
+                # We compute candidate file path on the Hub. Do not use `os.path.join`.
+                candidate_file = f"{component}/{module_candidate}.py"
 
                 if candidate_file in filenames:
                     custom_components[component] = module_candidate
