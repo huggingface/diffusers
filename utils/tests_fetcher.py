@@ -989,9 +989,6 @@ def filter_tests(output_file: str, filters: List[str]):
         output_file (`str` or `os.PathLike`): The path to the output file of the tests fetcher.
         filters (`List[str]`): A list of folders to filter.
     """
-    print("Filtering Tests")
-    print("----------------")
-
     if not os.path.isfile(output_file):
         print("No test file found.")
         return
