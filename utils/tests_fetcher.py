@@ -793,6 +793,8 @@ def create_module_to_test_map(
     Returns:
         `Dict[str, List[str]]`: A dictionary that maps each file to the tests to execute if that file was modified.
     """
+    import ipdb; ipdb.set_trace()
+
     if reverse_map is None:
         reverse_map = create_reverse_dependency_map()
 
@@ -807,8 +809,6 @@ def create_module_to_test_map(
     # Build the test map
     test_map = {module: [f for f in deps if is_test(f)] for module, deps in reverse_map.items()}
     tests_to_run = {module: (filter_tests(tests) if has_many_pipelines(tests) else tests) for module, tests in test_map.items()}
-
-    import ipdb; ipdb.set_trace()
 
     if not filter_models:
         return test_map
@@ -932,6 +932,8 @@ def infer_tests_to_run(
     # Remove duplicates
     impacted_files = sorted(set(impacted_files))
     print(f"\n### IMPACTED FILES ###\n{_print_list(impacted_files)}")
+
+    import ipdb; ipdb.set_trace()
 
     # Grab the corresponding test files:
     if any(x in modified_files for x in ["setup.py"]):
