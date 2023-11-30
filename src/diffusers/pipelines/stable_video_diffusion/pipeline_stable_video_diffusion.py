@@ -21,7 +21,7 @@ import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import BaseOutput, logging
@@ -111,6 +111,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.mask_processor = VaeImageProcessor(
+            vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
+        )
 
     def _encode_image(self, image, device, num_videos_per_prompt, do_classifier_free_guidance):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -296,10 +299,38 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     def num_timesteps(self):
         return self._num_timesteps
 
+    def prepare_mask_latents(
+        self, mask, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
+    ):
+        # resize the mask to latents shape as we concatenate the mask to the latents
+        # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
+        # and half precision
+        mask = torch.nn.functional.interpolate(
+            mask, size=(height // self.vae_scale_factor, width // self.vae_scale_factor)
+        )
+        mask = mask.to(device=device, dtype=dtype)
+
+        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
+        if mask.shape[0] < batch_size:
+            if not batch_size % mask.shape[0] == 0:
+                raise ValueError(
+                    "The passed mask and the required batch size don't match. Masks are supposed to be duplicated to"
+                    f" a total batch size of {batch_size}, but {mask.shape[0]} masks were passed. Make sure the number"
+                    " of masks that you pass is divisible by the total requested batch size."
+                )
+            mask = mask.repeat(batch_size // mask.shape[0], 1, 1, 1)
+
+        mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
+
+        # aligning device to prevent device errors when concating it with the latent model input
+        return mask
+
+
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
+        image: PipelineImageInput,
+        mask_image: PipelineImageInput = None,
         height: int = 576,
         width: int = 1024,
         num_frames: Optional[int] = None,
@@ -483,6 +514,20 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         self._guidance_scale = guidance_scale
 
+        # 7. Prepare mask latent variables
+        mask_condition = self.mask_processor.preprocess(mask_image, height=height, width=width)
+
+        mask = self.prepare_mask_latents(
+            mask_condition,
+            batch_size * num_videos_per_prompt,
+            height,
+            width,
+            latents.dtype,
+            device,
+            generator,
+            self.do_classifier_free_guidance,
+        )
+
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -511,6 +556,21 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+
+                init_latents_proper = image_latents
+                if self.do_classifier_free_guidance:
+                    init_mask, _ = mask.chunk(2)
+                else:
+                    init_mask = mask
+
+                if i < len(timesteps) - 1:
+                    noise_timestep = timesteps[i + 1]
+                    init_latents_proper = self.scheduler.add_noise(
+                        init_latents_proper, noise, torch.tensor([noise_timestep])
+                    )
+
+                    import ipdb; ipdb.set_trace()
+                    latents = (1 - init_mask) * init_latents_proper + init_mask * latents
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
